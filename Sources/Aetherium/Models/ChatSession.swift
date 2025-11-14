@@ -60,6 +60,7 @@ final class Message {
     var timestamp: Date
     var tokenCount: Int?
 
+    @Relationship(deleteRule: .cascade) var citations: [Citation]
     var chatSession: ChatSession?
 
     init(
@@ -74,6 +75,38 @@ final class Message {
         self.role = role
         self.timestamp = timestamp
         self.tokenCount = tokenCount
+        self.citations = []
+    }
+}
+
+@Model
+final class Citation {
+    @Attribute(.unique) var id: UUID
+    var sourceID: String // UUID of source document/chunk
+    var sourceTitle: String
+    var sourceType: String // document, webpage, note
+    var excerpt: String
+    var relevanceScore: Double
+    var pageNumber: Int?
+
+    var message: Message?
+
+    init(
+        id: UUID = UUID(),
+        sourceID: String,
+        sourceTitle: String,
+        sourceType: String,
+        excerpt: String,
+        relevanceScore: Double,
+        pageNumber: Int? = nil
+    ) {
+        self.id = id
+        self.sourceID = sourceID
+        self.sourceTitle = sourceTitle
+        self.sourceType = sourceType
+        self.excerpt = excerpt
+        self.relevanceScore = relevanceScore
+        self.pageNumber = pageNumber
     }
 }
 

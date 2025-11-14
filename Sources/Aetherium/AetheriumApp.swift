@@ -11,7 +11,20 @@ struct AetheriumApp: App {
 
     init() {
         do {
-            modelContainer = try ModelContainer(for: AetheriumProject.self, ChatSession.self, LearningGoal.self, Message.self)
+            // Include all data models in the container
+            modelContainer = try ModelContainer(
+                for: AetheriumProject.self,
+                ChatSession.self,
+                LearningGoal.self,
+                Message.self,
+                Citation.self,
+                ProjectSource.self,
+                UploadedDocument.self,
+                DocumentChunk.self,
+                WebCapture.self,
+                AudioTranscription.self,
+                ProjectNote.self
+            )
         } catch {
             fatalError("Failed to initialize ModelContainer: \(error)")
         }
