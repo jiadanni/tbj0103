@@ -23,7 +23,10 @@ struct AetheriumApp: App {
                 DocumentChunk.self,
                 WebCapture.self,
                 AudioTranscription.self,
-                ProjectNote.self
+                ProjectNote.self,
+                ConceptNode.self,
+                ConceptLink.self,
+                ConceptMention.self
             )
         } catch {
             fatalError("Failed to initialize ModelContainer: \(error)")
