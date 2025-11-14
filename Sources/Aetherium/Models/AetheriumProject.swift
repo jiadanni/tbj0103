@@ -11,6 +11,7 @@ final class AetheriumProject {
 
     @Relationship(deleteRule: .cascade) var learningGoals: [LearningGoal]
     @Relationship(deleteRule: .cascade) var chatSessions: [ChatSession]
+    @Relationship(deleteRule: .cascade) var sources: [ProjectSource]
 
     init(
         id: UUID = UUID(),
@@ -26,6 +27,7 @@ final class AetheriumProject {
         self.updatedAt = updatedAt
         self.learningGoals = []
         self.chatSessions = []
+        self.sources = []
     }
 
     func updateTimestamp() {
