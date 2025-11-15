@@ -1,134 +1,102 @@
 # Aetherium
 
-> A local-first AI learning companion for macOS that treats conversations as interconnected knowledge nodes
+> **Your local-first AI learning companion**
 
-Aetherium is a revolutionary approach to AI chat applications, designed specifically for deep learning and knowledge building. Unlike traditional chat apps where conversations exist in isolation, Aetherium organizes everything around **projects** and **learning goals**, creating a connected knowledge graph from your interactions.
+Aetherium is a comprehensive macOS application that combines ChatGPT-style conversations, NotebookLM's source grounding, Obsidian's knowledge graphs, and Notion's organization—all powered by local Ollama AI models for complete privacy.
 
-## Core Philosophy
+![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)
+![SwiftUI](https://img.shields.io/badge/SwiftUI-macOS%2014+-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-The key insight: **Chats should be project-aware and goal-oriented, not isolated conversations.**
+## ✨ Features
 
-Traditional AI chat apps treat each conversation as standalone. Aetherium instead:
-- Organizes chats into **Projects** (e.g., "Learning SwiftUI", "Building a Compiler")
-- Tracks **Learning Goals** with progress and prerequisites
-- Builds a **Knowledge Graph** connecting related concepts across chats
-- Uses **local models** via Ollama for privacy and cost-efficiency
-- Provides **seamless fallback** to cloud APIs when needed
+### 🤖 AI Chat with Source Grounding
+- Converse with local Ollama models (qwen2.5:7b, llama3, etc.)
+- **Source-grounded responses** with automatic citations
+- Upload documents (PDF, TXT, Markdown, HTML, RTF) for RAG
+- Capture web pages and audio transcriptions
+- AI-generated study guides and quizzes
 
-## Features
+### 🧠 Knowledge Graph
+- **Obsidian-style bidirectional linking** with `[[concept]]` syntax
+- Interactive graph visualization
+- 8 concept types: Topic, Person, Technology, Definition, Question, Insight, Resource, Custom
+- 6 link types: Related, PartOf, Prerequisite, Contradicts, Supports, Example
+- Auto-detect concept mentions across all content
+- Backlinks panel showing where concepts are referenced
 
-### Phase 1 (Current Implementation)
+### 🔍 Semantic Search
+- **Cmd+K command palette** for instant search
+- Semantic search using Ollama embeddings (nomic-embed-text)
+- Search across documents, chats, concepts, and notes
+- Cosine similarity matching with fallback to keyword search
 
-- **Project-Based Organization**: Group related chats and learning goals
-- **Biometric Security**: Touch ID / Face ID protection for your private conversations
-- **Local AI via Ollama**: Run models like Qwen 2.5, Llama 3.2, Mistral locally
-- **Hybrid Model Support**: Automatic fallback to cloud APIs (planned)
-- **Clean macOS-Native UI**: Built with SwiftUI for native performance
-- **Persistent Storage**: SwiftData for efficient, encrypted local storage
+### ✍️ Smart Editor
+- **Live Obsidian-style linking** with auto-complete
+- Three modes: Live, Preview, Split view
+- Markdown rendering with syntax highlighting
+- Auto-save with 2-second debounce
+- Real-time `[[concept]]` detection
+- Word count, character count, link statistics
 
-### Phase 2 (Planned)
+### 📅 Daily Notes + Templates
+- Interactive calendar with 7x7 grid navigation
+- **6 built-in templates**:
+  - Daily Note
+  - Meeting Notes
+  - Learning Session
+  - Weekly Review
+  - Project Planning
+  - Quick Note
+- Variable substitution: `{{date}}`, `{{project}}`, `{{username}}`, etc.
+- Mood tracking (5 levels)
+- Productivity scoring (1-10)
+- Streak tracking
 
-- **Knowledge Graph Visualization**: See connections between concepts
-- **Smart Learning Paths**: AI-suggested next steps based on goals
-- **Cross-Chat Search**: Find information across all project conversations
-- **Topic Extraction**: Automatic tagging and categorization
-- **Progress Tracking**: Visual progress for learning goals
-- **Export/Import**: Share projects and integrate with other tools
+### 🎴 Flashcards + Spaced Repetition
+- **SM-2 algorithm** for optimal review scheduling
+- Card flipping animations with 3D rotation
+- 4 quality ratings: Forgot, Hard, Good, Easy
+- Session stats with accuracy tracking
+- Keyboard shortcuts (Space to reveal, 0-5 for rating)
+- Leitner System alternative
 
-### Phase 3 (Future)
+### 🛤️ Learning Paths
+- Milestone tracking with progress visualization
+- Target completion dates
+- Concept linking to milestones
+- Progress percentage calculation
+- Completion celebrations
 
-- **MCP-Style Browser Integration**: Connect with ChatGPT, Claude, Perplexity
-- **Advanced Model Orchestration**: Intelligent routing between models
-- **Collaborative Projects**: Share and collaborate on learning projects
-- **Custom Plugins**: Extend functionality with Swift packages
+### 📊 Analytics Dashboard
+- **Activity heatmap** (49-day grid)
+- Concept growth charts
+- Review accuracy charts
+- Recent activity feed
+- **AI-powered insights**:
+  - Learning pace recommendations
+  - Review accuracy feedback
+  - Activity consistency tracking
+  - Concept connection suggestions
 
-## Architecture
+### 🎤 Voice + Export
+- **Real-time speech-to-text** using macOS Speech framework
+- Audio file transcription
+- **4 export formats**:
+  - Markdown (single file)
+  - Obsidian Vault (folder structure)
+  - PDF (formatted)
+  - JSON (data portability)
 
-### Tech Stack
-
-- **Language**: Swift 5.9+
-- **UI Framework**: SwiftUI
-- **Data Persistence**: SwiftData with CloudKit sync
-- **Security**: LocalAuthentication framework
-- **Local AI**: Ollama REST API
-- **Minimum macOS**: 14.0 (Sonoma)
-
-### Project Structure
-
-```
-Aetherium/
-├── Sources/Aetherium/
-│   ├── AetheriumApp.swift          # App entry point
-│   ├── Models/
-│   │   ├── AetheriumProject.swift  # Project data model
-│   │   ├── ChatSession.swift       # Chat session & messages
-│   │   └── LearningGoal.swift      # Learning goal tracking
-│   ├── Services/
-│   │   ├── OllamaService.swift     # Ollama API integration
-│   │   ├── SecurityManager.swift   # Biometric authentication
-│   │   └── ModelOrchestrator.swift # Model selection & routing
-│   └── Views/
-│       ├── AuthenticationView.swift
-│       ├── ContentView.swift
-│       ├── ProjectListView.swift
-│       ├── ChatSessionListView.swift
-│       └── ChatView.swift
-├── Tests/AetheriumTests/
-└── Package.swift
-```
-
-### Data Models
-
-#### AetheriumProject
-```swift
-@Model
-final class AetheriumProject {
-    var id: UUID
-    var title: String
-    var description: String
-    var learningGoals: [LearningGoal]
-    var chatSessions: [ChatSession]
-    var createdAt: Date
-    var updatedAt: Date
-}
-```
-
-#### ChatSession
-```swift
-@Model
-final class ChatSession {
-    var id: UUID
-    var title: String
-    var modelName: String
-    var isLocal: Bool
-    var messages: [Message]
-    var extractedTopics: [String]  // For knowledge graph
-    var relatedGoalIDs: [String]
-}
-```
-
-#### LearningGoal
-```swift
-@Model
-final class LearningGoal {
-    var id: UUID
-    var title: String
-    var description: String
-    var progress: Double  // 0.0 to 1.0
-    var prerequisiteIDs: [String]  // Goal dependencies
-    var relatedChatIDs: [String]   // Connected conversations
-}
-```
-
-## Setup
+## 🚀 Getting Started
 
 ### Prerequisites
 
-1. **macOS 14.0+** (Sonoma or later)
-2. **Xcode 15.0+**
-3. **Ollama** installed and running
+- **macOS 14.0+** (Sonoma or later)
+- **Xcode 15.0+**
+- **Ollama** installed and running ([ollama.ai](https://ollama.ai))
 
-### Installing Ollama
+### Ollama Setup
 
 ```bash
 # Install Ollama
@@ -137,158 +105,225 @@ brew install ollama
 # Start Ollama service
 ollama serve
 
-# Pull a model (in a new terminal)
+# Pull required models
 ollama pull qwen2.5:7b
-ollama pull llama3.2
+ollama pull nomic-embed-text
 ```
 
-### Building Aetherium
+### Installation
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd aetherium
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-username/aetherium.git
+   cd aetherium
+   ```
 
-# Open in Xcode
-open Package.swift
+2. **Open in Xcode**
+   ```bash
+   open Package.swift
+   ```
 
-# Or build from command line
-swift build
-
-# Run the app
-swift run Aetherium
-```
+3. **Build and Run**
+   - Select your Mac as the run destination
+   - Press `Cmd+R` to build and run
 
 ### First Launch
 
-1. **Authenticate**: Use Touch ID / Face ID to unlock
-2. **Create a Project**: Click "New Project" in the sidebar
-3. **Start a Chat**: Click "+" and select your local model
-4. **Begin Learning**: Ask questions, set goals, track progress
+1. **Authenticate** with Touch ID / Face ID
+2. **Create your first project**
+3. **Start learning!**
 
-## Usage
+## 📖 Usage Guide
 
 ### Creating a Project
 
-Projects organize related learning:
+1. Press `Cmd+N` or click "Create New Project"
+2. Enter a title and description
+3. Set learning goals
+4. Start adding sources and chatting!
+
+### Adding Sources
+
+Navigate to **Documents** (Cmd+4):
+- **Import documents**: PDF, TXT, Markdown, HTML, RTF
+- **Capture webpages**: Extract content from URLs
+- **Create notes**: Write directly in Aetherium
+- **Record audio**: Transcribe voice recordings
+
+All sources are automatically processed and chunked for semantic search.
+
+### Chatting with AI
+
+Navigate to **Chat** (Cmd+2):
+1. Create a new chat (Cmd+Shift+N)
+2. Type your question
+3. AI responds with **citations** from your sources
+4. Click citations to see source context
+
+### Building Knowledge
+
+Navigate to **Knowledge Graph** (Cmd+5):
+1. View your concept network
+2. Create concepts manually or from documents
+3. Link related concepts
+4. Explore connections visually
+
+### Taking Daily Notes
+
+Navigate to **Daily Notes** (Cmd+3):
+1. Select a date from the calendar
+2. Choose a template or start blank
+3. Use `[[concept]]` syntax to link ideas
+4. Set mood and productivity for the day
+
+### Creating Flashcards
+
+Navigate to **Flashcards** (Cmd+6):
+1. Create cards from concepts
+2. Or auto-generate from documents
+3. Review due cards
+4. Rate your recall: Forgot, Hard, Good, Easy
+5. Watch your retention improve!
+
+### Tracking Progress
+
+Navigate to **Dashboard** (Cmd+1):
+- View activity heatmap
+- Track concept growth
+- Monitor review accuracy
+- Get AI insights
+
+## ⌨️ Keyboard Shortcuts
+
+### Global
+- `Cmd+K` - Command palette (semantic search)
+- `Cmd+N` - New project
+- `Cmd+Shift+N` - New chat
+- `Cmd+S` - Save
+- `Cmd+Q` - Quit
+
+### Navigation
+- `Cmd+1` - Dashboard
+- `Cmd+2` - Chat
+- `Cmd+3` - Daily Notes
+- `Cmd+4` - Documents
+- `Cmd+5` - Knowledge Graph
+- `Cmd+6` - Flashcards
+- `Cmd+7` - Learning Paths
+
+### Editor
+- `[[` - Trigger concept autocomplete
+- `Cmd+S` - Save note
+- `Cmd+Enter` - Send message
+
+### Flashcards
+- `Space` - Reveal answer
+- `0` - Forgot
+- `3` - Hard
+- `4` - Good
+- `5` - Easy
+
+## 🏗️ Architecture
+
+### Tech Stack
+
+- **SwiftUI** - Modern declarative UI
+- **SwiftData** - Core Data replacement with modern API
+- **Ollama** - Local AI models
+- **Speech Framework** - Voice transcription
+- **Charts** - Data visualization
+- **AVFoundation** - Audio processing
+
+### Data Models
 
 ```
-Example: "Learning iOS Development"
-├── Chat: "SwiftUI Basics"
-├── Chat: "Combine Framework"
-├── Goal: "Build my first app"
-└── Goal: "Understand reactive programming"
+AetheriumProject
+├── ChatSession
+│   └── Message
+│       └── Citation
+├── ProjectSource
+│   ├── UploadedDocument
+│   │   └── DocumentChunk (with embeddings)
+│   ├── WebCapture
+│   ├── AudioTranscription
+│   └── ProjectNote
+├── ConceptNode
+│   ├── ConceptLink
+│   └── ConceptMention
+├── LearningGoal
+├── LearningPath
+│   └── PathMilestone
+├── LearningCard (flashcards)
+├── DailyNote
+└── NoteTemplate
 ```
 
-### Model Selection
+### Services
 
-Aetherium supports multiple Ollama models:
-- **qwen2.5:7b** - Excellent for general learning (recommended)
-- **llama3.2** - Good balance of speed and quality
-- **mistral** - Fast responses, good for quick questions
-- **codellama** - Specialized for coding help
+- **OllamaService** - AI model communication
+- **ModelOrchestrator** - Model selection and routing
+- **DocumentProcessor** - Extract text, chunk, embed
+- **EmbeddingGenerator** - Generate vectors with Ollama
+- **SemanticSearchEngine** - Vector similarity search
+- **LinkingEngine** - Bidirectional link management
+- **ConceptExtractor** - AI-powered concept detection
+- **GroundedChatEngine** - RAG implementation
+- **SpacedRepetitionEngine** - SM-2 algorithm
+- **NoteTemplateEngine** - Template processing
+- **ExportEngine** - Multi-format export
+- **VoiceTranscriptionService** - Speech-to-text
+- **AIContentGenerator** - Auto-tagging, summaries, questions
+- **SecurityManager** - Biometric authentication
 
-### Biometric Security
+## 🎯 Roadmap
 
-All data is protected:
-- **Authentication Required**: On every launch
-- **Local Storage**: Encrypted with SwiftData
-- **No Cloud Sync** (unless you enable iCloud)
+### Phase 1-9: Complete ✅
+- ✅ Foundation (Projects, Auth, Chat)
+- ✅ Document Intelligence (RAG, Citations)
+- ✅ Knowledge Graph (Bidirectional Links)
+- ✅ Semantic Search (Ollama Embeddings)
+- ✅ Smart Editor (Live Linking)
+- ✅ Daily Notes (Templates, Calendar)
+- ✅ Learning Intelligence (Spaced Repetition)
+- ✅ Voice + Export (Speech, Multiple Formats)
+- ✅ Dashboard + Analytics (AI Insights)
 
-## Development Roadmap
-
-### Q1 2025
-- [x] Core architecture and data models
-- [x] Ollama integration
-- [x] Basic chat interface
-- [x] Project management
-- [ ] Knowledge graph extraction
-- [ ] Topic analysis using local models
-
-### Q2 2025
-- [ ] Cloud API fallback (OpenAI, Anthropic)
-- [ ] Advanced search across projects
-- [ ] Learning path suggestions
-- [ ] Progress visualization
-
-### Q3 2025
-- [ ] Browser integration (MCP-style)
-- [ ] Export/import functionality
-- [ ] Plugin system
+### Future Enhancements (Phase 10+)
+- [ ] iCloud sync
 - [ ] iOS companion app
+- [ ] Collaboration features
+- [ ] Plugin system
+- [ ] Custom AI model fine-tuning
+- [ ] Advanced graph algorithms
+- [ ] Multi-language support
+- [ ] Themes and customization
 
-## Why Aetherium?
+## 🤝 Contributing
 
-### The Problem with Current AI Chat Apps
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-1. **Isolated Conversations**: Each chat is independent
-2. **No Learning Context**: Apps don't understand your goals
-3. **Privacy Concerns**: All data goes to the cloud
-4. **No Knowledge Building**: Insights are lost in history
-5. **Expensive**: API costs add up quickly
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-### The Aetherium Solution
+## 📄 License
 
-1. **Project Consciousness**: Every chat knows its context
-2. **Goal-Oriented**: Track learning objectives and progress
-3. **Privacy-First**: Local models + biometric security
-4. **Knowledge Graph**: Connect ideas across conversations
-5. **Cost-Effective**: Free local models, optional cloud fallback
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Technical Highlights
+## 🙏 Acknowledgments
 
-### Ollama Integration
+- **Ollama** - For making local AI accessible
+- **Obsidian** - Inspiration for knowledge graph
+- **NotebookLM** - Inspiration for source grounding
+- **SuperMemo** - SM-2 algorithm for spaced repetition
 
-```swift
-// Send a message to local Ollama instance
-let response = try await ollamaService.sendMessage(
-    "Explain closures in Swift",
-    model: "qwen2.5:7b",
-    context: previousMessages,
-    temperature: 0.7
-)
-```
+## 📧 Contact
 
-### Biometric Security
-
-```swift
-// Authenticate user on launch
-try await securityManager.authenticate()
-```
-
-### Model Orchestration
-
-```swift
-// Automatically choose between local and cloud
-let response = try await modelOrchestrator.processMessage(
-    userInput,
-    context: chatHistory
-)
-// Uses Ollama if available, falls back to API if needed
-```
-
-## Contributing
-
-Aetherium is in active development. Contributions welcome!
-
-### Areas for Contribution
-
-- **Knowledge Graph**: Implement entity extraction from chats
-- **Streaming Support**: Add streaming responses from Ollama
-- **Cloud APIs**: Integrate OpenAI, Anthropic, Perplexity
-- **UI/UX**: Enhance the interface and user experience
-- **Testing**: Write unit and integration tests
-
-## License
-
-MIT License - see LICENSE file for details
-
-## Acknowledgments
-
-- **Ollama** for making local AI accessible
-- **Apple** for SwiftUI and SwiftData
-- The open-source AI community
+- **GitHub Issues** - For bugs and feature requests
+- **Discussions** - For questions and community
 
 ---
 
-**Aetherium**: Because learning should be connected, private, and purposeful.
+**Built with ❤️ using Swift and local-first AI principles**
