@@ -1,0 +1,460 @@
+import SwiftUI
+import SwiftData
+
+// MARK: - Flashcard Review View
+
+struct FlashcardReviewView: View {
+    let project: AetheriumProject
+    @Environment(\.modelContext) private var modelContext
+
+    @StateObject private var srEngine: SpacedRepetitionEngine
+    @State private var currentCardIndex = 0
+    @State private var isShowingAnswer = false
+    @State private var sessionStats = SessionStats()
+    @State private var showingCongratulations = false
+
+    init(project: AetheriumProject, modelContext: ModelContext) {
+        self.project = project
+        _srEngine = StateObject(wrappedValue: SpacedRepetitionEngine(modelContext: modelContext))
+    }
+
+    var currentCard: LearningCard? {
+        guard currentCardIndex < srEngine.dueCards.count else { return nil }
+        return srEngine.dueCards[currentCardIndex]
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header with progress
+            ReviewHeaderView(
+                current: currentCardIndex + 1,
+                total: srEngine.dueCards.count,
+                sessionStats: sessionStats
+            )
+
+            Divider()
+
+            if let card = currentCard {
+                // Flashcard
+                FlashcardView(
+                    card: card,
+                    isShowingAnswer: $isShowingAnswer
+                )
+                .frame(maxHeight: .infinity)
+
+                Divider()
+
+                // Controls
+                if isShowingAnswer {
+                    QualityRatingView(
+                        onRate: { quality in
+                            rateCard(card, quality: quality)
+                        }
+                    )
+                    .padding()
+                } else {
+                    Button(action: { isShowingAnswer = true }) {
+                        Label("Show Answer", systemImage: "eye")
+                            .font(.body)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .keyboardShortcut(.space, modifiers: [])
+                    .padding()
+                }
+            } else if showingCongratulations {
+                CongratulationsView(
+                    sessionStats: sessionStats,
+                    onContinue: {
+                        showingCongratulations = false
+                        resetSession()
+                    }
+                )
+            } else {
+                EmptyReviewView(
+                    onCreateCard: { /* TODO */ }
+                )
+            }
+        }
+        .navigationTitle("Review Flashcards")
+        .task {
+            srEngine.loadDueCards(for: project)
+        }
+    }
+
+    // MARK: - Actions
+
+    private func rateCard(_ card: LearningCard, quality: Int) {
+        srEngine.reviewCard(card, quality: quality)
+
+        // Update session stats
+        sessionStats.totalReviewed += 1
+        if quality >= 3 {
+            sessionStats.correct += 1
+        }
+
+        // Move to next card
+        isShowingAnswer = false
+        currentCardIndex += 1
+
+        // Check if session complete
+        if currentCardIndex >= srEngine.dueCards.count {
+            showingCongratulations = true
+        }
+    }
+
+    private func resetSession() {
+        currentCardIndex = 0
+        sessionStats = SessionStats()
+        srEngine.loadDueCards(for: project)
+    }
+}
+
+// MARK: - Flashcard Display
+
+struct FlashcardView: View {
+    let card: LearningCard
+    @Binding var isShowingAnswer: Bool
+
+    @State private var isFlipped = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            // Card content
+            VStack(spacing: 24) {
+                // Card indicator
+                Text(isShowingAnswer ? "Answer" : "Question")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                    .textCase(.uppercase)
+
+                // Content
+                ScrollView {
+                    Text(isShowingAnswer ? card.back : card.front)
+                        .font(.title2)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                }
+                .frame(maxHeight: 400)
+            }
+            .frame(maxWidth: 600)
+            .padding(40)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.secondary.opacity(0.05))
+                    .shadow(radius: 10)
+            )
+            .rotation3DEffect(
+                .degrees(isFlipped ? 180 : 0),
+                axis: (x: 0, y: 1, z: 0)
+            )
+            .animation(.easeInOut(duration: 0.6), value: isFlipped)
+
+            Spacer()
+
+            // Card metadata
+            HStack(spacing: 20) {
+                if !card.tags.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(card.tags.prefix(3), id: \.self) { tag in
+                            Text("#\(tag)")
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                // Card stats
+                HStack(spacing: 16) {
+                    Label("\(card.totalReviews) reviews", systemImage: "repeat")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Label("Ease: \(String(format: "%.1f", card.easeFactor))", systemImage: "chart.line.uptrend.xyaxis")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    if card.repetitions > 0 {
+                        Label("Streak: \(card.repetitions)", systemImage: "flame.fill")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+            .padding(.horizontal, 40)
+            .padding(.bottom, 20)
+        }
+        .onChange(of: isShowingAnswer) { _, newValue in
+            if newValue {
+                isFlipped = true
+            } else {
+                isFlipped = false
+            }
+        }
+    }
+}
+
+// MARK: - Quality Rating
+
+struct QualityRatingView: View {
+    let onRate: (Int) -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("How well did you know this?")
+                .font(.headline)
+
+            HStack(spacing: 12) {
+                QualityButton(
+                    quality: 0,
+                    title: "Forgot",
+                    subtitle: "< 1 day",
+                    color: .red,
+                    icon: "xmark.circle",
+                    onRate: onRate
+                )
+
+                QualityButton(
+                    quality: 3,
+                    title: "Hard",
+                    subtitle: "1 day",
+                    color: .orange,
+                    icon: "minus.circle",
+                    onRate: onRate
+                )
+
+                QualityButton(
+                    quality: 4,
+                    title: "Good",
+                    subtitle: "3 days",
+                    color: .blue,
+                    icon: "checkmark.circle",
+                    onRate: onRate
+                )
+
+                QualityButton(
+                    quality: 5,
+                    title: "Easy",
+                    subtitle: "7 days",
+                    color: .green,
+                    icon: "star.circle",
+                    onRate: onRate
+                )
+            }
+        }
+    }
+}
+
+struct QualityButton: View {
+    let quality: Int
+    let title: String
+    let subtitle: String
+    let color: Color
+    let icon: String
+    let onRate: (Int) -> Void
+
+    var body: some View {
+        Button(action: { onRate(quality) }) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title2)
+
+                VStack(spacing: 2) {
+                    Text(title)
+                        .font(.callout)
+                        .fontWeight(.medium)
+
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(color.opacity(0.1))
+            .foregroundColor(color)
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(KeyEquivalent(Character(UnicodeScalar(quality + 48)!)), modifiers: [])
+    }
+}
+
+// MARK: - Review Header
+
+struct ReviewHeaderView: View {
+    let current: Int
+    let total: Int
+    let sessionStats: SessionStats
+
+    var progress: Double {
+        guard total > 0 else { return 0.0 }
+        return Double(current - 1) / Double(total)
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            // Progress bar
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.1))
+
+                    Rectangle()
+                        .fill(Color.blue)
+                        .frame(width: geometry.size.width * progress)
+                }
+            }
+            .frame(height: 4)
+
+            HStack {
+                // Progress text
+                Text("\(current) / \(total)")
+                    .font(.headline)
+
+                Spacer()
+
+                // Session stats
+                HStack(spacing: 20) {
+                    Label("\(sessionStats.totalReviewed) reviewed", systemImage: "checkmark.circle")
+                        .font(.caption)
+
+                    if sessionStats.totalReviewed > 0 {
+                        let accuracy = Double(sessionStats.correct) / Double(sessionStats.totalReviewed) * 100
+                        Label("\(Int(accuracy))% correct", systemImage: "chart.line.uptrend.xyaxis")
+                            .font(.caption)
+                            .foregroundColor(accuracy >= 80 ? .green : (accuracy >= 60 ? .orange : .red))
+                    }
+                }
+                .foregroundColor(.secondary)
+            }
+            .padding(.horizontal)
+        }
+        .padding(.vertical, 8)
+        .background(Color.secondary.opacity(0.05))
+    }
+}
+
+// MARK: - Empty State
+
+struct EmptyReviewView: View {
+    let onCreateCard: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.green)
+
+            Text("All caught up!")
+                .font(.title)
+                .fontWeight(.semibold)
+
+            Text("You have no cards due for review right now")
+                .foregroundColor(.secondary)
+
+            Button(action: onCreateCard) {
+                Label("Create New Card", systemImage: "plus.circle")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Congratulations View
+
+struct CongratulationsView: View {
+    let sessionStats: SessionStats
+    let onContinue: () -> Void
+
+    var accuracy: Double {
+        guard sessionStats.totalReviewed > 0 else { return 0.0 }
+        return Double(sessionStats.correct) / Double(sessionStats.totalReviewed)
+    }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Image(systemName: "trophy.fill")
+                .font(.system(size: 80))
+                .foregroundColor(.yellow)
+
+            Text("Session Complete!")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+
+            VStack(spacing: 12) {
+                StatRow(label: "Cards Reviewed", value: "\(sessionStats.totalReviewed)")
+                StatRow(label: "Correct", value: "\(sessionStats.correct)")
+                StatRow(label: "Accuracy", value: "\(Int(accuracy * 100))%")
+            }
+            .padding(20)
+            .background(Color.secondary.opacity(0.1))
+            .cornerRadius(12)
+
+            Button(action: onContinue) {
+                Label("Continue Learning", systemImage: "arrow.right.circle.fill")
+                    .font(.body)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct StatRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .foregroundColor(.secondary)
+
+            Spacer()
+
+            Text(value)
+                .fontWeight(.semibold)
+        }
+    }
+}
+
+// MARK: - Session Stats
+
+struct SessionStats {
+    var totalReviewed = 0
+    var correct = 0
+}
+
+#Preview {
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(for: AetheriumProject.self, configurations: config)
+
+    let project = AetheriumProject(title: "Learning Swift", description: "Test")
+
+    let card1 = LearningCard(
+        front: "What is a closure in Swift?",
+        back: "A closure is a self-contained block of functionality that can be passed around and used in your code.",
+        cardType: .basic,
+        tags: ["swift", "closures"]
+    )
+    card1.project = project
+
+    container.mainContext.insert(project)
+    container.mainContext.insert(card1)
+
+    return FlashcardReviewView(project: project, modelContext: container.mainContext)
+        .frame(width: 800, height: 600)
+        .modelContainer(container)
+}
