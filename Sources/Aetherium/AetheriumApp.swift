@@ -56,6 +56,10 @@ struct AetheriumApp: App {
                 }
             }
             .modelContainer(modelContainer)
+            .task {
+                // Discover plugins on app launch
+                await PluginManager.shared.discoverPlugins()
+            }
         }
         .windowStyle(.automatic)
         .commands {
