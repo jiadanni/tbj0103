@@ -88,6 +88,25 @@ Aetherium is a comprehensive macOS application that combines ChatGPT-style conve
   - PDF (formatted)
   - JSON (data portability)
 
+### 🧩 Plugin System
+- **Extensible architecture** with 7 plugin types:
+  - **Importers**: Bring data from external sources
+  - **Exporters**: Export to custom formats
+  - **AI Models**: Integrate custom AI models
+  - **Visualizations**: Custom data visualizations
+  - **Automations**: Triggered actions
+  - **Note Types**: Custom note formats
+  - **Integrations**: External service sync
+- **5 built-in plugins**:
+  - Markdown Exporter
+  - Obsidian Vault Exporter
+  - YouTube Transcript Importer
+  - Anki Flashcard Exporter
+  - Daily Summary Automation
+- Plugin discovery and management UI
+- Install custom plugins (.aetheriumplugin bundles)
+- Permission system for plugin security
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -193,6 +212,22 @@ Navigate to **Dashboard** (Cmd+1):
 - Monitor review accuracy
 - Get AI insights
 
+### Managing Plugins
+
+Navigate to **Plugins** (Cmd+8):
+1. **View installed plugins** - See all active and loaded plugins
+2. **Browse available plugins** - 5 built-in plugins ready to use
+3. **Load/unload plugins** - Activate or deactivate plugins
+4. **Install custom plugins** - Import .aetheriumplugin bundles
+5. **Plugin permissions** - Review required permissions
+
+**Built-in Plugins:**
+- **Markdown Exporter** - Export entire project as Markdown
+- **Obsidian Vault Exporter** - Create Obsidian-compatible vault
+- **YouTube Importer** - Import video transcripts
+- **Anki Exporter** - Export flashcards to Anki CSV format
+- **Daily Summary** - Auto-generate daily summaries
+
 ## ⌨️ Keyboard Shortcuts
 
 ### Global
@@ -210,6 +245,7 @@ Navigate to **Dashboard** (Cmd+1):
 - `Cmd+5` - Knowledge Graph
 - `Cmd+6` - Flashcards
 - `Cmd+7` - Learning Paths
+- `Cmd+8` - Plugins
 
 ### Editor
 - `[[` - Trigger concept autocomplete
@@ -273,11 +309,12 @@ AetheriumProject
 - **ExportEngine** - Multi-format export
 - **VoiceTranscriptionService** - Speech-to-text
 - **AIContentGenerator** - Auto-tagging, summaries, questions
+- **PluginManager** - Plugin discovery, loading, and management
 - **SecurityManager** - Biometric authentication
 
 ## 🎯 Roadmap
 
-### Phase 1-9: Complete ✅
+### Phase 1-10: Complete ✅
 - ✅ Foundation (Projects, Auth, Chat)
 - ✅ Document Intelligence (RAG, Citations)
 - ✅ Knowledge Graph (Bidirectional Links)
@@ -287,16 +324,18 @@ AetheriumProject
 - ✅ Learning Intelligence (Spaced Repetition)
 - ✅ Voice + Export (Speech, Multiple Formats)
 - ✅ Dashboard + Analytics (AI Insights)
+- ✅ Plugin System (7 plugin types, built-in plugins)
 
-### Future Enhancements (Phase 10+)
+### Future Enhancements (Phase 11+)
 - [ ] iCloud sync
 - [ ] iOS companion app
 - [ ] Collaboration features
-- [ ] Plugin system
+- [ ] Plugin store with community plugins
 - [ ] Custom AI model fine-tuning
-- [ ] Advanced graph algorithms
+- [ ] Advanced graph algorithms (PageRank, clustering)
 - [ ] Multi-language support
 - [ ] Themes and customization
+- [ ] Mobile-optimized plugin API
 
 ## 🤝 Contributing
 
