@@ -26,7 +26,12 @@ struct AetheriumApp: App {
                 ProjectNote.self,
                 ConceptNode.self,
                 ConceptLink.self,
-                ConceptMention.self
+                ConceptMention.self,
+                NoteTemplate.self,
+                DailyNote.self,
+                LearningCard.self,
+                LearningPath.self,
+                PathMilestone.self
             )
         } catch {
             fatalError("Failed to initialize ModelContainer: \(error)")
