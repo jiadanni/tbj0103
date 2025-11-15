@@ -162,6 +162,7 @@ enum NavigationView: String, CaseIterable, Identifiable {
     case knowledgeGraph = "Knowledge Graph"
     case flashcards = "Flashcards"
     case learningPaths = "Learning Paths"
+    case plugins = "Plugins"
 
     var id: String { rawValue }
 
@@ -174,6 +175,7 @@ enum NavigationView: String, CaseIterable, Identifiable {
         case .knowledgeGraph: return "brain.head.profile"
         case .flashcards: return "rectangle.stack.fill"
         case .learningPaths: return "map.fill"
+        case .plugins: return "puzzlepiece.extension"
         }
     }
 
@@ -186,6 +188,7 @@ enum NavigationView: String, CaseIterable, Identifiable {
         case .knowledgeGraph: return "5"
         case .flashcards: return "6"
         case .learningPaths: return "7"
+        case .plugins: return "8"
         }
     }
 }
@@ -308,6 +311,9 @@ struct DetailViewRouter: View {
 
             case .learningPaths:
                 LearningPathView(project: project)
+
+            case .plugins:
+                PluginManagerView()
             }
         }
         .navigationTitle(selectedView.rawValue)
