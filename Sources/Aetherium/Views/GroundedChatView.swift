@@ -15,10 +15,10 @@ struct GroundedChatView: View {
     @State private var showingSourcesPopover = false
     @FocusState private var isInputFocused: Bool
 
-    init(chatSession: ChatSession, project: AetheriumProject? = nil, modelOrchestrator: ModelOrchestrator) {
+    init(chatSession: ChatSession, project: AetheriumProject? = nil, modelOrchestrator: ModelOrchestrator, ollamaService: OllamaService) {
         self.chatSession = chatSession
         self.project = project
-        _groundedEngine = StateObject(wrappedValue: GroundedChatEngine(modelOrchestrator: modelOrchestrator))
+        _groundedEngine = StateObject(wrappedValue: GroundedChatEngine(modelOrchestrator: modelOrchestrator, ollamaService: ollamaService))
     }
 
     var body: some View {
@@ -443,11 +443,16 @@ struct SourcesPopoverView: View {
     container.mainContext.insert(project)
     container.mainContext.insert(chat)
 
+    let ollamaService = OllamaService()
+    let orchestrator = ModelOrchestrator(ollamaService: ollamaService)
+
     return GroundedChatView(
         chatSession: chat,
         project: project,
-        modelOrchestrator: ModelOrchestrator()
+        modelOrchestrator: orchestrator,
+        ollamaService: ollamaService
     )
-    .environmentObject(ModelOrchestrator())
+    .environmentObject(orchestrator)
+    .environmentObject(ollamaService)
     .modelContainer(container)
 }
