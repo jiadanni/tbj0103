@@ -5,8 +5,12 @@ import SwiftData
 
 @MainActor
 class RetrievalEngine: ObservableObject {
-    private let embeddingGenerator = EmbeddingGenerator()
+    private let ollamaService: OllamaService
     private let similarityThreshold: Float = 0.7
+
+    init(ollamaService: OllamaService) {
+        self.ollamaService = ollamaService
+    }
 
     /// Find relevant document chunks for a given query
     func findRelevantChunks(
@@ -21,8 +25,24 @@ class RetrievalEngine: ObservableObject {
             return []
         }
 
-        // For now, use simple keyword matching
-        // In production: Generate query embedding and use cosine similarity
+        // Try semantic search first
+        do {
+            let queryEmbedding = try await ollamaService.generateEmbedding(query)
+            let results = semanticRetrieval(
+                queryEmbedding: queryEmbedding,
+                chunks: allChunks,
+                limit: limit
+            )
+
+            // If we got results, use them
+            if !results.isEmpty {
+                return results
+            }
+        } catch {
+            print("Semantic search failed, falling back to keyword search: \(error)")
+        }
+
+        // Fallback to keyword matching
         let results = keywordBasedRetrieval(query: query, chunks: allChunks, limit: limit)
 
         return results
@@ -172,10 +192,11 @@ class RetrievalEngine: ObservableObject {
 @MainActor
 class GroundedChatEngine: ObservableObject {
     private let modelOrchestrator: ModelOrchestrator
-    private let retrievalEngine = RetrievalEngine()
+    private let retrievalEngine: RetrievalEngine
 
-    init(modelOrchestrator: ModelOrchestrator) {
+    init(modelOrchestrator: ModelOrchestrator, ollamaService: OllamaService) {
         self.modelOrchestrator = modelOrchestrator
+        self.retrievalEngine = RetrievalEngine(ollamaService: ollamaService)
     }
 
     /// Send message with source-grounded context

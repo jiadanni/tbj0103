@@ -11,7 +11,13 @@ class DocumentProcessor: ObservableObject {
 
     private let textExtractor = TextExtractor()
     private let semanticChunker = SemanticChunker()
-    private let embeddingGenerator = EmbeddingGenerator()
+    private let embeddingGenerator: EmbeddingGenerator
+    private let ollamaService: OllamaService
+
+    init(ollamaService: OllamaService) {
+        self.ollamaService = ollamaService
+        self.embeddingGenerator = EmbeddingGenerator(ollamaService: ollamaService)
+    }
 
     func processDocument(_ url: URL) async throws -> UploadedDocument {
         isProcessing = true
@@ -224,18 +230,35 @@ class SemanticChunker {
 
 class EmbeddingGenerator {
     private let cache = NSCache<NSString, CachedEmbedding>()
+    private let ollamaService: OllamaService
+
+    init(ollamaService: OllamaService) {
+        self.ollamaService = ollamaService
+    }
 
     func embedChunks(_ chunks: [ChunkData]) async throws -> [DocumentChunk] {
-        // For now, generate placeholder embeddings
-        // In production, integrate with MLX embedding model or Ollama
-        return chunks.map { chunkData in
-            DocumentChunk(
+        // Generate embeddings for each chunk
+        var embeddedChunks: [DocumentChunk] = []
+
+        for chunkData in chunks {
+            // Try to generate embedding, fall back to nil if it fails
+            let embedding: [Float]?
+            do {
+                embedding = try await generateEmbedding(chunkData.content)
+            } catch {
+                print("Failed to generate embedding for chunk \(chunkData.chunkIndex): \(error)")
+                embedding = nil
+            }
+
+            embeddedChunks.append(DocumentChunk(
                 content: chunkData.content,
-                embeddings: nil, // Will be generated with MLX/Ollama later
+                embeddings: embedding,
                 chunkIndex: chunkData.chunkIndex,
                 tokenCount: chunkData.tokenCount
-            )
+            ))
         }
+
+        return embeddedChunks
     }
 
     func generateEmbedding(_ text: String) async throws -> [Float] {
@@ -245,9 +268,8 @@ class EmbeddingGenerator {
             return cached.embedding
         }
 
-        // For now, return placeholder
-        // In production: Use Ollama embeddings endpoint or MLX model
-        let embedding = [Float](repeating: 0.0, count: 384) // Typical embedding size
+        // Generate embedding via Ollama
+        let embedding = try await ollamaService.generateEmbedding(text)
 
         // Cache the result
         cache.setObject(CachedEmbedding(embedding: embedding), forKey: cacheKey)

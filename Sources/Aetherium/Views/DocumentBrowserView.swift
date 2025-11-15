@@ -4,13 +4,19 @@ import UniformTypeIdentifiers
 
 struct DocumentBrowserView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var ollamaService: OllamaService
     @ObservedObject var project: AetheriumProject
 
-    @StateObject private var documentProcessor = DocumentProcessor()
+    @StateObject private var documentProcessor: DocumentProcessor
     @State private var searchText = ""
     @State private var showingImportSheet = false
     @State private var selectedSource: ProjectSource?
     @State private var isImporting = false
+
+    init(project: AetheriumProject, ollamaService: OllamaService) {
+        self.project = project
+        _documentProcessor = StateObject(wrappedValue: DocumentProcessor(ollamaService: ollamaService))
+    }
 
     var filteredSources: [ProjectSource] {
         if searchText.isEmpty {
@@ -343,6 +349,9 @@ struct ProcessingOverlay: View {
     let project = AetheriumProject(title: "Test Project", description: "Test")
     container.mainContext.insert(project)
 
-    return DocumentBrowserView(project: project)
+    let ollamaService = OllamaService()
+
+    return DocumentBrowserView(project: project, ollamaService: ollamaService)
+        .environmentObject(ollamaService)
         .modelContainer(container)
 }
