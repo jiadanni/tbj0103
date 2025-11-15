@@ -75,6 +75,38 @@ class LinkingEngine: ObservableObject {
         return concepts
     }
 
+    /// Process all [[concept]] links in text and create/update concepts
+    func processConceptLinks(
+        in text: String,
+        project: AetheriumProject,
+        sourceType: MentionSourceType = .note,
+        sourceID: String? = nil
+    ) async {
+        // Parse all links from text
+        let parsedLinks = parseLinks(from: text)
+
+        guard !parsedLinks.isEmpty else { return }
+
+        // Process each link
+        for link in parsedLinks {
+            let concept = await getOrCreateConcept(
+                name: link.conceptName,
+                in: project
+            )
+
+            // Record mention if sourceID provided
+            if let sourceID = sourceID {
+                recordMention(
+                    concept: concept,
+                    in: sourceType,
+                    sourceID: sourceID,
+                    context: link.context,
+                    position: 0
+                )
+            }
+        }
+    }
+
     // MARK: - Concept Management
 
     /// Get existing concept or create new one
