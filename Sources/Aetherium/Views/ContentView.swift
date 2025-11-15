@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var selectedChat: ChatSession?
     @State private var showingNewProjectSheet = false
     @State private var columnVisibility = NavigationSplitViewVisibility.all
+    @State private var showingCommandPalette = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -81,6 +82,49 @@ struct ContentView: View {
         }
         .task {
             await ollamaService.checkAvailability()
+        }
+        .commandPalette(onNavigate: handleSearchNavigation)
+    }
+
+    // MARK: - Command Palette Navigation
+
+    private func handleSearchNavigation(_ result: SearchResult) {
+        // Navigate to the appropriate view based on search result type
+        switch result.type {
+        case .chatMessage:
+            // Find and select the chat session
+            if let project = projects.first(where: { project in
+                project.chatSessions.contains(where: { $0.id.uuidString == result.sourceID })
+            }) {
+                selectedProject = project
+                selectedChat = project.chatSessions.first(where: { $0.id.uuidString == result.sourceID })
+            }
+
+        case .documentChunk:
+            // Select the project containing this document
+            if let project = projects.first(where: { project in
+                project.sources.contains(where: { source in
+                    source.document?.id.uuidString == result.sourceID
+                })
+            }) {
+                selectedProject = project
+            }
+
+        case .concept:
+            // Find project with this concept
+            if let project = projects.first(where: { project in
+                project.concepts.contains(where: { $0.id.uuidString == result.sourceID })
+            }) {
+                selectedProject = project
+            }
+
+        case .note, .learningGoal:
+            // Find project with this note/goal
+            if let project = projects.first(where: { project in
+                project.sources.contains(where: { $0.id.uuidString == result.sourceID })
+            }) {
+                selectedProject = project
+            }
         }
     }
 }

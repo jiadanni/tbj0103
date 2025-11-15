@@ -202,6 +202,46 @@ class OllamaService: ObservableObject {
         }
     }
 
+    // MARK: - Embeddings
+
+    func generateEmbedding(
+        _ text: String,
+        model: String = "nomic-embed-text"
+    ) async throws -> [Float] {
+        guard let url = URL(string: "\(baseURL)/api/embeddings") else {
+            throw OllamaError.invalidResponse
+        }
+
+        let request = EmbeddingRequest(model: model, prompt: text)
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+
+        do {
+            let (data, response) = try await session.data(for: urlRequest)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw OllamaError.invalidResponse
+            }
+
+            if httpResponse.statusCode != 200 {
+                let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+                throw OllamaError.requestFailed(errorMessage)
+            }
+
+            let embeddingResponse = try JSONDecoder().decode(EmbeddingResponse.self, from: data)
+            return embeddingResponse.embedding
+        } catch is DecodingError {
+            throw OllamaError.decodingError
+        } catch let error as OllamaError {
+            throw error
+        } catch {
+            throw OllamaError.requestFailed(error.localizedDescription)
+        }
+    }
+
     // MARK: - Streaming Support (for future implementation)
 
     func streamMessage(
@@ -213,4 +253,15 @@ class OllamaService: ObservableObject {
         // This would use URLSession's bytes(for:) API
         fatalError("Streaming not yet implemented")
     }
+}
+
+// MARK: - Embedding Types
+
+struct EmbeddingRequest: Codable {
+    let model: String
+    let prompt: String
+}
+
+struct EmbeddingResponse: Codable {
+    let embedding: [Float]
 }
