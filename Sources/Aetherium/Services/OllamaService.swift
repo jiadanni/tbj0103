@@ -92,10 +92,14 @@ class OllamaService: ObservableObject {
     private let baseURL = "http://localhost:11434"
     private let session: URLSession
 
-    init() {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 300 // 5 minutes for long responses
-        self.session = URLSession(configuration: config)
+    init(session: URLSession? = nil) {
+        if let session = session {
+            self.session = session
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 300 // 5 minutes for long responses
+            self.session = URLSession(configuration: config)
+        }
     }
 
     // MARK: - Health Check
