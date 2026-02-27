@@ -69,17 +69,29 @@ enum OllamaError: LocalizedError {
     case invalidResponse
     case decodingError
     case requestFailed(String)
+    case connectionRefused
 
     var errorDescription: String? {
         switch self {
         case .serviceUnavailable:
-            return "Ollama service is not running. Please start Ollama first."
+            return "Ollama service is not running. Please ensure Ollama is installed and running (`ollama serve`)."
+        case .connectionRefused:
+            return "Connection refused. Is Ollama running on port 11434?"
         case .invalidResponse:
-            return "Received invalid response from Ollama"
+            return "Received an invalid response structure from Ollama. The model might be hallucinating or the API changed."
         case .decodingError:
-            return "Failed to decode Ollama response"
+            return "Failed to decode the response from Ollama. Please check your network connection."
         case .requestFailed(let message):
-            return "Request failed: \(message)"
+            return "Ollama request failed: \(message)"
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .serviceUnavailable, .connectionRefused:
+            return "Open Terminal and run 'ollama serve' to start the local AI service."
+        default:
+            return "Try retrying the operation."
         }
     }
 }
@@ -88,6 +100,9 @@ enum OllamaError: LocalizedError {
 class OllamaService: ObservableObject {
     @Published var isAvailable: Bool = false
     @Published var availableModels: [OllamaModel] = []
+
+    // Offline mode detection
+    @Published var isOfflineMode: Bool = false
 
     private let baseURL = "http://localhost:11434"
     private let session: URLSession
@@ -106,6 +121,7 @@ class OllamaService: ObservableObject {
 
     func checkAvailability() async -> Bool {
         guard let url = URL(string: "\(baseURL)/api/tags") else {
+            isAvailable = false
             return false
         }
 
@@ -113,12 +129,53 @@ class OllamaService: ObservableObject {
             let (_, response) = try await session.data(from: url)
             if let httpResponse = response as? HTTPURLResponse {
                 isAvailable = httpResponse.statusCode == 200
+                isOfflineMode = !isAvailable
                 return isAvailable
             }
         } catch {
+            print("Ollama availability check failed: \(error.localizedDescription)")
             isAvailable = false
+            isOfflineMode = true
         }
         return false
+    }
+
+    // MARK: - Resilience
+
+    private func performRequest<T: Decodable>(
+        _ request: URLRequest,
+        retryCount: Int = 3
+    ) async throws -> T {
+        var currentRetry = 0
+        var lastError: Error?
+
+        while currentRetry <= retryCount {
+            do {
+                let (data, response) = try await session.data(for: request)
+
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw OllamaError.invalidResponse
+                }
+
+                if httpResponse.statusCode == 200 {
+                    return try JSONDecoder().decode(T.self, from: data)
+                } else {
+                    let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    throw OllamaError.requestFailed(errorMessage)
+                }
+            } catch {
+                lastError = error
+                currentRetry += 1
+                if currentRetry <= retryCount {
+                    // Exponential backoff: 0.5s, 1.0s, 2.0s
+                    let delay = 0.5 * pow(2.0, Double(currentRetry - 1))
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    continue
+                }
+            }
+        }
+
+        throw lastError ?? OllamaError.serviceUnavailable
     }
 
     // MARK: - Model Management
@@ -167,7 +224,7 @@ class OllamaService: ObservableObject {
         // Add current message
         ollamaMessages.append(OllamaMessage(role: "user", content: content))
 
-        let request = OllamaRequest(
+        let requestBody = OllamaRequest(
             model: model,
             messages: ollamaMessages,
             stream: false,
@@ -181,29 +238,10 @@ class OllamaService: ObservableObject {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(request)
+        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
 
-        do {
-            let (data, response) = try await session.data(for: urlRequest)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw OllamaError.invalidResponse
-            }
-
-            if httpResponse.statusCode != 200 {
-                let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-                throw OllamaError.requestFailed(errorMessage)
-            }
-
-            let ollamaResponse = try JSONDecoder().decode(OllamaResponse.self, from: data)
-            return ollamaResponse.message.content
-        } catch is DecodingError {
-            throw OllamaError.decodingError
-        } catch let error as OllamaError {
-            throw error
-        } catch {
-            throw OllamaError.requestFailed(error.localizedDescription)
-        }
+        let response: OllamaResponse = try await performRequest(urlRequest)
+        return response.message.content
     }
 
     // MARK: - Embeddings
@@ -216,34 +254,15 @@ class OllamaService: ObservableObject {
             throw OllamaError.invalidResponse
         }
 
-        let request = EmbeddingRequest(model: model, prompt: text)
+        let requestBody = EmbeddingRequest(model: model, prompt: text)
 
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(request)
+        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
 
-        do {
-            let (data, response) = try await session.data(for: urlRequest)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw OllamaError.invalidResponse
-            }
-
-            if httpResponse.statusCode != 200 {
-                let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-                throw OllamaError.requestFailed(errorMessage)
-            }
-
-            let embeddingResponse = try JSONDecoder().decode(EmbeddingResponse.self, from: data)
-            return embeddingResponse.embedding
-        } catch is DecodingError {
-            throw OllamaError.decodingError
-        } catch let error as OllamaError {
-            throw error
-        } catch {
-            throw OllamaError.requestFailed(error.localizedDescription)
-        }
+        let response: EmbeddingResponse = try await performRequest(urlRequest)
+        return response.embedding
     }
 
     // MARK: - Streaming Support (for future implementation)
