@@ -171,33 +171,4 @@ struct CreateConceptSuggestion: View {
     }
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: ConceptNode.self, configurations: config)
 
-    let concept1 = ConceptNode(name: "Swift Closures", description: "Self-contained blocks", nodeType: .topic)
-    concept1.referenceCount = 5
-
-    let concept2 = ConceptNode(name: "SwiftUI", description: "Declarative UI framework", nodeType: .technology)
-    concept2.referenceCount = 12
-
-    let concept3 = ConceptNode(name: "What is ARC?", description: "Memory management question", nodeType: .question)
-
-    container.mainContext.insert(concept1)
-    container.mainContext.insert(concept2)
-    container.mainContext.insert(concept3)
-
-    return VStack {
-        ConceptAutoCompleteView(
-            suggestions: [concept1, concept2, concept3],
-            onSelect: { concept in
-                print("Selected: \(concept.name)")
-            }
-        )
-
-        Spacer()
-    }
-    .padding()
-    .frame(width: 400, height: 300)
-    .modelContainer(container)
-}

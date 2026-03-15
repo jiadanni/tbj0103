@@ -143,7 +143,7 @@ class ObsidianExporterPlugin: ExporterPlugin {
         }
 
         // Create index
-        var index = """
+        let index = """
         # \(project.title)
 
         \(project.projectDescription)
@@ -267,8 +267,9 @@ class AnkiExporterPlugin: ExporterPlugin {
 
     func exportProject(_ project: AetheriumProject, to url: URL, context: ModelContext) async throws {
         // Fetch all flashcards for project
+        let projectId = project.id
         let descriptor = FetchDescriptor<LearningCard>(
-            predicate: #Predicate { $0.project?.id == project.id }
+            predicate: #Predicate { $0.project?.id == projectId }
         )
 
         guard let cards = try? context.fetch(descriptor) else {
@@ -336,9 +337,10 @@ class DailySummaryPlugin: AutomationPlugin {
         let today = Calendar.current.startOfDay(for: Date())
 
         // Find daily note
+        let projectId = project.id
         let noteDescriptor = FetchDescriptor<DailyNote>(
             predicate: #Predicate { note in
-                note.date == today && note.project?.id == project.id
+                note.date == today && note.project?.id == projectId
             }
         )
 

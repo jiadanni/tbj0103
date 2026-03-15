@@ -200,7 +200,7 @@ struct SmartTextEditor: View {
         let lines = text.components(separatedBy: .newlines)
         let lineHeight: CGFloat = 20
 
-        return CGFloat(lines.count.min(10)) * lineHeight
+        return CGFloat(min(lines.count, 10)) * lineHeight
     }
 }
 
@@ -311,40 +311,4 @@ struct QuickLinkPicker: View {
     }
 }
 
-#Preview {
-    @State var text = """
-    # My Notes
 
-    This is about [[SwiftUI]] and [[Combine]].
-
-    Some more thoughts on [[
-    """
-
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: AetheriumProject.self, configurations: config)
-
-    let project = AetheriumProject(title: "Test", description: "Test")
-
-    let concept1 = ConceptNode(name: "SwiftUI", description: "Declarative UI", nodeType: .technology)
-    let concept2 = ConceptNode(name: "Combine", description: "Reactive framework", nodeType: .technology)
-    let concept3 = ConceptNode(name: "Swift Concurrency", description: "Async/await", nodeType: .technology)
-
-    concept1.project = project
-    concept2.project = project
-    concept3.project = project
-
-    container.mainContext.insert(project)
-    container.mainContext.insert(concept1)
-    container.mainContext.insert(concept2)
-    container.mainContext.insert(concept3)
-
-    return SmartTextEditor(
-        text: $text,
-        project: project,
-        placeholder: "Start typing...",
-        modelContext: container.mainContext
-    )
-    .frame(width: 600, height: 400)
-    .padding()
-    .modelContainer(container)
-}

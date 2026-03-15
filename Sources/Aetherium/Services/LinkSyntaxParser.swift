@@ -106,11 +106,14 @@ class LinkSyntaxParser: ObservableObject {
 
         for link in links {
             if let range = Range(link.range, in: text) {
-                let attributedRange = AttributedString.Index(range.lowerBound, within: attributed)..<AttributedString.Index(range.upperBound, within: attributed)
+                if let lowerBound = AttributedString.Index(range.lowerBound, within: attributed),
+                   let upperBound = AttributedString.Index(range.upperBound, within: attributed) {
+                    let attributedRange = lowerBound..<upperBound
 
-                if attributedRange.lowerBound < attributed.endIndex && attributedRange.upperBound <= attributed.endIndex {
-                    attributed[attributedRange].foregroundColor = link.isValid ? .blue : .orange
-                    attributed[attributedRange].font = .body.weight(.medium)
+                    if attributedRange.lowerBound < attributed.endIndex && attributedRange.upperBound <= attributed.endIndex {
+                        attributed[attributedRange].foregroundColor = link.isValid ? .blue : .orange
+                        attributed[attributedRange].font = .body.weight(.medium)
+                    }
                 }
             }
         }
@@ -132,7 +135,7 @@ extension LinkSyntaxParser {
     /// Detect markdown headers
     func detectHeaders(in text: String) -> [NSRange] {
         let pattern = #"^#{1,6}\s+.+$"#
-        return detectPattern(pattern, in: text)
+        return detectPattern(pattern, in: text, options: .anchorsMatchLines)
     }
 
     /// Detect markdown bold (**text** or __text__)

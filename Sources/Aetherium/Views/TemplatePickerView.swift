@@ -240,37 +240,4 @@ struct TemplateCard: View {
     }
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: NoteTemplate.self, configurations: config)
 
-    let template1 = NoteTemplate(
-        name: "Daily Note",
-        description: "Standard daily note template",
-        content: "# {{date}}\n\n## Goals\n-\n\n## Notes\n",
-        category: .daily,
-        isBuiltIn: true,
-        tags: ["daily"]
-    )
-
-    let template2 = NoteTemplate(
-        name: "Meeting Notes",
-        description: "Template for meeting minutes",
-        content: "# Meeting\n\n## Attendees\n\n## Notes\n",
-        category: .meeting,
-        isBuiltIn: true,
-        tags: ["meeting"]
-    )
-
-    container.mainContext.insert(template1)
-    container.mainContext.insert(template2)
-
-    return TemplatePickerView(
-        category: nil,
-        modelContext: container.mainContext,
-        onSelect: { template in
-            print("Selected: \(template.name)")
-        }
-    )
-    .modelContainer(container)
-}

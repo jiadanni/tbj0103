@@ -289,44 +289,4 @@ struct MarkdownBlock: Identifiable {
     }
 }
 
-#Preview {
-    let sampleText = """
-    # Getting Started with SwiftUI
 
-    [[SwiftUI]] is a declarative framework for building user interfaces on Apple platforms.
-
-    ## Key Concepts
-
-    - **Views**: The basic building blocks
-    - **State**: Managing dynamic data
-    - **Bindings**: Two-way data flow
-
-    Here's a simple example:
-
-    ```swift
-    struct ContentView: View {
-        var body: some View {
-            Text("Hello, SwiftUI!")
-        }
-    }
-    ```
-
-    > SwiftUI makes it easy to build adaptive UIs that work across all Apple platforms.
-
-    You can learn more about [[Combine]] for reactive programming and [[Swift Concurrency]] for async operations.
-
-    ## Advanced Topics
-
-    Explore concepts like *property wrappers* and `@State` for managing UI state.
-    """
-
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: AetheriumProject.self, configurations: config)
-
-    let project = AetheriumProject(title: "Test", description: "Test")
-    container.mainContext.insert(project)
-
-    return MarkdownPreview(text: sampleText, project: project)
-        .frame(width: 600, height: 700)
-        .modelContainer(container)
-}
