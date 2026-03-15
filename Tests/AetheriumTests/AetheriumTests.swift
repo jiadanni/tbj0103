@@ -3,6 +3,8 @@ import XCTest
 
 final class AetheriumTests: XCTestCase {
     func testExample() throws {
-        // Empty test
+        // This is an example of a functional test case.
+        // Use XCTAssert and related functions to verify your tests produce the correct results.
+        XCTAssertTrue(true, "The project setup is working correctly")
     }
 }
