@@ -3,7 +3,7 @@ import SwiftData
 
 struct ChatSessionListView: View {
     @Environment(\.modelContext) private var modelContext
-    @ObservedObject var project: AetheriumProject
+    let project: AetheriumProject
     @Binding var selectedChat: ChatSession?
 
     @State private var showingNewChatSheet = false
@@ -12,7 +12,7 @@ struct ChatSessionListView: View {
         List(selection: $selectedChat) {
             Section {
                 ForEach(project.chatSessions.sorted(by: { $0.updatedAt > $1.updatedAt })) { chat in
-                    ChatSessionRowView(chatSession: chat)
+                    SessionListRowView(chatSession: chat)
                         .tag(chat)
                         .contextMenu {
                             Button("Rename Chat") {
@@ -66,7 +66,7 @@ struct ChatSessionListView: View {
             }
         }
         .sheet(isPresented: $showingNewChatSheet) {
-            NewChatSheet(project: project, isPresented: $showingNewChatSheet)
+            SessionListNewChatSheet(project: project, isPresented: $showingNewChatSheet)
         }
     }
 
@@ -78,7 +78,7 @@ struct ChatSessionListView: View {
     }
 }
 
-struct ChatSessionRowView: View {
+struct SessionListRowView: View {
     let chatSession: ChatSession
 
     var body: some View {
@@ -140,7 +140,7 @@ struct LearningGoalRowView: View {
     }
 }
 
-struct NewChatSheet: View {
+struct SessionListNewChatSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var ollamaService: OllamaService

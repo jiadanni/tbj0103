@@ -77,9 +77,10 @@ class SemanticSearchEngine: ObservableObject {
 
         let descriptor: FetchDescriptor<UploadedDocument>
         if let project = project {
+            let projectId = project.id
             descriptor = FetchDescriptor<UploadedDocument>(
                 predicate: #Predicate { doc in
-                    doc.source?.project?.id == project.id
+                    doc.source?.project?.id == projectId
                 }
             )
         } else {
@@ -121,9 +122,10 @@ class SemanticSearchEngine: ObservableObject {
 
         let descriptor: FetchDescriptor<ChatSession>
         if let project = project {
+            let projectId = project.id
             descriptor = FetchDescriptor<ChatSession>(
                 predicate: #Predicate { chat in
-                    chat.project?.id == project.id
+                    chat.project?.id == projectId
                 }
             )
         } else {
@@ -167,9 +169,10 @@ class SemanticSearchEngine: ObservableObject {
 
         let descriptor: FetchDescriptor<ConceptNode>
         if let project = project {
+            let projectId = project.id
             descriptor = FetchDescriptor<ConceptNode>(
                 predicate: #Predicate { concept in
-                    concept.project?.id == project.id
+                    concept.project?.id == projectId
                 }
             )
         } else {
@@ -230,9 +233,10 @@ class SemanticSearchEngine: ObservableObject {
 
         let descriptor: FetchDescriptor<ProjectNote>
         if let project = project {
+            let projectId = project.id
             descriptor = FetchDescriptor<ProjectNote>(
                 predicate: #Predicate { note in
-                    note.source?.project?.id == project.id
+                    note.source?.project?.id == projectId
                 }
             )
         } else {

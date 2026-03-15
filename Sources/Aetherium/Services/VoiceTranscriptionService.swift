@@ -46,10 +46,12 @@ class VoiceTranscriptionService: NSObject, ObservableObject {
         recognitionTask?.cancel()
         recognitionTask = nil
 
-        // Configure audio session
+        // Configure audio session (iOS only)
+#if os(iOS)
         let audioSession = AVAudioSession.sharedInstance()
         try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+#endif
 
         // Create recognition request
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
@@ -131,9 +133,6 @@ class VoiceTranscriptionService: NSObject, ObservableObject {
         }
     }
 
-    deinit {
-        stopRecording()
-    }
 }
 
 // MARK: - Errors

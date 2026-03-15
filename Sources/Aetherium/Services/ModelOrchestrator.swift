@@ -58,7 +58,12 @@ class ModelOrchestrator: ObservableObject {
     // private let openAIService: OpenAIService?
     // private let anthropicService: AnthropicService?
 
-    init(ollamaService: OllamaService = OllamaService()) {
+    init() {
+        self.ollamaService = OllamaService()
+        self.currentModel = ModelConfiguration.defaultLocalModels[0]
+    }
+
+    init(ollamaService: OllamaService) {
         self.ollamaService = ollamaService
         self.currentModel = ModelConfiguration.defaultLocalModels[0]
     }

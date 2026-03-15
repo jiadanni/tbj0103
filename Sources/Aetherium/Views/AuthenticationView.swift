@@ -112,7 +112,4 @@ struct AuthenticationView: View {
     }
 }
 
-#Preview {
-    AuthenticationView()
-        .environmentObject(SecurityManager())
-}
+
