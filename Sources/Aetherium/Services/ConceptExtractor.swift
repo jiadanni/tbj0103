@@ -335,7 +335,7 @@ extension ConceptExtractor {
         var allConcepts: [ConceptNode] = []
 
         // Process in batches of 3 to avoid overwhelming the model
-        let chatBatches = chats.chunked(into: 3)
+        let chatBatches = chats.conceptChunked(into: 3)
 
         for batch in chatBatches {
             let batchConcepts = try await withThrowingTaskGroup(of: [ConceptNode].self) { group in
@@ -362,7 +362,7 @@ extension ConceptExtractor {
 // MARK: - Array Extension
 
 private extension Array {
-    func chunked(into size: Int) -> [[Element]] {
+    func conceptChunked(into size: Int) -> [[Element]] {
         stride(from: 0, to: count, by: size).map {
             Array(self[$0..<Swift.min($0 + size, count)])
         }

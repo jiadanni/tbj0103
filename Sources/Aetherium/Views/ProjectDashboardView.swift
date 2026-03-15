@@ -5,7 +5,7 @@ import Charts
 // MARK: - Project Dashboard
 
 struct ProjectDashboardView: View {
-    @ObservedObject var project: AetheriumProject
+    let project: AetheriumProject
     @Environment(\.modelContext) private var modelContext
 
     @StateObject private var analytics: ProjectAnalytics
@@ -67,7 +67,7 @@ struct ProjectDashboardView: View {
 // MARK: - Dashboard Header
 
 struct DashboardHeaderView: View {
-    @ObservedObject var project: AetheriumProject
+    let project: AetheriumProject
 
     var body: some View {
         VStack(spacing: 12) {
@@ -487,8 +487,9 @@ class ProjectAnalytics: ObservableObject {
         totalNotes = project.sources.filter { $0.type == .note }.count
 
         // Get flashcards
+        let projectId = project.id
         let cardDescriptor = FetchDescriptor<LearningCard>(
-            predicate: #Predicate { $0.project?.id == project.id }
+            predicate: #Predicate { $0.project?.id == projectId }
         )
         let cards = (try? modelContext.fetch(cardDescriptor)) ?? []
         totalCards = cards.count
@@ -597,22 +598,4 @@ struct AccuracyPoint: Identifiable {
     let accuracy: Double
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: AetheriumProject.self, configurations: config)
 
-    let project = AetheriumProject(title: "Learning Swift", description: "Comprehensive Swift learning project")
-
-    // Add some mock data
-    for i in 1...25 {
-        let concept = ConceptNode(name: "Concept \(i)", description: "Description", nodeType: .topic)
-        concept.project = project
-        container.mainContext.insert(concept)
-    }
-
-    container.mainContext.insert(project)
-
-    return ProjectDashboardView(project: project, modelContext: container.mainContext)
-        .frame(width: 900, height: 900)
-        .modelContainer(container)
-}

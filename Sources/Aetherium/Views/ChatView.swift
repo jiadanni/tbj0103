@@ -5,7 +5,7 @@ struct ChatView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var modelOrchestrator: ModelOrchestrator
 
-    @ObservedObject var chatSession: ChatSession
+    let chatSession: ChatSession
 
     @State private var messageText = ""
     @State private var isStreaming = false
@@ -98,7 +98,7 @@ struct ChatView: View {
                         ForEach(ModelConfiguration.defaultLocalModels) { model in
                             Button(model.displayName) {
                                 chatSession.modelName = model.name
-                                chatSession.updateTimestamp()
+                                chatSession.updatedAt = Date()
                             }
                         }
                     }
@@ -137,7 +137,7 @@ struct ChatView: View {
 
                 // Add assistant message
                 chatSession.addMessage(content: response, role: .assistant)
-                chatSession.updateTimestamp()
+                chatSession.updatedAt = Date()
 
             } catch {
                 errorMessage = error.localizedDescription
@@ -266,20 +266,4 @@ struct ChatInputView: View {
     }
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: ChatSession.self, configurations: config)
 
-    let project = AetheriumProject(title: "Test Project", description: "Test")
-    let chat = ChatSession(title: "Test Chat")
-    chat.project = project
-
-    chat.addMessage(content: "Hello! How can you help me learn Swift?", role: .user)
-    chat.addMessage(content: "I'd be happy to help you learn Swift! I can assist with concepts, syntax, best practices, and answer specific questions. What aspect of Swift would you like to explore?", role: .assistant)
-
-    container.mainContext.insert(chat)
-
-    return ChatView(chatSession: chat)
-        .environmentObject(ModelOrchestrator())
-        .modelContainer(container)
-}

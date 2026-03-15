@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Note Editor with Live/Preview Modes
 
 struct NoteEditorView: View {
-    @ObservedObject var note: ProjectNote
+    @Bindable var note: ProjectNote
     let project: AetheriumProject?
 
     @Environment(\.modelContext) private var modelContext
@@ -112,7 +112,7 @@ struct NoteEditorView: View {
         guard note.content != lastSavedText else { return }
 
         // Update note
-        note.updateTimestamp()
+        note.updatedAt = Date()
         lastSavedText = note.content
 
         // Process concept links
@@ -234,11 +234,9 @@ struct EditorFooter: View {
             Spacer()
 
             // Last modified
-            if let updated = note.updatedAt {
-                Text("Modified \(updated.formatted(.relative(presentation: .named)))")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+            Text("Modified \(note.updatedAt.formatted(.relative(presentation: .named)))")
+                .font(.caption)
+                .foregroundColor(.secondary)
 
             // Backlinks button
             if let project = project {
@@ -391,45 +389,4 @@ struct ConceptBacklinkCard: View {
     }
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: AetheriumProject.self, configurations: config)
 
-    let project = AetheriumProject(title: "Learning Swift", description: "Test")
-
-    let note = ProjectNote(
-        title: "SwiftUI Basics",
-        content: """
-        # SwiftUI Basics
-
-        [[SwiftUI]] is a declarative framework for building user interfaces.
-
-        ## Key Concepts
-
-        - Views are the building blocks
-        - State management with `@State`
-        - Data flow with [[Combine]]
-
-        Learn more about [[Swift Concurrency]] for async operations.
-        """,
-        noteType: .manual
-    )
-
-    let concept1 = ConceptNode(name: "SwiftUI", description: "Declarative UI framework", nodeType: .technology)
-    let concept2 = ConceptNode(name: "Combine", description: "Reactive programming", nodeType: .technology)
-    let concept3 = ConceptNode(name: "Swift Concurrency", description: "Async/await", nodeType: .technology)
-
-    concept1.project = project
-    concept2.project = project
-    concept3.project = project
-
-    container.mainContext.insert(project)
-    container.mainContext.insert(note)
-    container.mainContext.insert(concept1)
-    container.mainContext.insert(concept2)
-    container.mainContext.insert(concept3)
-
-    return NoteEditorView(note: note, project: project, modelContext: container.mainContext)
-        .frame(width: 800, height: 600)
-        .modelContainer(container)
-}

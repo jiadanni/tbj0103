@@ -30,15 +30,15 @@ class AIContentGenerator: ObservableObject {
         Tags:
         """
 
-        let response = try await ollamaService.generateResponse(
-            prompt: prompt,
+        let response = try await ollamaService.sendMessage(
+            prompt,
             model: "qwen2.5:7b"
         )
 
         // Parse tags from response
         let tags = response
             .components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .prefix(maxTags)
 
@@ -74,12 +74,12 @@ class AIContentGenerator: ObservableObject {
         Summary:
         """
 
-        let response = try await ollamaService.generateResponse(
-            prompt: prompt,
+        let response = try await ollamaService.sendMessage(
+            prompt,
             model: "qwen2.5:7b"
         )
 
-        return response.trimmingCharacters(in: .whitespacesAndNewlines)
+        return response.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
     }
 
     // MARK: - Concept Extraction
@@ -119,8 +119,8 @@ class AIContentGenerator: ObservableObject {
 
         progress = 0.3
 
-        let response = try await ollamaService.generateResponse(
-            prompt: prompt,
+        let response = try await ollamaService.sendMessage(
+            prompt,
             model: "qwen2.5:7b"
         )
 
@@ -144,9 +144,9 @@ class AIContentGenerator: ObservableObject {
     ) {
         for extracted in extractedConcepts {
             // Check if concept already exists
-            let exists = project.concepts.contains where: { concept in
+            let exists = project.concepts.contains(where: { concept in
                 concept.name.lowercased() == extracted.name.lowercased()
-            }
+            })
 
             guard !exists else { continue }
 
@@ -209,8 +209,8 @@ class AIContentGenerator: ObservableObject {
 
         progress = 0.3
 
-        let response = try await ollamaService.generateResponse(
-            prompt: prompt,
+        let response = try await ollamaService.sendMessage(
+            prompt,
             model: "qwen2.5:7b"
         )
 
@@ -263,19 +263,19 @@ class AIContentGenerator: ObservableObject {
         Key Points:
         """
 
-        let response = try await ollamaService.generateResponse(
-            prompt: prompt,
+        let response = try await ollamaService.sendMessage(
+            prompt,
             model: "qwen2.5:7b"
         )
 
         // Parse numbered list
         let points = response
             .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
             .filter { $0.hasPrefix("1") || $0.hasPrefix("2") || $0.hasPrefix("3") || $0.hasPrefix("4") || $0.hasPrefix("5") }
             .map { point in
                 // Remove number prefix
-                let cleaned = point.replacingOccurrences(of: "^[0-9]+\\.?\\s*", with: "", options: .regularExpression)
+                let cleaned = point.replacingOccurrences(of: "^[0-9]+\\.?\\s*", with: "", options: String.CompareOptions.regularExpression)
                 return cleaned
             }
             .filter { !$0.isEmpty }
@@ -305,8 +305,8 @@ class AIContentGenerator: ObservableObject {
         Study Guide (JSON):
         """
 
-        let response = try await ollamaService.generateResponse(
-            prompt: prompt,
+        let response = try await ollamaService.sendMessage(
+            prompt,
             model: "qwen2.5:7b"
         )
 

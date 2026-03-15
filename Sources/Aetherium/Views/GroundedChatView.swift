@@ -5,7 +5,7 @@ struct GroundedChatView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var modelOrchestrator: ModelOrchestrator
 
-    @ObservedObject var chatSession: ChatSession
+    let chatSession: ChatSession
     var project: AetheriumProject?
 
     @StateObject private var groundedEngine: GroundedChatEngine
@@ -119,7 +119,7 @@ struct GroundedChatView: View {
                         ForEach(ModelConfiguration.defaultLocalModels) { model in
                             Button(model.displayName) {
                                 chatSession.modelName = model.name
-                                chatSession.updateTimestamp()
+                                chatSession.updatedAt = Date()
                             }
                         }
                     }
@@ -150,7 +150,7 @@ struct GroundedChatView: View {
         errorMessage = nil
 
         // Add user message
-        chatSession.addMessage(content: userMessage, role: .user)
+        chatSession.addMessage(content: userMessage, role: MessageRole.user)
 
         // Get AI response with source grounding
         isStreaming = true
@@ -166,7 +166,7 @@ struct GroundedChatView: View {
                 // Add assistant message with citations
                 let assistantMessage = Message(
                     content: response,
-                    role: .assistant
+                    role: MessageRole.assistant
                 )
 
                 // Add citations
@@ -176,7 +176,7 @@ struct GroundedChatView: View {
                 }
 
                 chatSession.messages.append(assistantMessage)
-                chatSession.updateTimestamp()
+                chatSession.updatedAt = Date()
 
             } catch {
                 errorMessage = error.localizedDescription
@@ -415,44 +415,4 @@ struct SourcesPopoverView: View {
     }
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: AetheriumProject.self, configurations: config)
 
-    let project = AetheriumProject(title: "Learning Swift", description: "Test")
-    let chat = ChatSession(title: "Test Chat")
-    chat.project = project
-
-    chat.addMessage(content: "What are closures in Swift?", role: .user)
-
-    let assistantMessage = Message(
-        content: "Closures are self-contained blocks of functionality that can be passed around and used in your code...",
-        role: .assistant
-    )
-    let citation = Citation(
-        sourceID: UUID().uuidString,
-        sourceTitle: "Swift Documentation.pdf",
-        sourceType: "document",
-        excerpt: "Closures are first-class citizens in Swift...",
-        relevanceScore: 0.95,
-        pageNumber: 42
-    )
-    citation.message = assistantMessage
-    chat.messages.append(assistantMessage)
-
-    container.mainContext.insert(project)
-    container.mainContext.insert(chat)
-
-    let ollamaService = OllamaService()
-    let orchestrator = ModelOrchestrator(ollamaService: ollamaService)
-
-    return GroundedChatView(
-        chatSession: chat,
-        project: project,
-        modelOrchestrator: orchestrator,
-        ollamaService: ollamaService
-    )
-    .environmentObject(orchestrator)
-    .environmentObject(ollamaService)
-    .modelContainer(container)
-}
