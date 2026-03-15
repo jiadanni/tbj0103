@@ -10,8 +10,9 @@ final class AetheriumProject {
     var updatedAt: Date
 
     @Relationship(deleteRule: .cascade) var learningGoals: [LearningGoal]
-    @Relationship(deleteRule: .cascade) var chatSessions: [ChatSession]
-    @Relationship(deleteRule: .cascade) var sources: [ProjectSource]
+    @Relationship(deleteRule: .cascade) var chatSessions: [ChatSession] = []
+    @Relationship(deleteRule: .cascade) var sources: [ProjectSource] = []
+    @Relationship(deleteRule: .cascade) var concepts: [ConceptNode] = []
 
     init(
         id: UUID = UUID(),

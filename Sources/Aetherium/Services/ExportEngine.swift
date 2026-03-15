@@ -178,7 +178,7 @@ class ExportEngine: ObservableObject {
         exportProgress = 0.8
 
         // Create index file
-        var indexContent = """
+        let indexContent = """
         # \(project.title)
 
         \(project.projectDescription)
@@ -228,7 +228,11 @@ class ExportEngine: ObservableObject {
         }
 
         // Create PDF data
-        let printInfo = NSPrintInfo.shared
+        let printInfoDict = NSPrintInfo.shared.dictionary().mutableCopy() as! NSMutableDictionary
+        printInfoDict[NSPrintInfo.AttributeKey.jobDisposition] = NSPrintInfo.JobDisposition.save
+        printInfoDict[NSPrintInfo.AttributeKey.jobSavingURL] = url
+
+        let printInfo = NSPrintInfo(dictionary: printInfoDict as! [NSPrintInfo.AttributeKey: Any])
         printInfo.paperSize = NSSize(width: 612, height: 792) // Letter size
         printInfo.topMargin = 72
         printInfo.bottomMargin = 72
@@ -241,12 +245,8 @@ class ExportEngine: ObservableObject {
         let printOperation = NSPrintOperation(view: view, printInfo: printInfo)
         printOperation.showsPrintPanel = false
         printOperation.showsProgressPanel = false
-
-        guard let pdfData = printOperation.pdfPanel.pdfData else {
-            throw ExportError.conversionFailed
-        }
-
-        try pdfData.write(to: url)
+        printOperation.run()
+        
         exportProgress = 1.0
     }
 

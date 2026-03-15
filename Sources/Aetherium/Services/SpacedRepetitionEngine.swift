@@ -67,9 +67,10 @@ class SpacedRepetitionEngine: ObservableObject {
         }
 
         let now = Date()
+        let projectId = project.id
         let descriptor = FetchDescriptor<LearningCard>(
             predicate: #Predicate { card in
-                card.project?.id == project.id &&
+                card.project?.id == projectId &&
                 card.nextReviewDate <= now
             },
             sortBy: [SortDescriptor(\.nextReviewDate)]
@@ -80,9 +81,10 @@ class SpacedRepetitionEngine: ObservableObject {
 
     /// Get all cards for project
     func getAllCards(for project: AetheriumProject) -> [LearningCard] {
+        let projectId = project.id
         let descriptor = FetchDescriptor<LearningCard>(
             predicate: #Predicate { card in
-                card.project?.id == project.id
+                card.project?.id == projectId
             },
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )

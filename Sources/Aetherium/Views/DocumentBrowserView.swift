@@ -5,8 +5,8 @@ import UniformTypeIdentifiers
 struct DocumentBrowserView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var ollamaService: OllamaService
-    @ObservedObject var project: AetheriumProject
-
+    let project: AetheriumProject
+    
     @StateObject private var documentProcessor: DocumentProcessor
     @State private var searchText = ""
     @State private var showingImportSheet = false
@@ -339,19 +339,4 @@ struct ProcessingOverlay: View {
     }
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(
-        for: AetheriumProject.self,
-        configurations: config
-    )
 
-    let project = AetheriumProject(title: "Test Project", description: "Test")
-    container.mainContext.insert(project)
-
-    let ollamaService = OllamaService()
-
-    return DocumentBrowserView(project: project, ollamaService: ollamaService)
-        .environmentObject(ollamaService)
-        .modelContainer(container)
-}

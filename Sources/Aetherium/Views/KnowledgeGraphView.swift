@@ -3,7 +3,7 @@ import SwiftData
 
 struct KnowledgeGraphView: View {
     @Environment(\.modelContext) private var modelContext
-    @ObservedObject var project: AetheriumProject
+    let project: AetheriumProject
 
     @Query private var allConcepts: [ConceptNode]
     @State private var selectedConcept: ConceptNode?
@@ -636,13 +636,4 @@ struct GraphStatisticsView: View {
     }
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: AetheriumProject.self, configurations: config)
 
-    let project = AetheriumProject(title: "Test Project", description: "Test")
-    container.mainContext.insert(project)
-
-    return KnowledgeGraphView(project: project)
-        .modelContainer(container)
-}

@@ -290,15 +290,4 @@ struct QuickStat: View {
     }
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: ConceptNode.self, configurations: config)
 
-    let concept = ConceptNode(name: "Swift Closures", description: "Self-contained blocks of functionality", nodeType: .topic)
-    concept.referenceCount = 5
-    container.mainContext.insert(concept)
-
-    return BacklinksView(concept: concept, modelContext: container.mainContext)
-        .modelContainer(container)
-        .frame(width: 400, height: 600)
-}

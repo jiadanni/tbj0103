@@ -80,7 +80,7 @@ struct LearningPathView: View {
 // MARK: - Path Row
 
 struct LearningPathRow: View {
-    @ObservedObject var path: LearningPath
+    let path: LearningPath
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -130,11 +130,10 @@ struct LearningPathRow: View {
 // MARK: - Path Detail
 
 struct LearningPathDetailView: View {
-    @ObservedObject var path: LearningPath
+    let path: LearningPath
     let modelContext: ModelContext
 
     @State private var showingAddMilestone = false
-    @State private var editMode: EditMode = .inactive
 
     var sortedMilestones: [PathMilestone] {
         path.milestones.sorted { $0.orderIndex < $1.orderIndex }
@@ -195,7 +194,7 @@ struct LearningPathDetailView: View {
 }
 
 struct PathHeaderView: View {
-    @ObservedObject var path: LearningPath
+    let path: LearningPath
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -249,13 +248,13 @@ struct PathHeaderView: View {
 
             // Stats
             HStack(spacing: 20) {
-                StatBadge(
+                PathStatBadge(
                     value: "\(path.milestones.count)",
                     label: "Milestones",
                     icon: "flag"
                 )
 
-                StatBadge(
+                PathStatBadge(
                     value: "\(path.milestones.filter { $0.isCompleted }.count)",
                     label: "Completed",
                     icon: "checkmark"
@@ -263,7 +262,7 @@ struct PathHeaderView: View {
 
                 if let targetDate = path.targetCompletionDate {
                     let daysRemaining = Calendar.current.dateComponents([.day], from: Date(), to: targetDate).day ?? 0
-                    StatBadge(
+                    PathStatBadge(
                         value: "\(daysRemaining)",
                         label: daysRemaining >= 0 ? "Days Left" : "Days Over",
                         icon: "calendar"
@@ -279,7 +278,7 @@ struct PathHeaderView: View {
 // MARK: - Milestone Card
 
 struct MilestoneCard: View {
-    @ObservedObject var milestone: PathMilestone
+    let milestone: PathMilestone
     let index: Int
     let total: Int
     let onComplete: () -> Void
@@ -503,29 +502,31 @@ struct NewMilestoneSheet: View {
     }
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: AetheriumProject.self, configurations: config)
+// MARK: - Path Stat Badge
 
-    let project = AetheriumProject(title: "Learning Swift", description: "Test")
+struct PathStatBadge: View {
+    let value: String
+    let label: String
+    let icon: String
 
-    let path = LearningPath(
-        title: "Master SwiftUI",
-        description: "Complete guide to SwiftUI development",
-        targetCompletionDate: Calendar.current.date(byAdding: .month, value: 2, to: Date())
-    )
-    path.project = project
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(.blue)
 
-    let milestone1 = PathMilestone(title: "Views & Modifiers", description: "Learn basic views", orderIndex: 0)
-    let milestone2 = PathMilestone(title: "State Management", description: "Learn @State and @Binding", orderIndex: 1)
-    milestone1.complete()
+            Text(value)
+                .font(.headline)
 
-    path.milestones = [milestone1, milestone2]
-
-    container.mainContext.insert(project)
-    container.mainContext.insert(path)
-
-    return LearningPathView(project: project)
-        .frame(width: 900, height: 600)
-        .modelContainer(container)
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .frame(minWidth: 80)
+        .padding(10)
+        .background(Color.secondary.opacity(0.1))
+        .cornerRadius(10)
+    }
 }
+
+

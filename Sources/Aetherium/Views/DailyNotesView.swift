@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Daily Notes View with Calendar
 
 struct DailyNotesView: View {
-    @ObservedObject var project: AetheriumProject
+    let project: AetheriumProject
     @Environment(\.modelContext) private var modelContext
 
     @StateObject private var templateEngine: NoteTemplateEngine
@@ -51,7 +51,7 @@ struct DailyNotesView: View {
                 } else {
                     CreateDailyNoteView(
                         date: selectedDate,
-                        onCreate: createDailyNote
+                        onCreate: { createDailyNote(with: nil) }
                     )
                 }
             }
@@ -255,9 +255,10 @@ struct CalendarGridView: View {
 
     private func hasNoteForDate(_ date: Date) -> Bool {
         let normalizedDate = DailyNote.normalizeDate(date)
+        let projectId = project.id
         let descriptor = FetchDescriptor<DailyNote>(
             predicate: #Predicate { note in
-                note.date == normalizedDate && note.project?.id == project.id
+                note.date == normalizedDate && note.project?.id == projectId
             }
         )
         return (try? modelContext.fetch(descriptor).first) != nil
@@ -368,7 +369,7 @@ struct DailyNoteHeader: View {
 // MARK: - Daily Note Editor
 
 struct DailyNoteEditorView: View {
-    @ObservedObject var dailyNote: DailyNote
+    let dailyNote: DailyNote
     let project: AetheriumProject
     let modelContext: ModelContext
 
@@ -394,7 +395,7 @@ struct DailyNoteEditorView: View {
 }
 
 struct DailyNoteMetadataView: View {
-    @ObservedObject var dailyNote: DailyNote
+    let dailyNote: DailyNote
 
     var body: some View {
         HStack(spacing: 20) {
@@ -460,13 +461,13 @@ struct DailyNoteStatsView: View {
 
             if let stats = stats {
                 HStack(spacing: 16) {
-                    StatBadge(
+                    PathStatBadge(
                         value: "\(stats.totalNotes)",
                         label: "Notes",
                         icon: "doc.text"
                     )
 
-                    StatBadge(
+                    PathStatBadge(
                         value: "\(stats.currentStreak)",
                         label: "Streak",
                         icon: "flame"
@@ -486,9 +487,10 @@ struct DailyNoteStatsView: View {
         let calendar = Calendar.current
         guard let monthInterval = calendar.dateInterval(of: .month, for: month) else { return }
 
+        let projectId = project.id
         let descriptor = FetchDescriptor<DailyNote>(
             predicate: #Predicate { note in
-                note.project?.id == project.id &&
+                note.project?.id == projectId &&
                 note.date >= monthInterval.start &&
                 note.date < monthInterval.end
             }
@@ -556,14 +558,4 @@ struct CreateDailyNoteView: View {
     }
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: AetheriumProject.self, configurations: config)
 
-    let project = AetheriumProject(title: "Learning Swift", description: "Test")
-    container.mainContext.insert(project)
-
-    return DailyNotesView(project: project, modelContext: container.mainContext)
-        .frame(width: 900, height: 700)
-        .modelContainer(container)
-}

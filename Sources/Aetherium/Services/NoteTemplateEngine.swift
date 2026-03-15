@@ -73,9 +73,10 @@ class NoteTemplateEngine: ObservableObject {
         let descriptor: FetchDescriptor<NoteTemplate>
 
         if let project = project {
+            let projectId = project.id
             descriptor = FetchDescriptor<NoteTemplate>(
                 predicate: #Predicate { template in
-                    template.project?.id == project.id || template.isBuiltIn
+                    template.project?.id == projectId || template.isBuiltIn
                 }
             )
         } else {
@@ -125,9 +126,10 @@ class NoteTemplateEngine: ObservableObject {
         let normalizedDate = DailyNote.normalizeDate(date)
 
         // Check if daily note exists
+        let projectId = project.id
         let descriptor = FetchDescriptor<DailyNote>(
             predicate: #Predicate { note in
-                note.date == normalizedDate && note.project?.id == project.id
+                note.date == normalizedDate && note.project?.id == projectId
             }
         )
 
@@ -171,9 +173,10 @@ class NoteTemplateEngine: ObservableObject {
         to endDate: Date,
         project: AetheriumProject
     ) -> [DailyNote] {
+        let projectId = project.id
         let descriptor = FetchDescriptor<DailyNote>(
             predicate: #Predicate { note in
-                note.project?.id == project.id &&
+                note.project?.id == projectId &&
                 note.date >= startDate &&
                 note.date <= endDate
             },
