@@ -373,7 +373,4 @@ struct PluginDetailView: View {
     }
 }
 
-#Preview {
-    PluginManagerView()
-        .frame(width: 900, height: 600)
-}
+

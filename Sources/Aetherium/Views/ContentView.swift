@@ -244,7 +244,7 @@ struct ProjectSelectorView: View {
 }
 
 struct ProjectRowView: View {
-    @ObservedObject var project: AetheriumProject
+    let project: AetheriumProject
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -288,7 +288,7 @@ struct DetailViewRouter: View {
     let modelContext: ModelContext
 
     var body: some View {
-        Group {
+        ZStack {
             switch selectedView {
             case .dashboard:
                 ProjectDashboardView(project: project, modelContext: modelContext)
@@ -304,7 +304,7 @@ struct DetailViewRouter: View {
                     .environmentObject(OllamaService())
 
             case .knowledgeGraph:
-                KnowledgeGraphView(project: project, modelContext: modelContext)
+                KnowledgeGraphView(project: project)
 
             case .flashcards:
                 FlashcardReviewView(project: project, modelContext: modelContext)
@@ -323,7 +323,7 @@ struct DetailViewRouter: View {
 // MARK: - Chat Navigation View
 
 struct ChatNavigationView: View {
-    @ObservedObject var project: AetheriumProject
+    let project: AetheriumProject
     @State private var selectedChat: ChatSession?
 
     var body: some View {
@@ -364,7 +364,7 @@ struct ChatNavigationView: View {
 }
 
 struct ChatSessionListHeaderView: View {
-    @ObservedObject var project: AetheriumProject
+    let project: AetheriumProject
     @State private var showingNewChat = false
 
     var body: some View {
@@ -387,7 +387,7 @@ struct ChatSessionListHeaderView: View {
 }
 
 struct ChatSessionRowView: View {
-    @ObservedObject var chat: ChatSession
+    let chat: ChatSession
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -479,7 +479,7 @@ struct FeatureBadge: View {
 // MARK: - New Chat Sheet
 
 struct NewChatSheet: View {
-    @ObservedObject var project: AetheriumProject
+    let project: AetheriumProject
     @Binding var isPresented: Bool
     @Environment(\.modelContext) private var modelContext
 
@@ -518,10 +518,4 @@ struct NewChatSheet: View {
     }
 }
 
-#Preview {
-    ContentView()
-        .environmentObject(SecurityManager())
-        .environmentObject(OllamaService())
-        .environmentObject(ModelOrchestrator(ollamaService: OllamaService()))
-        .modelContainer(for: AetheriumProject.self, inMemory: true)
-}
+

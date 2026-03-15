@@ -306,10 +306,4 @@ extension View {
     }
 }
 
-#Preview {
-    CommandPaletteView { result in
-        print("Navigate to: \(result.title)")
-    }
-    .environmentObject(OllamaService())
-    .modelContainer(for: AetheriumProject.self, inMemory: true)
-}
+

@@ -255,9 +255,10 @@ class LinkingEngine: ObservableObject {
         project: AetheriumProject
     ) async -> [DetectedConcept] {
         // Get all concepts in project
+        let projectId = project.id
         let descriptor = FetchDescriptor<ConceptNode>(
             predicate: #Predicate { concept in
-                concept.project?.id == project.id
+                concept.project?.id == projectId
             }
         )
 

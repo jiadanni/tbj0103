@@ -43,7 +43,7 @@ struct ProjectListView: View {
     }
 }
 
-struct ProjectRowView: View {
+struct ProjectListRowView: View {
     let project: AetheriumProject
 
     var body: some View {
@@ -123,11 +123,4 @@ struct NewProjectSheet: View {
     }
 }
 
-#Preview {
-    ProjectListView(
-        projects: [],
-        selectedProject: .constant(nil),
-        showingNewProjectSheet: .constant(false)
-    )
-    .modelContainer(for: AetheriumProject.self, inMemory: true)
-}
+
