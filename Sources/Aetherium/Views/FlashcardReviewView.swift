@@ -393,9 +393,9 @@ struct CongratulationsView: View {
                 .fontWeight(.bold)
 
             VStack(spacing: 12) {
-                StatRow(label: "Cards Reviewed", value: "\(sessionStats.totalReviewed)")
-                StatRow(label: "Correct", value: "\(sessionStats.correct)")
-                StatRow(label: "Accuracy", value: "\(Int(accuracy * 100))%")
+                FlashcardStatRow(label: "Cards Reviewed", value: "\(sessionStats.totalReviewed)")
+                FlashcardStatRow(label: "Correct", value: "\(sessionStats.correct)")
+                FlashcardStatRow(label: "Accuracy", value: "\(Int(accuracy * 100))%")
             }
             .padding(20)
             .background(Color.secondary.opacity(0.1))
@@ -413,7 +413,7 @@ struct CongratulationsView: View {
     }
 }
 
-struct StatRow: View {
+struct FlashcardStatRow: View {
     let label: String
     let value: String
 
@@ -437,24 +437,4 @@ struct SessionStats {
     var correct = 0
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: AetheriumProject.self, configurations: config)
 
-    let project = AetheriumProject(title: "Learning Swift", description: "Test")
-
-    let card1 = LearningCard(
-        front: "What is a closure in Swift?",
-        back: "A closure is a self-contained block of functionality that can be passed around and used in your code.",
-        cardType: .basic,
-        tags: ["swift", "closures"]
-    )
-    card1.project = project
-
-    container.mainContext.insert(project)
-    container.mainContext.insert(card1)
-
-    return FlashcardReviewView(project: project, modelContext: container.mainContext)
-        .frame(width: 800, height: 600)
-        .modelContainer(container)
-}
