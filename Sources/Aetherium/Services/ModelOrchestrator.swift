@@ -82,9 +82,14 @@ class ModelOrchestrator: ObservableObject {
             isProcessing = false
         }
 
+        // 1. Check if Ollama is available
+        if ollamaService.isOfflineMode {
+             throw ModelOrchestratorError.offlineMode("Ollama is currently offline. Please check your connection or start the service.")
+        }
+
         let tokenCount = estimateTokenCount(content, context: context)
 
-        // Try local model first if preferred and within context window
+        // 2. Try local model first if preferred and within context window
         if preferLocalModels && currentModel.isLocal && tokenCount < localContextWindow {
             do {
                 let response = try await ollamaService.sendMessage(
@@ -97,7 +102,18 @@ class ModelOrchestrator: ObservableObject {
                 return response
             } catch {
                 lastError = error
-                // Could implement automatic fallback to cloud API here
+
+                // 3. Graceful degradation: Check if error is recoverable
+                if let ollamaError = error as? OllamaError {
+                    switch ollamaError {
+                    case .serviceUnavailable, .connectionRefused:
+                        // Mark as offline to prevent immediate retries
+                        ollamaService.isOfflineMode = true
+                        throw ModelOrchestratorError.serviceUnreachable
+                    default:
+                        throw error
+                    }
+                }
                 throw error
             }
         } else {
@@ -142,6 +158,8 @@ enum ModelOrchestratorError: LocalizedError {
     case contextWindowExceeded
     case cloudAPINotImplemented
     case noModelAvailable
+    case serviceUnreachable
+    case offlineMode(String)
 
     var errorDescription: String? {
         switch self {
@@ -151,6 +169,10 @@ enum ModelOrchestratorError: LocalizedError {
             return "Cloud API fallback not yet implemented. Please use local models via Ollama."
         case .noModelAvailable:
             return "No suitable model available for processing"
+        case .serviceUnreachable:
+            return "Unable to reach the AI service. Please ensure Ollama is running."
+        case .offlineMode(let message):
+            return message
         }
     }
 }
