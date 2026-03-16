@@ -169,6 +169,13 @@ struct GraphStatistics {
     let recentlyActiveConcepts: [ConceptNode]
     let orphanedConcepts: [ConceptNode]
 
+    // Advanced Metrics
+    let pageRankScores: [UUID: Double]
+    let communities: [UUID: String]
+    let centralityScores: [UUID: Int]
+    let degreeDistribution: [Int: Int]
+    let evolution: [(Date, Int, Int)]
+
     static func compute(from nodes: [ConceptNode]) -> GraphStatistics {
         let totalNodes = nodes.count
         let totalLinks = nodes.reduce(0) { $0 + $1.outgoingLinks.count }
@@ -193,13 +200,25 @@ struct GraphStatistics {
             $0.outgoingLinks.isEmpty && $0.incomingLinks.isEmpty
         }
 
+        // Advanced Metrics Compute
+        let pageRankScores = GraphAlgorithms.computePageRank(nodes: nodes)
+        let communities = GraphAlgorithms.detectCommunities(nodes: nodes)
+        let centralityScores = GraphAlgorithms.computeCentrality(nodes: nodes)
+        let degreeDistribution = GraphAlgorithms.computeDegreeDistribution(nodes: nodes)
+        let evolution = GraphAlgorithms.computeEvolution(nodes: nodes)
+
         return GraphStatistics(
             totalNodes: totalNodes,
             totalLinks: totalLinks,
             averageConnections: averageConnections,
             mostConnectedConcepts: Array(mostConnected),
             recentlyActiveConcepts: Array(recentlyActive),
-            orphanedConcepts: orphaned
+            orphanedConcepts: orphaned,
+            pageRankScores: pageRankScores,
+            communities: communities,
+            centralityScores: centralityScores,
+            degreeDistribution: degreeDistribution,
+            evolution: evolution
         )
     }
 }
