@@ -23,6 +23,20 @@ struct ChatView: View {
     @State private var showDemoTip = false
     @EnvironmentObject var demoModeManager: DemoModeManager
 
+    /// Build a system prompt from the chat's project custom instructions and documents.
+    private var projectSystemPrompt: String? {
+        guard let project = chatSession.project else { return nil }
+        var parts: [String] = []
+        if !project.customInstructions.isEmpty {
+            parts.append("## Custom Instructions\n\(project.customInstructions)")
+        }
+        if !project.documents.isEmpty {
+            let list = project.documents.prefix(10).map { "- \($0.title)" }.joined(separator: "\n")
+            parts.append("## Project Sources\n\(list)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Chat header with context
@@ -236,6 +250,9 @@ struct ChatView: View {
         // Remove this message and everything after it
         chatSession.truncateFrom(message)
 
+        // Update system prompt from project instructions
+        chatSession.systemPrompt = projectSystemPrompt
+
         // Send the edited message as new
         chatSession.addMessage(content: newContent, role: .user)
         let context = chatSession.getContextMessages()
@@ -280,6 +297,7 @@ struct ChatView: View {
         }
 
         chatSession.truncateFrom(message)
+        chatSession.systemPrompt = projectSystemPrompt
         chatSession.addMessage(content: content, role: .user)
         let context = chatSession.getContextMessages()
         errorMessage = nil
@@ -369,6 +387,9 @@ struct ChatView: View {
         messageText = ""
         errorMessage = nil
 
+        // Update system prompt from project instructions before sending
+        chatSession.systemPrompt = projectSystemPrompt
+
         chatSession.addMessage(content: userMessage, role: .user)
         let context = chatSession.getContextMessages()
 
@@ -394,7 +415,7 @@ struct ChatView: View {
 
                 // Auto-extract concepts for the knowledge graph
                 let autoGen = AutoContentGenerator(ollamaService: ollamaService, modelContext: modelContext)
-                Task { await autoGen.processChatExchange(userMessage: userMessage, aiResponse: accumulated, project: chatSession.project) }
+                Task { await autoGen.processChatExchange(userMessage: userMessage, aiResponse: accumulated, project: chatSession.project?.workspace) }
             } catch {
                 errorMessage = error.localizedDescription
                 streamingContent = ""
@@ -408,43 +429,101 @@ struct ChatView: View {
 
 struct ChatHeaderView: View {
     let chatSession: ChatSession
+    @EnvironmentObject var ollamaService: OllamaService
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text("\(chatSession.messages.count) messages")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    if chatSession.branchLabel != nil {
-                        Label("Branch", systemImage: "arrow.triangle.branch")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.purple.opacity(0.1))
-                            .foregroundColor(.purple)
-                            .cornerRadius(6)
+            // Model picker
+            Menu {
+                ForEach(ollamaService.availableModels) { model in
+                    Button {
+                        chatSession.modelName = model.name
+                        chatSession.updatedAt = Date()
+                    } label: {
+                        HStack {
+                            Text(model.name)
+                            if model.name == chatSession.modelName {
+                                Image(systemName: "checkmark")
+                            }
+                        }
                     }
                 }
 
-                if !chatSession.extractedTopics.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach(chatSession.extractedTopics.prefix(5), id: \.self) { topic in
-                                Text(topic)
-                                    .font(.caption2)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.blue.opacity(0.1))
-                                    .cornerRadius(8)
-                            }
-                        }
+                if ollamaService.availableModels.isEmpty {
+                    Text("No models available")
+                        .foregroundColor(.secondary)
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "cpu")
+                        .font(.caption)
+                    Text(chatSession.modelName)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.secondary.opacity(0.1))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 8) {
+                Text("\(chatSession.messages.count) messages")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                if chatSession.branchLabel != nil {
+                    Label("Branch", systemImage: "arrow.triangle.branch")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.purple.opacity(0.1))
+                        .foregroundColor(.purple)
+                        .cornerRadius(6)
+                }
+
+                if let project = chatSession.project {
+                    if !project.customInstructions.isEmpty {
+                        Label("Instructions", systemImage: "doc.text")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green.opacity(0.1))
+                            .foregroundColor(.green)
+                            .cornerRadius(6)
+                    }
+
+                    if !project.documents.isEmpty {
+                        Label("\(project.documents.count) sources", systemImage: "folder")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.1))
+                            .foregroundColor(.blue)
+                            .cornerRadius(6)
                     }
                 }
             }
 
             Spacer()
+
+            if !chatSession.extractedTopics.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(chatSession.extractedTopics.prefix(5), id: \.self) { topic in
+                            Text(topic)
+                                .font(.caption2)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(8)
+                        }
+                    }
+                }
+            }
 
             if chatSession.isLocal {
                 Label("Local", systemImage: "server.rack")

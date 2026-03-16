@@ -1,0 +1,13 @@
+pub mod spaced_repetition;
+pub mod graph_algorithms;
+pub mod link_parser;
+pub mod linking_engine;
+pub mod note_template_engine;
+pub mod document_processor;
+pub mod semantic_search;
+pub mod retrieval_engine;
+pub mod concept_extractor;
+pub mod ai_content_generator;
+pub mod export_engine;
+pub mod backup_service;
+pub mod settings;

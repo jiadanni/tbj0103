@@ -17,6 +17,7 @@ final class RAGPipelineTests: XCTestCase {
         // Setup SwiftData
         let schema = Schema([
             Workspace.self,
+            Project.self,
             ProjectSource.self,
             UploadedDocument.self,
             DocumentChunk.self,
@@ -101,8 +102,12 @@ final class RAGPipelineTests: XCTestCase {
 
     func testGroundedChat_EndToEnd() async throws {
         // 1. Setup Chat Session
+        let testProject = Project(title: "RAG Project")
+        testProject.workspace = project
+        modelContext.insert(testProject)
         let chatSession = ChatSession(title: "RAG Chat")
-        project.chatSessions.append(chatSession)
+        chatSession.project = testProject
+        modelContext.insert(chatSession)
 
         // 2. Mock Responses
         // We need to handle two requests:

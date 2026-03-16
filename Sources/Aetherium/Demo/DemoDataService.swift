@@ -42,6 +42,10 @@ struct DemoDataService {
         )
         context.insert(project)
 
+        let demoProject = Project(title: "Transformer Research", customInstructions: "You are a helpful tutor specializing in deep learning and the Transformer architecture. Explain concepts clearly using analogies.")
+        demoProject.workspace = project
+        context.insert(demoProject)
+
         // ── Learning Goals ────────────────────────────────────────────────────
         let g1 = LearningGoal(
             title: "Read 'Attention is All You Need'",
@@ -156,7 +160,7 @@ struct DemoDataService {
             title: "How does scaled dot-product attention work?",
             createdAt: ago(12), updatedAt: ago(12)
         )
-        chat1.project = project
+        chat1.project = demoProject
 
         let m1u = Message(content: "Can you explain scaled dot-product attention in simple terms?", role: .user, timestamp: ago(12))
         let m1a = Message(content: """
@@ -210,7 +214,7 @@ struct DemoDataService {
             createdAt: ago(8), updatedAt: ago(8),
             branchLabel: "Branch: positional encoding deep dive"
         )
-        chat2.project = project
+        chat2.project = demoProject
 
         let m3u = Message(content: "Transformers have no recurrence — how do they know word order?", role: .user, timestamp: ago(8))
         let m3a = Message(content: """
@@ -345,6 +349,10 @@ struct DemoDataService {
         )
         context.insert(project)
 
+        let demoProject = Project(title: "SaaS Launch Plan", customInstructions: "You are a startup advisor helping plan and launch an indie SaaS product. Focus on practical, actionable advice.")
+        demoProject.workspace = project
+        context.insert(demoProject)
+
         // ── Learning Goals ────────────────────────────────────────────────────
 
         let g1 = LearningGoal(title: "Define MVP Feature Set", description: "Use customer discovery to identify the three features that solve the core problem.", progress: 1.0, createdAt: ago(40))
@@ -407,7 +415,7 @@ struct DemoDataService {
             title: "What metrics should I track at launch?",
             createdAt: ago(25), updatedAt: ago(25)
         )
-        chat.project = project
+        chat.project = demoProject
 
         let mu1 = Message(content: "I'm about to launch a SaaS. What are the most important metrics to track from day one?", role: .user, timestamp: ago(25))
         let ma1 = Message(content: """
@@ -493,6 +501,10 @@ struct DemoDataService {
         )
         context.insert(project)
 
+        let demoProject = Project(title: "Roman History Research", customInstructions: "You are a history tutor specializing in ancient Rome. Use primary sources where possible and connect events to broader themes.")
+        demoProject.workspace = project
+        context.insert(demoProject)
+
         // ── Learning Goals ────────────────────────────────────────────────────
 
         let g1 = LearningGoal(title: "Understand the Roman Republic", description: "The SPQR era: Senate, magistrates, the Punic Wars, and Caesar's crossing of the Rubicon.", progress: 0.6, createdAt: ago(55))
@@ -558,7 +570,7 @@ struct DemoDataService {
             title: "Why did the Roman Republic collapse?",
             createdAt: ago(45), updatedAt: ago(45)
         )
-        chat.project = project
+        chat.project = demoProject
 
         let ru1 = Message(content: "What were the key reasons the Roman Republic collapsed into Empire?", role: .user, timestamp: ago(45))
         let ra1 = Message(content: """
