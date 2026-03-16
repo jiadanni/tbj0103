@@ -59,8 +59,30 @@ class DocumentProcessor: ObservableObject {
             metadata: metadata
         )
 
+        processingProgress = 0.90
+
+        // Auto-summarization
+        if let summary = try? await generateSummary(for: extractedText) {
+            document.metadata = serializeMetadata(metadata, withSummary: summary)
+        }
+
         processingProgress = 1.0
         return document
+    }
+
+    private func serializeMetadata(_ metadata: DocumentMetadata, withSummary summary: String) -> String {
+        var mutableMetadata = metadata
+        mutableMetadata.extractedEntities.append("summary: \(summary)")
+        if let encoded = try? JSONEncoder().encode(mutableMetadata),
+           let jsonString = String(data: encoded, encoding: .utf8) {
+            return jsonString
+        }
+        return "{}"
+    }
+
+    func generateSummary(for text: String) async throws -> String {
+        let prompt = "Please provide a concise TL;DR summary of the following document:\n\n" + String(text.prefix(20000))
+        return try await ollamaService.sendMessage(prompt)
     }
 
     func processMultipleDocuments(_ urls: [URL]) async throws -> [UploadedDocument] {
