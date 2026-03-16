@@ -13,6 +13,8 @@ final class ChatSession {
     @Relationship(deleteRule: .cascade) var messages: [Message]
     var project: AetheriumProject?
 
+    var systemPrompt: String?
+
     // Metadata for knowledge graph
     var extractedTopics: [String]
     var relatedGoalIDs: [String]
@@ -23,7 +25,8 @@ final class ChatSession {
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         modelName: String = "qwen2.5:7b",
-        isLocal: Bool = true
+        isLocal: Bool = true,
+        systemPrompt: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -31,6 +34,7 @@ final class ChatSession {
         self.updatedAt = updatedAt
         self.modelName = modelName
         self.isLocal = isLocal
+        self.systemPrompt = systemPrompt
         self.messages = []
         self.extractedTopics = []
         self.relatedGoalIDs = []
@@ -48,7 +52,16 @@ final class ChatSession {
     }
 
     func getContextMessages(limit: Int = 20) -> [Message] {
-        Array(messages.suffix(limit))
+        var context = Array(messages.suffix(limit))
+
+        // Inject system prompt if present
+        let promptToUse = systemPrompt ?? project?.systemPrompt
+        if let prompt = promptToUse, !prompt.isEmpty {
+            let sysMsg = Message(content: prompt, role: .system)
+            context.insert(sysMsg, at: 0)
+        }
+
+        return context
     }
 }
 

@@ -150,6 +150,7 @@ struct SessionListNewChatSheet: View {
 
     @State private var selectedModel = "qwen2.5:7b"
     @State private var customTitle = ""
+    @State private var customSystemPrompt = ""
 
     var body: some View {
         NavigationStack {
@@ -157,6 +158,10 @@ struct SessionListNewChatSheet: View {
                 Section("Chat Settings") {
                     TextField("Title (optional)", text: $customTitle)
                         .textFieldStyle(.roundedBorder)
+
+                    TextField("Custom System Prompt", text: $customSystemPrompt, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(1...5)
 
                     Picker("Model", selection: $selectedModel) {
                         ForEach(ollamaService.availableModels) { model in
@@ -195,16 +200,19 @@ struct SessionListNewChatSheet: View {
             }
             .task {
                 try? await ollamaService.fetchAvailableModels()
+                selectedModel = project.defaultModelName ?? "qwen2.5:7b"
+                customSystemPrompt = project.systemPrompt ?? ""
             }
         }
-        .frame(width: 450, height: 250)
+        .frame(width: 450, height: 320)
     }
 
     private func createChat() {
         let newChat = ChatSession(
             title: customTitle.isEmpty ? "New Chat" : customTitle,
             modelName: selectedModel,
-            isLocal: true
+            isLocal: true,
+            systemPrompt: customSystemPrompt.isEmpty ? nil : customSystemPrompt
         )
         newChat.project = project
         modelContext.insert(newChat)

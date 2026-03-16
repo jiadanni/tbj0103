@@ -52,6 +52,21 @@ struct ProjectDashboardView: View {
                 // Recent activity
                 RecentActivityView(project: project)
 
+                // Deduplication
+                NavigationLink(destination: DeduplicationView(project: project)) {
+                    HStack {
+                        Image(systemName: "doc.on.doc")
+                        Text("Find Duplicate Notes")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                    }
+                    .padding()
+                    .background(Color.secondary.opacity(0.1))
+                    .cornerRadius(8)
+                    .padding(.horizontal)
+                }
+                .buttonStyle(.plain)
+
                 // AI Insights
                 AIInsightsView(project: project, analytics: analytics, modelContext: modelContext)
             }
