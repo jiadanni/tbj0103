@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LearningCard {
     pub id: String,
-    pub project_id: String,
+    pub workspace_id: String,
     pub front: String,
     pub back: String,
     pub source_type: String,
@@ -35,7 +35,7 @@ pub struct ReviewStats {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateCardRequest {
-    pub project_id: String,
+    pub workspace_id: String,
     pub front: String,
     pub back: String,
     pub source_type: Option<String>,
@@ -43,12 +43,12 @@ pub struct CreateCardRequest {
 }
 
 impl LearningCard {
-    pub fn new(project_id: impl Into<String>, front: impl Into<String>, back: impl Into<String>) -> Self {
+    pub fn new(workspace_id: impl Into<String>, front: impl Into<String>, back: impl Into<String>) -> Self {
         let now = chrono::Utc::now().to_rfc3339();
         let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
         Self {
             id: uuid::Uuid::new_v4().to_string(),
-            project_id: project_id.into(),
+            workspace_id: workspace_id.into(),
             front: front.into(),
             back: back.into(),
             source_type: "manual".to_string(),

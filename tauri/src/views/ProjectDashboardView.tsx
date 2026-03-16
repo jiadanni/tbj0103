@@ -9,7 +9,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import SmartTextEditor from "../components/SmartTextEditor";
 
 export default function ProjectDashboardView() {
-  const { activeProjectId, projects } = useWorkspaceStore();
+  const { activeWorkspaceId, activeProjectId, projects } = useWorkspaceStore();
   const project = projects.find((p) => p.id === activeProjectId);
 
   const [notes, setNotes] = useState<ProjectNote[]>([]);
@@ -20,9 +20,9 @@ export default function ProjectDashboardView() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!activeProjectId) return;
-    api.note.list(activeProjectId).then(setNotes).catch(() => {});
-  }, [activeProjectId]);
+    if (!activeWorkspaceId) return;
+    api.note.list(activeWorkspaceId).then(setNotes).catch(() => {});
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     if (!selectedNote) return;
@@ -54,8 +54,8 @@ export default function ProjectDashboardView() {
   }
 
   async function createNote() {
-    if (!activeProjectId) return;
-    const note = await api.note.create(activeProjectId, "Untitled Note");
+    if (!activeWorkspaceId) return;
+    const note = await api.note.create(activeWorkspaceId, "Untitled Note");
     setNotes((prev) => [note, ...prev]);
     setSelectedNote(note);
   }

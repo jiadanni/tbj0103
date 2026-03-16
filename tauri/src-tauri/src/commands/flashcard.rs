@@ -6,7 +6,7 @@ use crate::services::spaced_repetition;
 fn row_to_card(row: &rusqlite::Row) -> rusqlite::Result<LearningCard> {
     Ok(LearningCard {
         id: row.get(0)?,
-        project_id: row.get(1)?,
+        workspace_id: row.get(1)?,
         front: row.get(2)?,
         back: row.get(3)?,
         source_type: row.get(4)?,
@@ -23,13 +23,13 @@ fn row_to_card(row: &rusqlite::Row) -> rusqlite::Result<LearningCard> {
 #[tauri::command]
 pub fn create_flashcard(state: State<DbState>, req: CreateCardRequest) -> Result<LearningCard, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let mut card = LearningCard::new(req.project_id, req.front, req.back);
+    let mut card = LearningCard::new(req.workspace_id, req.front, req.back);
     if let Some(st) = req.source_type { card.source_type = st; }
     card.source_id = req.source_id;
     conn.execute(
-        "INSERT INTO learning_cards (id, project_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
+        "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-        rusqlite::params![card.id, card.project_id, card.front, card.back, card.source_type, card.source_id,
+        rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id,
                           card.ease_factor, card.interval, card.repetitions, card.next_review_date, card.last_reviewed_at, card.created_at],
     ).map_err(|e| e.to_string())?;
     Ok(card)
@@ -37,14 +37,14 @@ pub fn create_flashcard(state: State<DbState>, req: CreateCardRequest) -> Result
 
 /// Returns cards due today or overdue, for a given project.
 #[tauri::command]
-pub fn list_flashcards_due(state: State<DbState>, project_id: String) -> Result<Vec<LearningCard>, String> {
+pub fn list_flashcards_due(state: State<DbState>, workspace_id: String) -> Result<Vec<LearningCard>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let mut stmt = conn.prepare(
-        "SELECT id, project_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
-         FROM learning_cards WHERE project_id = ?1 AND next_review_date <= ?2 ORDER BY next_review_date ASC"
+        "SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+         FROM learning_cards WHERE workspace_id = ?1 AND next_review_date <= ?2 ORDER BY next_review_date ASC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![project_id, today], |row| row_to_card(row))
+    let items = stmt.query_map(rusqlite::params![workspace_id, today], |row| row_to_card(row))
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -81,24 +81,24 @@ pub fn review_flashcard(state: State<DbState>, req: ReviewRequest) -> Result<Lea
 }
 
 #[tauri::command]
-pub fn get_review_stats(state: State<DbState>, project_id: String) -> Result<ReviewStats, String> {
+pub fn get_review_stats(state: State<DbState>, workspace_id: String) -> Result<ReviewStats, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let total_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM learning_cards WHERE project_id = ?1",
-        rusqlite::params![project_id], |r| r.get(0)
+        "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1",
+        rusqlite::params![workspace_id], |r| r.get(0)
     ).unwrap_or(0);
     let due_today: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM learning_cards WHERE project_id = ?1 AND next_review_date <= ?2",
-        rusqlite::params![project_id, today], |r| r.get(0)
+        "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1 AND next_review_date <= ?2",
+        rusqlite::params![workspace_id, today], |r| r.get(0)
     ).unwrap_or(0);
     let learned: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM learning_cards WHERE project_id = ?1 AND repetitions > 0",
-        rusqlite::params![project_id], |r| r.get(0)
+        "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1 AND repetitions > 0",
+        rusqlite::params![workspace_id], |r| r.get(0)
     ).unwrap_or(0);
     let avg_ease: f64 = conn.query_row(
-        "SELECT COALESCE(AVG(ease_factor), 2.5) FROM learning_cards WHERE project_id = ?1",
-        rusqlite::params![project_id], |r| r.get(0)
+        "SELECT COALESCE(AVG(ease_factor), 2.5) FROM learning_cards WHERE workspace_id = ?1",
+        rusqlite::params![workspace_id], |r| r.get(0)
     ).unwrap_or(2.5);
     Ok(ReviewStats { total_cards, due_today, learned, avg_ease })
 }

@@ -10,19 +10,19 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 
 export default function DocumentBrowserView() {
-  const { activeProjectId } = useWorkspaceStore();
+  const { activeWorkspaceId } = useWorkspaceStore();
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
   const [selected, setSelected] = useState<UploadedDocument | null>(null);
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!activeProjectId) return;
-    api.document.list(activeProjectId).then(setDocuments).catch(() => {});
-  }, [activeProjectId]);
+    if (!activeWorkspaceId) return;
+    api.document.list(activeWorkspaceId).then(setDocuments).catch(() => {});
+  }, [activeWorkspaceId]);
 
   async function handleUpload() {
-    if (!activeProjectId) return;
+    if (!activeWorkspaceId) return;
     setUploading(true);
     try {
       const paths = await open({
@@ -36,7 +36,7 @@ export default function DocumentBrowserView() {
         const filename = path.split("/").pop() ?? path;
         const ext = filename.split(".").pop() ?? "txt";
         const doc = await api.document.upload(
-          activeProjectId, filename, ext, content.length, content
+          activeWorkspaceId, filename, ext, content.length, content
         );
         setDocuments((prev) => [doc, ...prev]);
       }
@@ -79,7 +79,7 @@ export default function DocumentBrowserView() {
           <span className="text-xs font-medium text-[var(--text-secondary)]">Documents</span>
           <button
             onClick={handleUpload}
-            disabled={uploading || !activeProjectId}
+            disabled={uploading || !activeWorkspaceId}
             className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
           >
             <Upload size={11} /> Upload
@@ -88,7 +88,7 @@ export default function DocumentBrowserView() {
         <div className="flex-1 overflow-y-auto">
           {documents.length === 0 && (
             <p className="px-3 py-6 text-xs text-center text-[var(--text-muted)]">
-              {activeProjectId ? "No documents" : "Select a project"}
+              No documents yet
             </p>
           )}
           {documents.map((d) => (

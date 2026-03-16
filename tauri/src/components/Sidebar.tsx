@@ -4,7 +4,7 @@ import {
   MessageSquare, Network, BookOpen, Calendar, CreditCard,
   FolderOpen, FileText, Map, Settings, Archive, Zap, Link2,
   BarChart2, PuzzleIcon, SplitSquareHorizontal,
-  Globe, GitMerge, LayoutGrid, FileEdit, MessagesSquare,
+  Globe, GitMerge, LayoutGrid, FileEdit,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -15,7 +15,6 @@ interface SidebarProps {
 const NAV_ITEMS = [
   { path: "/project",       icon: BarChart2,             label: "Dashboard"        },
   { path: "/chat",          icon: MessageSquare,          label: "Chat"             },
-  { path: "/chat-sessions", icon: MessagesSquare,         label: "Chat Sessions"    },
   { path: "/notes",         icon: FileEdit,               label: "Notes"            },
   { path: "/daily",         icon: Calendar,               label: "Daily Notes"      },
   { path: "/documents",     icon: FileText,               label: "Documents"        },

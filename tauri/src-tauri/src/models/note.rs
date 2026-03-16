@@ -37,7 +37,7 @@ pub struct DailyNote {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LearningPath {
     pub id: String,
-    pub project_id: String,
+    pub workspace_id: String,
     pub title: String,
     pub path_description: String,
     pub milestones: Vec<PathMilestone>,
@@ -60,7 +60,7 @@ pub struct PathMilestone {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectNote {
     pub id: String,
-    pub project_id: String,
+    pub workspace_id: String,
     pub title: String,
     pub content: String,
     pub note_type: String,
@@ -71,7 +71,7 @@ pub struct ProjectNote {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateNoteRequest {
-    pub project_id: String,
+    pub workspace_id: String,
     pub title: String,
     pub content: Option<String>,
     pub note_type: Option<String>,
