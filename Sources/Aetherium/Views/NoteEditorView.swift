@@ -8,6 +8,7 @@ struct NoteEditorView: View {
     let project: AetheriumProject?
 
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var themeManager: ThemeManager
     @StateObject private var linkingEngine: LinkingEngine
 
     @State private var editMode: EditMode = .live
@@ -43,6 +44,7 @@ struct NoteEditorView: View {
                     placeholder: "Start writing your note...",
                     modelContext: modelContext
                 )
+                .environmentObject(themeManager)
                 .onChange(of: note.content) { _, _ in
                     scheduleAutoSave()
                 }
