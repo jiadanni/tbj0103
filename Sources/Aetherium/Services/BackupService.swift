@@ -645,6 +645,11 @@ class BackupService: ObservableObject {
         project.updatedAt = data.updatedAt
         modelContext.insert(project)
 
+        // Create a default project for restored chats
+        let defaultProject = Project(title: "General", customInstructions: "")
+        defaultProject.workspace = project
+        modelContext.insert(defaultProject)
+
         // Build concept node map for linking
         var conceptMap: [UUID: ConceptNode] = [:]
 
@@ -718,7 +723,7 @@ class BackupService: ObservableObject {
             chat.relatedGoalIDs = chatData.relatedGoalIDs
             chat.parentMessageID = chatData.parentMessageID
             chat.branchLabel = chatData.branchLabel
-            chat.project = project
+            chat.project = defaultProject
             modelContext.insert(chat)
 
             for msgData in chatData.messages {

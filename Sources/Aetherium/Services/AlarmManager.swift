@@ -27,6 +27,10 @@ final class AlarmManager: ObservableObject {
     // MARK: - Notification Permission
 
     private func requestNotificationPermission() {
+        guard Bundle.main.bundleIdentifier != nil else {
+            print("Skipping notification permission: no app bundle available")
+            return
+        }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {
                 print("Notification permission error: \(error.localizedDescription)")
@@ -69,9 +73,11 @@ final class AlarmManager: ObservableObject {
         alarm.isCompleted = true
         try? modelContext?.save()
 
-        UNUserNotificationCenter.current().removePendingNotificationRequests(
-            withIdentifiers: [alarm.id.uuidString]
-        )
+        if Bundle.main.bundleIdentifier != nil {
+            UNUserNotificationCenter.current().removePendingNotificationRequests(
+                withIdentifiers: [alarm.id.uuidString]
+            )
+        }
 
         loadActiveAlarms()
     }
@@ -116,7 +122,9 @@ final class AlarmManager: ObservableObject {
             trigger: trigger
         )
 
-        UNUserNotificationCenter.current().add(request)
+        if Bundle.main.bundleIdentifier != nil {
+            UNUserNotificationCenter.current().add(request)
+        }
     }
 
     // MARK: - Polling

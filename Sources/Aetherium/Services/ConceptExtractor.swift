@@ -64,7 +64,7 @@ class ConceptExtractor: ObservableObject {
         // Parse response
         let concepts = parseConceptsFromResponse(
             response,
-            project: chatSession.project
+            project: chatSession.project?.workspace
         )
 
         extractionProgress = 1.0
