@@ -8,6 +8,8 @@ struct ContentView: View {
     @EnvironmentObject var securityManager: SecurityManager
     @EnvironmentObject var ollamaService: OllamaService
     @EnvironmentObject var modelOrchestrator: ModelOrchestrator
+    @EnvironmentObject var themeManager: ThemeManager
+    @EnvironmentObject var shortcutManager: ShortcutManager
 
     @Query(sort: \AetheriumProject.updatedAt, order: .reverse)
     private var projects: [AetheriumProject]
@@ -15,9 +17,13 @@ struct ContentView: View {
     @State private var selectedProject: AetheriumProject?
     @State private var selectedView: NavigationView = .dashboard
     @State private var showingNewProjectSheet = false
+    @State private var showingSettings = false
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: Binding(
+            get: { themeManager.isSidebarCollapsed ? .detailOnly : .all },
+            set: { newValue in themeManager.isSidebarCollapsed = (newValue == .detailOnly) }
+        )) {
             // Sidebar with project selection and navigation
             VStack(spacing: 0) {
                 // Project selector
@@ -26,6 +32,7 @@ struct ContentView: View {
                     selectedProject: $selectedProject,
                     showingNewProjectSheet: $showingNewProjectSheet
                 )
+                .environmentObject(shortcutManager)
 
                 Divider()
 
@@ -40,7 +47,7 @@ struct ContentView: View {
                     )
                 }
             }
-            .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
+            .navigationSplitViewColumnWidth(min: 200, ideal: CGFloat(themeManager.sidebarWidth), max: 400)
         } detail: {
             // Main content area
             if let project = selectedProject {
@@ -50,20 +57,34 @@ struct ContentView: View {
                         selectedView: selectedView,
                         modelContext: modelContext
                     )
+                    .environmentObject(themeManager)
                 }
             } else {
                 WelcomeView(
                     onCreateProject: { showingNewProjectSheet = true },
                     hasProjects: !projects.isEmpty
                 )
+                .environmentObject(shortcutManager)
             }
         }
         .sheet(isPresented: $showingNewProjectSheet) {
             NewProjectSheet(isPresented: $showingNewProjectSheet)
         }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
+                .environmentObject(themeManager)
+                .environmentObject(shortcutManager)
+        }
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Menu {
+                    Button("App Settings") {
+                        showingSettings = true
+                    }
+                    .keyboardShortcut(",", modifiers: .command)
+
+                    Divider()
+
                     Button("Lock Aetherium") {
                         securityManager.logout()
                     }
@@ -100,6 +121,14 @@ struct ContentView: View {
             await ollamaService.checkAvailability()
         }
         .commandPalette(onNavigate: handleSearchNavigation)
+        .background {
+            Button("") {
+                themeManager.isSidebarCollapsed.toggle()
+            }
+            .keyboardShortcut(shortcutManager.toggleSidebarKeyEquivalent, modifiers: shortcutManager.toggleSidebarModifiers)
+            .opacity(0).frame(width: 0, height: 0)
+        }
+        .keyboardShortcut(shortcutManager.searchKeyEquivalent, modifiers: shortcutManager.searchModifiers)
     }
 
     // MARK: - Command Palette Navigation
@@ -199,6 +228,7 @@ struct ProjectSelectorView: View {
     let projects: [AetheriumProject]
     @Binding var selectedProject: AetheriumProject?
     @Binding var showingNewProjectSheet: Bool
+    @EnvironmentObject var shortcutManager: ShortcutManager
 
     var body: some View {
         VStack(spacing: 0) {
@@ -215,7 +245,7 @@ struct ProjectSelectorView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Create New Project (Cmd+N)")
-                .keyboardShortcut("n", modifiers: .command)
+                .keyboardShortcut(shortcutManager.newProjectKeyEquivalent, modifiers: shortcutManager.newProjectModifiers)
             }
             .padding()
 
@@ -331,6 +361,7 @@ struct ChatNavigationView: View {
             // Chat list
             VStack(spacing: 0) {
                 ChatSessionListHeaderView(project: project)
+                    .environmentObject(shortcutManager)
 
                 Divider()
 
@@ -366,6 +397,7 @@ struct ChatNavigationView: View {
 struct ChatSessionListHeaderView: View {
     let project: AetheriumProject
     @State private var showingNewChat = false
+    @EnvironmentObject var shortcutManager: ShortcutManager
 
     var body: some View {
         HStack {
@@ -383,6 +415,7 @@ struct ChatSessionListHeaderView: View {
         .sheet(isPresented: $showingNewChat) {
             NewChatSheet(project: project, isPresented: $showingNewChat)
         }
+        .keyboardShortcut(shortcutManager.newChatKeyEquivalent, modifiers: shortcutManager.newChatModifiers)
     }
 }
 
@@ -408,6 +441,7 @@ struct ChatSessionRowView: View {
 struct WelcomeView: View {
     let onCreateProject: () -> Void
     let hasProjects: Bool
+    @EnvironmentObject var shortcutManager: ShortcutManager
 
     var body: some View {
         VStack(spacing: 32) {
@@ -443,7 +477,7 @@ struct WelcomeView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .keyboardShortcut("n", modifiers: .command)
+            .keyboardShortcut(shortcutManager.newProjectKeyEquivalent, modifiers: shortcutManager.newProjectModifiers)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
