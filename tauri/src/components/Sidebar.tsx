@@ -1,50 +1,55 @@
 import { useWorkspaceStore } from "../stores/workspaceStore";
-import { api } from "../lib/api";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, Network, BookOpen, Calendar, CreditCard,
-  FolderOpen, FileText, Map, Settings, Archive, Plus, Zap, Link2,
+  FolderOpen, FileText, Map, Settings, Archive, Zap, Link2,
+  BarChart2, PuzzleIcon, SplitSquareHorizontal,
+  Globe, GitMerge, LayoutGrid, FileEdit, MessagesSquare,
 } from "lucide-react";
-import { useState } from "react";
 
 interface SidebarProps {
   onOpenCommandPalette: () => void;
 }
 
+// Primary nav matches Swift NavigationView enum order exactly
 const NAV_ITEMS = [
-  { path: "/chat",      icon: MessageSquare, label: "Chat"           },
-  { path: "/grounded",  icon: BookOpen,      label: "Grounded Chat"  },
-  { path: "/daily",     icon: Calendar,      label: "Daily Notes"    },
-  { path: "/graph",     icon: Network,       label: "Knowledge Graph"},
-  { path: "/backlinks", icon: Link2,         label: "Backlinks"      },
-  { path: "/flashcards",icon: CreditCard,    label: "Flashcards"     },
-  { path: "/project",   icon: FolderOpen,    label: "Projects"       },
-  { path: "/documents", icon: FileText,      label: "Documents"      },
-  { path: "/learning",  icon: Map,           label: "Learning Paths" },
-  { path: "/backup",    icon: Archive,       label: "Backups"        },
-  { path: "/settings",  icon: Settings,      label: "Settings"       },
+  { path: "/project",       icon: BarChart2,             label: "Dashboard"        },
+  { path: "/chat",          icon: MessageSquare,          label: "Chat"             },
+  { path: "/chat-sessions", icon: MessagesSquare,         label: "Chat Sessions"    },
+  { path: "/notes",         icon: FileEdit,               label: "Notes"            },
+  { path: "/daily",         icon: Calendar,               label: "Daily Notes"      },
+  { path: "/documents",     icon: FileText,               label: "Documents"        },
+  { path: "/webcapture",    icon: Globe,                  label: "Web Captures"     },
+  { path: "/graph",         icon: Network,                label: "Knowledge Graph"  },
+  { path: "/flashcards",    icon: CreditCard,             label: "Flashcards"       },
+  { path: "/learning",      icon: Map,                    label: "Learning Paths"   },
+  { path: "/plugins",       icon: PuzzleIcon,             label: "Plugins"          },
+  { path: "/compare",       icon: SplitSquareHorizontal,  label: "Compare Models"   },
+  { path: "/backup",        icon: Archive,                label: "Backups"          },
+];
+
+// Secondary nav
+const SECONDARY_ITEMS = [
+  { path: "/grounded",   icon: BookOpen,    label: "Grounded Chat"  },
+  { path: "/backlinks",  icon: Link2,       label: "Backlinks"      },
+  { path: "/dedup",      icon: GitMerge,    label: "Deduplication"  },
+  { path: "/workspaces", icon: LayoutGrid,  label: "Workspaces"     },
+  { path: "/settings",   icon: Settings,    label: "Settings"       },
 ];
 
 export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const {
-    workspaces, activeWorkspaceId, setActiveWorkspaceId,
     projects, activeProjectId, setActiveProjectId, isDemoMode,
   } = useWorkspaceStore();
-  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
-  const [newWsName, setNewWsName] = useState("");
+
+  function selectProject(id: string) {
+    setActiveProjectId(id);
+    navigate("/project");
+  }
 
   const activeSegment = "/" + location.pathname.split("/")[1];
-
-  async function createWorkspace() {
-    if (!newWsName.trim()) return;
-    const ws = await api.workspace.create(newWsName.trim());
-    useWorkspaceStore.getState().addWorkspace(ws);
-    setActiveWorkspaceId(ws.id);
-    setNewWsName("");
-    setCreatingWorkspace(false);
-  }
 
   return (
     <div className="flex flex-col h-full bg-[var(--bg-sidebar)] text-sm select-none">
@@ -59,49 +64,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
         )}
       </div>
 
-      {/* Workspace selector */}
-      <div className="px-2 pt-2 pb-1">
-        <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] px-1 mb-1">
-          Workspaces
-        </div>
-        <div className="space-y-0.5 max-h-32 overflow-y-auto">
-          {workspaces.map((ws) => (
-            <button
-              key={ws.id}
-              onClick={() => setActiveWorkspaceId(ws.id)}
-              className={`w-full text-left px-2 py-1.5 rounded text-xs truncate transition-colors ${
-                activeWorkspaceId === ws.id
-                  ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
-                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              }`}
-            >
-              {ws.name}
-            </button>
-          ))}
-        </div>
-        {creatingWorkspace ? (
-          <div className="flex gap-1 mt-1">
-            <input
-              autoFocus
-              value={newWsName}
-              onChange={(e) => setNewWsName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") createWorkspace(); if (e.key === "Escape") setCreatingWorkspace(false); }}
-              placeholder="Workspace name"
-              className="flex-1 text-xs px-2 py-1 rounded bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
-            />
-            <button onClick={createWorkspace} className="px-2 py-1 text-xs bg-[var(--accent-color)] text-white rounded">
-              Add
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setCreatingWorkspace(true)}
-            className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] px-1 mt-1"
-          >
-            <Plus size={12} /> New
-          </button>
-        )}
-      </div>
+
 
       {/* Project list */}
       {projects.length > 0 && (
@@ -113,7 +76,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
             {projects.map((p) => (
               <button
                 key={p.id}
-                onClick={() => setActiveProjectId(p.id)}
+                onClick={() => selectProject(p.id)}
                 className={`w-full text-left px-2 py-1.5 rounded text-xs truncate flex items-center gap-2 transition-colors ${
                   activeProjectId === p.id
                     ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
@@ -147,6 +110,24 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
             {label}
           </button>
         ))}
+
+        {/* Secondary items */}
+        <div className="pt-2 mt-2 border-t border-[var(--border-color)]">
+          {SECONDARY_ITEMS.map(({ path, icon: Icon, label }) => (
+            <button
+              key={path}
+              onClick={() => navigate(path)}
+              className={`w-full flex items-center gap-2.5 px-2 py-2 rounded text-xs transition-colors ${
+                activeSegment === path
+                  ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
+                  : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
+              }`}
+            >
+              <Icon size={13} />
+              {label}
+            </button>
+          ))}
+        </div>
       </nav>
 
       {/* Bottom: cmd+K hint */}

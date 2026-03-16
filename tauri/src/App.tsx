@@ -7,17 +7,22 @@ import Layout from "./components/Layout";
 import AuthenticationView from "./views/AuthenticationView";
 
 export default function App() {
-  const { theme, accentColor } = useSettingsStore();
+  const { theme, accentColor, fontSize } = useSettingsStore();
   const { setWorkspaces, setProjects, isDemoMode, setDemo } = useWorkspaceStore();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Apply theme class to <html> element
+  // Apply theme class to <html> element — also applies font-size and accent-color reactively
   useEffect(() => {
     const root = document.documentElement;
-    root.setAttribute("data-theme", theme);
+    root.classList.forEach((cls) => {
+      if (cls.startsWith("theme-")) root.classList.remove(cls);
+    });
+    root.classList.add(`theme-${theme}`);
     if (accentColor) root.style.setProperty("--accent-color", accentColor);
-  }, [theme, accentColor]);
+    root.style.setProperty("--font-size-base", `${fontSize}px`);
+    root.style.fontSize = `${fontSize}px`;
+  }, [theme, accentColor, fontSize]);
 
   // Boot: load settings + workspaces
   useEffect(() => {

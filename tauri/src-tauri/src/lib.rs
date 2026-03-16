@@ -115,6 +115,20 @@ pub fn run() {
             commands::alarm::create_alarm,
             commands::alarm::list_alarms,
             commands::alarm::delete_alarm,
+            // Note extra commands
+            commands::note::update_daily_note,
+            commands::note::delete_template,
+            commands::note::update_template,
+            // Chat session update
+            commands::chat::update_chat_session,
+            // Project stats
+            commands::project::get_project_stats,
+            // Web capture commands
+            commands::web_capture::create_web_capture,
+            commands::web_capture::list_web_captures,
+            commands::web_capture::get_web_capture,
+            commands::web_capture::delete_web_capture,
+            commands::web_capture::update_web_capture,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

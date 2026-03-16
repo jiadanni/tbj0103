@@ -25,6 +25,7 @@ interface WorkspaceStore {
   activeProjectId: string | null;
   projects: Project[];
   isDemoMode: boolean;
+  navLayout: "sidebar" | "tabs";
   setWorkspaces: (ws: Workspace[]) => void;
   setActiveWorkspaceId: (id: string | null) => void;
   setActiveProjectId: (id: string | null) => void;
@@ -33,6 +34,7 @@ interface WorkspaceStore {
   addWorkspace: (ws: Workspace) => void;
   addProject: (p: Project) => void;
   removeProject: (id: string) => void;
+  setNavLayout: (layout: "sidebar" | "tabs") => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
@@ -41,6 +43,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   activeProjectId: null,
   projects: [],
   isDemoMode: false,
+  navLayout: (localStorage.getItem("navLayout") as "sidebar" | "tabs") ?? "sidebar",
   setWorkspaces: (workspaces) => set({ workspaces }),
   setActiveWorkspaceId: (activeWorkspaceId) => set({ activeWorkspaceId }),
   setActiveProjectId: (activeProjectId) => set({ activeProjectId }),
@@ -49,4 +52,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   addWorkspace: (ws) => set((s) => ({ workspaces: [...s.workspaces, ws] })),
   addProject: (p) => set((s) => ({ projects: [...s.projects, p] })),
   removeProject: (id) => set((s) => ({ projects: s.projects.filter((p) => p.id !== id) })),
+  setNavLayout: (navLayout) => {
+    localStorage.setItem("navLayout", navLayout);
+    set({ navLayout });
+  },
 }));

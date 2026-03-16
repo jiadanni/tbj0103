@@ -14,3 +14,4 @@ pub mod settings;
 pub mod graph;
 pub mod demo;
 pub mod alarm;
+pub mod web_capture;

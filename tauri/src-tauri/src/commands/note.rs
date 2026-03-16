@@ -244,3 +244,67 @@ pub fn get_note_outbound_links(state: State<DbState>, note_id: String) -> Result
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     linking_engine::get_outbound_links(&conn, "note", &note_id)
 }
+
+/// Update a daily note's content, mood, and productivity.
+#[tauri::command]
+pub fn update_daily_note(
+    state: State<DbState>,
+    id: String,
+    content: Option<String>,
+    mood: Option<i64>,
+    productivity: Option<i64>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE daily_notes SET
+            content = COALESCE(?1, content),
+            mood = COALESCE(?2, mood),
+            productivity = COALESCE(?3, productivity),
+            updated_at = ?4
+         WHERE id = ?5",
+        rusqlite::params![content, mood, productivity, now, id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Delete a custom (non-built-in) note template.
+#[tauri::command]
+pub fn delete_template(state: State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    // Prevent deletion of built-in templates
+    let is_built_in: i32 = conn.query_row(
+        "SELECT is_built_in FROM note_templates WHERE id = ?1",
+        rusqlite::params![id],
+        |r| r.get(0),
+    ).map_err(|e| e.to_string())?;
+    if is_built_in != 0 {
+        return Err("Cannot delete built-in templates".to_string());
+    }
+    conn.execute("DELETE FROM note_templates WHERE id = ?1", rusqlite::params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Update a custom template's name, content, or icon.
+#[tauri::command]
+pub fn update_template(
+    state: State<DbState>,
+    id: String,
+    name: Option<String>,
+    content: Option<String>,
+    icon: Option<String>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE note_templates SET
+            name = COALESCE(?1, name),
+            content = COALESCE(?2, content),
+            icon = COALESCE(?3, icon),
+            updated_at = ?4
+         WHERE id = ?5 AND is_built_in = 0",
+        rusqlite::params![name, content, icon, now, id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
