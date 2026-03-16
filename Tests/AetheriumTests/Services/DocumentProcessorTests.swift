@@ -6,8 +6,9 @@ final class DocumentProcessorTests: XCTestCase {
     var ollamaService: OllamaService!
     var session: URLSession!
 
-    override func setUp() {
-        super.setUp()
+    @MainActor
+    override func setUp() async throws {
+        try await super.setUp()
         // Set up mocked OllamaService
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]

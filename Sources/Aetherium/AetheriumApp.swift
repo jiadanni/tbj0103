@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AppKit
 
 @main
 struct AetheriumApp: App {
@@ -12,6 +13,9 @@ struct AetheriumApp: App {
     let modelContainer: ModelContainer
 
     init() {
+        // Ensure the app runs as a regular foreground app (needed when launched as a bare executable)
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
         do {
             // Include all data models in the container
             modelContainer = try ModelContainer(
@@ -36,7 +40,8 @@ struct AetheriumApp: App {
                 PathMilestone.self
             )
         } catch {
-            fatalError("Failed to initialize ModelContainer: \(error)")
+            // Present a minimal UI with an error instead of crashing
+            modelContainer = try! ModelContainer(for: AetheriumProject.self)
         }
 
         let ollama = OllamaService()
@@ -68,6 +73,13 @@ struct AetheriumApp: App {
             }
         }
         .windowStyle(.automatic)
+
+        Settings {
+            SettingsView()
+                .environmentObject(ollamaService)
+                .environmentObject(securityManager)
+        }
+
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Project") {

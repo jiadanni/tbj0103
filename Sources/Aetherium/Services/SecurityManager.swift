@@ -1,5 +1,6 @@
 import Foundation
 import LocalAuthentication
+import AppKit
 
 enum BiometricType {
     case none
@@ -35,12 +36,24 @@ enum AuthenticationError: LocalizedError {
 class SecurityManager: ObservableObject {
     @Published var isAuthenticated: Bool = false
     @Published var biometricType: BiometricType = .none
+    @Published var autoLockMinutes: Int = 0
 
     private let context = LAContext()
     private let authenticationReason = "Authenticate to access your AI projects and conversations"
+    private var autoLockTimer: Timer?
+    private var resignObserver: Any?
+    private var becomeActiveObserver: Any?
 
     init() {
         checkBiometricType()
+        let minutes = AppSettings.shared.autoLockMinutes
+        if minutes > 0 {
+            setupAutoLock(after: minutes)
+        }
+        // Auto-authenticate if Touch ID is disabled
+        if !AppSettings.shared.touchIDEnabled {
+            isAuthenticated = true
+        }
     }
 
     // MARK: - Biometric Type Detection
@@ -73,8 +86,13 @@ class SecurityManager: ObservableObject {
         let context = LAContext()
         var error: NSError?
 
-        // Check if biometric authentication is available
-        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+        // Try biometric first, fall back to device passcode
+        let policy: LAPolicy
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            policy = .deviceOwnerAuthenticationWithBiometrics
+        } else if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
+            policy = .deviceOwnerAuthentication
+        } else {
             if let error = error {
                 switch error.code {
                 case LAError.biometryNotAvailable.rawValue:
@@ -91,7 +109,7 @@ class SecurityManager: ObservableObject {
         do {
             // Attempt authentication
             let success = try await context.evaluatePolicy(
-                .deviceOwnerAuthentication,
+                policy,
                 localizedReason: authenticationReason
             )
 
@@ -115,13 +133,77 @@ class SecurityManager: ObservableObject {
     }
 
     func logout() {
+        if AppSettings.shared.touchIDEnabled {
+            isAuthenticated = false
+        }
+    }
+
+    func lockForTimeout() {
         isAuthenticated = false
     }
 
-    // MARK: - Auto-lock Support (for future implementation)
+    // MARK: - Auto-lock Support
 
     func setupAutoLock(after minutes: Int) {
-        // TODO: Implement auto-lock timer
-        // Could use a combination of app lifecycle events and timers
+        autoLockMinutes = minutes
+        cancelAutoLockTimer()
+
+        guard minutes > 0 else {
+            removeAppLifecycleObservers()
+            return
+        }
+
+        observeAppLifecycle()
+    }
+
+    func resetAutoLockTimer() {
+        cancelAutoLockTimer()
+        guard autoLockMinutes > 0, isAuthenticated else { return }
+        let interval = TimeInterval(autoLockMinutes * 60)
+        autoLockTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.lockForTimeout()
+            }
+        }
+    }
+
+    private func cancelAutoLockTimer() {
+        autoLockTimer?.invalidate()
+        autoLockTimer = nil
+    }
+
+    private func observeAppLifecycle() {
+        removeAppLifecycleObservers()
+
+        resignObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.resetAutoLockTimer()
+            }
+        }
+
+        becomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.cancelAutoLockTimer()
+            }
+        }
+    }
+
+    private func removeAppLifecycleObservers() {
+        if let observer = resignObserver {
+            NotificationCenter.default.removeObserver(observer)
+            resignObserver = nil
+        }
+        if let observer = becomeActiveObserver {
+            NotificationCenter.default.removeObserver(observer)
+            becomeActiveObserver = nil
+        }
     }
 }

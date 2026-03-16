@@ -45,6 +45,7 @@ struct LearningPathView: View {
                 } else {
                     List(projectPaths, selection: $selectedPath) { path in
                         LearningPathRow(path: path)
+                            .tag(path)
                     }
                 }
             }
@@ -56,14 +57,17 @@ struct LearningPathView: View {
                     path: path,
                     modelContext: modelContext
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ContentUnavailableView(
                     "No Path Selected",
                     systemImage: "map.fill",
                     description: Text("Select a learning path to view details")
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("Learning Paths")
         .sheet(isPresented: $showingNewPathSheet) {
             NewLearningPathSheet(

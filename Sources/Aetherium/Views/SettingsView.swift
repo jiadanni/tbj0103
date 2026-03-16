@@ -2,11 +2,30 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var ollamaService: OllamaService
+    @EnvironmentObject var securityManager: SecurityManager
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var shortcutManager: ShortcutManager
+    @ObservedObject private var appSettings = AppSettings.shared
+
+    @State private var isLoadingModels = false
+
+    private let autoLockOptions: [(String, Int)] = [
+        ("Never", 0),
+        ("1 minute", 1),
+        ("5 minutes", 5),
+        ("15 minutes", 15),
+        ("30 minutes", 30),
+        ("1 hour", 60),
+    ]
 
     var body: some View {
         TabView {
+            generalSettingsTab
+                .tabItem {
+                    Label("General", systemImage: "gear")
+                }
+
             AppearanceSettingsView()
                 .tabItem {
                     Label("Appearance", systemImage: "paintpalette")
@@ -18,7 +37,121 @@ struct SettingsView: View {
                 }
         }
         .padding()
-        .frame(width: 500, height: 400)
+        .frame(width: 550, height: 500)
+        .task {
+            loadModels()
+        }
+    }
+
+    private var generalSettingsTab: some View {
+        Form {
+            Section("Security") {
+                Toggle("Require Touch ID", isOn: $appSettings.touchIDEnabled)
+                    .onChange(of: appSettings.touchIDEnabled) { _, enabled in
+                        if !enabled {
+                            securityManager.isAuthenticated = true
+                            securityManager.setupAutoLock(after: 0)
+                            appSettings.autoLockMinutes = 0
+                        }
+                    }
+
+                if securityManager.biometricType == .none {
+                    Label("No biometric hardware detected. Password will be used instead.", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+
+                Picker("Auto-Lock Timeout", selection: $appSettings.autoLockMinutes) {
+                    ForEach(autoLockOptions, id: \.1) { option in
+                        Text(option.0).tag(option.1)
+                    }
+                }
+                .disabled(!appSettings.touchIDEnabled)
+                .onChange(of: appSettings.autoLockMinutes) { _, minutes in
+                    securityManager.setupAutoLock(after: minutes)
+                }
+
+                Text("Locks the app after a period of inactivity. Requires re-authentication to continue.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section("Model") {
+                if !ollamaService.availableModels.isEmpty {
+                    Picker("Default Model", selection: $appSettings.preferredModel) {
+                        ForEach(ollamaService.availableModels) { model in
+                            Text(model.name).tag(model.name)
+                        }
+                    }
+                } else if isLoadingModels {
+                    HStack {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading models from Ollama...")
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    HStack {
+                        Text("Current: \(appSettings.preferredModel)")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button("Refresh") {
+                            loadModels()
+                        }
+                    }
+                }
+
+                if !ollamaService.isAvailable && !isLoadingModels {
+                    Label("Ollama is not running. Start it to see installed models.", systemImage: "exclamationmark.triangle")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                }
+            }
+
+            Section("Layout") {
+                Picker("Project Navigation", selection: $appSettings.projectTabPosition) {
+                    ForEach(ProjectTabPosition.allCases, id: \.rawValue) { position in
+                        Text(position.rawValue).tag(position.rawValue)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+
+                Text("Horizontal Tabs shows projects as tabs across the top. Sidebar uses the classic left panel.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section("Embedding") {
+                if !ollamaService.availableModels.isEmpty {
+                    Picker("Embedding Model", selection: $appSettings.preferredEmbeddingModel) {
+                        ForEach(ollamaService.availableModels) { model in
+                            Text(model.name).tag(model.name)
+                        }
+                    }
+                } else {
+                    HStack {
+                        Text("Current: \(appSettings.preferredEmbeddingModel)")
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Text("Used for semantic search and document indexing")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func loadModels() {
+        isLoadingModels = true
+        Task {
+            _ = await ollamaService.checkAvailability()
+            if ollamaService.isAvailable {
+                _ = try? await ollamaService.fetchAvailableModels()
+            }
+            isLoadingModels = false
+        }
     }
 }
 
@@ -118,7 +251,6 @@ struct ShortcutEditorRow: View {
             Text(action)
             Spacer()
 
-            // Modifier picker (simplified for demo purposes, normally you'd use a more complex key recorder)
             Picker("", selection: $modifiers) {
                 Text("⌘").tag(EventModifiers.command.rawValue)
                 Text("⇧⌘").tag(EventModifiers.command.rawValue | EventModifiers.shift.rawValue)

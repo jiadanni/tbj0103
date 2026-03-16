@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import os
 
 // MARK: - Retrieval-Augmented Generation (RAG) Engine
 
@@ -7,6 +8,7 @@ import SwiftData
 class RetrievalEngine: ObservableObject {
     private let ollamaService: OllamaService
     private let similarityThreshold: Float = 0.7
+    private let logger = Logger(subsystem: "com.aetherium.app", category: "RetrievalEngine")
 
     init(ollamaService: OllamaService) {
         self.ollamaService = ollamaService
@@ -39,7 +41,7 @@ class RetrievalEngine: ObservableObject {
                 return results
             }
         } catch {
-            print("Semantic search failed, falling back to keyword search: \(error)")
+            logger.warning("Semantic search failed, falling back to keyword search: \(error)")
         }
 
         // Fallback to keyword matching
@@ -221,7 +223,8 @@ class GroundedChatEngine: ObservableObject {
         // Generate response
         let response = try await modelOrchestrator.processMessage(
             augmentedPrompt,
-            context: chatSession.getContextMessages()
+            context: chatSession.getContextMessages(),
+            model: chatSession.modelName
         )
 
         // Create citations

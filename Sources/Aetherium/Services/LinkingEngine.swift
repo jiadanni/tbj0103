@@ -32,7 +32,9 @@ class LinkingEngine: ObservableObject {
             }
 
             let conceptName = String(text[conceptRange])
-            let fullRange = Range(match.range(at: 0), in: text)!
+            guard let fullRange = Range(match.range(at: 0), in: text) else {
+                return nil
+            }
 
             // Extract context (50 chars before and after)
             let contextStart = text.index(

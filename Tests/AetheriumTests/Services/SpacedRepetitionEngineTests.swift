@@ -8,8 +8,9 @@ final class SpacedRepetitionEngineTests: XCTestCase {
     var modelContext: ModelContext!
     var project: AetheriumProject!
 
+    @MainActor
     override func setUp() async throws {
-        super.setUp()
+        try await super.setUp()
         // Create an in-memory ModelContainer
         let schema = Schema([
             AetheriumProject.self,
@@ -51,9 +52,11 @@ final class SpacedRepetitionEngineTests: XCTestCase {
         super.tearDown()
     }
 
+    @MainActor
     func testReviewCard_Correct() {
         // Create a learning card
-        let card = LearningCard(front: "Front", back: "Back", project: project)
+        let card = LearningCard(front: "Front", back: "Back")
+        card.project = project
         modelContext.insert(card)
 
         // Initial state check
@@ -70,9 +73,11 @@ final class SpacedRepetitionEngineTests: XCTestCase {
         XCTAssertGreaterThan(card.easeFactor, 2.5) // Ease factor increases for good answers
     }
 
+    @MainActor
     func testReviewCard_Incorrect() {
         // Create a learning card
-        let card = LearningCard(front: "Front", back: "Back", project: project)
+        let card = LearningCard(front: "Front", back: "Back")
+        card.project = project
         // Simulate previous successful reviews
         card.repetitions = 2
         card.interval = 6
@@ -89,14 +94,17 @@ final class SpacedRepetitionEngineTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(card.easeFactor, 1.3)
     }
 
+    @MainActor
     func testLoadDueCards() {
         // Create a card due yesterday
-        let dueCard = LearningCard(front: "Due", back: "Card", project: project)
+        let dueCard = LearningCard(front: "Due", back: "Card")
+        dueCard.project = project
         dueCard.nextReviewDate = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
         modelContext.insert(dueCard)
 
         // Create a card due tomorrow
-        let futureCard = LearningCard(front: "Future", back: "Card", project: project)
+        let futureCard = LearningCard(front: "Future", back: "Card")
+        futureCard.project = project
         futureCard.nextReviewDate = Calendar.current.date(byAdding: .day, value: 1, to: Date())!
         modelContext.insert(futureCard)
 

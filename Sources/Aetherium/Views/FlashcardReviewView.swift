@@ -12,6 +12,7 @@ struct FlashcardReviewView: View {
     @State private var isShowingAnswer = false
     @State private var sessionStats = SessionStats()
     @State private var showingCongratulations = false
+    @State private var showingNewCardSheet = false
 
     init(project: AetheriumProject, modelContext: ModelContext) {
         self.project = project
@@ -73,11 +74,23 @@ struct FlashcardReviewView: View {
                 )
             } else {
                 EmptyReviewView(
-                    onCreateCard: { /* TODO */ }
+                    onCreateCard: { showingNewCardSheet = true }
                 )
             }
         }
         .navigationTitle("Review Flashcards")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: { showingNewCardSheet = true }) {
+                    Label("New Card", systemImage: "plus.circle.fill")
+                }
+            }
+        }
+        .sheet(isPresented: $showingNewCardSheet) {
+            NewFlashcardSheet(project: project, modelContext: modelContext) {
+                srEngine.loadDueCards(for: project)
+            }
+        }
         .task {
             srEngine.loadDueCards(for: project)
         }
@@ -427,6 +440,90 @@ struct FlashcardStatRow: View {
             Text(value)
                 .fontWeight(.semibold)
         }
+    }
+}
+
+// MARK: - New Flashcard Sheet
+
+struct NewFlashcardSheet: View {
+    let project: AetheriumProject
+    let modelContext: ModelContext
+    let onCreated: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var front = ""
+    @State private var back = ""
+    @State private var selectedType: CardType = .basic
+    @State private var difficulty = 3
+    @State private var tagsText = ""
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("New Flashcard")
+                .font(.headline)
+
+            Form {
+                Section("Card Content") {
+                    TextField("Front (question)", text: $front, axis: .vertical)
+                        .lineLimit(2...6)
+
+                    TextField("Back (answer)", text: $back, axis: .vertical)
+                        .lineLimit(2...6)
+                }
+
+                Section("Options") {
+                    Picker("Type", selection: $selectedType) {
+                        Text("Basic").tag(CardType.basic)
+                        Text("Cloze Deletion").tag(CardType.cloze)
+                        Text("Reversed").tag(CardType.reversed)
+                    }
+
+                    Picker("Difficulty", selection: $difficulty) {
+                        ForEach(1...5, id: \.self) { level in
+                            Text("\(level)").tag(level)
+                        }
+                    }
+
+                    TextField("Tags (comma-separated)", text: $tagsText)
+                }
+            }
+
+            HStack {
+                Button("Cancel") {
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+
+                Button("Create") {
+                    createCard()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(front.isEmpty || back.isEmpty)
+            }
+        }
+        .padding()
+        .frame(width: 450, height: 420)
+    }
+
+    private func createCard() {
+        let tags = tagsText
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        let card = LearningCard(
+            front: front,
+            back: back,
+            cardType: selectedType,
+            difficulty: difficulty,
+            tags: tags
+        )
+        card.project = project
+
+        modelContext.insert(card)
+        onCreated()
+        dismiss()
     }
 }
 

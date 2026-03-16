@@ -76,8 +76,9 @@ final class CriticalWorkflowsTests: XCTestCase {
     var ollamaService: OllamaService!
     var session: URLSession!
 
+    @MainActor
     override func setUp() async throws {
-        super.setUp()
+        try await super.setUp()
         // SwiftData setup
         let schema = Schema([AetheriumProject.self, ChatSession.self, Message.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
