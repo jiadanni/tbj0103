@@ -699,7 +699,7 @@ struct DetailViewRouter: View {
                 ProjectDashboardView(project: project, modelContext: modelContext)
 
             case .chat:
-                ChatNavigationView(project: project)
+                ChatNavigationView(workspace: project)
 
             case .dailyNotes:
                 DailyNotesView(project: project, modelContext: modelContext)
@@ -734,62 +734,330 @@ struct DetailViewRouter: View {
 // MARK: - Chat Navigation View
 
 struct ChatNavigationView: View {
-    let project: Workspace
+    let workspace: Workspace
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var shortcutManager: ShortcutManager
+    @EnvironmentObject var ollamaService: OllamaService
     @State private var selectedChat: ChatSession?
+    @State private var showingNewProject = false
+    @State private var projectToEdit: Project?
+
+    /// Chats attached directly to the workspace (no project).
+    private var quickChats: [ChatSession] {
+        workspace.directChatSessions.sorted(by: { $0.updatedAt > $1.updatedAt })
+    }
 
     var body: some View {
         HSplitView {
-            // Chat list
+            // Sidebar: Quick Chats + Projects → Chats
             VStack(spacing: 0) {
-                ChatSessionListHeaderView(project: project)
-                    .environmentObject(shortcutManager)
+                // Header with new chat + new project buttons
+                HStack {
+                    Text("Chats")
+                        .font(.headline)
+
+                    Spacer()
+
+                    Button(action: createQuickChat) {
+                        Image(systemName: "plus.message.fill")
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .help("New Chat")
+
+                    Button(action: { showingNewProject = true }) {
+                        Image(systemName: "folder.badge.plus")
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .help("New Project")
+                }
+                .padding()
 
                 Divider()
 
-                if project.chatSessions.isEmpty {
-                    ContentUnavailableView(
-                        "No Chats",
-                        systemImage: "message",
-                        description: Text("Start a new conversation")
-                    )
-                } else {
-                    List(project.chatSessions, selection: $selectedChat) { chat in
-                        ChatSessionRowView(chat: chat)
-                            .tag(chat)
+                List(selection: $selectedChat) {
+                    // Quick chats section (project-less)
+                    if !quickChats.isEmpty {
+                        Section {
+                            ForEach(quickChats) { chat in
+                                ChatSessionRowView(chat: chat)
+                                    .tag(chat)
+                            }
+                        } header: {
+                            HStack {
+                                Label("Chats", systemImage: "message")
+                                Spacer()
+                                Text("\(quickChats.count)")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+
+                    // Project sections
+                    ForEach(workspace.projects.sorted(by: { $0.updatedAt > $1.updatedAt })) { project in
+                        Section {
+                            ForEach(project.chatSessions.sorted(by: { $0.updatedAt > $1.updatedAt })) { chat in
+                                ChatSessionRowView(chat: chat)
+                                    .tag(chat)
+                            }
+
+                            if project.chatSessions.isEmpty {
+                                Text("No chats")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        } header: {
+                            HStack {
+                                Text(project.title)
+                                Spacer()
+                                Text("\(project.chatSessions.count)")
+                                    .foregroundColor(.secondary)
+                            }
+                            .contextMenu {
+                                Button("Edit Project") {
+                                    projectToEdit = project
+                                }
+
+                                Button("New Chat in \(project.title)") {
+                                    createChatInProject(project)
+                                }
+                            }
+                        }
+                    }
+
+                    if workspace.projects.isEmpty && quickChats.isEmpty {
+                        ContentUnavailableView(
+                            "No Chats",
+                            systemImage: "message",
+                            description: Text("Tap + to start a new chat")
+                        )
                     }
                 }
+                .listStyle(.sidebar)
             }
-            .frame(minWidth: 200, maxWidth: 300)
+            .frame(minWidth: 220, maxWidth: 320)
 
             // Chat detail
             if let chat = selectedChat {
                 ChatView(chatSession: chat) { branchedSession in
-                                selectedChat = branchedSession
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    selectedChat = branchedSession
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ContentUnavailableView(
                     "No Chat Selected",
                     systemImage: "message.badge.questionmark",
-                    description: Text("Select a chat to start conversing")
+                    description: Text("Select a chat or tap + to start one")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $showingNewProject) {
+            NewProjectSheet(workspace: workspace, isPresented: $showingNewProject)
+        }
+        .sheet(item: $projectToEdit) { project in
+            EditProjectSheet(project: project)
+        }
+        .onAppear {
+            // Auto-select first chat
+            if selectedChat == nil {
+                selectedChat = quickChats.first ?? workspace.projects.first?.chatSessions.sorted(by: { $0.updatedAt > $1.updatedAt }).first
+            }
+        }
+        .keyboardShortcut(shortcutManager.newChatKeyEquivalent, modifiers: shortcutManager.newChatModifiers)
+    }
+
+    private func createQuickChat() {
+        let chat = ChatSession(
+            modelName: AppSettings.shared.preferredModel,
+            isLocal: true
+        )
+        chat.workspace = workspace
+        modelContext.insert(chat)
+        selectedChat = chat
+    }
+
+    private func createChatInProject(_ project: Project) {
+        let chat = ChatSession(
+            modelName: AppSettings.shared.preferredModel,
+            isLocal: true
+        )
+        chat.project = project
+        modelContext.insert(chat)
+        selectedChat = chat
+    }
+}
+
+// MARK: - Project Row
+
+struct ProjectRowView: View {
+    let project: Project
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(project.title)
+                .font(.body)
+                .fontWeight(.medium)
+                .lineLimit(1)
+
+            HStack(spacing: 8) {
+                Label("\(project.chatSessions.count)", systemImage: "message")
+
+                if !project.customInstructions.isEmpty {
+                    Image(systemName: "doc.text")
+                        .foregroundColor(.green)
+                }
+
+                if !project.documents.isEmpty {
+                    Label("\(project.documents.count)", systemImage: "folder")
+                }
+            }
+            .font(.caption2)
+            .foregroundColor(.secondary)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+// MARK: - New Project Sheet
+
+struct NewProjectSheet: View {
+    let workspace: Workspace
+    @Binding var isPresented: Bool
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title = ""
+    @State private var customInstructions = ""
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("New Project")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("Project Title", text: $title)
+                    .textFieldStyle(.roundedBorder)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Custom Instructions")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    TextEditor(text: $customInstructions)
+                        .font(.body)
+                        .frame(minHeight: 80, maxHeight: 160)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                        )
+                }
+            }
+
+            Text("Projects group related chats. Custom instructions are injected as a system prompt into every chat in this project.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            HStack {
+                Button("Cancel") {
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+                .keyboardShortcut(.cancelAction)
+
+                Button("Create") {
+                    let project = Project(
+                        title: title,
+                        customInstructions: customInstructions
+                    )
+                    project.workspace = workspace
+                    modelContext.insert(project)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
+    }
+}
+
+// MARK: - Edit Project Sheet
+
+struct EditProjectSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let project: Project
+
+    @State private var title: String
+    @State private var customInstructions: String
+
+    init(project: Project) {
+        self.project = project
+        _title = State(initialValue: project.title)
+        _customInstructions = State(initialValue: project.customInstructions)
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Edit Project")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("Project Title", text: $title)
+                    .textFieldStyle(.roundedBorder)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Custom Instructions")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    TextEditor(text: $customInstructions)
+                        .font(.body)
+                        .frame(minHeight: 80, maxHeight: 160)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                        )
+                }
+            }
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+
+                Button("Save") {
+                    project.title = title
+                    project.customInstructions = customInstructions
+                    project.updateTimestamp()
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
     }
 }
 
 struct ChatSessionListHeaderView: View {
-    let project: Workspace
+    let project: Project
     @State private var showingNewChat = false
     @EnvironmentObject var shortcutManager: ShortcutManager
 
     var body: some View {
         HStack {
             Text("Chats")
-                .font(.headline)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.secondary)
 
             Spacer()
 
@@ -798,7 +1066,8 @@ struct ChatSessionListHeaderView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding()
+        .padding(.horizontal)
+        .padding(.vertical, 8)
         .sheet(isPresented: $showingNewChat) {
             NewChatSheet(project: project, isPresented: $showingNewChat)
         }
@@ -900,7 +1169,7 @@ struct FeatureBadge: View {
 // MARK: - New Chat Sheet
 
 struct NewChatSheet: View {
-    let project: Workspace
+    let project: Project
     @Binding var isPresented: Bool
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var ollamaService: OllamaService

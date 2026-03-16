@@ -1,0 +1,150 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =====================================================
+   Aetherium CSS Custom Properties (Theme Variables)
+   Mirrors ThemeManager.swift
+   ===================================================== */
+
+:root {
+  --accent-color: #007AFF;
+  --sidebar-width: 240px;
+  --font-size-base: 14px;
+}
+
+/* System theme (default) */
+.theme-system {
+  color-scheme: light dark;
+}
+
+/* Light */
+.theme-light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-sidebar: #f0f0f0;
+  --text-primary: #1a1a1a;
+  --text-secondary: #6b7280;
+  --border: #e5e7eb;
+}
+
+/* Dark */
+.theme-dark {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #242424;
+  --bg-sidebar: #1e1e1e;
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --border: #374151;
+}
+
+/* OLED black */
+.theme-oled {
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-sidebar: #050505;
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+  --border: #27272a;
+}
+
+/* Sepia */
+.theme-sepia {
+  --bg-primary: #f4ecd8;
+  --bg-secondary: #ede4cc;
+  --bg-sidebar: #e8dfc8;
+  --text-primary: #3b2f1e;
+  --text-secondary: #7a6040;
+  --border: #d6c9a8;
+}
+
+/* Hacker green */
+.theme-hacker {
+  --bg-primary: #0a0f0a;
+  --bg-secondary: #0d150d;
+  --bg-sidebar: #0b110b;
+  --text-primary: #00ff41;
+  --text-secondary: #008f11;
+  --border: #003b00;
+}
+
+/* =====================================================
+   Global Reset
+   ===================================================== */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: var(--font-size-base, 14px);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* =====================================================
+   Scrollbars (macOS-like thin scrollbars)
+   ===================================================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* =====================================================
+   Markdown prose styling overrides
+   ===================================================== */
+.prose pre {
+  @apply rounded-lg text-sm;
+}
+.prose code:not(pre code) {
+  @apply px-1.5 py-0.5 rounded text-sm bg-gray-100 dark:bg-gray-800 text-pink-600 dark:text-pink-400;
+  font-weight: normal;
+}
+
+/* =====================================================
+   [[Concept]] link highlighting
+   ===================================================== */
+.wiki-link {
+  @apply text-blue-600 dark:text-blue-400 cursor-pointer underline underline-offset-2 decoration-dotted;
+}
+.wiki-link:hover {
+  @apply text-blue-700 dark:text-blue-300;
+}
+
+/* =====================================================
+   Chat message bubbles
+   ===================================================== */
+.message-user {
+  @apply bg-blue-600 text-white rounded-2xl rounded-tr-sm;
+}
+.message-assistant {
+  @apply bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-2xl rounded-tl-sm;
+}
+
+/* =====================================================
+   Streaming cursor animation
+   ===================================================== */
+.streaming-cursor::after {
+  content: "▋";
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

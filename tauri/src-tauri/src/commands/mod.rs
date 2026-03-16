@@ -1,0 +1,16 @@
+pub mod workspace;
+pub mod project;
+pub mod chat;
+pub mod knowledge_graph;
+pub mod learning_goal;
+pub mod flashcard;
+pub mod note;
+pub mod document;
+pub mod search;
+pub mod ollama;
+pub mod export;
+pub mod backup;
+pub mod settings;
+pub mod graph;
+pub mod demo;
+pub mod alarm;

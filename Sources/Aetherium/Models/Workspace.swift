@@ -13,6 +13,7 @@ final class Workspace {
     @Relationship(deleteRule: .cascade) var projects: [Project] = []
     @Relationship(deleteRule: .cascade) var sources: [ProjectSource] = []
     @Relationship(deleteRule: .cascade) var concepts: [ConceptNode] = []
+    @Relationship(deleteRule: .cascade) var directChatSessions: [ChatSession] = []
 
     init(
         id: UUID = UUID(),
@@ -29,11 +30,12 @@ final class Workspace {
         self.learningGoals = []
         self.projects = []
         self.sources = []
+        self.directChatSessions = []
     }
 
-    /// All chat sessions across all projects in this workspace.
+    /// All chat sessions across all projects in this workspace, plus project-less chats.
     var chatSessions: [ChatSession] {
-        projects.flatMap { $0.chatSessions }
+        projects.flatMap { $0.chatSessions } + directChatSessions
     }
 
     func updateTimestamp() {

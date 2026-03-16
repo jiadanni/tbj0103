@@ -80,7 +80,7 @@ final class CriticalWorkflowsTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         // SwiftData setup
-        let schema = Schema([Workspace.self, ChatSession.self, Message.self])
+        let schema = Schema([Workspace.self, Project.self, ChatSession.self, Message.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         modelContainer = try ModelContainer(for: schema, configurations: [config])
         modelContext = ModelContext(modelContainer)
@@ -122,10 +122,14 @@ final class CriticalWorkflowsTests: XCTestCase {
 
     func testChatInteractionFlow() async {
         // Setup existing project and chat
-        let project = Workspace(title: "Chat Project", description: "Test")
-        let chatSession = ChatSession(title: "Swift Chat")
-        project.chatSessions.append(chatSession)
+        let workspace = Workspace(title: "Chat Project", description: "Test")
+        modelContext.insert(workspace)
+        let project = Project(title: "General")
+        project.workspace = workspace
         modelContext.insert(project)
+        let chatSession = ChatSession(title: "Swift Chat")
+        chatSession.project = project
+        modelContext.insert(chatSession)
 
         let viewModel = MockChatViewModel(chatSession: chatSession, ollamaService: ollamaService)
 

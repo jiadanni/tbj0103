@@ -14,6 +14,7 @@ final class SpacedRepetitionEngineTests: XCTestCase {
         // Create an in-memory ModelContainer
         let schema = Schema([
             Workspace.self,
+            Project.self,
             LearningCard.self,
             ChatSession.self,
             LearningGoal.self,

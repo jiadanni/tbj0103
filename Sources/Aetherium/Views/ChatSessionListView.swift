@@ -247,7 +247,7 @@ struct SessionListNewChatSheet: View {
             isLocal: true,
             systemPrompt: customSystemPrompt.isEmpty ? nil : customSystemPrompt
         )
-        newChat.project = project
+        newChat.project = project.projects.first
         modelContext.insert(newChat)
         dismiss()
     }

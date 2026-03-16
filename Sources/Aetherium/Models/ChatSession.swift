@@ -11,7 +11,8 @@ final class ChatSession {
     var isLocal: Bool // Whether using Ollama or cloud API
 
     @Relationship(deleteRule: .cascade) var messages: [Message]
-    var project: Workspace?
+    var project: Project?
+    var workspace: Workspace? // For project-less chats attached directly to a workspace
 
     var systemPrompt: String?
 
@@ -98,6 +99,7 @@ final class ChatSession {
             branchLabel: "Branched at message #\(index + 1)"
         )
         branchSession.project = project
+        branchSession.workspace = workspace
         branchSession.extractedTopics = extractedTopics
         branchSession.relatedGoalIDs = relatedGoalIDs
 
