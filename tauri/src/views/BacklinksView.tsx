@@ -13,8 +13,7 @@ interface BacklinkGroup {
 }
 
 export default function BacklinksView() {
-  const { activeWorkspaceId, activeProjectId, projects } = useWorkspaceStore();
-  const project = projects.find((p) => p.id === activeProjectId);
+  const { activeWorkspaceId } = useWorkspaceStore();
 
   const [conceptSearch, setConceptSearch] = useState("");
   const [groups, setGroups] = useState<BacklinkGroup[]>([]);
@@ -25,7 +24,7 @@ export default function BacklinksView() {
 
   // Load concepts across this workspace that have mentions
   const loadBacklinks = useCallback(async () => {
-    if (!activeWorkspaceId || !activeProjectId) return;
+    if (!activeWorkspaceId) return;
     setLoading(true);
     try {
       // Get concept nodes for this workspace, filter by search
@@ -49,7 +48,7 @@ export default function BacklinksView() {
     } finally {
       setLoading(false);
     }
-  }, [activeWorkspaceId, activeProjectId, conceptSearch]);
+  }, [activeWorkspaceId, conceptSearch]);
 
   useEffect(() => {
     loadBacklinks();
@@ -200,9 +199,9 @@ export default function BacklinksView() {
           <div className="flex-1 flex flex-col items-center justify-center text-[var(--text-secondary)]">
             <Link2 size={40} className="mb-4 opacity-20" />
             <p className="text-sm">
-              {project
+              {activeWorkspaceId
                 ? `Backlinks for workspace ${activeWorkspaceId?.slice(0, 8)}…`
-                : "Select a project to view backlinks"}
+                : "No workspace active"}
             </p>
             <p className="text-xs mt-1 opacity-60">
               Click a concept → source to preview the note

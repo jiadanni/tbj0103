@@ -11,7 +11,7 @@ import SmartTextEditor from "../components/SmartTextEditor";
 const NOTE_TYPES = ["manual", "ai_generated", "quiz"] as const;
 
 export default function NoteEditorView() {
-  const { activeProjectId } = useWorkspaceStore();
+  const { activeWorkspaceId } = useWorkspaceStore();
   const [notes, setNotes] = useState<ProjectNote[]>([]);
   const [selected, setSelected] = useState<ProjectNote | null>(null);
   const [title, setTitle] = useState("");
@@ -29,9 +29,9 @@ export default function NoteEditorView() {
   );
 
   useEffect(() => {
-    if (!activeProjectId) return;
-    api.note.list(activeProjectId).then(setNotes).catch(() => {});
-  }, [activeProjectId]);
+    if (!activeWorkspaceId) return;
+    api.note.list(activeWorkspaceId).then(setNotes).catch(() => {});
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     if (!selected) return;
@@ -63,10 +63,10 @@ export default function NoteEditorView() {
   }, [title, content, tags]);
 
   async function createNote() {
-    if (!activeProjectId || creating) return;
+    if (!activeWorkspaceId || creating) return;
     setCreating(true);
     try {
-      const note = await api.note.create(activeProjectId, "Untitled Note");
+      const note = await api.note.create(activeWorkspaceId, "Untitled Note");
       setNotes((prev) => [note, ...prev]);
       setSelected(note);
     } finally {
@@ -104,7 +104,7 @@ export default function NoteEditorView() {
           </div>
           <button
             onClick={createNote}
-            disabled={!activeProjectId || creating}
+            disabled={!activeWorkspaceId || creating}
             title="New Note"
             className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--accent-color)] disabled:opacity-40 transition-colors"
           >
@@ -113,9 +113,7 @@ export default function NoteEditorView() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {!activeProjectId ? (
-            <p className="p-4 text-xs text-[var(--text-muted)] text-center">Select a project to view notes.</p>
-          ) : filtered.length === 0 ? (
+          {filtered.length === 0 ? (
             <p className="p-4 text-xs text-[var(--text-muted)] text-center">No notes yet. Click + to create one.</p>
           ) : (
             filtered.map((note) => (
@@ -224,7 +222,7 @@ export default function NoteEditorView() {
           <div className="text-center space-y-2">
             <FileText size={32} className="mx-auto opacity-30" />
             <p className="text-sm">Select a note to edit</p>
-            {activeProjectId && (
+            {activeWorkspaceId && (
               <button
                 onClick={createNote}
                 className="text-xs text-[var(--accent-color)] hover:underline"

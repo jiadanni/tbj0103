@@ -8,7 +8,7 @@ pub fn upload_document(state: State<DbState>, req: UploadDocumentRequest) -> Res
     let now = chrono::Utc::now().to_rfc3339();
     let doc = UploadedDocument {
         id: uuid::Uuid::new_v4().to_string(),
-        project_id: req.project_id,
+        workspace_id: req.workspace_id,
         filename: req.filename,
         file_type: req.file_type,
         file_size: req.file_size,
@@ -20,25 +20,25 @@ pub fn upload_document(state: State<DbState>, req: UploadDocumentRequest) -> Res
         updated_at: now,
     };
     conn.execute(
-        "INSERT INTO uploaded_documents (id, project_id, filename, file_type, file_size, content, is_processed, created_at, updated_at)
+        "INSERT INTO uploaded_documents (id, workspace_id, filename, file_type, file_size, content, is_processed, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8)",
-        rusqlite::params![doc.id, doc.project_id, doc.filename, doc.file_type, doc.file_size, doc.content, doc.created_at, doc.updated_at],
+        rusqlite::params![doc.id, doc.workspace_id, doc.filename, doc.file_type, doc.file_size, doc.content, doc.created_at, doc.updated_at],
     ).map_err(|e| e.to_string())?;
     Ok(doc)
 }
 
 #[tauri::command]
-pub fn list_documents(state: State<DbState>, project_id: String) -> Result<Vec<UploadedDocument>, String> {
+pub fn list_documents(state: State<DbState>, workspace_id: String) -> Result<Vec<UploadedDocument>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT d.id, d.project_id, d.filename, d.file_type, d.file_size, d.content, d.summary, d.is_processed,
+        "SELECT d.id, d.workspace_id, d.filename, d.file_type, d.file_size, d.content, d.summary, d.is_processed,
                 (SELECT COUNT(*) FROM document_chunks WHERE document_id = d.id), d.created_at, d.updated_at
-         FROM uploaded_documents d WHERE d.project_id = ?1 ORDER BY d.created_at DESC"
+         FROM uploaded_documents d WHERE d.workspace_id = ?1 ORDER BY d.created_at DESC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![project_id], |row| {
+    let items = stmt.query_map(rusqlite::params![workspace_id], |row| {
         Ok(UploadedDocument {
             id: row.get(0)?,
-            project_id: row.get(1)?,
+            workspace_id: row.get(1)?,
             filename: row.get(2)?,
             file_type: row.get(3)?,
             file_size: row.get(4)?,
@@ -59,12 +59,12 @@ pub fn list_documents(state: State<DbState>, project_id: String) -> Result<Vec<U
 pub fn get_document(state: State<DbState>, id: String) -> Result<Option<UploadedDocument>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, project_id, filename, file_type, file_size, content, summary, is_processed, NULL, created_at, updated_at
+        "SELECT id, workspace_id, filename, file_type, file_size, content, summary, is_processed, NULL, created_at, updated_at
          FROM uploaded_documents WHERE id = ?1",
         rusqlite::params![id],
         |row| Ok(UploadedDocument {
             id: row.get(0)?,
-            project_id: row.get(1)?,
+            workspace_id: row.get(1)?,
             filename: row.get(2)?,
             file_type: row.get(3)?,
             file_size: row.get(4)?,
