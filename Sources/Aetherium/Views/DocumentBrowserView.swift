@@ -178,6 +178,28 @@ struct DocumentBrowserView: View {
                     source.processedAt = Date()
 
                     modelContext.insert(source)
+
+                    if let summaryEntity = document.decodedMetadata?.extractedEntities.first(where: { $0.hasPrefix("summary: ") }) {
+                        let prefixCount = "summary: ".count
+                        let summaryText = String(summaryEntity.dropFirst(prefixCount))
+                        let summaryNote = ProjectNote(
+                            title: "Summary: \(document.filename)",
+                            content: summaryText,
+                            noteType: .aiGenerated,
+                            tags: ["summary", "auto-generated"]
+                        )
+                        let noteSource = ProjectSource(
+                            sourceType: .note,
+                            title: summaryNote.title
+                        )
+                        noteSource.note = summaryNote
+                        noteSource.project = project
+                        noteSource.processedAt = Date()
+
+                        modelContext.insert(summaryNote)
+                        modelContext.insert(noteSource)
+                    }
+
                     project.updateTimestamp()
                 }
             } catch {

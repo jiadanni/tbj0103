@@ -92,8 +92,8 @@ struct ContentView: View {
                     Divider()
 
                     if let project = selectedProject {
-                        Button("Project Settings") {
-                            // TODO: Show settings
+                        NavigationLink(destination: ProjectSettingsView(project: project)) {
+                            Label("Project Settings", systemImage: "gear")
                         }
 
                         Divider()
@@ -192,6 +192,7 @@ enum NavigationView: String, CaseIterable, Identifiable {
     case flashcards = "Flashcards"
     case learningPaths = "Learning Paths"
     case plugins = "Plugins"
+    case modelComparison = "Compare Models"
 
     var id: String { rawValue }
 
@@ -205,6 +206,7 @@ enum NavigationView: String, CaseIterable, Identifiable {
         case .flashcards: return "rectangle.stack.fill"
         case .learningPaths: return "map.fill"
         case .plugins: return "puzzlepiece.extension"
+        case .modelComparison: return "scale.3d"
         }
     }
 
@@ -218,6 +220,7 @@ enum NavigationView: String, CaseIterable, Identifiable {
         case .flashcards: return "6"
         case .learningPaths: return "7"
         case .plugins: return "8"
+        case .modelComparison: return "9"
         }
     }
 }
@@ -344,6 +347,9 @@ struct DetailViewRouter: View {
 
             case .plugins:
                 PluginManagerView()
+
+            case .modelComparison:
+                ModelComparisonView(project: project)
             }
         }
         .navigationTitle(selectedView.rawValue)
@@ -516,8 +522,11 @@ struct NewChatSheet: View {
     let project: AetheriumProject
     @Binding var isPresented: Bool
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var ollamaService: OllamaService
 
     @State private var title = ""
+    @State private var customSystemPrompt = ""
+    @State private var selectedModel = "qwen2.5:7b"
 
     var body: some View {
         VStack(spacing: 20) {
@@ -526,6 +535,22 @@ struct NewChatSheet: View {
 
             TextField("Chat Title", text: $title)
                 .textFieldStyle(.roundedBorder)
+
+            TextField("System Prompt (optional)", text: $customSystemPrompt, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...3)
+
+            Picker("Model", selection: $selectedModel) {
+                ForEach(ollamaService.availableModels) { model in
+                    Text(model.name).tag(model.name)
+                }
+
+                if ollamaService.availableModels.isEmpty {
+                    Text("qwen2.5:7b").tag("qwen2.5:7b")
+                    Text("llama3.2:latest").tag("llama3.2:latest")
+                }
+            }
+            .pickerStyle(.menu)
 
             HStack {
                 Button("Cancel") {
@@ -541,11 +566,21 @@ struct NewChatSheet: View {
             }
         }
         .padding()
-        .frame(width: 300)
+        .frame(width: 350)
+        .task {
+            try? await ollamaService.fetchAvailableModels()
+            selectedModel = project.defaultModelName ?? "qwen2.5:7b"
+            customSystemPrompt = project.systemPrompt ?? ""
+        }
     }
 
     private func createChat() {
-        let chat = ChatSession(title: title)
+        let chat = ChatSession(
+            title: title.isEmpty ? "New Chat" : title,
+            modelName: selectedModel,
+            isLocal: true,
+            systemPrompt: customSystemPrompt.isEmpty ? nil : customSystemPrompt
+        )
         chat.project = project
         modelContext.insert(chat)
         isPresented = false

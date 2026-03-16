@@ -274,9 +274,49 @@ class SemanticSearchEngine: ObservableObject {
         return results
     }
 
+    // MARK: - Semantic Deduplication
+
+    func findDuplicateNotes(in project: AetheriumProject, threshold: Double = 0.85) async throws -> [(ProjectNote, ProjectNote, Double)] {
+        var duplicates: [(ProjectNote, ProjectNote, Double)] = []
+        let notes = project.sources.compactMap { $0.note }
+
+        guard notes.count > 1 else { return duplicates }
+
+        // Generate embeddings for all notes
+        var noteEmbeddings: [UUID: [Float]] = [:]
+        for note in notes {
+            let combinedText = "\(note.title) \(note.content)"
+            if let embedding = try? await ollamaService.generateEmbedding(combinedText) {
+                noteEmbeddings[note.id] = embedding
+            }
+        }
+
+        // Compare pairs
+        for i in 0..<notes.count {
+            for j in (i+1)..<notes.count {
+                let noteA = notes[i]
+                let noteB = notes[j]
+
+                guard let embA = noteEmbeddings[noteA.id], let embB = noteEmbeddings[noteB.id] else {
+                    continue
+                }
+
+                let similarity = cosineSimilarity(embA, embB)
+                if similarity >= threshold {
+                    duplicates.append((noteA, noteB, similarity))
+                }
+            }
+        }
+
+        // Sort by highest similarity
+        duplicates.sort { $0.2 > $1.2 }
+
+        return duplicates
+    }
+
     // MARK: - Similarity Calculation
 
-    private func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Double {
+    func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Double {
         guard a.count == b.count else { return 0.0 }
 
         let dotProduct = zip(a, b).map(*).reduce(0, +)
