@@ -94,7 +94,13 @@ export interface CalendarAlarm {
   created_at: string;
 }
 
-export interface StreamEvent { session_id: string; chunk: string; done: boolean; }
+export interface StreamEvent { session_id: string; chunk: string; done: boolean; tokens_used?: number; }
+
+export interface AiModel {
+  id: string; name: string; model_id: string; provider: string;
+  priority: number; is_paid: boolean; enabled: boolean;
+  tokens_used_total: number; created_at: string;
+}
 
 // ----- Workspaces -----
 export const api = {
@@ -124,8 +130,8 @@ export const api = {
     deleteSession: (id: string) => invoke<void>("delete_chat_session", { id }),
     updateSession: (id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string }) =>
       invoke<void>("update_chat_session", { id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt }),
-    addMessage: (sessionId: string, role: "user" | "assistant", content: string) =>
-      invoke<Message>("add_message", { req: { session_id: sessionId, role, content } }),
+    addMessage: (sessionId: string, role: "user" | "assistant", content: string, modelName?: string, tokensUsed?: number) =>
+      invoke<Message>("add_message", { req: { session_id: sessionId, role, content, model_name: modelName, tokens_used: tokensUsed } }),
     getMessages: (sessionId: string) => invoke<Message[]>("get_messages", { sessionId }),
   },
 
@@ -271,9 +277,21 @@ export const api = {
       invoke<void>("update_web_capture", { id, ...fields }),
   },
 
+  aiModel: {
+    list: () => invoke<AiModel[]>("list_ai_models"),
+    add: (name: string, modelId: string, opts?: { provider?: string; is_paid?: boolean; priority?: number }) =>
+      invoke<AiModel>("add_ai_model", { req: { name, model_id: modelId, ...opts } }),
+    update: (id: string, fields: { name?: string; priority?: number; is_paid?: boolean; enabled?: boolean }) =>
+      invoke<AiModel>("update_ai_model", { req: { id, ...fields } }),
+    delete: (id: string) => invoke<void>("delete_ai_model", { id }),
+    getDefault: () => invoke<AiModel>("get_default_model"),
+    recordTokenUsage: (modelId: string, tokens: number) =>
+      invoke<void>("record_model_token_usage", { modelId, tokens }),
+  },
+
   // Streaming: listen to Ollama stream events for a session
-  listenStream: (sessionId: string, onChunk: (chunk: string, done: boolean) => void): Promise<UnlistenFn> =>
+  listenStream: (sessionId: string, onChunk: (chunk: string, done: boolean, tokensUsed?: number) => void): Promise<UnlistenFn> =>
     listen<StreamEvent>(`ollama-stream-${sessionId}`, (event) => {
-      onChunk(event.payload.chunk, event.payload.done);
+      onChunk(event.payload.chunk, event.payload.done, event.payload.tokens_used);
     }),
 };

@@ -1,0 +1,32 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiModel {
+    pub id: String,
+    pub name: String,
+    pub model_id: String,
+    pub provider: String,
+    pub priority: i64,
+    pub is_paid: bool,
+    pub enabled: bool,
+    pub tokens_used_total: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddAiModelRequest {
+    pub name: String,
+    pub model_id: String,
+    pub provider: Option<String>,
+    pub is_paid: Option<bool>,
+    pub priority: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateAiModelRequest {
+    pub id: String,
+    pub name: Option<String>,
+    pub priority: Option<i64>,
+    pub is_paid: Option<bool>,
+    pub enabled: Option<bool>,
+}

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
-import { Send, Plus, Trash2, Copy, ChevronDown } from "lucide-react";
-import { api } from "../lib/api";
+import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check } from "lucide-react";
+import { api, type AiModel } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 import { useWorkspaceStore, type Project } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -25,6 +25,11 @@ export default function ChatView() {
   const [selectedModel, setSelectedModel] = useState(preferredModel || "");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [showSessions, setShowSessions] = useState(false);
+  const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
+  const [lastUserMessage, setLastUserMessage] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -50,17 +55,41 @@ export default function ChatView() {
       .catch(() => {});
   }, [activeChatId, messages, setMessages]);
 
-  // Load available models — auto-select if preferred model is not installed
+  // Load AI model priority list + fallback to raw Ollama models
   useEffect(() => {
-    api.ollama.listModels(ollamaUrl).then((m) => {
-      if (m.length > 0) {
-        const names = m.map((x) => x.name);
-        setAvailableModels(names);
-        if (!names.includes(selectedModel)) {
-          setSelectedModel(names[0]);
+    api.aiModel.list().then((models) => {
+      setAiModelList(models);
+      const enabled = models.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
+      if (enabled.length > 0) {
+        const modelIds = enabled.map((m) => m.model_id);
+        setAvailableModels(modelIds);
+        if (!modelIds.includes(selectedModel)) {
+          setSelectedModel(modelIds[0]);
         }
+        return;
       }
-    }).catch(() => {});
+      // Fallback to raw Ollama models
+      api.ollama.listModels(ollamaUrl).then((m) => {
+        if (m.length > 0) {
+          const names = m.map((x) => x.name);
+          setAvailableModels(names);
+          if (!names.includes(selectedModel)) {
+            setSelectedModel(names[0]);
+          }
+        }
+      }).catch(() => {});
+    }).catch(() => {
+      // If ai_model list fails, fallback to Ollama
+      api.ollama.listModels(ollamaUrl).then((m) => {
+        if (m.length > 0) {
+          const names = m.map((x) => x.name);
+          setAvailableModels(names);
+          if (!names.includes(selectedModel)) {
+            setSelectedModel(names[0]);
+          }
+        }
+      }).catch(() => {});
+    });
   }, [ollamaUrl]);
 
   // Scroll to bottom on new messages
@@ -90,6 +119,7 @@ export default function ChatView() {
     const userContent = input.trim();
     setInput("");
     setIsStreaming(true);
+    setLastUserMessage(userContent);
 
     // Persist user message
     const userMsg = await api.chat.addMessage(sessionId, "user", userContent);
@@ -104,14 +134,17 @@ export default function ChatView() {
 
     try {
       // Start listening to stream events BEFORE calling send
-      const unlisten = await api.listenStream(sessionId, (chunk, done) => {
+      const unlisten = await api.listenStream(sessionId, (chunk, done, tokensUsed) => {
         if (done) {
           finalizeStream(sessionId, selectedModel);
           setIsStreaming(false);
           unlisten();
-          // Persist the assembled content
+          // Persist the assembled content with model and token info
           const assembled = useChatStore.getState().streamingContent;
-          api.chat.addMessage(sessionId!, "assistant", assembled).catch(() => {});
+          api.chat.addMessage(sessionId!, "assistant", assembled, selectedModel, tokensUsed).catch(() => {});
+          if (tokensUsed && tokensUsed > 0) {
+            api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
+          }
         } else {
           appendStreamChunk(sessionId!, chunk);
         }
@@ -148,11 +181,109 @@ export default function ChatView() {
     if (activeChatId === id) setActiveChatId(null);
   }
 
-  function copyMessage(content: string) {
+  function copyMessage(msgId: string, content: string) {
     navigator.clipboard.writeText(content);
+    setCopiedMessageId(msgId);
+    setTimeout(() => setCopiedMessageId(null), 1500);
+  }
+
+  function startEditing(msgId: string, content: string) {
+    setEditingMessageId(msgId);
+    setEditContent(content);
+  }
+
+  async function submitEdit(msgId: string) {
+    if (!activeChatId || !editContent.trim()) return;
+    setEditingMessageId(null);
+    // Find the index of the edited message, remove it and all following messages
+    const idx = activeMessages.findIndex((m) => m.id === msgId);
+    if (idx < 0) return;
+    const trimmedMessages = activeMessages.slice(0, idx);
+    setMessages(activeChatId, trimmedMessages);
+    // Send the edited content as a new message
+    setInput("");
+    setIsStreaming(true);
+    setLastUserMessage(editContent.trim());
+
+    const userMsg = await api.chat.addMessage(activeChatId, "user", editContent.trim());
+    appendMessage(activeChatId, userMsg);
+
+    const history = trimmedMessages.map((m) => ({ role: m.role, content: m.content }));
+    history.push({ role: "user", content: editContent.trim() });
+
+    try {
+      const sid = activeChatId;
+      const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed) => {
+        if (done) {
+          finalizeStream(sid, selectedModel);
+          setIsStreaming(false);
+          unlisten();
+          const assembled = useChatStore.getState().streamingContent;
+          api.chat.addMessage(sid, "assistant", assembled, selectedModel, tokensUsed).catch(() => {});
+          if (tokensUsed && tokensUsed > 0) {
+            api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
+          }
+        } else {
+          appendStreamChunk(sid, chunk);
+        }
+      });
+      await api.ollama.sendMessage(sid, selectedModel, history, true, ollamaUrl);
+    } catch (err) {
+      setIsStreaming(false);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      appendStreamChunk(activeChatId, `\n\n⚠️ Error: ${errMsg}`);
+      finalizeStream(activeChatId, selectedModel);
+    }
+  }
+
+  async function redoMessage(msgId: string) {
+    if (!activeChatId || isStreaming) return;
+    // Find the assistant message, get the history up to just before it, and regenerate
+    const idx = activeMessages.findIndex((m) => m.id === msgId);
+    if (idx < 0) return;
+    const trimmedMessages = activeMessages.slice(0, idx);
+    setMessages(activeChatId, trimmedMessages);
+
+    const history = trimmedMessages.map((m) => ({ role: m.role, content: m.content }));
+
+    setIsStreaming(true);
+    try {
+      const sid = activeChatId;
+      const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed) => {
+        if (done) {
+          finalizeStream(sid, selectedModel);
+          setIsStreaming(false);
+          unlisten();
+          const assembled = useChatStore.getState().streamingContent;
+          api.chat.addMessage(sid, "assistant", assembled, selectedModel, tokensUsed).catch(() => {});
+          if (tokensUsed && tokensUsed > 0) {
+            api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
+          }
+        } else {
+          appendStreamChunk(sid, chunk);
+        }
+      });
+      await api.ollama.sendMessage(sid, selectedModel, history, true, ollamaUrl);
+    } catch (err) {
+      setIsStreaming(false);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      appendStreamChunk(activeChatId, `\n\n⚠️ Error: ${errMsg}`);
+      finalizeStream(activeChatId, selectedModel);
+    }
   }
 
   const activeProject = projects.find((p) => p.id === activeProjectId);
+
+  // Compute next-priority enabled model for "Try better model" button
+  const enabledModels = aiModelList.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
+  const currentModelIdx = enabledModels.findIndex((m) => m.model_id === selectedModel);
+  const nextModel = currentModelIdx >= 0 && currentModelIdx < enabledModels.length - 1 ? enabledModels[currentModelIdx + 1] : null;
+
+  // Map model_id to display name from priority list
+  const modelDisplayName = (modelId: string) => {
+    const found = aiModelList.find((m) => m.model_id === modelId);
+    return found ? found.name : modelId;
+  };
 
   // ── State 1: No project selected ──────────────────────────────────────────
   if (!activeProjectId) {
@@ -295,10 +426,23 @@ export default function ChatView() {
             className="text-xs px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none"
           >
             {availableModels.length > 0
-              ? availableModels.map((m) => <option key={m} value={m}>{m}</option>)
-              : <option value={selectedModel}>{selectedModel}</option>
+              ? availableModels.map((m) => <option key={m} value={m}>{modelDisplayName(m)}</option>)
+              : <option value={selectedModel}>{modelDisplayName(selectedModel)}</option>
             }
           </select>
+          {nextModel && !isStreaming && activeMessages.length > 0 && (
+            <button
+              onClick={() => {
+                setSelectedModel(nextModel.model_id);
+                if (lastUserMessage) setInput(lastUserMessage);
+              }}
+              title={`Try ${nextModel.name}`}
+              className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
+            >
+              <ArrowUpCircle size={12} />
+              Try {nextModel.name}
+            </button>
+          )}
         </div>
 
         {/* Messages */}
@@ -306,30 +450,82 @@ export default function ChatView() {
           {activeMessages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}
+              className={`group/msg flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}
             >
-              <div
-                className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
-                  msg.role === "user"
-                    ? "message-user"
-                    : "message-assistant"
-                }`}
-              >
-                {msg.role === "assistant" ? (
-                  <div className="prose prose-sm prose-invert max-w-none">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+              {editingMessageId === msg.id ? (
+                <div className="max-w-[75%] w-full flex flex-col gap-2">
+                  <textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    className="w-full resize-none px-3.5 py-2.5 text-sm rounded-xl bg-[var(--bg-elevated)] border border-[var(--accent-color)] text-[var(--text-primary)] outline-none max-h-40 overflow-y-auto"
+                    rows={3}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitEdit(msg.id); }
+                      if (e.key === "Escape") setEditingMessageId(null);
+                    }}
+                  />
+                  <div className="flex gap-1.5 justify-end">
+                    <button
+                      onClick={() => setEditingMessageId(null)}
+                      className="px-2.5 py-1 text-xs rounded-lg border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => submitEdit(msg.id)}
+                      className="px-2.5 py-1 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 transition-opacity"
+                    >
+                      Send
+                    </button>
                   </div>
-                ) : (
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                )}
-              </div>
-              <button
-                onClick={() => copyMessage(msg.content)}
-                className="opacity-0 hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-opacity"
-                title="Copy"
-              >
-                <Copy size={11} />
-              </button>
+                </div>
+              ) : (
+                <>
+                  <div
+                    className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
+                      msg.role === "user"
+                        ? "message-user"
+                        : "message-assistant"
+                    }`}
+                  >
+                    {msg.role === "assistant" ? (
+                      <div className="prose prose-sm prose-invert max-w-none">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    )}
+                  </div>
+                  <div className={`flex gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
+                    <button
+                      onClick={() => copyMessage(msg.id, msg.content)}
+                      className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                      title="Copy"
+                    >
+                      {copiedMessageId === msg.id ? <Check size={11} /> : <Copy size={11} />}
+                    </button>
+                    {msg.role === "user" && !isStreaming && (
+                      <button
+                        onClick={() => startEditing(msg.id, msg.content)}
+                        className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil size={11} />
+                      </button>
+                    )}
+                    {msg.role === "assistant" && !isStreaming && (
+                      <button
+                        onClick={() => redoMessage(msg.id)}
+                        className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                        title="Redo"
+                      >
+                        <RotateCcw size={11} />
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           ))}
 
