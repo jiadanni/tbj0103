@@ -6,6 +6,8 @@ struct AetheriumApp: App {
     @StateObject private var securityManager = SecurityManager()
     @StateObject private var ollamaService = OllamaService()
     @StateObject private var modelOrchestrator: ModelOrchestrator
+    @StateObject private var themeManager = ThemeManager()
+    @StateObject private var shortcutManager = ShortcutManager()
 
     let modelContainer: ModelContainer
 
@@ -50,6 +52,10 @@ struct AetheriumApp: App {
                         .environmentObject(securityManager)
                         .environmentObject(ollamaService)
                         .environmentObject(modelOrchestrator)
+                        .environmentObject(themeManager)
+                        .environmentObject(shortcutManager)
+                        .preferredColorScheme(themeManager.selectedTheme.colorScheme)
+                        .tint(themeManager.accentColor.color(customColor: themeManager.customAccentColor))
                 } else {
                     AuthenticationView()
                         .environmentObject(securityManager)
@@ -65,14 +71,14 @@ struct AetheriumApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Project") {
-                    // Action will be handled by view
+                    // Action will be handled by view via keyboard shortcut
                 }
-                .keyboardShortcut("n", modifiers: .command)
+                .keyboardShortcut(shortcutManager.newProjectKeyEquivalent, modifiers: shortcutManager.newProjectModifiers)
 
                 Button("New Chat") {
-                    // Action will be handled by view
+                    // Action will be handled by view via keyboard shortcut
                 }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .keyboardShortcut(shortcutManager.newChatKeyEquivalent, modifiers: shortcutManager.newChatModifiers)
             }
         }
     }
