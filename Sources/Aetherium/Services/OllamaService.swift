@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 struct OllamaMessage: Codable {
     let role: String
@@ -106,6 +107,12 @@ class OllamaService: ObservableObject {
 
     private let baseURL = "http://localhost:11434"
     private let session: URLSession
+    private let logger = Logger(subsystem: "com.aetherium.app", category: "OllamaService")
+
+    // MARK: - Embedding Cache
+
+    private let embeddingCache = NSCache<NSString, CachedEmbeddingEntry>()
+    private static let embeddingCacheTTL: TimeInterval = 3600 // 1 hour
 
     init(session: URLSession? = nil) {
         if let session = session {
@@ -133,7 +140,7 @@ class OllamaService: ObservableObject {
                 return isAvailable
             }
         } catch {
-            print("Ollama availability check failed: \(error.localizedDescription)")
+            logger.warning("Ollama availability check failed: \(error.localizedDescription)")
             isAvailable = false
             isOfflineMode = true
         }
@@ -207,11 +214,12 @@ class OllamaService: ObservableObject {
 
     func sendMessage(
         _ content: String,
-        model: String = "qwen2.5:7b",
+        model: String? = nil,
         context: [Message] = [],
         temperature: Double = 0.7,
         contextWindow: Int = 8192
     ) async throws -> String {
+        let model = model ?? AppSettings.shared.preferredModel
         guard let url = URL(string: "\(baseURL)/api/chat") else {
             throw OllamaError.invalidResponse
         }
@@ -244,17 +252,84 @@ class OllamaService: ObservableObject {
         return response.message.content
     }
 
+    // MARK: - Chat Title Generation
+
+    func generateChatTitle(
+        from messages: [Message],
+        model: String? = nil
+    ) async throws -> String {
+        let model = model ?? AppSettings.shared.preferredModel
+        guard let url = URL(string: "\(baseURL)/api/chat") else {
+            throw OllamaError.invalidResponse
+        }
+
+        // Build a summary of the conversation for the LLM
+        let conversationSummary = messages
+            .sorted { $0.timestamp < $1.timestamp }
+            .prefix(6)
+            .map { "\($0.role.rawValue): \($0.content.prefix(200))" }
+            .joined(separator: "\n")
+
+        let prompt = """
+        Generate a short, descriptive title (max 6 words) for this conversation. \
+        Return ONLY the title, no quotes, no punctuation at the end, no explanation.
+
+        Conversation:
+        \(conversationSummary)
+        """
+
+        let ollamaMessages = [
+            OllamaMessage(role: "system", content: "You generate concise chat titles. Respond with only the title."),
+            OllamaMessage(role: "user", content: prompt)
+        ]
+
+        let requestBody = OllamaRequest(
+            model: model,
+            messages: ollamaMessages,
+            stream: false,
+            options: OllamaRequest.OllamaOptions(
+                temperature: 0.3,
+                topP: 0.9,
+                numCtx: 2048
+            )
+        )
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
+
+        let response: OllamaResponse = try await performRequest(urlRequest)
+        // Clean up: trim whitespace, remove surrounding quotes
+        var title = response.message.content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        // Enforce max length
+        if title.count > 50 {
+            title = String(title.prefix(50))
+        }
+        return title.isEmpty ? "New Chat" : title
+    }
+
     // MARK: - Embeddings
 
     func generateEmbedding(
         _ text: String,
-        model: String = "nomic-embed-text"
+        model: String? = nil
     ) async throws -> [Float] {
+        let resolvedModel = model ?? AppSettings.shared.preferredEmbeddingModel
+        let cacheKey = NSString(string: "\(resolvedModel):\(text)")
+
+        // Return cached result if still fresh
+        if let cached = embeddingCache.object(forKey: cacheKey), !cached.isExpired {
+            return cached.embedding
+        }
+
         guard let url = URL(string: "\(baseURL)/api/embeddings") else {
             throw OllamaError.invalidResponse
         }
 
-        let requestBody = EmbeddingRequest(model: model, prompt: text)
+        let requestBody = EmbeddingRequest(model: resolvedModel, prompt: text)
 
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
@@ -262,19 +337,64 @@ class OllamaService: ObservableObject {
         urlRequest.httpBody = try JSONEncoder().encode(requestBody)
 
         let response: EmbeddingResponse = try await performRequest(urlRequest)
+        embeddingCache.setObject(CachedEmbeddingEntry(embedding: response.embedding), forKey: cacheKey)
         return response.embedding
     }
 
-    // MARK: - Streaming Support (for future implementation)
+    // MARK: - Streaming
 
     func streamMessage(
         _ content: String,
-        model: String = "qwen2.5:7b",
+        model: String? = nil,
         context: [Message] = []
     ) async throws -> AsyncThrowingStream<String, Error> {
-        // TODO: Implement streaming for better UX
-        // This would use URLSession's bytes(for:) API
-        fatalError("Streaming not yet implemented")
+        let model = model ?? AppSettings.shared.preferredModel
+        guard let url = URL(string: "\(baseURL)/api/chat") else {
+            throw OllamaError.invalidResponse
+        }
+
+        var ollamaMessages = context.map { OllamaMessage(role: $0.role.rawValue, content: $0.content) }
+        ollamaMessages.append(OllamaMessage(role: "user", content: content))
+
+        let requestBody = OllamaRequest(
+            model: model,
+            messages: ollamaMessages,
+            stream: true,
+            options: OllamaRequest.OllamaOptions(temperature: 0.7, topP: 0.9, numCtx: 8192)
+        )
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
+
+        // Capture before leaving main actor
+        let urlSession = session
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let (asyncBytes, response) = try await urlSession.bytes(for: urlRequest)
+                    guard let httpResponse = response as? HTTPURLResponse,
+                          httpResponse.statusCode == 200 else {
+                        continuation.finish(throwing: OllamaError.invalidResponse)
+                        return
+                    }
+                    for try await line in asyncBytes.lines {
+                        guard !line.isEmpty,
+                              let data = line.data(using: .utf8) else { continue }
+                        let chunk = try JSONDecoder().decode(OllamaResponse.self, from: data)
+                        if !chunk.message.content.isEmpty {
+                            continuation.yield(chunk.message.content)
+                        }
+                        if chunk.done { break }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 }
 
@@ -287,4 +407,18 @@ struct EmbeddingRequest: Codable {
 
 struct EmbeddingResponse: Codable {
     let embedding: [Float]
+}
+
+private class CachedEmbeddingEntry {
+    let embedding: [Float]
+    private let cachedAt: Date
+
+    init(embedding: [Float]) {
+        self.embedding = embedding
+        self.cachedAt = Date()
+    }
+
+    var isExpired: Bool {
+        Date().timeIntervalSince(cachedAt) > OllamaService.embeddingCacheTTL
+    }
 }

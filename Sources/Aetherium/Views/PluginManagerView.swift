@@ -5,9 +5,11 @@ import SwiftData
 
 struct PluginManagerView: View {
     @StateObject private var pluginManager = PluginManager.shared
+    @StateObject private var pluginStore = PluginStore()
     @State private var selectedTab: PluginTab = .installed
     @State private var selectedPlugin: PluginMetadata?
     @State private var showingInstallSheet = false
+    @State private var storeSearchText = ""
 
     enum PluginTab: String, CaseIterable {
         case installed = "Installed"
@@ -28,6 +30,13 @@ struct PluginManagerView: View {
                 .padding()
 
                 Divider()
+
+                if selectedTab == .store {
+                    TextField("Search plugins…", text: $storeSearchText)
+                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                }
 
                 // Plugin list
                 ScrollView {
@@ -65,6 +74,7 @@ struct PluginManagerView: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("Plugins")
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -81,6 +91,7 @@ struct PluginManagerView: View {
         }
         .task {
             await pluginManager.discoverPlugins()
+            await pluginStore.loadFeaturedPlugins()
         }
         .fileImporter(
             isPresented: $showingInstallSheet,
@@ -98,8 +109,14 @@ struct PluginManagerView: View {
         case .available:
             return pluginManager.availablePlugins
         case .store:
-            // TODO: Fetch from plugin store
-            return []
+            let query = storeSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if query.isEmpty {
+                return pluginStore.featuredPlugins
+            }
+            return pluginStore.featuredPlugins.filter {
+                $0.name.lowercased().contains(query) ||
+                $0.description.lowercased().contains(query)
+            }
         }
     }
 
@@ -309,14 +326,14 @@ struct PluginDetailView: View {
                         Text("Links")
                             .font(.headline)
 
-                        if let homepage = plugin.homepage {
-                            Link(destination: URL(string: homepage)!) {
+                        if let homepage = plugin.homepage, let url = URL(string: homepage) {
+                            Link(destination: url) {
                                 Label("Homepage", systemImage: "house")
                             }
                         }
 
-                        if let repo = plugin.repository {
-                            Link(destination: URL(string: repo)!) {
+                        if let repo = plugin.repository, let url = URL(string: repo) {
+                            Link(destination: url) {
                                 Label("Source Code", systemImage: "chevron.left.forwardslash.chevron.right")
                             }
                         }

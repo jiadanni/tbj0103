@@ -3,10 +3,12 @@ import SwiftData
 
 struct ChatSessionListView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var ollamaService: OllamaService
     let project: AetheriumProject
     @Binding var selectedChat: ChatSession?
 
     @State private var showingNewChatSheet = false
+    @State private var showingNewGoalSheet = false
 
     var body: some View {
         List(selection: $selectedChat) {
@@ -15,9 +17,12 @@ struct ChatSessionListView: View {
                     SessionListRowView(chatSession: chat)
                         .tag(chat)
                         .contextMenu {
-                            Button("Rename Chat") {
-                                // TODO: Show rename dialog
+                            Button {
+                                regenerateTitle(for: chat)
+                            } label: {
+                                Label("Regenerate Title", systemImage: "arrow.triangle.2.circlepath")
                             }
+                            .disabled(chat.messages.isEmpty)
 
                             Divider()
 
@@ -57,7 +62,7 @@ struct ChatSessionListView: View {
                         Label("New Chat", systemImage: "message")
                     }
 
-                    Button(action: { /* TODO: Add new goal */ }) {
+                    Button(action: { showingNewGoalSheet = true }) {
                         Label("New Learning Goal", systemImage: "target")
                     }
                 } label: {
@@ -68,12 +73,31 @@ struct ChatSessionListView: View {
         .sheet(isPresented: $showingNewChatSheet) {
             SessionListNewChatSheet(project: project, isPresented: $showingNewChatSheet)
         }
+        .sheet(isPresented: $showingNewGoalSheet) {
+            NewLearningGoalSheet(project: project)
+        }
     }
 
     private func deleteChat(_ chat: ChatSession) {
         modelContext.delete(chat)
         if selectedChat?.id == chat.id {
             selectedChat = nil
+        }
+    }
+
+    private func regenerateTitle(for chat: ChatSession) {
+        guard !chat.messages.isEmpty else { return }
+        Task {
+            do {
+                let title = try await ollamaService.generateChatTitle(
+                    from: chat.messages,
+                    model: chat.modelName
+                )
+                chat.title = title
+                chat.updatedAt = Date()
+            } catch {
+                // Silently fail
+            }
         }
     }
 }
@@ -84,6 +108,12 @@ struct SessionListRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
+                if chatSession.parentMessageID != nil {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.caption2)
+                        .foregroundColor(.purple)
+                }
+
                 Text(chatSession.title)
                     .font(.subheadline)
                     .lineLimit(1)
@@ -101,6 +131,12 @@ struct SessionListRowView: View {
                 Text(chatSession.modelName)
                     .font(.caption2)
                     .foregroundColor(.secondary)
+
+                if let label = chatSession.branchLabel {
+                    Text(label)
+                        .font(.caption2)
+                        .foregroundColor(.purple)
+                }
 
                 Spacer()
 
@@ -148,7 +184,7 @@ struct SessionListNewChatSheet: View {
     let project: AetheriumProject
     @Binding var isPresented: Bool
 
-    @State private var selectedModel = "qwen2.5:7b"
+    @State private var selectedModel = AppSettings.shared.preferredModel
     @State private var customTitle = ""
     @State private var customSystemPrompt = ""
 
@@ -163,21 +199,21 @@ struct SessionListNewChatSheet: View {
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(1...5)
 
-                    Picker("Model", selection: $selectedModel) {
-                        ForEach(ollamaService.availableModels) { model in
-                            Text(model.name).tag(model.name)
+                    if !ollamaService.availableModels.isEmpty {
+                        Picker("Model", selection: $selectedModel) {
+                            ForEach(ollamaService.availableModels) { model in
+                                Text(model.name).tag(model.name)
+                            }
+                        }
+                    } else {
+                        HStack {
+                            Text("Model")
+                            Spacer()
+                            Text(selectedModel)
+                                .foregroundColor(.secondary)
                         }
 
-                        if ollamaService.availableModels.isEmpty {
-                            Text("qwen2.5:7b").tag("qwen2.5:7b")
-                            Text("llama3.2:latest").tag("llama3.2:latest")
-                        }
-                    }
-                }
-
-                Section {
-                    if ollamaService.availableModels.isEmpty {
-                        Text("Could not fetch models from Ollama. Using default options.")
+                        Label("Start Ollama to see installed models", systemImage: "exclamationmark.triangle")
                             .font(.caption)
                             .foregroundColor(.orange)
                     }
@@ -199,9 +235,7 @@ struct SessionListNewChatSheet: View {
                 }
             }
             .task {
-                try? await ollamaService.fetchAvailableModels()
-                selectedModel = project.defaultModelName ?? "qwen2.5:7b"
-                customSystemPrompt = project.systemPrompt ?? ""
+                _ = try? await ollamaService.fetchAvailableModels()
             }
         }
         .frame(width: 450, height: 320)
@@ -209,7 +243,6 @@ struct SessionListNewChatSheet: View {
 
     private func createChat() {
         let newChat = ChatSession(
-            title: customTitle.isEmpty ? "New Chat" : customTitle,
             modelName: selectedModel,
             isLocal: true,
             systemPrompt: customSystemPrompt.isEmpty ? nil : customSystemPrompt
@@ -217,5 +250,51 @@ struct SessionListNewChatSheet: View {
         newChat.project = project
         modelContext.insert(newChat)
         dismiss()
+    }
+}
+
+// MARK: - New Learning Goal Sheet
+
+struct NewLearningGoalSheet: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    let project: AetheriumProject
+
+    @State private var title = ""
+    @State private var goalDescription = ""
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("New Learning Goal")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("Goal Title", text: $title)
+                    .textFieldStyle(.roundedBorder)
+
+                TextField("Description (optional)", text: $goalDescription, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(3...6)
+            }
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+
+                Button("Create") {
+                    let goal = LearningGoal(title: title, description: goalDescription)
+                    goal.project = project
+                    modelContext.insert(goal)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 400)
     }
 }

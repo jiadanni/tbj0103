@@ -14,6 +14,9 @@ struct KnowledgeGraphView: View {
     @State private var showingEvolution = false
     @State private var evolutionDate: Date?
     @State private var graphLayout = GraphLayout.force
+    @State private var isExtractingConcepts = false
+    @State private var extractionProgress: Double = 0.0
+    @State private var extractionError: String?
 
     enum GraphLayout {
         case force      // Force-directed
@@ -73,6 +76,16 @@ struct KnowledgeGraphView: View {
         .navigationTitle("Knowledge Graph")
         .toolbar {
             ToolbarItem(placement: .automatic) {
+                Button(action: extractConcepts) {
+                    Label(
+                        isExtractingConcepts ? "Extracting..." : "Extract Concepts",
+                        systemImage: "brain.head.profile"
+                    )
+                }
+                .disabled(isExtractingConcepts || (project.chatSessions.isEmpty && project.sources.isEmpty))
+            }
+
+            ToolbarItem(placement: .automatic) {
                 Button(action: {
                     showingEvolution.toggle()
                     if showingEvolution && evolutionDate == nil {
@@ -84,14 +97,28 @@ struct KnowledgeGraphView: View {
                     Label("Evolution", systemImage: "clock.arrow.circlepath")
                 }
                 .tint(showingEvolution ? .blue : .primary)
+            }
 
+            ToolbarItem(placement: .automatic) {
                 Button(action: { showingShortestPath.toggle() }) {
                     Label("Path", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
                 }
+            }
 
+            ToolbarItem(placement: .automatic) {
                 Button(action: { showingStatistics.toggle() }) {
                     Label("Statistics", systemImage: "chart.bar")
                 }
+            }
+        }
+        .overlay {
+            if isExtractingConcepts {
+                OperationOverlay(
+                    title: "Extracting Concepts",
+                    subtitle: "Analyzing chats and documents...",
+                    icon: "brain.head.profile",
+                    progress: extractionProgress
+                )
             }
         }
         .sheet(isPresented: $showingStatistics) {
@@ -444,6 +471,63 @@ struct KnowledgeGraphView: View {
         case .insight: return .yellow
         case .resource: return .cyan
         case .custom: return .gray
+        }
+    }
+
+    // MARK: - Concept Extraction
+
+    private func extractConcepts() {
+        guard !isExtractingConcepts else { return }
+        isExtractingConcepts = true
+        extractionProgress = 0.0
+        extractionError = nil
+
+        Task {
+            do {
+                let linkingEngine = LinkingEngine(modelContext: modelContext)
+                let orchestrator = ModelOrchestrator(ollamaService: OllamaService())
+                let extractor = ConceptExtractor(
+                    modelOrchestrator: orchestrator,
+                    linkingEngine: linkingEngine
+                )
+
+                let totalItems = project.chatSessions.count + project.sources.filter({ $0.document != nil }).count
+                var processedItems = 0
+
+                // Extract from chats
+                for chat in project.chatSessions {
+                    let concepts = try await extractor.extractFromChat(chat)
+                    for concept in concepts {
+                        concept.project = project
+                        modelContext.insert(concept)
+                    }
+                    processedItems += 1
+                    extractionProgress = Double(processedItems) / Double(max(totalItems, 1))
+                }
+
+                // Extract from documents
+                for source in project.sources {
+                    if let document = source.document {
+                        let concepts = try await extractor.extractFromDocument(document)
+                        for concept in concepts {
+                            concept.project = project
+                            modelContext.insert(concept)
+                        }
+                    }
+                    processedItems += 1
+                    extractionProgress = Double(processedItems) / Double(max(totalItems, 1))
+                }
+
+                // Auto-link extracted concepts
+                await extractor.autoLinkConcepts(
+                    filteredConcepts + project.concepts
+                )
+
+                extractionProgress = 1.0
+            } catch {
+                extractionError = error.localizedDescription
+            }
+            isExtractingConcepts = false
         }
     }
 }

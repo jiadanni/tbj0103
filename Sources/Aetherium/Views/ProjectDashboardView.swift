@@ -40,6 +40,9 @@ struct ProjectDashboardView: View {
                     timeRange: selectedTimeRange
                 )
 
+                // Topic cloud
+                TopicCloudView(analytics: analytics)
+
                 // Charts
                 HStack(spacing: 16) {
                     ConceptGrowthChart(analytics: analytics)
@@ -446,8 +449,9 @@ struct AIInsightsView: View {
             generatedInsights.append("You're building a rich knowledge base with \(analytics.totalConcepts) concepts. Consider creating learning paths to organize your learning journey.")
         }
 
-        // Review accuracy
-        if analytics.reviewAccuracy < 0.7 {
+        // Review accuracy (only show if user has done reviews)
+        let totalReviews = analytics.totalCards > 0
+        if totalReviews && analytics.reviewAccuracy < 0.7 {
             generatedInsights.append("Your review accuracy is \(Int(analytics.reviewAccuracy * 100))%. Try spacing out your review sessions for better retention.")
         } else if analytics.reviewAccuracy > 0.9 {
             generatedInsights.append("Excellent retention rate! You're mastering the material with \(Int(analytics.reviewAccuracy * 100))% accuracy.")
@@ -459,10 +463,10 @@ struct AIInsightsView: View {
             generatedInsights.append("You've been active \(recentActivity) times this week. Consistency is key to effective learning!")
         }
 
-        // Concept connections
+        // Concept connections (only show if user has concepts)
         let connectedConcepts = project.concepts.filter { !$0.linkedConcepts.isEmpty }.count
         let connectionRatio = Double(connectedConcepts) / Double(max(project.concepts.count, 1))
-        if connectionRatio < 0.3 {
+        if project.concepts.count > 0 && connectionRatio < 0.3 {
             generatedInsights.append("Only \(Int(connectionRatio * 100))% of your concepts are linked. Try connecting related concepts to strengthen understanding.")
         }
 
@@ -487,6 +491,7 @@ class ProjectAnalytics: ObservableObject {
     @Published var activityData: [ActivityDay] = []
     @Published var growthData: [GrowthPoint] = []
     @Published var accuracyData: [AccuracyPoint] = []
+    @Published var topicFrequencies: [TopicFrequency] = []
 
     private let project: AetheriumProject
     private let modelContext: ModelContext
@@ -521,6 +526,9 @@ class ProjectAnalytics: ObservableObject {
 
         // Generate accuracy data
         accuracyData = generateAccuracyData(days: 7)
+
+        // Calculate topic frequencies from chat sessions
+        topicFrequencies = computeTopicFrequencies()
 
         // Calculate trends (simplified)
         conceptTrend = 15.0 // Mock data
@@ -560,6 +568,28 @@ class ProjectAnalytics: ObservableObject {
         }
 
         return data.reversed()
+    }
+
+    private func computeTopicFrequencies() -> [TopicFrequency] {
+        var counts: [String: Int] = [:]
+        for session in project.chatSessions {
+            // Count extracted topics
+            for topic in session.extractedTopics {
+                let normalized = topic.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !normalized.isEmpty else { continue }
+                counts[normalized, default: 0] += 1
+            }
+            // Also count the chat title as a topic if it's not the default
+            if !session.needsAutoTitle {
+                let titleNormalized = session.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if !titleNormalized.isEmpty {
+                    counts[titleNormalized, default: 0] += 1
+                }
+            }
+        }
+        return counts
+            .map { TopicFrequency(topic: $0.key, count: $0.value) }
+            .sorted { $0.count > $1.count }
     }
 
     private func generateAccuracyData(days: Int) -> [AccuracyPoint] {
@@ -613,4 +643,117 @@ struct AccuracyPoint: Identifiable {
     let accuracy: Double
 }
 
+struct TopicFrequency: Identifiable {
+    let id = UUID()
+    let topic: String
+    let count: Int
+}
+
+// MARK: - Topic Cloud
+
+struct TopicCloudView: View {
+    @ObservedObject var analytics: ProjectAnalytics
+
+    private let cloudColors: [Color] = [
+        .blue, .purple, .orange, .green, .pink, .cyan, .indigo, .mint, .teal, .red
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Topic Cloud")
+                    .font(.headline)
+
+                Spacer()
+
+                if !analytics.topicFrequencies.isEmpty {
+                    Text("\(analytics.topicFrequencies.count) topics")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal)
+
+            if analytics.topicFrequencies.isEmpty {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Image(systemName: "cloud")
+                            .font(.largeTitle)
+                            .foregroundColor(.secondary.opacity(0.5))
+                        Text("No topics yet")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Text("Topics will appear as you chat")
+                            .font(.caption)
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
+                    .padding(.vertical, 24)
+                    Spacer()
+                }
+            } else {
+                let maxCount = analytics.topicFrequencies.first?.count ?? 1
+
+                FlowLayout(spacing: 8) {
+                    ForEach(Array(analytics.topicFrequencies.prefix(40).enumerated()), id: \.element.id) { index, item in
+                        let scale = scaleFactor(count: item.count, max: maxCount)
+                        let color = cloudColors[index % cloudColors.count]
+
+                        Text(item.topic)
+                            .font(.system(size: fontSize(for: scale)))
+                            .fontWeight(fontWeight(for: scale))
+                            .foregroundColor(color)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(color.opacity(heatOpacity(for: scale)))
+                            .cornerRadius(6)
+                            .help("\(item.topic): \(item.count) occurrence\(item.count == 1 ? "" : "s")")
+                    }
+                }
+                .padding(.horizontal)
+
+                // Heat legend
+                HStack(spacing: 8) {
+                    Text("Less frequent")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+
+                    ForEach(0..<5) { level in
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.blue.opacity(0.1 + Double(level) * 0.2))
+                            .frame(width: 12, height: 12)
+                    }
+
+                    Text("More frequent")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal)
+            }
+        }
+        .padding(.vertical)
+        .background(Color.secondary.opacity(0.05))
+        .cornerRadius(12)
+        .padding(.horizontal)
+    }
+
+    private func scaleFactor(count: Int, max: Int) -> Double {
+        guard max > 1 else { return 1.0 }
+        return Double(count) / Double(max)
+    }
+
+    private func fontSize(for scale: Double) -> CGFloat {
+        12 + scale * 16 // Range: 12–28pt
+    }
+
+    private func fontWeight(for scale: Double) -> Font.Weight {
+        if scale > 0.7 { return .bold }
+        if scale > 0.4 { return .semibold }
+        return .regular
+    }
+
+    private func heatOpacity(for scale: Double) -> Double {
+        0.08 + scale * 0.15
+    }
+}
 

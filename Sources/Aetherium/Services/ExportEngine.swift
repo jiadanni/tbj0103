@@ -156,7 +156,9 @@ class ExportEngine: ObservableObject {
                 encoding: .utf8
             )
 
-            exportProgress = 0.2 + (Double(index) / Double(project.concepts.count)) * 0.3
+            if !project.concepts.isEmpty {
+                exportProgress = 0.2 + (Double(index) / Double(project.concepts.count)) * 0.3
+            }
         }
 
         exportProgress = 0.5
@@ -172,7 +174,9 @@ class ExportEngine: ObservableObject {
                 )
             }
 
-            exportProgress = 0.5 + (Double(index) / Double(project.sources.count)) * 0.3
+            if !project.sources.isEmpty {
+                exportProgress = 0.5 + (Double(index) / Double(project.sources.count)) * 0.3
+            }
         }
 
         exportProgress = 0.8
@@ -228,11 +232,16 @@ class ExportEngine: ObservableObject {
         }
 
         // Create PDF data
-        let printInfoDict = NSPrintInfo.shared.dictionary().mutableCopy() as! NSMutableDictionary
+        guard let printInfoDict = NSPrintInfo.shared.dictionary().mutableCopy() as? NSMutableDictionary else {
+            throw ExportError.conversionFailed
+        }
         printInfoDict[NSPrintInfo.AttributeKey.jobDisposition] = NSPrintInfo.JobDisposition.save
         printInfoDict[NSPrintInfo.AttributeKey.jobSavingURL] = url
 
-        let printInfo = NSPrintInfo(dictionary: printInfoDict as! [NSPrintInfo.AttributeKey: Any])
+        guard let printInfoDictTyped = printInfoDict as? [NSPrintInfo.AttributeKey: Any] else {
+            throw ExportError.conversionFailed
+        }
+        let printInfo = NSPrintInfo(dictionary: printInfoDictTyped)
         printInfo.paperSize = NSSize(width: 612, height: 792) // Letter size
         printInfo.topMargin = 72
         printInfo.bottomMargin = 72

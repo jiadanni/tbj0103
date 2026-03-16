@@ -11,8 +11,9 @@ final class RAGPipelineTests: XCTestCase {
     var modelContext: ModelContext!
     var project: AetheriumProject!
 
+    @MainActor
     override func setUp() async throws {
-        super.setUp()
+        try await super.setUp()
         // Setup SwiftData
         let schema = Schema([
             AetheriumProject.self,
@@ -133,7 +134,7 @@ final class RAGPipelineTests: XCTestCase {
         }
 
         // 3. Send Message
-        let (response, citations) = try await groundedChatEngine.sendMessage("How does ARC work?", in: chatSession, project: project)
+        let (response, _) = try await groundedChatEngine.sendMessage("How does ARC work?", in: chatSession, project: project)
 
         // 4. Verify
         XCTAssertFalse(response.isEmpty)

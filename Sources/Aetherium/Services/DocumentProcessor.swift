@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 class DocumentProcessor: ObservableObject {
     @Published var isProcessing = false
     @Published var processingProgress: Double = 0.0
+    @Published var processingStatus: String = ""
 
     private let textExtractor = TextExtractor()
     private let semanticChunker = SemanticChunker()
@@ -22,23 +23,28 @@ class DocumentProcessor: ObservableObject {
     func processDocument(_ url: URL) async throws -> UploadedDocument {
         isProcessing = true
         processingProgress = 0.0
+        processingStatus = "Extracting text..."
 
         defer {
             isProcessing = false
             processingProgress = 1.0
+            processingStatus = ""
         }
 
         // Phase 1: Text extraction (25%)
         let extractedText = try await textExtractor.extractText(from: url)
         processingProgress = 0.25
+        processingStatus = "Chunking document..."
 
         // Phase 2: Semantic chunking (50%)
         let chunks = try await semanticChunker.chunkDocument(extractedText, maxTokens: 512)
         processingProgress = 0.50
+        processingStatus = "Generating embeddings (\(chunks.count) chunks)..."
 
         // Phase 3: Embedding generation (75%)
-        let embeddedChunks = try await embeddingGenerator.embedChunks(chunks)
+        _ = try await embeddingGenerator.embedChunks(chunks)
         processingProgress = 0.75
+        processingStatus = "Building document model..."
 
         // Phase 4: Create document model (100%)
         let fileAttributes = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -89,21 +95,13 @@ class DocumentProcessor: ObservableObject {
         var results: [UploadedDocument] = []
 
         // Process with concurrency limit (2 at a time to avoid memory issues)
-        for chunk in urls.chunked(into: 2) {
-            let chunkResults = try await withThrowingTaskGroup(of: UploadedDocument.self) { group in
-                for url in chunk {
-                    group.addTask {
-                        try await self.processDocument(url)
-                    }
-                }
-
-                var docs: [UploadedDocument] = []
-                for try await doc in group {
-                    docs.append(doc)
-                }
-                return docs
+        for (batchIndex, chunk) in urls.chunked(into: 2).enumerated() {
+            for url in chunk {
+                let fileIndex = batchIndex * 2 + results.count % 2 + 1
+                processingStatus = "Processing file \(fileIndex) of \(urls.count): \(url.lastPathComponent)"
+                let doc = try await self.processDocument(url)
+                results.append(doc)
             }
-            results.append(contentsOf: chunkResults)
         }
 
         return results
@@ -115,25 +113,26 @@ class DocumentProcessor: ObservableObject {
 class TextExtractor {
     func extractText(from url: URL) async throws -> String {
         let fileType = DocumentType.fromURL(url)
-
-        switch fileType {
-        case .pdf:
-            return try extractFromPDF(url)
-        case .txt, .markdown:
-            return try String(contentsOf: url, encoding: .utf8)
-        case .html:
-            return try extractFromHTML(url)
-        case .rtf:
-            return try extractFromRTF(url)
-        case .docx:
-            throw DocumentProcessingError.unsupportedFormat("DOCX support requires additional libraries")
-        case .unknown:
-            // Try as plain text
-            return try String(contentsOf: url, encoding: .utf8)
-        }
+        // Push blocking I/O off the main actor onto the cooperative thread pool
+        return try await Task.detached(priority: .userInitiated) {
+            switch fileType {
+            case .pdf:
+                return try Self.extractFromPDF(url)
+            case .txt, .markdown:
+                return try String(contentsOf: url, encoding: .utf8)
+            case .html:
+                return try Self.extractFromHTML(url)
+            case .rtf:
+                return try Self.extractFromRTF(url)
+            case .docx:
+                throw DocumentProcessingError.unsupportedFormat("DOCX support requires additional libraries")
+            case .unknown:
+                return try String(contentsOf: url, encoding: .utf8)
+            }
+        }.value
     }
 
-    private func extractFromPDF(_ url: URL) throws -> String {
+    private static func extractFromPDF(_ url: URL) throws -> String {
         guard let pdfDocument = PDFDocument(url: url) else {
             throw DocumentProcessingError.failedToLoad("Could not load PDF")
         }
@@ -150,7 +149,7 @@ class TextExtractor {
         return extractedText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func extractFromHTML(_ url: URL) throws -> String {
+    private static func extractFromHTML(_ url: URL) throws -> String {
         let html = try String(contentsOf: url, encoding: .utf8)
 
         // Basic HTML stripping (for production, use proper HTML parser)
@@ -184,7 +183,7 @@ class TextExtractor {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func extractFromRTF(_ url: URL) throws -> String {
+    private static func extractFromRTF(_ url: URL) throws -> String {
         guard let attributedString = try? NSAttributedString(
             url: url,
             options: [.documentType: NSAttributedString.DocumentType.rtf],
@@ -251,52 +250,83 @@ class SemanticChunker {
 // MARK: - Embedding Generation
 
 class EmbeddingGenerator {
-    private let cache = NSCache<NSString, CachedEmbedding>()
     private let ollamaService: OllamaService
 
     init(ollamaService: OllamaService) {
         self.ollamaService = ollamaService
     }
 
+    /// Embeds all chunks in parallel (up to 4 concurrent Ollama requests).
     func embedChunks(_ chunks: [ChunkData]) async throws -> [DocumentChunk] {
-        // Generate embeddings for each chunk
-        var embeddedChunks: [DocumentChunk] = []
+        guard !chunks.isEmpty else { return [] }
 
-        for chunkData in chunks {
-            // Try to generate embedding, fall back to nil if it fails
-            let embedding: [Float]?
-            do {
-                embedding = try await generateEmbedding(chunkData.content)
-            } catch {
-                print("Failed to generate embedding for chunk \(chunkData.chunkIndex): \(error)")
-                embedding = nil
+        typealias IndexedChunk = (index: Int, chunk: DocumentChunk)
+        let concurrencyLimit = 4
+
+        let collected: [IndexedChunk] = try await withThrowingTaskGroup(of: IndexedChunk.self) { group in
+            var results: [IndexedChunk] = []
+            results.reserveCapacity(chunks.count)
+            var nextToSchedule = 0
+
+            // Seed up to concurrencyLimit tasks
+            let seedCount = min(concurrencyLimit, chunks.count)
+            for _ in 0..<seedCount {
+                let idx = nextToSchedule
+                let chunkData = chunks[idx]
+                nextToSchedule += 1
+                group.addTask {
+                    let embedding = try? await self.generateEmbeddingWithRetry(chunkData.content, maxRetries: 2)
+                    return (idx, DocumentChunk(
+                        content: chunkData.content,
+                        embeddings: embedding,
+                        chunkIndex: chunkData.chunkIndex,
+                        tokenCount: chunkData.tokenCount
+                    ))
+                }
             }
 
-            embeddedChunks.append(DocumentChunk(
-                content: chunkData.content,
-                embeddings: embedding,
-                chunkIndex: chunkData.chunkIndex,
-                tokenCount: chunkData.tokenCount
-            ))
+            // As each task finishes, schedule the next pending chunk
+            for try await result in group {
+                results.append(result)
+                if nextToSchedule < chunks.count {
+                    let idx = nextToSchedule
+                    let chunkData = chunks[idx]
+                    nextToSchedule += 1
+                    group.addTask {
+                        let embedding = try? await self.generateEmbeddingWithRetry(chunkData.content, maxRetries: 2)
+                        return (idx, DocumentChunk(
+                            content: chunkData.content,
+                            embeddings: embedding,
+                            chunkIndex: chunkData.chunkIndex,
+                            tokenCount: chunkData.tokenCount
+                        ))
+                    }
+                }
+            }
+
+            return results
         }
 
-        return embeddedChunks
+        // Restore original chunk order
+        return collected.sorted { $0.index < $1.index }.map { $0.chunk }
     }
 
-    func generateEmbedding(_ text: String) async throws -> [Float] {
-        // Check cache first
-        let cacheKey = NSString(string: text)
-        if let cached = cache.object(forKey: cacheKey) {
-            return cached.embedding
+    private func generateEmbeddingWithRetry(_ text: String, maxRetries: Int) async throws -> [Float] {
+        var lastError: Error?
+        for attempt in 0...maxRetries {
+            do {
+                // OllamaService.generateEmbedding already has its own TTL cache;
+                // calling it here goes through that cache automatically.
+                return try await ollamaService.generateEmbedding(text)
+            } catch {
+                lastError = error
+                if attempt < maxRetries {
+                    let delay = UInt64(0.5 * pow(2.0, Double(attempt)) * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: delay)
+                }
+            }
         }
-
-        // Generate embedding via Ollama
-        let embedding = try await ollamaService.generateEmbedding(text)
-
-        // Cache the result
-        cache.setObject(CachedEmbedding(embedding: embedding), forKey: cacheKey)
-
-        return embedding
+        throw lastError ?? OllamaError.serviceUnavailable
     }
 }
 
@@ -306,16 +336,6 @@ struct ChunkData {
     let content: String
     let chunkIndex: Int
     let tokenCount: Int
-}
-
-class CachedEmbedding {
-    let embedding: [Float]
-    let timestamp: Date
-
-    init(embedding: [Float]) {
-        self.embedding = embedding
-        self.timestamp = Date()
-    }
 }
 
 enum DocumentProcessingError: LocalizedError {

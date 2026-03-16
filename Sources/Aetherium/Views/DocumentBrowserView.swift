@@ -12,6 +12,11 @@ struct DocumentBrowserView: View {
     @State private var showingImportSheet = false
     @State private var selectedSource: ProjectSource?
     @State private var isImporting = false
+    @State private var extractedKeyPoints: [String] = []
+    @State private var showingKeyPoints = false
+    @State private var isExtractingKeyPoints = false
+    @State private var showingWebCaptureSheet = false
+    @State private var showingAudioRecorder = false
 
     init(project: AetheriumProject, ollamaService: OllamaService) {
         self.project = project
@@ -126,7 +131,7 @@ struct DocumentBrowserView: View {
                         Label("Create Note", systemImage: "note.text.badge.plus")
                     }
 
-                    Button(action: { /* TODO */ }) {
+                    Button(action: { showingAudioRecorder = true }) {
                         Label("Record Audio", systemImage: "mic")
                     }
                 } label: {
@@ -149,7 +154,22 @@ struct DocumentBrowserView: View {
         .overlay {
             if documentProcessor.isProcessing {
                 ProcessingOverlay(progress: documentProcessor.processingProgress)
+            } else if isExtractingKeyPoints {
+                OperationOverlay(
+                    title: "Extracting Key Points",
+                    subtitle: "Analyzing document content...",
+                    icon: "sparkles"
+                )
             }
+        }
+        .sheet(isPresented: $showingKeyPoints) {
+            KeyPointsSheet(keyPoints: extractedKeyPoints)
+        }
+        .sheet(isPresented: $showingWebCaptureSheet) {
+            WebCaptureSheet(project: project)
+        }
+        .sheet(isPresented: $showingAudioRecorder) {
+            AudioRecordSheet(project: project)
         }
     }
 
@@ -214,13 +234,23 @@ struct DocumentBrowserView: View {
     }
 
     private func extractKeyPoints(from source: ProjectSource) {
-        // TODO: Implement key point extraction
-        print("Extract key points from: \(source.title)")
+        guard let text = source.document?.extractedText, !text.isEmpty else { return }
+        isExtractingKeyPoints = true
+        Task {
+            do {
+                let generator = AIContentGenerator(ollamaService: ollamaService, modelContext: modelContext)
+                let points = try await generator.extractKeyPoints(from: text, count: 5)
+                extractedKeyPoints = points
+                showingKeyPoints = true
+            } catch {
+                print("Key point extraction failed: \(error)")
+            }
+            isExtractingKeyPoints = false
+        }
     }
 
     private func captureWebpage() {
-        // TODO: Show webpage capture sheet
-        print("Capture webpage")
+        showingWebCaptureSheet = true
     }
 
     private func createNote() {
@@ -338,19 +368,49 @@ struct StatBadge: View {
 struct ProcessingOverlay: View {
     let progress: Double
 
+    private var phaseLabel: String {
+        switch progress {
+        case 0..<0.25: return "Extracting text..."
+        case 0.25..<0.50: return "Chunking document..."
+        case 0.50..<0.75: return "Generating embeddings..."
+        case 0.75..<1.0: return "Building document model..."
+        default: return "Finishing up..."
+        }
+    }
+
+    private var phaseIcon: String {
+        switch progress {
+        case 0..<0.25: return "doc.text.magnifyingglass"
+        case 0.25..<0.50: return "scissors"
+        case 0.50..<0.75: return "brain.head.profile"
+        case 0.75..<1.0: return "doc.badge.gearshape"
+        default: return "checkmark.circle"
+        }
+    }
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.3)
 
-            VStack(spacing: 20) {
-                ProgressView(value: progress)
-                    .frame(width: 200)
+            VStack(spacing: 16) {
+                Image(systemName: phaseIcon)
+                    .font(.system(size: 32))
+                    .foregroundColor(.blue)
+                    .symbolEffect(.pulse, isActive: progress < 1.0)
 
-                Text("Processing document...")
+                Text("Processing Document")
                     .font(.headline)
+
+                ProgressView(value: progress)
+                    .frame(width: 220)
+
+                Text(phaseLabel)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
 
                 Text("\(Int(progress * 100))%")
                     .font(.caption)
+                    .fontWeight(.medium)
                     .foregroundColor(.secondary)
             }
             .padding(30)
@@ -358,6 +418,299 @@ struct ProcessingOverlay: View {
             .cornerRadius(16)
         }
         .ignoresSafeArea()
+    }
+}
+
+// MARK: - Operation Overlay (indeterminate spinner)
+
+struct OperationOverlay: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    var progress: Double? = nil
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.3)
+
+            VStack(spacing: 16) {
+                Image(systemName: icon)
+                    .font(.system(size: 32))
+                    .foregroundColor(.blue)
+                    .symbolEffect(.pulse)
+
+                Text(title)
+                    .font(.headline)
+
+                if let progress {
+                    ProgressView(value: progress)
+                        .frame(width: 220)
+                    Text("\(Int(progress * 100))%")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                } else {
+                    ProgressView()
+                        .controlSize(.regular)
+                }
+
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            .padding(30)
+            .background(.ultraThinMaterial)
+            .cornerRadius(16)
+        }
+        .ignoresSafeArea()
+    }
+}
+
+// MARK: - Key Points Sheet
+
+struct KeyPointsSheet: View {
+    let keyPoints: [String]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Key Points")
+                .font(.headline)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Array(keyPoints.enumerated()), id: \.offset) { index, point in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("\(index + 1).")
+                                .fontWeight(.bold)
+                                .foregroundColor(.blue)
+                            Text(point)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 400)
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 500, height: 400)
+    }
+}
+
+// MARK: - Web Capture Sheet
+
+struct WebCaptureSheet: View {
+    let project: AetheriumProject
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var urlString = ""
+    @State private var isCapturing = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Capture Webpage")
+                .font(.headline)
+
+            TextField("https://example.com", text: $urlString)
+                .textFieldStyle(.roundedBorder)
+
+            if let error = errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+
+            if isCapturing {
+                ProgressView("Fetching page...")
+            }
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+
+                Button("Capture") { captureURL() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCapturing)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 450)
+    }
+
+    private func captureURL() {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), url.scheme == "https" || url.scheme == "http" else {
+            errorMessage = "Please enter a valid HTTP or HTTPS URL."
+            return
+        }
+
+        isCapturing = true
+        errorMessage = nil
+
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                let html = String(data: data, encoding: .utf8) ?? ""
+
+                // Extract title from HTML
+                let pageTitle: String
+                if let titleRange = html.range(of: "<title>"),
+                   let endRange = html.range(of: "</title>", range: titleRange.upperBound..<html.endIndex) {
+                    pageTitle = String(html[titleRange.upperBound..<endRange.lowerBound])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                } else {
+                    pageTitle = url.host ?? "Captured Page"
+                }
+
+                // Strip HTML tags for plain-text content
+                let plainText = html.replacingOccurrences(
+                    of: "<[^>]+>",
+                    with: "",
+                    options: .regularExpression
+                ).trimmingCharacters(in: .whitespacesAndNewlines)
+
+                let webCapture = WebCapture(
+                    url: trimmed,
+                    pageTitle: pageTitle,
+                    extractedContent: String(plainText.prefix(50000))
+                )
+
+                let source = ProjectSource(sourceType: .webpage, title: pageTitle)
+                source.webpage = webCapture
+                source.project = project
+                source.processedAt = Date()
+
+                modelContext.insert(source)
+                project.updateTimestamp()
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isCapturing = false
+        }
+    }
+}
+
+// MARK: - Audio Record Sheet
+
+struct AudioRecordSheet: View {
+    let project: AetheriumProject
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var isRecording = false
+    @State private var transcribedText = ""
+    @State private var errorMessage: String?
+    @State private var recordingDuration: TimeInterval = 0
+    @StateObject private var voiceService = VoiceTranscriptionService()
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Record Audio")
+                .font(.headline)
+
+            if !transcribedText.isEmpty {
+                ScrollView {
+                    Text(transcribedText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: 150)
+                .padding(8)
+                .background(Color.secondary.opacity(0.1))
+                .cornerRadius(8)
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: isRecording ? "mic.fill" : "mic")
+                        .font(.system(size: 48))
+                        .foregroundColor(isRecording ? .red : .secondary)
+
+                    if isRecording {
+                        Text("Recording...")
+                            .foregroundColor(.red)
+                    } else {
+                        Text("Tap to start recording")
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .frame(height: 150)
+            }
+
+            if let error = errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+
+                if transcribedText.isEmpty {
+                    Button(isRecording ? "Stop" : "Record") {
+                        toggleRecording()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(isRecording ? .red : .blue)
+                } else {
+                    Button("Save Transcription") {
+                        saveTranscription()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .padding(24)
+        .frame(width: 450)
+        .onChange(of: voiceService.transcribedText) { _, newValue in
+            transcribedText = newValue
+        }
+    }
+
+    private func toggleRecording() {
+        if isRecording {
+            voiceService.stopRecording()
+            isRecording = false
+        } else {
+            do {
+                try voiceService.startRecording()
+                isRecording = true
+                errorMessage = nil
+            } catch {
+                errorMessage = "Could not start recording: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func saveTranscription() {
+        guard !transcribedText.isEmpty else { return }
+
+        let transcription = AudioTranscription(
+            filename: "Recording \(Date().formatted(date: .abbreviated, time: .shortened))",
+            filePath: "",
+            transcription: transcribedText,
+            duration: recordingDuration,
+            modelUsed: "apple-speech"
+        )
+
+        let source = ProjectSource(sourceType: .audioTranscription, title: transcription.filename)
+        source.audioFile = transcription
+        source.project = project
+        source.processedAt = Date()
+
+        modelContext.insert(source)
+        project.updateTimestamp()
+        dismiss()
     }
 }
 

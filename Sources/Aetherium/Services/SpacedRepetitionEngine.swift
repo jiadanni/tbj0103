@@ -111,12 +111,17 @@ class SpacedRepetitionEngine: ObservableObject {
     func generateCardsFromNote(
         _ note: ProjectNote,
         project: AetheriumProject,
+        ollamaService: OllamaService,
         count: Int = 5
     ) async -> [LearningCard] {
-        // TODO: Integrate with Ollama to generate Q&A pairs
-        // For now, return empty array
-        // This would use the content generator to extract key concepts
-        return []
+        do {
+            let generator = AIContentGenerator(ollamaService: ollamaService, modelContext: modelContext)
+            let questions = try await generator.generateQuestions(from: note.content, count: count)
+            generator.createFlashcardsFromQuestions(questions, project: project)
+            return getAllCards(for: project).suffix(count).reversed()
+        } catch {
+            return []
+        }
     }
 
     // MARK: - Statistics

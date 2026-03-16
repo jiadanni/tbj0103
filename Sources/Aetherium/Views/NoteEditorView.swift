@@ -15,6 +15,7 @@ struct NoteEditorView: View {
     @State private var lastSavedText: String
     @State private var autoSaveTimer: Timer?
     @State private var showingSaveIndicator = false
+    @State private var isSaving = false
 
     init(note: ProjectNote, project: AetheriumProject?, modelContext: ModelContext) {
         self.note = note
@@ -66,6 +67,7 @@ struct NoteEditorView: View {
 
                     MarkdownPreview(text: note.content, project: project)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
             Divider()
@@ -88,21 +90,21 @@ struct NoteEditorView: View {
 
     // MARK: - Auto-Save
 
+    /// Debounced save: resets a 2-second timer on each edit.
+    /// This serves as both the debounce and the periodic save mechanism.
     private func scheduleAutoSave() {
         autoSaveTimer?.invalidate()
 
         autoSaveTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { _ in
-            saveNote()
+            Task { @MainActor in
+                saveNote()
+            }
         }
     }
 
     private func startAutoSave() {
-        // Save periodically
-        autoSaveTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
-            if note.content != lastSavedText {
-                saveNote()
-            }
-        }
+        // The debounced scheduleAutoSave() called on each edit handles saving.
+        // No separate periodic timer needed — it would race with the debounce timer.
     }
 
     private func stopAutoSave() {
@@ -111,7 +113,8 @@ struct NoteEditorView: View {
     }
 
     private func saveNote() {
-        guard note.content != lastSavedText else { return }
+        guard note.content != lastSavedText, !isSaving else { return }
+        isSaving = true
 
         // Update note
         note.updatedAt = Date()
@@ -128,6 +131,7 @@ struct NoteEditorView: View {
         showingSaveIndicator = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             showingSaveIndicator = false
+            isSaving = false
         }
     }
 
@@ -282,6 +286,13 @@ struct NoteBacklinksView: View {
         }
     }
 
+    var backlinkingNotes: [ProjectNote] {
+        guard !note.title.isEmpty else { return [] }
+        return project.sources.compactMap(\.note).filter {
+            $0.id != note.id && $0.content.localizedCaseInsensitiveContains(note.title)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Referenced Concepts")
@@ -304,13 +315,43 @@ struct NoteBacklinksView: View {
                 .font(.headline)
                 .padding(.bottom, 4)
 
-            // TODO: Find notes that reference this note's title
-            Text("Feature coming soon")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            if backlinkingNotes.isEmpty {
+                Text("No notes reference this note")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(backlinkingNotes) { backlink in
+                    BacklinkNoteCard(note: backlink)
+                }
+            }
         }
         .padding()
         .frame(width: 350)
+    }
+}
+
+struct BacklinkNoteCard: View {
+    let note: ProjectNote
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "note.text")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(note.title)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+            }
+            Text(note.updatedAt.formatted(.relative(presentation: .named)))
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.05))
+        .cornerRadius(8)
     }
 }
 
