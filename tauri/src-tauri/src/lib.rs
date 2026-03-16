@@ -130,6 +130,13 @@ pub fn run() {
             commands::web_capture::get_web_capture,
             commands::web_capture::delete_web_capture,
             commands::web_capture::update_web_capture,
+            // AI model commands
+            commands::ai_model::list_ai_models,
+            commands::ai_model::add_ai_model,
+            commands::ai_model::update_ai_model,
+            commands::ai_model::delete_ai_model,
+            commands::ai_model::get_default_model,
+            commands::ai_model::record_model_token_usage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
