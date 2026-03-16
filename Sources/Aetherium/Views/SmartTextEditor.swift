@@ -9,6 +9,7 @@ struct SmartTextEditor: View {
     let placeholder: String
 
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var themeManager: ThemeManager
     @StateObject private var parser = LinkSyntaxParser()
     @StateObject private var linkingEngine: LinkingEngine
 
@@ -30,7 +31,7 @@ struct SmartTextEditor: View {
         ZStack(alignment: .topLeading) {
             // Text editor
             TextEditor(text: $text)
-                .font(.body)
+                .font(.system(size: 14 * themeManager.fontSizeMultiplier))
                 .focused($isFocused)
                 .onChange(of: text) { oldValue, newValue in
                     handleTextChange(oldValue: oldValue, newValue: newValue)
@@ -254,6 +255,7 @@ struct QuickLinkPicker: View {
     let onSelect: (String) -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var themeManager: ThemeManager
     @Query private var concepts: [ConceptNode]
 
     @State private var searchText = ""
