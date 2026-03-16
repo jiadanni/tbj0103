@@ -3,7 +3,7 @@ import { api } from "../lib/api";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, Network, BookOpen, Calendar, CreditCard,
-  FolderOpen, FileText, Map, Settings, Archive, Plus, Zap,
+  FolderOpen, FileText, Map, Settings, Archive, Plus, Zap, Link2,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -13,8 +13,10 @@ interface SidebarProps {
 
 const NAV_ITEMS = [
   { path: "/chat",      icon: MessageSquare, label: "Chat"           },
+  { path: "/grounded",  icon: BookOpen,      label: "Grounded Chat"  },
   { path: "/daily",     icon: Calendar,      label: "Daily Notes"    },
   { path: "/graph",     icon: Network,       label: "Knowledge Graph"},
+  { path: "/backlinks", icon: Link2,         label: "Backlinks"      },
   { path: "/flashcards",icon: CreditCard,    label: "Flashcards"     },
   { path: "/project",   icon: FolderOpen,    label: "Projects"       },
   { path: "/documents", icon: FileText,      label: "Documents"      },

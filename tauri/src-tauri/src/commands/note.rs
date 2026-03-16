@@ -1,6 +1,8 @@
 use tauri::State;
+use std::collections::HashMap;
 use crate::db::DbState;
 use crate::models::note::{ProjectNote, DailyNote, NoteTemplate, CreateNoteRequest, UpdateNoteRequest, GetOrCreateDailyNoteRequest};
+use crate::services::{linking_engine, note_template_engine};
 
 #[tauri::command]
 pub fn create_note(state: State<DbState>, req: CreateNoteRequest) -> Result<ProjectNote, String> {
@@ -22,6 +24,17 @@ pub fn create_note(state: State<DbState>, req: CreateNoteRequest) -> Result<Proj
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![note.id, note.project_id, note.title, note.content, note.note_type, tags_json, note.created_at, note.updated_at],
     ).map_err(|e| e.to_string())?;
+
+    // Index [[wiki-links]] in the note content
+    if !note.content.is_empty() {
+        if let Ok(workspace_id) = conn.query_row(
+            "SELECT workspace_id FROM projects WHERE id = ?1",
+            rusqlite::params![note.project_id],
+            |r| r.get::<_, String>(0),
+        ) {
+            let _ = linking_engine::index_note_links(&conn, "note", &note.id, &workspace_id, &note.content);
+        }
+    }
     Ok(note)
 }
 
@@ -86,6 +99,19 @@ pub fn update_note(state: State<DbState>, req: UpdateNoteRequest) -> Result<(), 
         "UPDATE project_notes SET title = COALESCE(?1, title), content = COALESCE(?2, content), tags = COALESCE(?3, tags), updated_at = ?4 WHERE id = ?5",
         rusqlite::params![req.title, req.content, tags_json, now, req.id],
     ).map_err(|e| e.to_string())?;
+
+    // Re-index [[wiki-links]] whenever content changes
+    if let Some(ref content) = req.content {
+        let row = conn.query_row(
+            "SELECT n.project_id, p.workspace_id FROM project_notes n
+             JOIN projects p ON n.project_id = p.id WHERE n.id = ?1",
+            rusqlite::params![req.id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        );
+        if let Ok((_project_id, workspace_id)) = row {
+            let _ = linking_engine::index_note_links(&conn, "note", &req.id, &workspace_id, content);
+        }
+    }
     Ok(())
 }
 
@@ -182,4 +208,39 @@ pub fn create_template(state: State<DbState>, workspace_id: String, name: String
         rusqlite::params![t.id, t.workspace_id, t.name, t.template_description, t.content, t.icon, t.is_built_in as i32, vars_json, t.created_at, t.updated_at],
     ).map_err(|e| e.to_string())?;
     Ok(t)
+}
+
+/// Apply a note template with variable substitution and return rendered content.
+/// `extra_vars` overrides built-in date/time variables (e.g. `title`, `project`).
+#[tauri::command]
+pub fn apply_template(
+    state: State<DbState>,
+    template_id: String,
+    extra_vars: HashMap<String, String>,
+) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let content: String = conn.query_row(
+        "SELECT content FROM note_templates WHERE id = ?1",
+        rusqlite::params![template_id],
+        |r| r.get(0),
+    ).map_err(|e| e.to_string())?;
+    Ok(note_template_engine::apply_template(&content, &extra_vars))
+}
+
+/// Get all `concept_mentions` entries that point to notes linking to a given concept.
+#[tauri::command]
+pub fn get_backlinks(
+    state: State<DbState>,
+    workspace_id: String,
+    concept_name: String,
+) -> Result<Vec<linking_engine::BacklinkEntry>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    linking_engine::get_backlinks_for_concept(&conn, &workspace_id, &concept_name)
+}
+
+/// Return all concept names linked from a specific note.
+#[tauri::command]
+pub fn get_note_outbound_links(state: State<DbState>, note_id: String) -> Result<Vec<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    linking_engine::get_outbound_links(&conn, "note", &note_id)
 }
