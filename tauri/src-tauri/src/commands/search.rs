@@ -88,11 +88,10 @@ pub fn keyword_search(state: State<DbState>, req: SearchRequest) -> Result<Vec<S
     .collect::<Vec<_>>();
     results.extend(messages);
 
-    // Search project notes
+    // Search project notes (workspace-scoped)
     let mut stmt3 = conn.prepare(
-        "SELECT n.id, n.title, n.content, n.project_id FROM project_notes n
-         JOIN projects p ON n.project_id = p.id
-         WHERE p.workspace_id = ?1 AND (lower(n.title) LIKE ?2 OR lower(n.content) LIKE ?2)
+        "SELECT n.id, n.title, n.content, n.workspace_id FROM project_notes n
+         WHERE n.workspace_id = ?1 AND (lower(n.title) LIKE ?2 OR lower(n.content) LIKE ?2)
          ORDER BY n.updated_at DESC LIMIT ?3"
     ).map_err(|e| e.to_string())?;
     let notes = stmt3.query_map(rusqlite::params![req.workspace_id, pattern, limit], |row| {
@@ -104,7 +103,7 @@ pub fn keyword_search(state: State<DbState>, req: SearchRequest) -> Result<Vec<S
             excerpt: content.chars().take(120).collect(),
             score: 0.85,
             source_id: None,
-            project_id: row.get(3)?,
+            project_id: None,
         })
     }).map_err(|e| e.to_string())?
     .filter_map(Result::ok)
@@ -120,19 +119,19 @@ pub fn keyword_search(state: State<DbState>, req: SearchRequest) -> Result<Vec<S
 /// Semantic search — receives pre-computed embedding from frontend (via Ollama),
 /// computes cosine similarity against stored chunk embeddings.
 #[tauri::command]
-pub fn semantic_search(state: State<DbState>, req: SearchRequest, query_embedding: Vec<f32>, project_id: String) -> Result<Vec<SearchResult>, String> {
+pub fn semantic_search(state: State<DbState>, req: SearchRequest, query_embedding: Vec<f32>, workspace_id: String) -> Result<Vec<SearchResult>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let limit = req.limit.unwrap_or(10) as usize;
 
-    // Load all chunk embeddings for this project
+    // Load all chunk embeddings for this workspace
     let mut stmt = conn.prepare(
         "SELECT dc.id, dc.document_id, dc.content, dc.embedding, d.filename
          FROM document_chunks dc
          JOIN uploaded_documents d ON dc.document_id = d.id
-         WHERE d.project_id = ?1 AND dc.embedding IS NOT NULL"
+         WHERE d.workspace_id = ?1 AND dc.embedding IS NOT NULL"
     ).map_err(|e| e.to_string())?;
 
-    let mut scored: Vec<(f64, SearchResult)> = stmt.query_map(rusqlite::params![project_id], |row| {
+    let mut scored: Vec<(f64, SearchResult)> = stmt.query_map(rusqlite::params![workspace_id], |row| {
         let chunk_id: String = row.get(0)?;
         let doc_id: String = row.get(1)?;
         let content: String = row.get(2)?;
@@ -152,7 +151,7 @@ pub fn semantic_search(state: State<DbState>, req: SearchRequest, query_embeddin
             excerpt,
             score,
             source_id: Some(doc_id),
-            project_id: Some(project_id.clone()),
+            project_id: None,
         }))
     })
     .collect();

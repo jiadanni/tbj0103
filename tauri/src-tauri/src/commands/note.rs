@@ -10,7 +10,7 @@ pub fn create_note(state: State<DbState>, req: CreateNoteRequest) -> Result<Proj
     let now = chrono::Utc::now().to_rfc3339();
     let note = ProjectNote {
         id: uuid::Uuid::new_v4().to_string(),
-        project_id: req.project_id,
+        workspace_id: req.workspace_id,
         title: req.title,
         content: req.content.unwrap_or_default(),
         note_type: req.note_type.unwrap_or_else(|| "manual".to_string()),
@@ -20,36 +20,30 @@ pub fn create_note(state: State<DbState>, req: CreateNoteRequest) -> Result<Proj
     };
     let tags_json = serde_json::to_string(&note.tags).unwrap_or_default();
     conn.execute(
-        "INSERT INTO project_notes (id, project_id, title, content, note_type, tags, created_at, updated_at)
+        "INSERT INTO project_notes (id, workspace_id, title, content, note_type, tags, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        rusqlite::params![note.id, note.project_id, note.title, note.content, note.note_type, tags_json, note.created_at, note.updated_at],
+        rusqlite::params![note.id, note.workspace_id, note.title, note.content, note.note_type, tags_json, note.created_at, note.updated_at],
     ).map_err(|e| e.to_string())?;
 
     // Index [[wiki-links]] in the note content
     if !note.content.is_empty() {
-        if let Ok(workspace_id) = conn.query_row(
-            "SELECT workspace_id FROM projects WHERE id = ?1",
-            rusqlite::params![note.project_id],
-            |r| r.get::<_, String>(0),
-        ) {
-            let _ = linking_engine::index_note_links(&conn, "note", &note.id, &workspace_id, &note.content);
-        }
+        let _ = linking_engine::index_note_links(&conn, "note", &note.id, &note.workspace_id, &note.content);
     }
     Ok(note)
 }
 
 #[tauri::command]
-pub fn list_notes(state: State<DbState>, project_id: String) -> Result<Vec<ProjectNote>, String> {
+pub fn list_notes(state: State<DbState>, workspace_id: String) -> Result<Vec<ProjectNote>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, project_id, title, content, note_type, tags, created_at, updated_at
-         FROM project_notes WHERE project_id = ?1 ORDER BY updated_at DESC"
+        "SELECT id, workspace_id, title, content, note_type, tags, created_at, updated_at
+         FROM project_notes WHERE workspace_id = ?1 ORDER BY updated_at DESC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![project_id], |row| {
+    let items = stmt.query_map(rusqlite::params![workspace_id], |row| {
         let tags_json: String = row.get(5)?;
         Ok(ProjectNote {
             id: row.get(0)?,
-            project_id: row.get(1)?,
+            workspace_id: row.get(1)?,
             title: row.get(2)?,
             content: row.get(3)?,
             note_type: row.get(4)?,
@@ -67,13 +61,13 @@ pub fn list_notes(state: State<DbState>, project_id: String) -> Result<Vec<Proje
 pub fn get_note(state: State<DbState>, id: String) -> Result<Option<ProjectNote>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, project_id, title, content, note_type, tags, created_at, updated_at FROM project_notes WHERE id = ?1",
+        "SELECT id, workspace_id, title, content, note_type, tags, created_at, updated_at FROM project_notes WHERE id = ?1",
         rusqlite::params![id],
         |row| {
             let tags_json: String = row.get(5)?;
             Ok(ProjectNote {
                 id: row.get(0)?,
-                project_id: row.get(1)?,
+                workspace_id: row.get(1)?,
                 title: row.get(2)?,
                 content: row.get(3)?,
                 note_type: row.get(4)?,
@@ -102,13 +96,12 @@ pub fn update_note(state: State<DbState>, req: UpdateNoteRequest) -> Result<(), 
 
     // Re-index [[wiki-links]] whenever content changes
     if let Some(ref content) = req.content {
-        let row = conn.query_row(
-            "SELECT n.project_id, p.workspace_id FROM project_notes n
-             JOIN projects p ON n.project_id = p.id WHERE n.id = ?1",
+        let workspace_id = conn.query_row(
+            "SELECT workspace_id FROM project_notes WHERE id = ?1",
             rusqlite::params![req.id],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            |r| r.get::<_, String>(0),
         );
-        if let Ok((_project_id, workspace_id)) = row {
+        if let Ok(workspace_id) = workspace_id {
             let _ = linking_engine::index_note_links(&conn, "note", &req.id, &workspace_id, content);
         }
     }

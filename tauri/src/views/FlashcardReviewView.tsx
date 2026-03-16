@@ -17,7 +17,7 @@ const QUALITY_LABELS = [
 ];
 
 export default function FlashcardReviewView() {
-  const { activeProjectId } = useWorkspaceStore();
+  const { activeWorkspaceId } = useWorkspaceStore();
   const [cards, setCards] = useState<LearningCard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -30,17 +30,17 @@ export default function FlashcardReviewView() {
   const currentCard = cards[currentIndex] ?? null;
 
   useEffect(() => {
-    if (!activeProjectId) return;
+    if (!activeWorkspaceId) return;
     Promise.all([
-      api.flashcard.listDue(activeProjectId),
-      api.flashcard.getStats(activeProjectId),
+      api.flashcard.listDue(activeWorkspaceId),
+      api.flashcard.getStats(activeWorkspaceId),
     ]).then(([due, s]) => {
       setCards(due);
       setStats(s);
       setCurrentIndex(0);
       setIsFlipped(false);
     }).catch(() => {});
-  }, [activeProjectId]);
+  }, [activeWorkspaceId]);
 
   async function review(quality: number) {
     if (!currentCard) return;
@@ -57,13 +57,13 @@ export default function FlashcardReviewView() {
       setCurrentIndex((i) => i + 1);
     } else {
       // Done — reload stats
-      if (activeProjectId) api.flashcard.getStats(activeProjectId).then(setStats).catch(() => {});
+      if (activeWorkspaceId) api.flashcard.getStats(activeWorkspaceId).then(setStats).catch(() => {});
     }
   }
 
   async function createCard() {
-    if (!newFront.trim() || !newBack.trim() || !activeProjectId) return;
-    const card = await api.flashcard.create(activeProjectId, newFront.trim(), newBack.trim());
+    if (!newFront.trim() || !newBack.trim() || !activeWorkspaceId) return;
+    const card = await api.flashcard.create(activeWorkspaceId, newFront.trim(), newBack.trim());
     setCards((prev) => [...prev, card]);
     setNewFront("");
     setNewBack("");
@@ -127,7 +127,7 @@ export default function FlashcardReviewView() {
           ))}
           {cards.length === 0 && (
             <p className="text-xs text-[var(--text-muted)] py-2">
-              {activeProjectId ? "No cards due — great job!" : "Select a project"}
+              {activeWorkspaceId ? "No cards due — great job!" : "No workspace active"}
             </p>
           )}
         </div>
@@ -207,7 +207,7 @@ export default function FlashcardReviewView() {
           </>
         ) : (
           <p className="text-[var(--text-muted)] text-sm">
-            {activeProjectId ? "No cards due right now" : "Select a project to review flashcards"}
+            {activeWorkspaceId ? "No cards due right now" : "No workspace active"}
           </p>
         )}
       </div>

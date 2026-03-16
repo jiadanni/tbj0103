@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UploadedDocument {
     pub id: String,
-    pub project_id: String,
+    pub workspace_id: String,
     pub filename: String,
     pub file_type: String,
     pub file_size: i64,
@@ -28,7 +28,7 @@ pub struct DocumentChunk {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebCapture {
     pub id: String,
-    pub project_id: String,
+    pub workspace_id: String,
     pub url: String,
     pub title: String,
     pub content: String,
@@ -41,7 +41,7 @@ pub struct WebCapture {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioTranscription {
     pub id: String,
-    pub project_id: String,
+    pub workspace_id: String,
     pub filename: String,
     pub transcript: String,
     pub duration_seconds: Option<f64>,
@@ -51,7 +51,7 @@ pub struct AudioTranscription {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UploadDocumentRequest {
-    pub project_id: String,
+    pub workspace_id: String,
     pub filename: String,
     pub file_type: String,
     pub file_size: i64,

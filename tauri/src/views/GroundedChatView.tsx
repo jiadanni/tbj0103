@@ -25,7 +25,7 @@ interface GroundedMessage {
 }
 
 export default function GroundedChatView() {
-  const { activeProjectId } = useWorkspaceStore();
+  const { activeWorkspaceId } = useWorkspaceStore();
   const { preferredModel, ollamaUrl } = useSettingsStore();
 
   const [messages, setMessages] = useState<GroundedMessage[]>([]);
@@ -38,22 +38,22 @@ export default function GroundedChatView() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load processed document count for this project
+  // Load processed document count for this workspace
   useEffect(() => {
-    if (!activeProjectId) return;
-    api.document.list(activeProjectId).then((docs) => {
+    if (!activeWorkspaceId) return;
+    api.document.list(activeWorkspaceId).then((docs) => {
       const processed = docs.filter((d) => d.is_processed);
       setDocuments(processed);
       setDocCount(processed.length);
     });
-  }, [activeProjectId]);
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleSend = async () => {
-    if (!input.trim() || loading || !activeProjectId) return;
+    if (!input.trim() || loading || !activeWorkspaceId) return;
     const userText = input.trim();
     setInput("");
     setLoading(true);
@@ -78,8 +78,8 @@ export default function GroundedChatView() {
       // 1. Keyword search for grounding context (embeddings optional)
       const keywordResults = await api.search.keyword(
         userText,
-        "",   // workspace_id not needed here since we pass project_id separately
-        activeProjectId
+        activeWorkspaceId ?? "",
+        undefined
       );
 
       // Filter to document_chunk results only
@@ -200,7 +200,7 @@ export default function GroundedChatView() {
       </div>
 
       {/* No documents warning */}
-      {docCount === 0 && activeProjectId && (
+      {docCount === 0 && activeWorkspaceId && (
         <div className="mx-4 mt-3 px-3 py-2 rounded bg-yellow-500/10 border border-yellow-500/30 text-sm text-yellow-600 dark:text-yellow-400 flex items-start gap-2">
           <FileText size={15} className="mt-0.5 flex-shrink-0" />
           <span>
@@ -294,17 +294,17 @@ export default function GroundedChatView() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              activeProjectId
+              activeWorkspaceId
                 ? "Ask a question about your documents…"
-                : "Select a project first"
+                : "No workspace active"
             }
-            disabled={loading || !activeProjectId}
+            disabled={loading || !activeWorkspaceId}
             rows={2}
             className="flex-1 resize-none rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2.5 text-sm focus:outline-none focus:border-[var(--accent)] disabled:opacity-50 transition-colors"
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || loading || !activeProjectId}
+            disabled={!input.trim() || loading || !activeWorkspaceId}
             className="flex-shrink-0 p-3 rounded-xl bg-[var(--accent)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
           >
             {loading ? (

@@ -29,7 +29,7 @@ export interface ConceptLink {
 }
 
 export interface LearningCard {
-  id: string; project_id: string; front: string; back: string;
+  id: string; workspace_id: string; front: string; back: string;
   source_type: string; ease_factor: number; interval: number;
   repetitions: number; next_review_date: string; last_reviewed_at?: string;
   created_at: string;
@@ -40,7 +40,7 @@ export interface ReviewStats {
 }
 
 export interface ProjectNote {
-  id: string; project_id: string; title: string; content: string;
+  id: string; workspace_id: string; title: string; content: string;
   note_type: string; tags: string[]; created_at: string; updated_at: string;
 }
 
@@ -55,7 +55,7 @@ export interface NoteTemplate {
 }
 
 export interface UploadedDocument {
-  id: string; project_id: string; filename: string; file_type: string;
+  id: string; workspace_id: string; filename: string; file_type: string;
   file_size: number; content: string; summary?: string; is_processed: boolean;
   chunk_count?: number; created_at: string; updated_at: string;
 }
@@ -153,18 +153,18 @@ export const api = {
   },
 
   flashcard: {
-    create: (projectId: string, front: string, back: string) =>
-      invoke<LearningCard>("create_flashcard", { req: { project_id: projectId, front, back } }),
-    listDue: (projectId: string) => invoke<LearningCard[]>("list_flashcards_due", { projectId }),
+    create: (workspaceId: string, front: string, back: string) =>
+      invoke<LearningCard>("create_flashcard", { req: { workspace_id: workspaceId, front, back } }),
+    listDue: (workspaceId: string) => invoke<LearningCard[]>("list_flashcards_due", { workspaceId }),
     review: (cardId: string, quality: number) =>
       invoke<LearningCard>("review_flashcard", { req: { card_id: cardId, quality } }),
-    getStats: (projectId: string) => invoke<ReviewStats>("get_review_stats", { projectId }),
+    getStats: (workspaceId: string) => invoke<ReviewStats>("get_review_stats", { workspaceId }),
   },
 
   note: {
-    create: (projectId: string, title: string, content?: string) =>
-      invoke<ProjectNote>("create_note", { req: { project_id: projectId, title, content } }),
-    list: (projectId: string) => invoke<ProjectNote[]>("list_notes", { projectId }),
+    create: (workspaceId: string, title: string, content?: string) =>
+      invoke<ProjectNote>("create_note", { req: { workspace_id: workspaceId, title, content } }),
+    list: (workspaceId: string) => invoke<ProjectNote[]>("list_notes", { workspaceId }),
     get: (id: string) => invoke<ProjectNote | null>("get_note", { id }),
     update: (id: string, fields: Partial<ProjectNote>) => invoke<void>("update_note", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_note", { id }),
@@ -187,9 +187,9 @@ export const api = {
   },
 
   document: {
-    upload: (projectId: string, filename: string, fileType: string, fileSize: number, content: string) =>
-      invoke<UploadedDocument>("upload_document", { req: { project_id: projectId, filename, file_type: fileType, file_size: fileSize, content } }),
-    list: (projectId: string) => invoke<UploadedDocument[]>("list_documents", { projectId }),
+    upload: (workspaceId: string, filename: string, fileType: string, fileSize: number, content: string) =>
+      invoke<UploadedDocument>("upload_document", { req: { workspace_id: workspaceId, filename, file_type: fileType, file_size: fileSize, content } }),
+    list: (workspaceId: string) => invoke<UploadedDocument[]>("list_documents", { workspaceId }),
     get: (id: string) => invoke<UploadedDocument | null>("get_document", { id }),
     delete: (id: string) => invoke<void>("delete_document", { id }),
     process: (documentId: string) => invoke<number>("process_document", { req: { document_id: documentId } }),
@@ -198,8 +198,8 @@ export const api = {
   search: {
     keyword: (query: string, workspaceId: string, projectId?: string) =>
       invoke<SearchResult[]>("keyword_search", { req: { query, workspace_id: workspaceId, project_id: projectId } }),
-    semantic: (query: string, workspaceId: string, queryEmbedding: number[], projectId: string) =>
-      invoke<SearchResult[]>("semantic_search", { req: { query, workspace_id: workspaceId }, queryEmbedding, projectId }),
+    semantic: (query: string, workspaceId: string, queryEmbedding: number[]) =>
+      invoke<SearchResult[]>("semantic_search", { req: { query, workspace_id: workspaceId }, queryEmbedding, workspaceId }),
   },
 
   ollama: {
@@ -213,9 +213,9 @@ export const api = {
   },
 
   export: {
-    markdown: (projectId: string) => invoke<string>("export_markdown", { req: { project_id: projectId } }),
-    json: (projectId: string) => invoke<string>("export_json", { req: { project_id: projectId } }),
-    obsidian: (projectId: string) => invoke<Array<{ path: string; content: string }>>("export_obsidian_vault", { req: { project_id: projectId } }),
+    markdown: (workspaceId: string) => invoke<string>("export_markdown", { req: { workspace_id: workspaceId } }),
+    json: (workspaceId: string) => invoke<string>("export_json", { req: { workspace_id: workspaceId } }),
+    obsidian: (workspaceId: string) => invoke<Array<{ path: string; content: string }>>("export_obsidian_vault", { req: { workspace_id: workspaceId } }),
   },
 
   backup: {
@@ -252,16 +252,16 @@ export const api = {
   },
 
   webCapture: {
-    create: (projectId: string, url: string, title: string, content: string, summary?: string) =>
-      invoke<{ id: string; project_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string }>(
-        "create_web_capture", { projectId, url, title, content, summary }
+    create: (workspaceId: string, url: string, title: string, content: string, summary?: string) =>
+      invoke<{ id: string; workspace_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string }>(
+        "create_web_capture", { workspaceId, url, title, content, summary }
       ),
-    list: (projectId: string) =>
-      invoke<{ id: string; project_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string }[]>(
-        "list_web_captures", { projectId }
+    list: (workspaceId: string) =>
+      invoke<{ id: string; workspace_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string }[]>(
+        "list_web_captures", { workspaceId }
       ),
     get: (id: string) =>
-      invoke<{ id: string; project_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string } | null>(
+      invoke<{ id: string; workspace_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string } | null>(
         "get_web_capture", { id }
       ),
     delete: (id: string) => invoke<void>("delete_web_capture", { id }),

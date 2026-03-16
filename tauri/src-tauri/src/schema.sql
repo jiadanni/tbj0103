@@ -143,7 +143,7 @@ CREATE TABLE IF NOT EXISTS daily_notes (
 
 CREATE TABLE IF NOT EXISTS learning_cards (
     id TEXT PRIMARY KEY NOT NULL,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     front TEXT NOT NULL,
     back TEXT NOT NULL,
     source_type TEXT NOT NULL DEFAULT 'manual',
@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS learning_cards (
 
 CREATE TABLE IF NOT EXISTS learning_paths (
     id TEXT PRIMARY KEY NOT NULL,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     path_description TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS path_milestones (
 -- Project sources (from ProjectSource.swift)
 CREATE TABLE IF NOT EXISTS uploaded_documents (
     id TEXT PRIMARY KEY NOT NULL,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     filename TEXT NOT NULL,
     file_type TEXT NOT NULL,
     file_size INTEGER NOT NULL DEFAULT 0,
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 
 CREATE TABLE IF NOT EXISTS web_captures (
     id TEXT PRIMARY KEY NOT NULL,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     url TEXT NOT NULL,
     title TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL DEFAULT '',
@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS audio_transcriptions (
 
 CREATE TABLE IF NOT EXISTS project_notes (
     id TEXT PRIMARY KEY NOT NULL,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     content TEXT NOT NULL DEFAULT '',
     note_type TEXT NOT NULL DEFAULT 'manual'
