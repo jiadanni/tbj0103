@@ -16,7 +16,7 @@ class NoteTemplateEngine: ObservableObject {
     /// Process template content with variables
     func processTemplate(
         _ template: NoteTemplate,
-        project: AetheriumProject? = nil,
+        project: Workspace? = nil,
         customVariables: [String: String] = [:]
     ) -> String {
         var content = template.content
@@ -31,7 +31,7 @@ class NoteTemplateEngine: ObservableObject {
             "month": formatMonth(Date()),
             "year": formatYear(Date()),
             "project": project?.title ?? "No Project",
-            "project_description": project?.projectDescription ?? "",
+            "project_description": project?.workspaceDescription ?? "",
             "username": NSUserName(),
             "timestamp": Date().timeIntervalSince1970.description
         ].merging(customVariables) { _, custom in custom }
@@ -47,7 +47,7 @@ class NoteTemplateEngine: ObservableObject {
     /// Create note from template
     func createNoteFromTemplate(
         _ template: NoteTemplate,
-        project: AetheriumProject,
+        project: Workspace,
         customVariables: [String: String] = [:]
     ) -> ProjectNote {
         let processedContent = processTemplate(
@@ -69,7 +69,7 @@ class NoteTemplateEngine: ObservableObject {
     // MARK: - Template Library
 
     /// Get all templates for a project
-    func getTemplates(for project: AetheriumProject? = nil) -> [NoteTemplate] {
+    func getTemplates(for project: Workspace? = nil) -> [NoteTemplate] {
         let descriptor: FetchDescriptor<NoteTemplate>
 
         if let project = project {
@@ -120,7 +120,7 @@ class NoteTemplateEngine: ObservableObject {
     /// Get or create daily note for a specific date
     func getOrCreateDailyNote(
         for date: Date,
-        project: AetheriumProject,
+        project: Workspace,
         template: NoteTemplate? = nil
     ) -> DailyNote {
         let normalizedDate = DailyNote.normalizeDate(date)
@@ -171,7 +171,7 @@ class NoteTemplateEngine: ObservableObject {
     func getDailyNotes(
         from startDate: Date,
         to endDate: Date,
-        project: AetheriumProject
+        project: Workspace
     ) -> [DailyNote] {
         let projectId = project.id
         let descriptor = FetchDescriptor<DailyNote>(

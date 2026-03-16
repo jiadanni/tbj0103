@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Learning Path View
 
 struct LearningPathView: View {
-    let project: AetheriumProject
+    let project: Workspace
     @Environment(\.modelContext) private var modelContext
 
     @Query private var allPaths: [LearningPath]
@@ -383,7 +383,7 @@ struct MilestoneCard: View {
 // MARK: - New Path Sheet
 
 struct NewLearningPathSheet: View {
-    let project: AetheriumProject
+    let project: Workspace
     let modelContext: ModelContext
     let onCreate: (LearningPath) -> Void
 

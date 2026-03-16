@@ -18,7 +18,7 @@ final class ConceptNode {
     @Relationship(deleteRule: .cascade) var outgoingLinks: [ConceptLink]
     @Relationship(deleteRule: .nullify) var incomingLinks: [ConceptLink]
     @Relationship(deleteRule: .nullify) var mentions: [ConceptMention]
-    var project: AetheriumProject?
+    var project: Workspace?
 
     // Metadata
     var tags: [String]

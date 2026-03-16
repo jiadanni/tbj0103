@@ -18,7 +18,7 @@ final class ProjectSource {
     var isProcessing: Bool
 
     // Relationships
-    var project: AetheriumProject?
+    var project: Workspace?
     var document: UploadedDocument?
     var webpage: WebCapture?
     var audioFile: AudioTranscription?
@@ -97,11 +97,16 @@ final class UploadedDocument {
 final class DocumentChunk {
     @Attribute(.unique) var id: UUID
     var content: String
-    var embeddingsData: Data? // Encoded [Float] embeddings
+    // Store raw embedding bytes in an external file; SwiftData won't load it
+    // unless the property is accessed, giving true lazy loading.
+    @Attribute(.externalStorage) var embeddingsData: Data?
     var pageNumber: Int?
     var sectionTitle: String?
     var chunkIndex: Int
     var tokenCount: Int?
+
+    // In-memory cache so decoding [Float] from Data only happens once per object lifetime.
+    @Transient var _cachedEmbedding: [Float]? = nil
 
     var document: UploadedDocument?
 
@@ -121,17 +126,21 @@ final class DocumentChunk {
         self.chunkIndex = chunkIndex
         self.tokenCount = tokenCount
 
-        // Encode embeddings as Data
+        // Encode the float elements as their raw bytes
         if let embeddings = embeddings {
-            self.embeddingsData = withUnsafeBytes(of: embeddings) { Data($0) }
+            self.embeddingsData = embeddings.withUnsafeBufferPointer { Data(buffer: $0) }
         }
     }
 
     var embeddings: [Float]? {
+        // Return cached copy if already decoded
+        if let cached = _cachedEmbedding { return cached }
         guard let data = embeddingsData else { return nil }
-        return data.withUnsafeBytes { buffer in
+        let decoded = data.withUnsafeBytes { buffer in
             Array(buffer.bindMemory(to: Float.self))
         }
+        _cachedEmbedding = decoded
+        return decoded
     }
 }
 

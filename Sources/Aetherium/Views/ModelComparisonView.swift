@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct ModelComparisonView: View {
-    let project: AetheriumProject
+    let project: Workspace
     @EnvironmentObject var ollamaService: OllamaService
 
     @State private var modelA = "qwen2.5:7b"

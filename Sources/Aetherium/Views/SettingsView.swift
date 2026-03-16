@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject var securityManager: SecurityManager
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var shortcutManager: ShortcutManager
+    @EnvironmentObject var backupService: BackupService
     @ObservedObject private var appSettings = AppSettings.shared
 
     @State private var isLoadingModels = false
@@ -108,6 +109,8 @@ struct SettingsView: View {
                 }
             }
 
+            BackupSettingsSection()
+
             Section("Layout") {
                 Picker("Project Navigation", selection: $appSettings.projectTabPosition) {
                     ForEach(ProjectTabPosition.allCases, id: \.rawValue) { position in
@@ -141,6 +144,10 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .frame(width: 450, height: 700)
+        .task {
+            loadModels()
+        }
     }
 
     private func loadModels() {

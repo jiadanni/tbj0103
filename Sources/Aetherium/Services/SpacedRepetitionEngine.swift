@@ -60,7 +60,7 @@ class SpacedRepetitionEngine: ObservableObject {
     // MARK: - Card Management
 
     /// Get due cards for review
-    func loadDueCards(for project: AetheriumProject?) {
+    func loadDueCards(for project: Workspace?) {
         guard let project = project else {
             dueCards = []
             return
@@ -80,7 +80,7 @@ class SpacedRepetitionEngine: ObservableObject {
     }
 
     /// Get all cards for project
-    func getAllCards(for project: AetheriumProject) -> [LearningCard] {
+    func getAllCards(for project: Workspace) -> [LearningCard] {
         let projectId = project.id
         let descriptor = FetchDescriptor<LearningCard>(
             predicate: #Predicate { card in
@@ -93,7 +93,7 @@ class SpacedRepetitionEngine: ObservableObject {
     }
 
     /// Create card from concept
-    func createCardFromConcept(_ concept: ConceptNode, project: AetheriumProject) -> LearningCard {
+    func createCardFromConcept(_ concept: ConceptNode, project: Workspace) -> LearningCard {
         let card = LearningCard(
             front: "What is \(concept.name)?",
             back: concept.conceptDescription ?? "No description available",
@@ -110,7 +110,7 @@ class SpacedRepetitionEngine: ObservableObject {
     /// Generate AI-powered flashcards from note content
     func generateCardsFromNote(
         _ note: ProjectNote,
-        project: AetheriumProject,
+        project: Workspace,
         ollamaService: OllamaService,
         count: Int = 5
     ) async -> [LearningCard] {
@@ -127,7 +127,7 @@ class SpacedRepetitionEngine: ObservableObject {
     // MARK: - Statistics
 
     /// Calculate review statistics
-    func calculateStats(for project: AetheriumProject) -> ReviewStats {
+    func calculateStats(for project: Workspace) -> ReviewStats {
         let allCards = getAllCards(for: project)
 
         let totalCards = allCards.count
@@ -154,7 +154,7 @@ class SpacedRepetitionEngine: ObservableObject {
     }
 
     /// Get review history for past days
-    func getReviewHistory(days: Int = 7, project: AetheriumProject) -> [ReviewDay] {
+    func getReviewHistory(days: Int = 7, project: Workspace) -> [ReviewDay] {
         let allCards = getAllCards(for: project)
         var history: [ReviewDay] = []
 

@@ -10,29 +10,47 @@ struct ContentView: View {
     @EnvironmentObject var modelOrchestrator: ModelOrchestrator
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var shortcutManager: ShortcutManager
+    @EnvironmentObject var demoModeManager: DemoModeManager
     @ObservedObject private var appSettings = AppSettings.shared
 
-    @Query(sort: \AetheriumProject.updatedAt, order: .reverse)
-    private var projects: [AetheriumProject]
+    @Query(sort: \Workspace.updatedAt, order: .reverse)
+    private var projects: [Workspace]
 
-    @State private var selectedProject: AetheriumProject?
+    @State private var selectedProject: Workspace?
     @State private var selectedView: NavigationView = .dashboard
-    @State private var showingNewProjectSheet = false
+    @State private var showingNewWorkspaceSheet = false
     @State private var showingSettings = false
 
     var body: some View {
-        Group {
-            if appSettings.tabPosition == .top {
-                topTabLayout
-            } else {
-                sidebarLayout
+        VStack(spacing: 0) {
+            if demoModeManager.isActive {
+                DemoBannerView(
+                    onExit: {
+                        demoModeManager.deactivate(
+                            ollamaService: ollamaService,
+                            securityManager: securityManager
+                        )
+                    },
+                    onNavigate: { selectedView = $0 },
+                    onReset: { demoModeManager.reset(ollamaService: ollamaService) }
+                )
             }
+            Group {
+                if appSettings.tabPosition == .top {
+                    topTabLayout
+                } else {
+                    sidebarLayout
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .sheet(isPresented: $showingNewProjectSheet) {
-            NewProjectSheet(isPresented: $showingNewProjectSheet)
+        .sheet(isPresented: $showingNewWorkspaceSheet) {
+            NewWorkspaceSheet(isPresented: $showingNewWorkspaceSheet)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
+                .environmentObject(ollamaService)
+                .environmentObject(securityManager)
                 .environmentObject(themeManager)
                 .environmentObject(shortcutManager)
         }
@@ -75,9 +93,23 @@ struct ContentView: View {
             }
         }
         .task {
+            // Auto-select the most recently updated project if none is selected
+            if selectedProject == nil, let first = projects.first {
+                selectedProject = first
+            }
+
             let available = await ollamaService.checkAvailability()
             if available {
                 _ = try? await ollamaService.fetchAvailableModels()
+            }
+        }
+        .onChange(of: projects.count) { _, newCount in
+            // Select newly created project or fall back if selected was deleted
+            if selectedProject == nil, let first = projects.first {
+                selectedProject = first
+            } else if newCount > 0, let selected = selectedProject,
+                      !projects.contains(where: { $0.id == selected.id }) {
+                selectedProject = projects.first
             }
         }
         .commandPalette(onNavigate: handleSearchNavigation)
@@ -96,10 +128,10 @@ struct ContentView: View {
     private var topTabLayout: some View {
         VStack(spacing: 0) {
             // Project tabs bar
-            ProjectTabBar(
+            WorkspaceTabBar(
                 projects: projects,
                 selectedProject: $selectedProject,
-                showingNewProjectSheet: $showingNewProjectSheet
+                showingNewWorkspaceSheet: $showingNewWorkspaceSheet
             )
 
             Divider()
@@ -121,7 +153,7 @@ struct ContentView: View {
                 }
             } else {
                 WelcomeView(
-                    onCreateProject: { showingNewProjectSheet = true },
+                    onCreateProject: { showingNewWorkspaceSheet = true },
                     hasProjects: !projects.isEmpty
                 )
             }
@@ -133,10 +165,10 @@ struct ContentView: View {
     private var sidebarLayout: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
-                ProjectSelectorView(
+                WorkspaceSelectorView(
                     projects: projects,
                     selectedProject: $selectedProject,
-                    showingNewProjectSheet: $showingNewProjectSheet
+                    showingNewWorkspaceSheet: $showingNewWorkspaceSheet
                 )
 
                 Divider()
@@ -145,9 +177,9 @@ struct ContentView: View {
                     SidebarNavigationMenuView(selectedView: $selectedView)
                 } else {
                     ContentUnavailableView(
-                        "No Project Selected",
+                        "No Workspace Selected",
                         systemImage: "folder.badge.questionmark",
-                        description: Text("Create or select a project to get started")
+                        description: Text("Create or select a workspace to get started")
                     )
                 }
             }
@@ -163,7 +195,7 @@ struct ContentView: View {
                 }
             } else {
                 WelcomeView(
-                    onCreateProject: { showingNewProjectSheet = true },
+                    onCreateProject: { showingNewWorkspaceSheet = true },
                     hasProjects: !projects.isEmpty
                 )
             }
@@ -219,6 +251,178 @@ struct ContentView: View {
     }
 }
 
+// MARK: - Demo Banner
+
+struct DemoBannerView: View {
+    let onExit: () -> Void
+    let onNavigate: (NavigationView) -> Void
+    let onReset: () -> Void
+
+    @State private var showingHelp = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bolt.fill")
+                .foregroundColor(.orange)
+                .font(.caption)
+
+            Text("Demo Mode")
+                .fontWeight(.semibold)
+                .font(.caption)
+
+            Text("— changes are temporary and won't be saved")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Spacer()
+
+            Button {
+                showingHelp = true
+            } label: {
+                Image(systemName: "questionmark.circle")
+            }
+            .font(.caption)
+            .buttonStyle(.plain)
+            .foregroundColor(.orange)
+            .help("What can I try?")
+
+            Button("Exit Demo", action: onExit)
+                .font(.caption)
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.12))
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+        .sheet(isPresented: $showingHelp) {
+            DemoHelpSheet(onNavigate: onNavigate, onReset: onReset, onExit: onExit)
+        }
+    }
+}
+
+// MARK: - Demo Help Sheet
+
+struct DemoHelpSheet: View {
+    let onNavigate: (NavigationView) -> Void
+    let onReset: () -> Void
+    let onExit: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    private struct Suggestion: Identifiable {
+        let id = UUID()
+        let view: NavigationView
+        let title: String
+        let subtitle: String
+    }
+
+    private let suggestions = [
+        Suggestion(view: .chat,           title: "💬 Ask a question in Chat",        subtitle: "Try 'What is attention?' or 'How does MRR work?'"),
+        Suggestion(view: .knowledgeGraph, title: "🧠 Explore the knowledge graph",   subtitle: "Tap any node to see how concepts connect to each other"),
+        Suggestion(view: .flashcards,     title: "🃏 Flip a flashcard",              subtitle: "Practise spaced repetition — hit Space to reveal answers"),
+        Suggestion(view: .learningPaths,  title: "🗺️ Review your learning path",     subtitle: "See milestones and track progress across projects"),
+        Suggestion(view: .documents,      title: "📄 Browse your documents",         subtitle: "View imported sources with their extracted text"),
+        Suggestion(view: .dailyNotes,     title: "📅 Read a daily note",             subtitle: "Seven days of study notes are already logged"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("What can I try?")
+                        .font(.headline)
+                    Text("Explore Aetherium with pre-loaded demo content")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+            .padding()
+
+            Divider()
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(suggestions) { suggestion in
+                        Button {
+                            onNavigate(suggestion.view)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(suggestion.title).fontWeight(.medium)
+                                    Text(suggestion.subtitle)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(.tertiary)
+                                    .font(.caption)
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 10)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading)
+                    }
+                }
+            }
+
+            Divider()
+
+            HStack {
+                Button(role: .destructive) {
+                    onReset()
+                    dismiss()
+                } label: {
+                    Label("Reset Demo", systemImage: "arrow.counterclockwise")
+                }
+                .buttonStyle(.bordered)
+                .help("Re-seed all demo data, restoring the original projects and content")
+
+                Spacer()
+
+                Button {
+                    onExit()
+                    dismiss()
+                } label: {
+                    Label("Exit Demo", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+            }
+            .padding()
+        }
+        .frame(minWidth: 400, idealWidth: 440)
+    }
+}
+
+// MARK: - Demo Tip Callout
+
+struct DemoTipCallout: View {
+    let message: String
+    let systemImage: String
+
+    var body: some View {
+        Label(message, systemImage: systemImage)
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.orange)
+            .foregroundColor(.white)
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
+    }
+}
+
 // MARK: - Navigation View Enum
 
 enum NavigationView: String, CaseIterable, Identifiable {
@@ -231,6 +435,7 @@ enum NavigationView: String, CaseIterable, Identifiable {
     case learningPaths = "Learning Paths"
     case plugins = "Plugins"
     case modelComparison = "Compare Models"
+    case backups = "Backups"
 
     var id: String { rawValue }
 
@@ -245,6 +450,7 @@ enum NavigationView: String, CaseIterable, Identifiable {
         case .learningPaths: return "map.fill"
         case .plugins: return "puzzlepiece.extension"
         case .modelComparison: return "scale.3d"
+        case .backups: return "clock.arrow.circlepath"
         }
     }
 
@@ -259,34 +465,34 @@ enum NavigationView: String, CaseIterable, Identifiable {
         case .learningPaths: return "7"
         case .plugins: return "8"
         case .modelComparison: return "9"
+        case .backups: return "0"
         }
     }
 }
 
 // MARK: - Project Selector
 
-struct ProjectSelectorView: View {
-    let projects: [AetheriumProject]
-    @Binding var selectedProject: AetheriumProject?
-    @Binding var showingNewProjectSheet: Bool
-    @EnvironmentObject var shortcutManager: ShortcutManager
+struct WorkspaceSelectorView: View {
+    let projects: [Workspace]
+    @Binding var selectedProject: Workspace?
+    @Binding var showingNewWorkspaceSheet: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Projects")
+                Text("Workspaces")
                     .font(.headline)
                     .foregroundColor(.secondary)
 
                 Spacer()
 
-                Button(action: { showingNewProjectSheet = true }) {
+                Button(action: { showingNewWorkspaceSheet = true }) {
                     Image(systemName: "plus.circle.fill")
                         .foregroundColor(.blue)
                 }
                 .buttonStyle(.plain)
-                .help("Create New Project (Cmd+N)")
-                .keyboardShortcut(shortcutManager.newProjectKeyEquivalent, modifiers: shortcutManager.newProjectModifiers)
+                .help("Create New Workspace (Cmd+N)")
+                .keyboardShortcut("n", modifiers: .command)
             }
             .padding()
 
@@ -298,14 +504,14 @@ struct ProjectSelectorView: View {
                         .font(.largeTitle)
                         .foregroundColor(.secondary)
 
-                    Text("No projects yet")
+                    Text("No workspaces yet")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(projects, selection: $selectedProject) { project in
-                    ProjectRowView(project: project)
+                    WorkspaceRowView(project: project)
                         .tag(project)
                 }
                 .listStyle(.sidebar)
@@ -314,8 +520,8 @@ struct ProjectSelectorView: View {
     }
 }
 
-struct ProjectRowView: View {
-    let project: AetheriumProject
+struct WorkspaceRowView: View {
+    let project: Workspace
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -337,16 +543,16 @@ struct ProjectRowView: View {
 
 // MARK: - Project Tab Bar (Horizontal)
 
-struct ProjectTabBar: View {
-    let projects: [AetheriumProject]
-    @Binding var selectedProject: AetheriumProject?
-    @Binding var showingNewProjectSheet: Bool
+struct WorkspaceTabBar: View {
+    let projects: [Workspace]
+    @Binding var selectedProject: Workspace?
+    @Binding var showingNewWorkspaceSheet: Bool
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 ForEach(projects) { project in
-                    ProjectTab(
+                    WorkspaceTab(
                         project: project,
                         isSelected: selectedProject?.id == project.id,
                         onSelect: { selectedProject = project }
@@ -354,7 +560,7 @@ struct ProjectTabBar: View {
                 }
 
                 // New project button
-                Button(action: { showingNewProjectSheet = true }) {
+                Button(action: { showingNewWorkspaceSheet = true }) {
                     Image(systemName: "plus")
                         .font(.system(size: 14))
                         .foregroundColor(.secondary)
@@ -362,7 +568,7 @@ struct ProjectTabBar: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("New Project (Cmd+N)")
+                .help("New Workspace (Cmd+N)")
                 .keyboardShortcut("n", modifiers: .command)
                 .padding(.horizontal, 4)
 
@@ -375,8 +581,8 @@ struct ProjectTabBar: View {
     }
 }
 
-struct ProjectTab: View {
-    let project: AetheriumProject
+struct WorkspaceTab: View {
+    let project: Workspace
     let isSelected: Bool
     let onSelect: () -> Void
 
@@ -482,7 +688,7 @@ struct SidebarNavigationMenuView: View {
 // MARK: - Detail View Router
 
 struct DetailViewRouter: View {
-    let project: AetheriumProject
+    let project: Workspace
     let selectedView: NavigationView
     let modelContext: ModelContext
 
@@ -516,6 +722,9 @@ struct DetailViewRouter: View {
 
             case .modelComparison:
                 ModelComparisonView(project: project)
+
+            case .backups:
+                BackupTimelineView()
             }
         }
         .navigationTitle(selectedView.rawValue)
@@ -525,7 +734,8 @@ struct DetailViewRouter: View {
 // MARK: - Chat Navigation View
 
 struct ChatNavigationView: View {
-    let project: AetheriumProject
+    let project: Workspace
+    @EnvironmentObject var shortcutManager: ShortcutManager
     @State private var selectedChat: ChatSession?
 
     var body: some View {
@@ -572,7 +782,7 @@ struct ChatNavigationView: View {
 }
 
 struct ChatSessionListHeaderView: View {
-    let project: AetheriumProject
+    let project: Workspace
     @State private var showingNewChat = false
     @EnvironmentObject var shortcutManager: ShortcutManager
 
@@ -690,7 +900,7 @@ struct FeatureBadge: View {
 // MARK: - New Chat Sheet
 
 struct NewChatSheet: View {
-    let project: AetheriumProject
+    let project: Workspace
     @Binding var isPresented: Bool
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var ollamaService: OllamaService

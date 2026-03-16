@@ -4,8 +4,9 @@ import SwiftData
 // MARK: - Flashcard Review View
 
 struct FlashcardReviewView: View {
-    let project: AetheriumProject
+    let project: Workspace
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var ollamaService: OllamaService
 
     @StateObject private var srEngine: SpacedRepetitionEngine
     @State private var currentCardIndex = 0
@@ -13,8 +14,11 @@ struct FlashcardReviewView: View {
     @State private var sessionStats = SessionStats()
     @State private var showingCongratulations = false
     @State private var showingNewCardSheet = false
+    @State private var isAutoGenerating = false
+    @State private var showDemoTip = false
+    @EnvironmentObject var demoModeManager: DemoModeManager
 
-    init(project: AetheriumProject, modelContext: ModelContext) {
+    init(project: Workspace, modelContext: ModelContext) {
         self.project = project
         _srEngine = StateObject(wrappedValue: SpacedRepetitionEngine(modelContext: modelContext))
     }
@@ -72,6 +76,14 @@ struct FlashcardReviewView: View {
                         resetSession()
                     }
                 )
+            } else if isAutoGenerating {
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                    Text("Generating flashcards from your content...")
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 EmptyReviewView(
                     onCreateCard: { showingNewCardSheet = true }
@@ -85,6 +97,16 @@ struct FlashcardReviewView: View {
                     Label("New Card", systemImage: "plus.circle.fill")
                 }
             }
+
+            ToolbarItem(placement: .automatic) {
+                Button(action: { autoGenerateCards() }) {
+                    Label(
+                        isAutoGenerating ? "Generating..." : "Auto-Generate",
+                        systemImage: "sparkles"
+                    )
+                }
+                .disabled(isAutoGenerating || (project.sources.isEmpty && project.chatSessions.isEmpty))
+            }
         }
         .sheet(isPresented: $showingNewCardSheet) {
             NewFlashcardSheet(project: project, modelContext: modelContext) {
@@ -93,6 +115,28 @@ struct FlashcardReviewView: View {
         }
         .task {
             srEngine.loadDueCards(for: project)
+
+            // Auto-generate flashcards if there are none but the project has content
+            let allCards = srEngine.getAllCards(for: project)
+            let hasContent = !project.sources.isEmpty || !project.chatSessions.isEmpty
+            if allCards.isEmpty && hasContent {
+                autoGenerateCards()
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if showDemoTip {
+                DemoTipCallout(message: "Press Space to reveal the answer", systemImage: "keyboard")
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 24)
+            }
+        }
+        .onAppear {
+            guard demoModeManager.isActive else { return }
+            withAnimation(.easeIn(duration: 0.3).delay(0.6)) { showDemoTip = true }
+            Task {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                withAnimation(.easeOut(duration: 0.3)) { showDemoTip = false }
+            }
         }
     }
 
@@ -121,6 +165,18 @@ struct FlashcardReviewView: View {
         currentCardIndex = 0
         sessionStats = SessionStats()
         srEngine.loadDueCards(for: project)
+    }
+
+    private func autoGenerateCards() {
+        guard !isAutoGenerating else { return }
+        isAutoGenerating = true
+
+        Task {
+            let autoGen = AutoContentGenerator(ollamaService: ollamaService, modelContext: modelContext)
+            await autoGen.processEntireProject(project)
+            srEngine.loadDueCards(for: project)
+            isAutoGenerating = false
+        }
     }
 }
 
@@ -446,7 +502,7 @@ struct FlashcardStatRow: View {
 // MARK: - New Flashcard Sheet
 
 struct NewFlashcardSheet: View {
-    let project: AetheriumProject
+    let project: Workspace
     let modelContext: ModelContext
     let onCreated: () -> Void
 
