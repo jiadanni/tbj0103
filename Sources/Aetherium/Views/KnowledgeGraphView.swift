@@ -10,6 +10,9 @@ struct KnowledgeGraphView: View {
     @State private var searchText = ""
     @State private var filterType: ConceptNodeType?
     @State private var showingStatistics = false
+    @State private var showingShortestPath = false
+    @State private var showingEvolution = false
+    @State private var evolutionDate: Date?
     @State private var graphLayout = GraphLayout.force
 
     enum GraphLayout {
@@ -20,16 +23,37 @@ struct KnowledgeGraphView: View {
 
     var filteredConcepts: [ConceptNode] {
         allConcepts.filter { concept in
-            concept.project?.id == project.id &&
+            let dateCondition: Bool
+            if let targetDate = evolutionDate {
+                dateCondition = concept.createdAt <= targetDate
+            } else {
+                dateCondition = true
+            }
+
+            return concept.project?.id == project.id &&
             (searchText.isEmpty || concept.name.localizedCaseInsensitiveContains(searchText)) &&
-            (filterType == nil || concept.type == filterType)
+            (filterType == nil || concept.type == filterType) &&
+            dateCondition
         }
+    }
+
+    private var minDate: Date {
+        allConcepts.map { $0.createdAt }.min() ?? Date()
+    }
+
+    private var maxDate: Date {
+        allConcepts.map { $0.createdAt }.max() ?? Date()
     }
 
     var body: some View {
         VStack(spacing: 0) {
             // Header with controls
             graphControls
+
+            if showingEvolution {
+                Divider()
+                evolutionControls
+            }
 
             Divider()
 
@@ -49,6 +73,22 @@ struct KnowledgeGraphView: View {
         .navigationTitle("Knowledge Graph")
         .toolbar {
             ToolbarItem(placement: .automatic) {
+                Button(action: {
+                    showingEvolution.toggle()
+                    if showingEvolution && evolutionDate == nil {
+                        evolutionDate = maxDate
+                    } else if !showingEvolution {
+                        evolutionDate = nil
+                    }
+                }) {
+                    Label("Evolution", systemImage: "clock.arrow.circlepath")
+                }
+                .tint(showingEvolution ? .blue : .primary)
+
+                Button(action: { showingShortestPath.toggle() }) {
+                    Label("Path", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                }
+
                 Button(action: { showingStatistics.toggle() }) {
                     Label("Statistics", systemImage: "chart.bar")
                 }
@@ -57,9 +97,42 @@ struct KnowledgeGraphView: View {
         .sheet(isPresented: $showingStatistics) {
             GraphStatisticsView(concepts: filteredConcepts)
         }
+        .sheet(isPresented: $showingShortestPath) {
+            ShortestPathView(concepts: filteredConcepts)
+        }
     }
 
     // MARK: - Components
+
+    private var evolutionControls: some View {
+        HStack {
+            Text("Graph Evolution")
+                .font(.headline)
+
+            let minD = minDate
+            let maxD = maxDate
+
+            if minD < maxD {
+                Slider(
+                    value: Binding(
+                        get: { self.evolutionDate?.timeIntervalSince1970 ?? maxD.timeIntervalSince1970 },
+                        set: { self.evolutionDate = Date(timeIntervalSince1970: $0) }
+                    ),
+                    in: minD.timeIntervalSince1970...maxD.timeIntervalSince1970
+                )
+
+                Text(evolutionDate?.formatted(date: .abbreviated, time: .shortened) ?? "")
+                    .font(.caption)
+                    .frame(width: 150, alignment: .trailing)
+            } else {
+                Text("Not enough data to show evolution.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.05))
+    }
 
     private var graphControls: some View {
         HStack {
@@ -597,42 +670,144 @@ struct FlowLayout: Layout {
 struct GraphStatisticsView: View {
     let concepts: [ConceptNode]
 
+    @State private var stats: GraphStatistics?
+    @State private var isLoading = true
+
     var body: some View {
         NavigationStack {
-            List {
-                Section("Overview") {
-                    LabeledContent("Total Concepts", value: "\(concepts.count)")
-                    LabeledContent("Total Links", value: "\(totalLinks)")
-                    LabeledContent("Average Connections", value: String(format: "%.2f", averageConnections))
-                }
+            Group {
+                if let stats = stats {
+                    List {
+                        Section("Overview") {
+                            LabeledContent("Total Concepts", value: "\(stats.totalNodes)")
+                            LabeledContent("Total Links", value: "\(stats.totalLinks)")
+                            LabeledContent("Average Connections", value: String(format: "%.2f", stats.averageConnections))
+                        }
 
-                Section("Top Concepts") {
-                    ForEach(topConcepts.prefix(10)) { concept in
-                        HStack {
-                            Text(concept.name)
-                            Spacer()
-                            Text("\(concept.referenceCount) refs")
-                                .foregroundColor(.secondary)
+                        Section("Most Connected (Reference Count)") {
+                            let items = stats.mostConnectedConcepts
+                            ForEach(0..<items.count, id: \.self) { index in
+                                let concept = items[index].0
+                                let count = items[index].1
+                                HStack {
+                                    Text(concept.name)
+                                    Spacer()
+                                    Text("\(count) refs")
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+
+                        Section("Top Concepts (PageRank)") {
+                            let sortedPageRank = Array(stats.pageRankScores.sorted { $0.value > $1.value }.prefix(5))
+                            ForEach(0..<sortedPageRank.count, id: \.self) { index in
+                                let key = sortedPageRank[index].key
+                                let score = sortedPageRank[index].value
+                                if let concept = concepts.first(where: { $0.id == key }) {
+                                    HStack {
+                                        Text(concept.name)
+                                        Spacer()
+                                        Text(String(format: "%.4f", score))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                        }
+
+                        Section("Top Hubs (Centrality)") {
+                            let sortedCentrality = Array(stats.centralityScores.sorted { $0.value > $1.value }.prefix(5))
+                            ForEach(0..<sortedCentrality.count, id: \.self) { index in
+                                let key = sortedCentrality[index].key
+                                let score = sortedCentrality[index].value
+                                if let concept = concepts.first(where: { $0.id == key }) {
+                                    HStack {
+                                        Text(concept.name)
+                                        Spacer()
+                                        Text("\(score) in-links")
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                        }
+
+                        Section("Communities (Topic Clusters)") {
+                            let communities = stats.communities
+                            let grouped = Dictionary(grouping: concepts, by: { communities[$0.id] ?? "Unknown" })
+                            let sortedGroups = Array(grouped.sorted(by: { $0.value.count > $1.value.count }))
+
+                            ForEach(0..<sortedGroups.count, id: \.self) { index in
+                                let clusterNodes = sortedGroups[index].value
+                                if clusterNodes.count > 1 {
+                                    DisclosureGroup {
+                                        ForEach(clusterNodes) { node in
+                                            Text(node.name)
+                                                .font(.caption)
+                                                .padding(.leading)
+                                        }
+                                    } label: {
+                                        HStack {
+                                            Text("Cluster")
+                                            Spacer()
+                                            Text("\(clusterNodes.count) items")
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Section("Degree Distribution") {
+                            let sortedDist = Array(stats.degreeDistribution.sorted { $0.key < $1.key })
+                            ForEach(0..<sortedDist.count, id: \.self) { index in
+                                let degree = sortedDist[index].key
+                                let count = sortedDist[index].value
+                                HStack {
+                                    Text("\(degree) links")
+                                    Spacer()
+                                    Text("\(count) concept(s)")
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+
+                        Section("Evolution Summary") {
+                            if stats.evolution.isEmpty {
+                                Text("No evolution data.")
+                                    .foregroundColor(.secondary)
+                            } else {
+                                let evs = stats.evolution
+                                ForEach(0..<evs.count, id: \.self) { index in
+                                    let date = evs[index].0
+                                    let nodes = evs[index].1
+                                    let links = evs[index].2
+                                    HStack {
+                                        Text(date.formatted(date: .abbreviated, time: .omitted))
+                                        Spacer()
+                                        Text("\(nodes) nodes, \(links) links")
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
                         }
                     }
+                } else if isLoading {
+                    ProgressView("Computing Graph Statistics...")
+                } else {
+                    Text("Failed to load statistics.")
+                        .foregroundColor(.secondary)
                 }
             }
             .navigationTitle("Graph Statistics")
+            .task {
+                isLoading = true
+                let computed = GraphStatistics.compute(from: concepts)
+                await MainActor.run {
+                    self.stats = computed
+                    self.isLoading = false
+                }
+            }
         }
         .frame(width: 500, height: 600)
-    }
-
-    private var totalLinks: Int {
-        concepts.reduce(0) { $0 + $1.outgoingLinks.count }
-    }
-
-    private var averageConnections: Double {
-        guard !concepts.isEmpty else { return 0.0 }
-        return Double(totalLinks) / Double(concepts.count)
-    }
-
-    private var topConcepts: [ConceptNode] {
-        concepts.sorted { $0.referenceCount > $1.referenceCount }
     }
 }
 
