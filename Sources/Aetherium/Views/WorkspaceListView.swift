@@ -1,45 +1,56 @@
 import SwiftUI
 import SwiftData
 
-struct ProjectListView: View {
+struct WorkspaceListView: View {
     @Environment(\.modelContext) private var modelContext
-    let projects: [AetheriumProject]
-    @Binding var selectedProject: AetheriumProject?
-    @Binding var showingNewProjectSheet: Bool
-    @State private var projectToEdit: AetheriumProject?
+    @EnvironmentObject var demoModeManager: DemoModeManager
+    let projects: [Workspace]
+    @Binding var selectedProject: Workspace?
+    @Binding var showingNewWorkspaceSheet: Bool
+    @State private var projectToEdit: Workspace?
+    @State private var showingDemoAlert = false
 
     var body: some View {
         List(selection: $selectedProject) {
             ForEach(projects) { project in
-                ProjectRowView(project: project)
+                WorkspaceRowView(project: project)
                     .tag(project)
                     .contextMenu {
-                        Button("Edit Project") {
+                        Button("Edit Workspace") {
                             projectToEdit = project
                         }
 
                         Divider()
 
-                        Button("Delete Project", role: .destructive) {
+                        Button("Delete Workspace", role: .destructive) {
                             deleteProject(project)
                         }
                     }
             }
         }
-        .navigationTitle("Projects")
+        .navigationTitle("Workspaces")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button(action: { showingNewProjectSheet = true }) {
-                    Label("New Project", systemImage: "plus")
+                Button(action: { showingNewWorkspaceSheet = true }) {
+                    Label("New Workspace", systemImage: "plus")
                 }
             }
         }
         .sheet(item: $projectToEdit) { project in
-            EditProjectSheet(project: project)
+            EditWorkspaceSheet(project: project)
+        }
+        .alert("Demo Mode", isPresented: $showingDemoAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Deletions are disabled in demo mode. Exit demo to manage your real projects.")
         }
     }
 
-    private func deleteProject(_ project: AetheriumProject) {
+    private func deleteProject(_ project: Workspace) {
+        if demoModeManager.isActive {
+            showingDemoAlert = true
+            return
+        }
         modelContext.delete(project)
         if selectedProject?.id == project.id {
             selectedProject = nil
@@ -47,15 +58,15 @@ struct ProjectListView: View {
     }
 }
 
-struct ProjectListRowView: View {
-    let project: AetheriumProject
+struct WorkspaceListRowView: View {
+    let project: Workspace
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(project.title)
                 .font(.headline)
 
-            Text(project.projectDescription)
+            Text(project.workspaceDescription)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .lineLimit(2)
@@ -71,7 +82,7 @@ struct ProjectListRowView: View {
     }
 }
 
-struct NewProjectSheet: View {
+struct NewWorkspaceSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Binding var isPresented: Bool
@@ -81,11 +92,11 @@ struct NewProjectSheet: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("New Project")
+            Text("New Workspace")
                 .font(.headline)
 
             VStack(alignment: .leading, spacing: 12) {
-                TextField("Project Title", text: $title)
+                TextField("Workspace Title", text: $title)
                     .textFieldStyle(.roundedBorder)
 
                 TextField("Description", text: $description, axis: .vertical)
@@ -93,7 +104,7 @@ struct NewProjectSheet: View {
                     .lineLimit(3...6)
             }
 
-            Text("Projects help organize your learning goals and related conversations.")
+            Text("Workspaces help organize your learning goals and related conversations.")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
@@ -117,7 +128,7 @@ struct NewProjectSheet: View {
     }
 
     private func createProject() {
-        let newProject = AetheriumProject(
+        let newProject = Workspace(
             title: title,
             description: description
         )
@@ -126,29 +137,29 @@ struct NewProjectSheet: View {
     }
 }
 
-// MARK: - Edit Project Sheet
+// MARK: - Edit Workspace Sheet
 
-struct EditProjectSheet: View {
+struct EditWorkspaceSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let project: AetheriumProject
+    let project: Workspace
 
     @State private var title: String
     @State private var description: String
 
-    init(project: AetheriumProject) {
+    init(project: Workspace) {
         self.project = project
         _title = State(initialValue: project.title)
-        _description = State(initialValue: project.projectDescription)
+        _description = State(initialValue: project.workspaceDescription)
     }
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Edit Project")
+            Text("Edit Workspace")
                 .font(.headline)
 
             VStack(alignment: .leading, spacing: 12) {
-                TextField("Project Title", text: $title)
+                TextField("Workspace Title", text: $title)
                     .textFieldStyle(.roundedBorder)
 
                 TextField("Description", text: $description, axis: .vertical)
@@ -163,7 +174,7 @@ struct EditProjectSheet: View {
 
                 Button("Save") {
                     project.title = title
-                    project.projectDescription = description
+                    project.workspaceDescription = description
                     project.updateTimestamp()
                     dismiss()
                 }
@@ -176,5 +187,4 @@ struct EditProjectSheet: View {
         .frame(width: 450)
     }
 }
-
 

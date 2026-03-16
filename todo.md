@@ -18,7 +18,7 @@ The goal is a zero-setup "Try Demo" experience: a new user launches the app, tap
 
 ### Phase 1 — Demo infrastructure (no UI changes yet)
 
-#### 1a. ⬜ `DemoDataService`
+#### 1a. ✅ `DemoDataService`
 A pure Swift struct (no `@Observable`, no SwiftData dependency) that builds a deterministic, fully-linked object graph and inserts it into a given `ModelContext`.
 
 Objects to seed:
@@ -34,7 +34,7 @@ Objects to seed:
 
 Dates: all seeded objects use relative offsets from `Date()` so the heatmap, streaks, and "last edited" labels feel current on any launch day.
 
-#### 1b. ⬜ `DemoModeManager`
+#### 1b. ✅ `DemoModeManager`
 A lightweight `ObservableObject` that owns two things:
 ```
 var isActive: Bool
@@ -49,7 +49,7 @@ On `deactivate()`:
 1. Set `isActive = false`.
 2. Drop the in-memory container (ARC takes care of cleanup — nothing persists).
 
-#### 1c. ⬜ `MockOllamaService` / scripted responses
+#### 1c. ✅ `MockOllamaService` / scripted responses
 Extend `OllamaService` with a `demoResponseProvider: ((String) -> String)?` closure. When set, `sendMessage` returns the scripted string via `AsyncThrowingStream` character-by-character (simulating streaming) instead of hitting any URL. This lets the chat view animate in a response naturally without Ollama running.
 
 Pre-write ~10 realistic Q&A pairs covering the seeded content (e.g. "What is attention in transformers?" → a plausible 3-paragraph answer with a citation to the seeded paper source).
@@ -58,17 +58,17 @@ Pre-write ~10 realistic Q&A pairs covering the seeded content (e.g. "What is att
 
 ### Phase 2 — Entry & exit UI
 
-#### 2a. ⬜ "Try Demo" button on `AuthenticationView`
+#### 2a. ✅ "Try Demo" button on `AuthenticationView`
 Below the "Unlock Aetherium" button, add a secondary `Button("Try Demo — no account needed")` that calls `DemoModeManager.shared.activate()` and sets `securityManager.isAuthenticated = true` (or adds a dedicated `isDemoActive` bypass in the authentication check).
 
-#### 2b. ⬜ Demo banner inside the app
+#### 2b. ✅ Demo banner inside the app
 When `DemoModeManager.isActive`, show a thin persistent banner at the top of `ContentView`:
 ```
 ⚡ Demo Mode  — changes are temporary  [Exit Demo]
 ```
 Tapping "Exit Demo" calls `deactivate()`, clears `isAuthenticated`, and returns to the auth screen. The real user store is untouched.
 
-#### 2c. ⬜ Guard destructive actions in demo mode
+#### 2c. ✅ Guard destructive actions in demo mode
 In any view that permanently deletes a project, note, or session, check `DemoModeManager.shared.isActive` and redirect to a sheet:
 ```
 "You're in Demo Mode. Want to reset the demo to its original state, or exit and start fresh?"
@@ -96,16 +96,16 @@ Each project's chat sessions should demonstrate a different capability:
 
 ### Phase 4 — Polish & discoverability
 
-#### 4a. ⬜ Onboarding tooltips in demo mode
+#### 4a. ✅ Onboarding tooltips in demo mode
 When `isActive`, overlay callout bubbles on first render:
 - Knowledge Graph view: "Tap any node to see connections"
 - Chat view: "Ask a question about your sources"
 - Flashcard view: "Press Space to reveal the answer"
 
-#### 4b. ⬜ "What can I try?" floating help button
+#### 4b. ✅ "What can I try?" floating help button
 A `?` button (bottom-right corner, demo mode only) opens a sheet listing 5–6 suggested actions: "Ask a question in Chat", "Flip a flashcard", "Explore the knowledge graph", etc. Each action is a deep-link that navigates the user into the right view.
 
-#### 4c. ⬜ Demo reset without exit
+#### 4c. ✅ Demo reset without exit
 Allow resetting demo state (re-seed) without leaving demo mode. Useful for sales demos where you want to restore a pristine state between showings.
 
 ---
@@ -136,12 +136,12 @@ Allow resetting demo state (re-seed) without leaving demo mode. Useful for sales
 - [x] Graceful degradation when Ollama is unavailable (ModelOrchestrator)
 - [ ] Progress indicators for long-running operations — show a spinner/progress bar during embedding generation, document imports, and graph rebuilds so the UI doesn't feel frozen
 
-### 3. ⬜ Performance Optimization
-- [ ] Profile embedding generation & batch processing — instead of sending one chunk at a time to Ollama, send multiple in parallel to reduce total import time
-- [ ] Optimize knowledge graph rendering for large datasets — the graph view can get slow with hundreds of nodes; switch to level-of-detail rendering or cluster small nodes
-- [ ] Lazy loading for document chunks — only load chunk text from disk when it's actually needed for a query, not on app launch
-- [ ] Background processing for imports — run document parsing and embedding on a background thread so the UI stays responsive
-- [ ] Cache frequently accessed data — store recent embedding results and query results in memory so repeated searches don't re-hit Ollama
+### 3. ✅ Performance Optimization
+- [x] Profile embedding generation & batch processing — instead of sending one chunk at a time to Ollama, send multiple in parallel to reduce total import time
+- [x] Optimize knowledge graph rendering for large datasets — the graph view can get slow with hundreds of nodes; switch to level-of-detail rendering or cluster small nodes
+- [x] Lazy loading for document chunks — only load chunk text from disk when it's actually needed for a query, not on app launch
+- [x] Background processing for imports — run document parsing and embedding on a background thread so the UI stays responsive
+- [x] Cache frequently accessed data — store recent embedding results and query results in memory so repeated searches don't re-hit Ollama
 
 ---
 
@@ -199,7 +199,7 @@ Allow resetting demo state (re-seed) without leaving demo mode. Useful for sales
 ### 9. ⬜ AI Enhancements
 - [ ] Multi-model support — choose a different Ollama model per project or per chat session (e.g. a fast small model for drafts, a large model for deep analysis)
 - [ ] Model comparison — send the same prompt to two models side-by-side and compare their answers; useful for evaluating which model works best for your content
-- [ ] Custom system prompts per project — each project can have its own "you are an expert in X" preamble prepended to every chat
+- [ ] Custom system prompts per project — each project and chat can have its own "you are an expert in X" preamble prepended to every chat
 - [ ] Semantic deduplication — scan notes for ones that are semantically very similar (even if worded differently) and surface them so you can merge or consolidate
 - [ ] Auto-summarization on document upload — when a PDF or long article is imported, immediately generate a TL;DR note alongside the raw chunks
 

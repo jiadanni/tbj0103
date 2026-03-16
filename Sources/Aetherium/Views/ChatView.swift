@@ -20,6 +20,8 @@ struct ChatView: View {
     @State private var showingExportSheet = false
     @State private var showingClearConfirmation = false
     @FocusState private var isInputFocused: Bool
+    @State private var showDemoTip = false
+    @EnvironmentObject var demoModeManager: DemoModeManager
 
     var body: some View {
         VStack(spacing: 0) {
@@ -62,11 +64,14 @@ struct ChatView: View {
                                         .font(.caption)
                                         .fontWeight(.semibold)
                                 }
-                                (Text(streamingContent) + Text("▌").foregroundColor(.blue))
-                                    .textSelection(.enabled)
-                                    .padding(12)
-                                    .background(Color.secondary.opacity(0.1))
-                                    .cornerRadius(12)
+                                VStack(alignment: .leading, spacing: 0) {
+                                    MarkdownMessageView(text: streamingContent)
+                                    Text("▌").foregroundColor(.blue)
+                                }
+                                .textSelection(.enabled)
+                                .padding(12)
+                                .background(Color.secondary.opacity(0.1))
+                                .cornerRadius(12)
                             }
                             .frame(maxWidth: 600, alignment: .leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -197,6 +202,21 @@ struct ChatView: View {
         }
         .onAppear {
             isInputFocused = true
+        }
+        .overlay(alignment: .bottom) {
+            if showDemoTip {
+                DemoTipCallout(message: "Ask a question about your sources", systemImage: "text.bubble")
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 50)
+            }
+        }
+        .onAppear {
+            guard demoModeManager.isActive else { return }
+            withAnimation(.easeIn(duration: 0.3).delay(1.0)) { showDemoTip = true }
+            Task {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                withAnimation(.easeOut(duration: 0.3)) { showDemoTip = false }
+            }
         }
     }
 
@@ -371,6 +391,10 @@ struct ChatView: View {
                 chatSession.updatedAt = Date()
                 streamingContent = ""
                 autoTitleIfNeeded()
+
+                // Auto-extract concepts for the knowledge graph
+                let autoGen = AutoContentGenerator(ollamaService: ollamaService, modelContext: modelContext)
+                Task { await autoGen.processChatExchange(userMessage: userMessage, aiResponse: accumulated, project: chatSession.project) }
             } catch {
                 errorMessage = error.localizedDescription
                 streamingContent = ""
@@ -463,15 +487,21 @@ struct MessageBubbleView: View {
                     .foregroundColor(.secondary)
             }
 
-            Text(message.content)
-                .textSelection(.enabled)
-                .padding(12)
-                .background(
-                    message.role == .user
-                        ? Color.blue.opacity(0.1)
-                        : Color.secondary.opacity(0.1)
-                )
-                .cornerRadius(12)
+            Group {
+                if message.role == .assistant {
+                    MarkdownMessageView(text: message.content)
+                } else {
+                    Text(message.content)
+                }
+            }
+            .textSelection(.enabled)
+            .padding(12)
+            .background(
+                message.role == .user
+                    ? Color.blue.opacity(0.1)
+                    : Color.secondary.opacity(0.1)
+            )
+            .cornerRadius(12)
 
             // Action buttons on hover (user messages only)
             if message.role == .user && isHovered && !isStreaming {

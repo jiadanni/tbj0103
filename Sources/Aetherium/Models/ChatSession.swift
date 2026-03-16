@@ -11,7 +11,7 @@ final class ChatSession {
     var isLocal: Bool // Whether using Ollama or cloud API
 
     @Relationship(deleteRule: .cascade) var messages: [Message]
-    var project: AetheriumProject?
+    var project: Workspace?
 
     var systemPrompt: String?
 
@@ -67,7 +67,7 @@ final class ChatSession {
         var context = Array(messages.suffix(limit))
 
         // Inject system prompt if present
-        let promptToUse = systemPrompt ?? project?.systemPrompt
+        let promptToUse = systemPrompt
         if let prompt = promptToUse, !prompt.isEmpty {
             let sysMsg = Message(content: prompt, role: .system)
             context.insert(sysMsg, at: 0)

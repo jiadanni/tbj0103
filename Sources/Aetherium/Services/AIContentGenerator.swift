@@ -87,7 +87,7 @@ class AIContentGenerator: ObservableObject {
     /// Extract key concepts from content
     func extractConcepts(
         from content: String,
-        project: AetheriumProject,
+        project: Workspace,
         maxConcepts: Int = 10
     ) async throws -> [ExtractedConcept] {
         isGenerating = true
@@ -140,7 +140,7 @@ class AIContentGenerator: ObservableObject {
     /// Create ConceptNodes from extracted concepts
     func createConceptsInProject(
         _ extractedConcepts: [ExtractedConcept],
-        project: AetheriumProject
+        project: Workspace
     ) {
         for extracted in extractedConcepts {
             // Check if concept already exists
@@ -230,7 +230,7 @@ class AIContentGenerator: ObservableObject {
     /// Create flashcards from generated questions
     func createFlashcardsFromQuestions(
         _ questions: [GeneratedQuestion],
-        project: AetheriumProject
+        project: Workspace
     ) {
         for question in questions {
             let card = LearningCard(

@@ -26,11 +26,11 @@ class MarkdownExporterPlugin: ExporterPlugin {
         // No cleanup needed
     }
 
-    func exportProject(_ project: AetheriumProject, to url: URL, context: ModelContext) async throws {
+    func exportProject(_ project: Workspace, to url: URL, context: ModelContext) async throws {
         var content = """
         # \(project.title)
 
-        \(project.projectDescription)
+        \(project.workspaceDescription)
 
         ---
 
@@ -95,7 +95,7 @@ class ObsidianExporterPlugin: ExporterPlugin {
     func initialize() async throws {}
     func cleanup() async {}
 
-    func exportProject(_ project: AetheriumProject, to url: URL, context: ModelContext) async throws {
+    func exportProject(_ project: Workspace, to url: URL, context: ModelContext) async throws {
         let fileManager = FileManager.default
 
         // Create vault structure
@@ -146,7 +146,7 @@ class ObsidianExporterPlugin: ExporterPlugin {
         let index = """
         # \(project.title)
 
-        \(project.projectDescription)
+        \(project.workspaceDescription)
 
         ## Quick Links
 
@@ -189,7 +189,7 @@ class YouTubeImporterPlugin: ImporterPlugin {
     func initialize() async throws {}
     func cleanup() async {}
 
-    func importData(from url: URL, into project: AetheriumProject, context: ModelContext) async throws -> ImportResult {
+    func importData(from url: URL, into project: Workspace, context: ModelContext) async throws -> ImportResult {
         // Extract video ID from URL
         guard let videoID = extractVideoID(from: url) else {
             throw PluginError.executionFailed("Invalid YouTube URL")
@@ -290,7 +290,7 @@ class AnkiExporterPlugin: ExporterPlugin {
     func initialize() async throws {}
     func cleanup() async {}
 
-    func exportProject(_ project: AetheriumProject, to url: URL, context: ModelContext) async throws {
+    func exportProject(_ project: Workspace, to url: URL, context: ModelContext) async throws {
         // Fetch all flashcards for project
         let projectId = project.id
         let descriptor = FetchDescriptor<LearningCard>(

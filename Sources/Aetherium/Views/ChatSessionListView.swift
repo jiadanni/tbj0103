@@ -4,7 +4,7 @@ import SwiftData
 struct ChatSessionListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var ollamaService: OllamaService
-    let project: AetheriumProject
+    let project: Workspace
     @Binding var selectedChat: ChatSession?
 
     @State private var showingNewChatSheet = false
@@ -54,7 +54,7 @@ struct ChatSessionListView: View {
             }
         }
         .navigationTitle(project.title)
-        .navigationSubtitle(project.projectDescription)
+        .navigationSubtitle(project.workspaceDescription)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -181,7 +181,7 @@ struct SessionListNewChatSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var ollamaService: OllamaService
 
-    let project: AetheriumProject
+    let project: Workspace
     @Binding var isPresented: Bool
 
     @State private var selectedModel = AppSettings.shared.preferredModel
@@ -259,7 +259,7 @@ struct NewLearningGoalSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    let project: AetheriumProject
+    let project: Workspace
 
     @State private var title = ""
     @State private var goalDescription = ""

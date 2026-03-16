@@ -6,14 +6,14 @@ final class SpacedRepetitionEngineTests: XCTestCase {
     var engine: SpacedRepetitionEngine!
     var modelContainer: ModelContainer!
     var modelContext: ModelContext!
-    var project: AetheriumProject!
+    var project: Workspace!
 
     @MainActor
     override func setUp() async throws {
         try await super.setUp()
         // Create an in-memory ModelContainer
         let schema = Schema([
-            AetheriumProject.self,
+            Workspace.self,
             LearningCard.self,
             ChatSession.self,
             LearningGoal.self,
@@ -40,7 +40,7 @@ final class SpacedRepetitionEngineTests: XCTestCase {
         engine = SpacedRepetitionEngine(modelContext: modelContext)
 
         // Create a dummy project
-        project = AetheriumProject(title: "Test Project", description: "A test project")
+        project = Workspace(title: "Test Project", description: "A test project")
         modelContext.insert(project)
     }
 
@@ -54,23 +54,24 @@ final class SpacedRepetitionEngineTests: XCTestCase {
 
     @MainActor
     func testReviewCard_Correct() {
-        // Create a learning card
+        // Create a learning card simulating one previous correct review
         let card = LearningCard(front: "Front", back: "Back")
         card.project = project
+        card.repetitions = 1  // Second review: SM-2 sets interval to 6
         modelContext.insert(card)
 
         // Initial state check
-        XCTAssertEqual(card.repetitions, 0)
+        XCTAssertEqual(card.repetitions, 1)
         XCTAssertEqual(card.interval, 1)
         XCTAssertEqual(card.easeFactor, 2.5)
 
-        // Review with high quality (>= 3)
-        engine.reviewCard(card, quality: 4)
+        // Review with perfect quality (5) — increases ease factor per SM-2 formula
+        engine.reviewCard(card, quality: 5)
 
         // Verify state updates
-        XCTAssertEqual(card.repetitions, 1)
-        XCTAssertGreaterThan(card.interval, 1)
-        XCTAssertGreaterThan(card.easeFactor, 2.5) // Ease factor increases for good answers
+        XCTAssertEqual(card.repetitions, 2)
+        XCTAssertGreaterThan(card.interval, 1)      // SM-2: repetitions==1 → interval = 6
+        XCTAssertGreaterThan(card.easeFactor, 2.5)  // Ease factor increases for perfect answers
     }
 
     @MainActor

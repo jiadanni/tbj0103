@@ -5,7 +5,7 @@ import SwiftData
 
 struct NoteEditorView: View {
     @Bindable var note: ProjectNote
-    let project: AetheriumProject?
+    let project: Workspace?
 
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var themeManager: ThemeManager
@@ -17,7 +17,7 @@ struct NoteEditorView: View {
     @State private var showingSaveIndicator = false
     @State private var isSaving = false
 
-    init(note: ProjectNote, project: AetheriumProject?, modelContext: ModelContext) {
+    init(note: ProjectNote, project: Workspace?, modelContext: ModelContext) {
         self.note = note
         self.project = project
         _lastSavedText = State(initialValue: note.content)
@@ -202,7 +202,7 @@ struct EditorToolbar: View {
 
 struct EditorFooter: View {
     let note: ProjectNote
-    let project: AetheriumProject?
+    let project: Workspace?
     let modelContext: ModelContext
 
     @StateObject private var parser = LinkSyntaxParser()
@@ -266,13 +266,13 @@ struct EditorFooter: View {
 
 struct NoteBacklinksView: View {
     let note: ProjectNote
-    let project: AetheriumProject
+    let project: Workspace
     let modelContext: ModelContext
 
     @StateObject private var linkingEngine: LinkingEngine
     @StateObject private var parser = LinkSyntaxParser()
 
-    init(note: ProjectNote, project: AetheriumProject, modelContext: ModelContext) {
+    init(note: ProjectNote, project: Workspace, modelContext: ModelContext) {
         self.note = note
         self.project = project
         self.modelContext = modelContext

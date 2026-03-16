@@ -5,7 +5,7 @@ import SwiftData
 
 struct SmartTextEditor: View {
     @Binding var text: String
-    let project: AetheriumProject?
+    let project: Workspace?
     let placeholder: String
 
     @Environment(\.modelContext) private var modelContext
@@ -20,7 +20,7 @@ struct SmartTextEditor: View {
 
     @FocusState private var isFocused: Bool
 
-    init(text: Binding<String>, project: AetheriumProject?, placeholder: String = "Start typing...", modelContext: ModelContext) {
+    init(text: Binding<String>, project: Workspace?, placeholder: String = "Start typing...", modelContext: ModelContext) {
         self._text = text
         self.project = project
         self.placeholder = placeholder
@@ -171,7 +171,7 @@ struct SmartTextEditor: View {
         insertConcept(newConcept)
     }
 
-    private func autoLinkConcepts(in text: String, project: AetheriumProject) {
+    private func autoLinkConcepts(in text: String, project: Workspace) {
         // Detect all [[concept]] links
         let conceptNames = parser.extractConceptNames(from: text)
 

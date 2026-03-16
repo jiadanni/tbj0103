@@ -105,6 +105,10 @@ class OllamaService: ObservableObject {
     // Offline mode detection
     @Published var isOfflineMode: Bool = false
 
+    /// When set, all chat completions and streaming calls return pre-scripted demo
+    /// responses instead of hitting the Ollama API. Set by DemoModeManager.
+    var demoResponseProvider: ((String) -> String)?
+
     private let baseURL = "http://localhost:11434"
     private let session: URLSession
     private let logger = Logger(subsystem: "com.aetherium.app", category: "OllamaService")
@@ -112,7 +116,7 @@ class OllamaService: ObservableObject {
     // MARK: - Embedding Cache
 
     private let embeddingCache = NSCache<NSString, CachedEmbeddingEntry>()
-    private static let embeddingCacheTTL: TimeInterval = 3600 // 1 hour
+    fileprivate static let embeddingCacheTTL: TimeInterval = 3600 // 1 hour
 
     init(session: URLSession? = nil) {
         if let session = session {
@@ -127,6 +131,13 @@ class OllamaService: ObservableObject {
     // MARK: - Health Check
 
     func checkAvailability() async -> Bool {
+        // Demo mode: report as available without hitting the network
+        if demoResponseProvider != nil {
+            isAvailable = true
+            isOfflineMode = false
+            return true
+        }
+
         guard let url = URL(string: "\(baseURL)/api/tags") else {
             isAvailable = false
             return false
@@ -219,6 +230,11 @@ class OllamaService: ObservableObject {
         temperature: Double = 0.7,
         contextWindow: Int = 8192
     ) async throws -> String {
+        // Demo mode: return scripted response without network call
+        if let provider = demoResponseProvider {
+            return provider(content)
+        }
+
         let model = model ?? AppSettings.shared.preferredModel
         guard let url = URL(string: "\(baseURL)/api/chat") else {
             throw OllamaError.invalidResponse
@@ -348,6 +364,22 @@ class OllamaService: ObservableObject {
         model: String? = nil,
         context: [Message] = []
     ) async throws -> AsyncThrowingStream<String, Error> {
+        // Demo mode: stream the scripted response word-by-word to simulate typing
+        if let provider = demoResponseProvider {
+            let fullResponse = provider(content)
+            let words = fullResponse.components(separatedBy: " ")
+            return AsyncThrowingStream { continuation in
+                Task {
+                    for (i, word) in words.enumerated() {
+                        let chunk = i == 0 ? word : " " + word
+                        continuation.yield(chunk)
+                        try? await Task.sleep(nanoseconds: 35_000_000) // ~28 words/sec
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+
         let model = model ?? AppSettings.shared.preferredModel
         guard let url = URL(string: "\(baseURL)/api/chat") else {
             throw OllamaError.invalidResponse

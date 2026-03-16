@@ -31,22 +31,62 @@ class DocumentProcessor: ObservableObject {
             processingStatus = ""
         }
 
-        // Phase 1: Text extraction (25%)
+        return try await processDocumentCore(url) { [weak self] progress, status in
+            self?.processingProgress = progress
+            self?.processingStatus = status
+        }
+    }
+
+    func processMultipleDocuments(_ urls: [URL]) async throws -> [UploadedDocument] {
+        guard !urls.isEmpty else { return [] }
+        isProcessing = true
+        processingProgress = 0.0
+        defer { isProcessing = false; processingProgress = 1.0; processingStatus = "" }
+
+        let total = Double(urls.count)
+        var completed = 0.0
+        var results: [UploadedDocument] = []
+
+        // Process up to 2 documents concurrently to avoid memory spikes
+        // async let runs both tasks on the main actor, interleaving at every
+        // suspension point — including the parallel embedding calls inside each.
+        let batches = urls.chunked(into: 2)
+        for batch in batches {
+            if batch.count == 2 {
+                async let first  = processDocumentCore(batch[0], progressCallback: nil)
+                async let second = processDocumentCore(batch[1], progressCallback: nil)
+                let (d1, d2) = try await (first, second)
+                results.append(contentsOf: [d1, d2])
+            } else {
+                results.append(try await processDocumentCore(batch[0], progressCallback: nil))
+            }
+            completed += Double(batch.count)
+            processingProgress = completed / total
+            processingStatus = "Processed \(Int(completed)) of \(urls.count) files..."
+        }
+
+        return results
+    }
+
+    // Shared core: performs all 4 phases without touching @Published properties directly.
+    // progressCallback receives (fractionComplete, statusMessage) at phase boundaries.
+    private func processDocumentCore(
+        _ url: URL,
+        progressCallback: ((Double, String) -> Void)? = nil
+    ) async throws -> UploadedDocument {
+        // Phase 1: Text extraction — pushed off the main actor by TextExtractor
         let extractedText = try await textExtractor.extractText(from: url)
-        processingProgress = 0.25
-        processingStatus = "Chunking document..."
+        progressCallback?(0.25, "Chunking document...")
 
-        // Phase 2: Semantic chunking (50%)
+        // Phase 2: Semantic chunking
         let chunks = try await semanticChunker.chunkDocument(extractedText, maxTokens: 512)
-        processingProgress = 0.50
-        processingStatus = "Generating embeddings (\(chunks.count) chunks)..."
+        progressCallback?(0.50, "Generating embeddings (\(chunks.count) chunks)...")
 
-        // Phase 3: Embedding generation (75%)
-        _ = try await embeddingGenerator.embedChunks(chunks)
-        processingProgress = 0.75
-        processingStatus = "Building document model..."
+        // Phase 3: Parallel embedding generation (up to 4 concurrent requests)
+        let embeddedChunks = try await embeddingGenerator.embedChunks(chunks)
+        progressCallback?(0.75, "Building document model...")
 
-        // Phase 4: Create document model (100%)
+        // Phase 4: Build model and attach chunks
         let fileAttributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let fileSize = fileAttributes[.size] as? Int64 ?? 0
 
@@ -65,46 +105,12 @@ class DocumentProcessor: ObservableObject {
             metadata: metadata
         )
 
-        processingProgress = 0.90
-
-        // Auto-summarization
-        if let summary = try? await generateSummary(for: extractedText) {
-            document.metadata = serializeMetadata(metadata, withSummary: summary)
+        for chunk in embeddedChunks {
+            chunk.document = document
+            document.chunks.append(chunk)
         }
 
-        processingProgress = 1.0
         return document
-    }
-
-    private func serializeMetadata(_ metadata: DocumentMetadata, withSummary summary: String) -> String {
-        var mutableMetadata = metadata
-        mutableMetadata.extractedEntities.append("summary: \(summary)")
-        if let encoded = try? JSONEncoder().encode(mutableMetadata),
-           let jsonString = String(data: encoded, encoding: .utf8) {
-            return jsonString
-        }
-        return "{}"
-    }
-
-    func generateSummary(for text: String) async throws -> String {
-        let prompt = "Please provide a concise TL;DR summary of the following document:\n\n" + String(text.prefix(20000))
-        return try await ollamaService.sendMessage(prompt)
-    }
-
-    func processMultipleDocuments(_ urls: [URL]) async throws -> [UploadedDocument] {
-        var results: [UploadedDocument] = []
-
-        // Process with concurrency limit (2 at a time to avoid memory issues)
-        for (batchIndex, chunk) in urls.chunked(into: 2).enumerated() {
-            for url in chunk {
-                let fileIndex = batchIndex * 2 + results.count % 2 + 1
-                processingStatus = "Processing file \(fileIndex) of \(urls.count): \(url.lastPathComponent)"
-                let doc = try await self.processDocument(url)
-                results.append(doc)
-            }
-        }
-
-        return results
     }
 }
 
@@ -260,11 +266,16 @@ class EmbeddingGenerator {
     func embedChunks(_ chunks: [ChunkData]) async throws -> [DocumentChunk] {
         guard !chunks.isEmpty else { return [] }
 
-        typealias IndexedChunk = (index: Int, chunk: DocumentChunk)
+        // Each task returns the original index + embedding vector (both Sendable).
+        // DocumentChunk is a @Model and cannot cross task boundaries, so we
+        // build the model objects only after the group finishes on the calling context.
+        typealias IndexedEmbedding = (index: Int, embedding: [Float]?)
         let concurrencyLimit = 4
 
-        let collected: [IndexedChunk] = try await withThrowingTaskGroup(of: IndexedChunk.self) { group in
-            var results: [IndexedChunk] = []
+        let collected: [IndexedEmbedding] = try await withThrowingTaskGroup(
+            of: IndexedEmbedding.self
+        ) { group in
+            var results: [IndexedEmbedding] = []
             results.reserveCapacity(chunks.count)
             var nextToSchedule = 0
 
@@ -272,16 +283,11 @@ class EmbeddingGenerator {
             let seedCount = min(concurrencyLimit, chunks.count)
             for _ in 0..<seedCount {
                 let idx = nextToSchedule
-                let chunkData = chunks[idx]
+                let content = chunks[idx].content
                 nextToSchedule += 1
                 group.addTask {
-                    let embedding = try? await self.generateEmbeddingWithRetry(chunkData.content, maxRetries: 2)
-                    return (idx, DocumentChunk(
-                        content: chunkData.content,
-                        embeddings: embedding,
-                        chunkIndex: chunkData.chunkIndex,
-                        tokenCount: chunkData.tokenCount
-                    ))
+                    let embedding = try? await self.generateEmbeddingWithRetry(content, maxRetries: 2)
+                    return (idx, embedding)
                 }
             }
 
@@ -290,16 +296,11 @@ class EmbeddingGenerator {
                 results.append(result)
                 if nextToSchedule < chunks.count {
                     let idx = nextToSchedule
-                    let chunkData = chunks[idx]
+                    let content = chunks[idx].content
                     nextToSchedule += 1
                     group.addTask {
-                        let embedding = try? await self.generateEmbeddingWithRetry(chunkData.content, maxRetries: 2)
-                        return (idx, DocumentChunk(
-                            content: chunkData.content,
-                            embeddings: embedding,
-                            chunkIndex: chunkData.chunkIndex,
-                            tokenCount: chunkData.tokenCount
-                        ))
+                        let embedding = try? await self.generateEmbeddingWithRetry(content, maxRetries: 2)
+                        return (idx, embedding)
                     }
                 }
             }
@@ -307,8 +308,17 @@ class EmbeddingGenerator {
             return results
         }
 
-        // Restore original chunk order
-        return collected.sorted { $0.index < $1.index }.map { $0.chunk }
+        // Build DocumentChunk models in original order on the calling (main actor) context
+        return collected
+            .sorted { $0.index < $1.index }
+            .map { item in
+                DocumentChunk(
+                    content: chunks[item.index].content,
+                    embeddings: item.embedding,
+                    chunkIndex: chunks[item.index].chunkIndex,
+                    tokenCount: chunks[item.index].tokenCount
+                )
+            }
     }
 
     private func generateEmbeddingWithRetry(_ text: String, maxRetries: Int) async throws -> [Float] {

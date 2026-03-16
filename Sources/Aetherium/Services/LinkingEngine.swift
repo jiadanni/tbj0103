@@ -62,7 +62,7 @@ class LinkingEngine: ObservableObject {
     /// Create or retrieve concepts from parsed links
     func processParsedLinks(
         _ parsedLinks: [ParsedLink],
-        in project: AetheriumProject
+        in project: Workspace
     ) async -> [ConceptNode] {
         var concepts: [ConceptNode] = []
 
@@ -80,7 +80,7 @@ class LinkingEngine: ObservableObject {
     /// Process all [[concept]] links in text and create/update concepts
     func processConceptLinks(
         in text: String,
-        project: AetheriumProject,
+        project: Workspace,
         sourceType: MentionSourceType = .note,
         sourceID: String? = nil
     ) async {
@@ -114,7 +114,7 @@ class LinkingEngine: ObservableObject {
     /// Get existing concept or create new one
     func getOrCreateConcept(
         name: String,
-        in project: AetheriumProject
+        in project: Workspace
     ) async -> ConceptNode {
         // Normalize name
         let normalizedName = name.trimmingCharacters(in: .whitespaces)
@@ -195,7 +195,7 @@ class LinkingEngine: ObservableObject {
     /// Find concepts matching partial text
     func suggestConcepts(
         matching text: String,
-        in project: AetheriumProject,
+        in project: Workspace,
         limit: Int = 5
     ) async -> [ConceptNode] {
         guard !text.isEmpty else { return [] }
@@ -254,7 +254,7 @@ class LinkingEngine: ObservableObject {
     /// Detect potential concepts in text (without [[]] syntax)
     func detectPotentialConcepts(
         in text: String,
-        project: AetheriumProject
+        project: Workspace
     ) async -> [DetectedConcept] {
         // Get all concepts in project
         let projectId = project.id
@@ -349,7 +349,7 @@ extension LinkingEngine {
     }
 
     /// Convert plain text to linked text (auto-detect concepts)
-    func autoLink(text: String, project: AetheriumProject) async -> String {
+    func autoLink(text: String, project: Workspace) async -> String {
         let detected = await detectPotentialConcepts(in: text, project: project)
 
         var linkedText = text

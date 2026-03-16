@@ -2,6 +2,8 @@ import SwiftUI
 
 struct AuthenticationView: View {
     @EnvironmentObject var securityManager: SecurityManager
+    @EnvironmentObject var ollamaService: OllamaService
+    @EnvironmentObject var demoModeManager: DemoModeManager
     @State private var isAuthenticating = false
     @State private var errorMessage: String?
 
@@ -65,6 +67,15 @@ struct AuthenticationView: View {
                     .padding(.horizontal)
             }
 
+            // Try Demo
+            Button(action: startDemo) {
+                Text("Try Demo — no account needed")
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+
             Spacer()
         }
         .padding(40)
@@ -116,6 +127,9 @@ struct AuthenticationView: View {
             isAuthenticating = false
         }
     }
+
+    private func startDemo() {
+        demoModeManager.activate(ollamaService: ollamaService)
+        securityManager.isAuthenticated = true
+    }
 }
-
-

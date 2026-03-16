@@ -1,7 +1,7 @@
 import Foundation
 
 /// Advanced Graph Algorithms for Aetherium Knowledge Graph
-public enum GraphAlgorithms {
+enum GraphAlgorithms {
 
     // MARK: - PageRank
 
@@ -13,7 +13,7 @@ public enum GraphAlgorithms {
     ///   - maxIterations: Maximum number of iterations to run the algorithm (default 100).
     ///   - tolerance: The convergence tolerance (default 0.0001).
     /// - Returns: A dictionary mapping `ConceptNode.id` to its PageRank score.
-    public static func computePageRank(nodes: [ConceptNode], dampingFactor: Double = 0.85, maxIterations: Int = 100, tolerance: Double = 0.0001) -> [UUID: Double] {
+    static func computePageRank(nodes: [ConceptNode], dampingFactor: Double = 0.85, maxIterations: Int = 100, tolerance: Double = 0.0001) -> [UUID: Double] {
         let n = nodes.count
         guard n > 0 else { return [:] }
 
@@ -81,7 +81,7 @@ public enum GraphAlgorithms {
     ///
     /// - Parameter nodes: The array of `ConceptNode` to analyze.
     /// - Returns: A dictionary mapping `ConceptNode.id` to a community identifier (String).
-    public static func detectCommunities(nodes: [ConceptNode]) -> [UUID: String] {
+    static func detectCommunities(nodes: [ConceptNode]) -> [UUID: String] {
         guard !nodes.isEmpty else { return [:] }
 
         // Initialize each node with its own unique community label (its UUID string)
@@ -147,7 +147,7 @@ public enum GraphAlgorithms {
     ///
     /// - Parameter nodes: The array of `ConceptNode` to analyze.
     /// - Returns: A dictionary mapping `ConceptNode.id` to its centrality score.
-    public static func computeCentrality(nodes: [ConceptNode]) -> [UUID: Int] {
+    static func computeCentrality(nodes: [ConceptNode]) -> [UUID: Int] {
         var centrality = [UUID: Int]()
         for node in nodes {
             // Centrality here is measured as in-degree (how many links point to this node)
@@ -160,7 +160,7 @@ public enum GraphAlgorithms {
     ///
     /// - Parameter nodes: The array of `ConceptNode` to analyze.
     /// - Returns: A dictionary mapping the degree (total links) to the count of nodes with that degree.
-    public static func computeDegreeDistribution(nodes: [ConceptNode]) -> [Int: Int] {
+    static func computeDegreeDistribution(nodes: [ConceptNode]) -> [Int: Int] {
         var distribution = [Int: Int]()
         for node in nodes {
             let degree = node.outgoingLinks.count + node.incomingLinks.count
@@ -175,7 +175,7 @@ public enum GraphAlgorithms {
     ///
     /// - Parameter nodes: The array of `ConceptNode` to analyze.
     /// - Returns: An array of tuples representing (Date, Cumulative Node Count, Cumulative Link Count), sorted by Date.
-    public static func computeEvolution(nodes: [ConceptNode]) -> [(Date, Int, Int)] {
+    static func computeEvolution(nodes: [ConceptNode]) -> [(Date, Int, Int)] {
         // Collect all creation events
         var events: [(date: Date, type: String)] = []
 
@@ -229,7 +229,7 @@ public enum GraphAlgorithms {
     ///   - source: The starting `ConceptNode`.
     ///   - target: The destination `ConceptNode`.
     /// - Returns: An array of `ConceptNode` representing the path from source to target, or nil if no path exists.
-    public static func computeShortestPath(source: ConceptNode, target: ConceptNode) -> [ConceptNode]? {
+    static func computeShortestPath(source: ConceptNode, target: ConceptNode) -> [ConceptNode]? {
         // BFS to find the shortest path
         if source.id == target.id { return [source] }
 

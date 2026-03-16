@@ -5,13 +5,13 @@ import Charts
 // MARK: - Project Dashboard
 
 struct ProjectDashboardView: View {
-    let project: AetheriumProject
+    let project: Workspace
     @Environment(\.modelContext) private var modelContext
 
     @StateObject private var analytics: ProjectAnalytics
     @State private var selectedTimeRange: TimeRange = .week
 
-    init(project: AetheriumProject, modelContext: ModelContext) {
+    init(project: Workspace, modelContext: ModelContext) {
         self.project = project
         _analytics = StateObject(wrappedValue: ProjectAnalytics(project: project, modelContext: modelContext))
     }
@@ -85,7 +85,7 @@ struct ProjectDashboardView: View {
 // MARK: - Dashboard Header
 
 struct DashboardHeaderView: View {
-    let project: AetheriumProject
+    let project: Workspace
 
     var body: some View {
         VStack(spacing: 12) {
@@ -95,7 +95,7 @@ struct DashboardHeaderView: View {
                         .font(.title)
                         .fontWeight(.bold)
 
-                    Text(project.projectDescription)
+                    Text(project.workspaceDescription)
                         .foregroundColor(.secondary)
                 }
 
@@ -331,7 +331,7 @@ struct ReviewAccuracyChart: View {
 // MARK: - Recent Activity
 
 struct RecentActivityView: View {
-    let project: AetheriumProject
+    let project: Workspace
 
     var recentItems: [(String, String, Date)] {
         var items: [(String, String, Date)] = []
@@ -403,7 +403,7 @@ struct RecentActivityView: View {
 // MARK: - AI Insights
 
 struct AIInsightsView: View {
-    let project: AetheriumProject
+    let project: Workspace
     @ObservedObject var analytics: ProjectAnalytics
     let modelContext: ModelContext
 
@@ -493,10 +493,10 @@ class ProjectAnalytics: ObservableObject {
     @Published var accuracyData: [AccuracyPoint] = []
     @Published var topicFrequencies: [TopicFrequency] = []
 
-    private let project: AetheriumProject
+    private let project: Workspace
     private let modelContext: ModelContext
 
-    init(project: AetheriumProject, modelContext: ModelContext) {
+    init(project: Workspace, modelContext: ModelContext) {
         self.project = project
         self.modelContext = modelContext
     }

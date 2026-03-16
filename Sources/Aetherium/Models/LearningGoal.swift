@@ -11,7 +11,7 @@ final class LearningGoal {
     var updatedAt: Date
 
     // Reference to parent project
-    var project: AetheriumProject?
+    var project: Workspace?
 
     // Store prerequisite IDs as strings (SwiftData limitation workaround)
     var prerequisiteIDs: [String]
