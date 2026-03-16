@@ -116,6 +116,7 @@ pub fn run() {
             commands::alarm::list_alarms,
             commands::alarm::delete_alarm,
             // Note extra commands
+            commands::note::list_daily_notes_in_range,
             commands::note::update_daily_note,
             commands::note::delete_template,
             commands::note::update_template,

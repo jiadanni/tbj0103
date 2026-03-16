@@ -238,6 +238,39 @@ pub fn get_note_outbound_links(state: State<DbState>, note_id: String) -> Result
     linking_engine::get_outbound_links(&conn, "note", &note_id)
 }
 
+/// List daily notes for a workspace within a date range (inclusive).
+/// Used by the calendar to show dot indicators and compute stats.
+#[tauri::command]
+pub fn list_daily_notes_in_range(
+    state: State<DbState>,
+    workspace_id: String,
+    start_date: String,
+    end_date: String,
+) -> Result<Vec<DailyNote>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, workspace_id, date, content, mood, productivity, template_id, created_at, updated_at
+         FROM daily_notes WHERE workspace_id = ?1 AND date >= ?2 AND date <= ?3
+         ORDER BY date ASC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt.query_map(rusqlite::params![workspace_id, start_date, end_date], |row| {
+        Ok(DailyNote {
+            id: row.get(0)?,
+            workspace_id: row.get(1)?,
+            date: row.get(2)?,
+            content: row.get(3)?,
+            mood: row.get(4)?,
+            productivity: row.get(5)?,
+            template_id: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
 /// Update a daily note's content, mood, and productivity.
 #[tauri::command]
 pub fn update_daily_note(
