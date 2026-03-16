@@ -9,7 +9,7 @@ import SwiftData
 // to simulate UI interactions without a UI framework.
 
 class MockProjectListViewModel: ObservableObject {
-    @Published var projects: [AetheriumProject] = []
+    @Published var projects: [Workspace] = []
     private var modelContext: ModelContext
 
     init(modelContext: ModelContext) {
@@ -18,12 +18,12 @@ class MockProjectListViewModel: ObservableObject {
     }
 
     func fetchProjects() {
-        let descriptor = FetchDescriptor<AetheriumProject>()
+        let descriptor = FetchDescriptor<Workspace>()
         projects = (try? modelContext.fetch(descriptor)) ?? []
     }
 
     func createProject(title: String, description: String) {
-        let project = AetheriumProject(title: title, description: description)
+        let project = Workspace(title: title, description: description)
         modelContext.insert(project)
         fetchProjects()
     }
@@ -80,7 +80,7 @@ final class CriticalWorkflowsTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         // SwiftData setup
-        let schema = Schema([AetheriumProject.self, ChatSession.self, Message.self])
+        let schema = Schema([Workspace.self, ChatSession.self, Message.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         modelContainer = try ModelContainer(for: schema, configurations: [config])
         modelContext = ModelContext(modelContainer)
@@ -122,7 +122,7 @@ final class CriticalWorkflowsTests: XCTestCase {
 
     func testChatInteractionFlow() async {
         // Setup existing project and chat
-        let project = AetheriumProject(title: "Chat Project", description: "Test")
+        let project = Workspace(title: "Chat Project", description: "Test")
         let chatSession = ChatSession(title: "Swift Chat")
         project.chatSessions.append(chatSession)
         modelContext.insert(project)

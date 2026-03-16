@@ -174,7 +174,7 @@ class PluginManager: ObservableObject {
     func executeImporter(
         id: String,
         fileURL: URL,
-        project: AetheriumProject,
+        project: Workspace,
         context: ModelContext
     ) async throws -> ImportResult {
         guard let plugin = loadedPlugins[id] as? ImporterPlugin else {
@@ -186,7 +186,7 @@ class PluginManager: ObservableObject {
 
     func executeExporter(
         id: String,
-        project: AetheriumProject,
+        project: Workspace,
         destinationURL: URL,
         context: ModelContext
     ) async throws {

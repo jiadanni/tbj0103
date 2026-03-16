@@ -106,12 +106,12 @@ struct BacklinkRow: View {
 struct InlineBacklinksPanel: View {
     @Environment(\.modelContext) private var modelContext
     let text: String
-    let project: AetheriumProject
+    let project: Workspace
 
     @StateObject private var linkingEngine: LinkingEngine
     @State private var detectedConcepts: [ConceptNode] = []
 
-    init(text: String, project: AetheriumProject, modelContext: ModelContext) {
+    init(text: String, project: Workspace, modelContext: ModelContext) {
         self.text = text
         self.project = project
         _linkingEngine = StateObject(wrappedValue: LinkingEngine(modelContext: modelContext))

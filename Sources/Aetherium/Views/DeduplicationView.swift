@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct DeduplicationView: View {
-    let project: AetheriumProject
+    let project: Workspace
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var ollamaService: OllamaService
 

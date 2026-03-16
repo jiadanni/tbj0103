@@ -55,7 +55,7 @@ protocol ImporterPlugin: AetheriumPlugin {
     var supportedFileTypes: [String] { get }
 
     /// Import data from file
-    func importData(from url: URL, into project: AetheriumProject, context: ModelContext) async throws -> ImportResult
+    func importData(from url: URL, into project: Workspace, context: ModelContext) async throws -> ImportResult
 }
 
 struct ImportResult {
@@ -76,7 +76,7 @@ protocol ExporterPlugin: AetheriumPlugin {
     var fileExtension: String { get }
 
     /// Export project data
-    func exportProject(_ project: AetheriumProject, to url: URL, context: ModelContext) async throws
+    func exportProject(_ project: Workspace, to url: URL, context: ModelContext) async throws
 
     /// Can export partial data (selected items)
     var supportsPartialExport: Bool { get }
@@ -128,13 +128,13 @@ protocol VisualizationPlugin: AetheriumPlugin {
     var visualizationType: String { get }
 
     /// Create visualization view for project
-    func createView(for project: AetheriumProject, context: ModelContext) -> AnyView
+    func createView(for project: Workspace, context: ModelContext) -> AnyView
 
     /// Supports export to image
     var supportsImageExport: Bool { get }
 
     /// Export visualization as image
-    func exportAsImage(for project: AetheriumProject, context: ModelContext) async throws -> Data
+    func exportAsImage(for project: Workspace, context: ModelContext) async throws -> Data
 }
 
 // MARK: - Automation Plugin Protocol
@@ -165,7 +165,7 @@ enum AutomationTrigger: String, Codable {
 }
 
 struct AutomationContext {
-    let project: AetheriumProject?
+    let project: Workspace?
     let triggerData: [String: Any]
     let timestamp: Date
 }
@@ -213,7 +213,7 @@ protocol IntegrationPlugin: AetheriumPlugin {
     func authenticationView(onComplete: @escaping (Bool) -> Void) -> AnyView?
 
     /// Sync data with external service
-    func sync(project: AetheriumProject, context: ModelContext) async throws -> SyncResult
+    func sync(project: Workspace, context: ModelContext) async throws -> SyncResult
 
     /// Supports two-way sync
     var supportsTwoWaySync: Bool { get }

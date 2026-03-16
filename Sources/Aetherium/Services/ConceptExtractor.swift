@@ -128,7 +128,7 @@ class ConceptExtractor: ObservableObject {
     // MARK: - Extract from Project
 
     /// Extract concepts from entire project (all chats + documents)
-    func extractFromProject(_ project: AetheriumProject) async throws -> [ConceptNode] {
+    func extractFromProject(_ project: Workspace) async throws -> [ConceptNode] {
         isExtracting = true
         extractionProgress = 0.0
 
@@ -190,7 +190,7 @@ class ConceptExtractor: ObservableObject {
 
     private func parseConceptsFromResponse(
         _ response: String,
-        project: AetheriumProject?
+        project: Workspace?
     ) -> [ConceptNode] {
         let sections = response.components(separatedBy: "---")
         var concepts: [ConceptNode] = []

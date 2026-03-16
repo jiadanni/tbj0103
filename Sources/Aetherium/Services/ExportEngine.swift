@@ -19,7 +19,7 @@ class ExportEngine: ObservableObject {
 
     /// Export entire project to various formats
     func exportProject(
-        _ project: AetheriumProject,
+        _ project: Workspace,
         format: ExportFormat,
         to url: URL
     ) async throws {
@@ -45,11 +45,11 @@ class ExportEngine: ObservableObject {
 
     // MARK: - Markdown Export
 
-    private func exportAsMarkdown(_ project: AetheriumProject, to url: URL) async throws {
+    private func exportAsMarkdown(_ project: Workspace, to url: URL) async throws {
         var content = """
         # \(project.title)
 
-        \(project.projectDescription)
+        \(project.workspaceDescription)
 
         ---
 
@@ -108,7 +108,7 @@ class ExportEngine: ObservableObject {
 
     // MARK: - Obsidian Vault Export
 
-    private func exportAsObsidianVault(_ project: AetheriumProject, to url: URL) async throws {
+    private func exportAsObsidianVault(_ project: Workspace, to url: URL) async throws {
         // Create vault structure
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
@@ -185,7 +185,7 @@ class ExportEngine: ObservableObject {
         let indexContent = """
         # \(project.title)
 
-        \(project.projectDescription)
+        \(project.workspaceDescription)
 
         ## Quick Links
 
@@ -213,7 +213,7 @@ class ExportEngine: ObservableObject {
 
     // MARK: - PDF Export
 
-    private func exportAsPDF(_ project: AetheriumProject, to url: URL) async throws {
+    private func exportAsPDF(_ project: Workspace, to url: URL) async throws {
         // Generate HTML content first
         let htmlContent = generateHTMLContent(for: project)
 
@@ -261,7 +261,7 @@ class ExportEngine: ObservableObject {
 
     // MARK: - JSON Export
 
-    private func exportAsJSON(_ project: AetheriumProject, to url: URL) async throws {
+    private func exportAsJSON(_ project: Workspace, to url: URL) async throws {
         let exportData = ProjectExportData(project: project)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -275,7 +275,7 @@ class ExportEngine: ObservableObject {
 
     // MARK: - Helpers
 
-    private func generateHTMLContent(for project: AetheriumProject) -> String {
+    private func generateHTMLContent(for project: Workspace) -> String {
         var html = """
         <!DOCTYPE html>
         <html>
@@ -291,7 +291,7 @@ class ExportEngine: ObservableObject {
         </head>
         <body>
             <h1>\(project.title)</h1>
-            <p>\(project.projectDescription)</p>
+            <p>\(project.workspaceDescription)</p>
 
             <h2>Concepts</h2>
         """
@@ -356,9 +356,9 @@ struct ProjectExportData: Codable {
     let notes: [NoteExport]
     let sources: Int
 
-    init(project: AetheriumProject) {
+    init(project: Workspace) {
         self.title = project.title
-        self.description = project.projectDescription
+        self.description = project.workspaceDescription
         self.createdAt = project.createdAt
         self.concepts = project.concepts.map { ConceptExport(concept: $0) }
         self.notes = project.sources.compactMap { source in

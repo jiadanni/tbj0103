@@ -15,7 +15,7 @@ final class NoteTemplate {
     var tags: [String]
     var variables: [String] // Variable names like {{date}}, {{project}}
 
-    var project: AetheriumProject?
+    var project: Workspace?
 
     init(
         id: UUID = UUID(),
@@ -58,7 +58,7 @@ final class DailyNote {
     var createdAt: Date
     var updatedAt: Date
 
-    var project: AetheriumProject?
+    var project: Workspace?
     var note: ProjectNote?
 
     init(
@@ -112,7 +112,7 @@ final class LearningCard {
 
     var createdAt: Date
     var concept: ConceptNode?
-    var project: AetheriumProject?
+    var project: Workspace?
 
     init(
         id: UUID = UUID(),
@@ -159,7 +159,7 @@ final class LearningPath {
     var completedAt: Date?
 
     @Relationship(deleteRule: .cascade) var milestones: [PathMilestone]
-    var project: AetheriumProject?
+    var project: Workspace?
 
     init(
         id: UUID = UUID(),

@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 struct DocumentBrowserView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var ollamaService: OllamaService
-    let project: AetheriumProject
+    let project: Workspace
     
     @StateObject private var documentProcessor: DocumentProcessor
     @State private var searchText = ""
@@ -18,7 +18,7 @@ struct DocumentBrowserView: View {
     @State private var showingWebCaptureSheet = false
     @State private var showingAudioRecorder = false
 
-    init(project: AetheriumProject, ollamaService: OllamaService) {
+    init(project: Workspace, ollamaService: OllamaService) {
         self.project = project
         _documentProcessor = StateObject(wrappedValue: DocumentProcessor(ollamaService: ollamaService))
     }
@@ -221,6 +221,10 @@ struct DocumentBrowserView: View {
                     }
 
                     project.updateTimestamp()
+
+                    // Auto-generate flashcards and knowledge graph concepts
+                    let autoGen = AutoContentGenerator(ollamaService: ollamaService, modelContext: modelContext)
+                    Task { await autoGen.processDocument(document, project: project) }
                 }
             } catch {
                 print("Error importing documents: \(error)")
@@ -506,7 +510,7 @@ struct KeyPointsSheet: View {
 // MARK: - Web Capture Sheet
 
 struct WebCaptureSheet: View {
-    let project: AetheriumProject
+    let project: Workspace
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -604,7 +608,7 @@ struct WebCaptureSheet: View {
 // MARK: - Audio Record Sheet
 
 struct AudioRecordSheet: View {
-    let project: AetheriumProject
+    let project: Workspace
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 

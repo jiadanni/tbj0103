@@ -6,7 +6,7 @@ struct GroundedChatView: View {
     @EnvironmentObject var modelOrchestrator: ModelOrchestrator
 
     let chatSession: ChatSession
-    var project: AetheriumProject?
+    var project: Workspace?
     private let ollamaService: OllamaService
 
     @StateObject private var groundedEngine: GroundedChatEngine
@@ -19,7 +19,7 @@ struct GroundedChatView: View {
     @State private var showingClearConfirmation = false
     @FocusState private var isInputFocused: Bool
 
-    init(chatSession: ChatSession, project: AetheriumProject? = nil, modelOrchestrator: ModelOrchestrator, ollamaService: OllamaService) {
+    init(chatSession: ChatSession, project: Workspace? = nil, modelOrchestrator: ModelOrchestrator, ollamaService: OllamaService) {
         self.chatSession = chatSession
         self.project = project
         self.ollamaService = ollamaService
@@ -252,6 +252,10 @@ struct GroundedChatView: View {
                 // Auto-generate a descriptive title after the first exchange
                 autoTitleIfNeeded()
 
+                // Auto-extract concepts for the knowledge graph
+                let autoGen = AutoContentGenerator(ollamaService: ollamaService, modelContext: modelContext)
+                Task { await autoGen.processChatExchange(userMessage: userMessage, aiResponse: response, project: project) }
+
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -265,7 +269,7 @@ struct GroundedChatView: View {
 
 struct GroundedChatHeaderView: View {
     let chatSession: ChatSession
-    let project: AetheriumProject?
+    let project: Workspace?
     @Binding var showingSourcesPopover: Bool
 
     var body: some View {
@@ -345,15 +349,21 @@ struct EnhancedMessageBubbleView: View {
             }
 
             // Message content
-            Text(message.content)
-                .textSelection(.enabled)
-                .padding(12)
-                .background(
-                    message.role == .user
-                        ? Color.blue.opacity(0.1)
-                        : Color.secondary.opacity(0.1)
-                )
-                .cornerRadius(12)
+            Group {
+                if message.role == .assistant {
+                    MarkdownMessageView(text: message.content)
+                } else {
+                    Text(message.content)
+                }
+            }
+            .textSelection(.enabled)
+            .padding(12)
+            .background(
+                message.role == .user
+                    ? Color.blue.opacity(0.1)
+                    : Color.secondary.opacity(0.1)
+            )
+            .cornerRadius(12)
 
             // Citations (if expanded)
             if showingCitations && !message.citations.isEmpty {
@@ -430,7 +440,7 @@ struct CitationView: View {
 // MARK: - Sources Popover
 
 struct SourcesPopoverView: View {
-    let project: AetheriumProject
+    let project: Workspace
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {

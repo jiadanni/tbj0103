@@ -9,14 +9,14 @@ final class RAGPipelineTests: XCTestCase {
     var modelOrchestrator: ModelOrchestrator!
     var session: URLSession!
     var modelContext: ModelContext!
-    var project: AetheriumProject!
+    var project: Workspace!
 
     @MainActor
     override func setUp() async throws {
         try await super.setUp()
         // Setup SwiftData
         let schema = Schema([
-            AetheriumProject.self,
+            Workspace.self,
             ProjectSource.self,
             UploadedDocument.self,
             DocumentChunk.self,
@@ -40,7 +40,7 @@ final class RAGPipelineTests: XCTestCase {
         groundedChatEngine = GroundedChatEngine(modelOrchestrator: modelOrchestrator, ollamaService: ollamaService)
 
         // Setup Project
-        project = AetheriumProject(title: "RAG Test Project", description: "Testing RAG")
+        project = Workspace(title: "RAG Test Project", description: "Testing RAG")
         modelContext.insert(project)
     }
 

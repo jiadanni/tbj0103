@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Daily Notes View with Calendar
 
 struct DailyNotesView: View {
-    let project: AetheriumProject
+    let project: Workspace
     @Environment(\.modelContext) private var modelContext
 
     @StateObject private var templateEngine: NoteTemplateEngine
@@ -13,7 +13,7 @@ struct DailyNotesView: View {
     @State private var showingTemplates = false
     @State private var selectedTemplate: NoteTemplate?
 
-    init(project: AetheriumProject, modelContext: ModelContext) {
+    init(project: Workspace, modelContext: ModelContext) {
         self.project = project
         _templateEngine = StateObject(wrappedValue: NoteTemplateEngine(modelContext: modelContext))
     }
@@ -107,13 +107,14 @@ struct DailyNotesView: View {
 
 struct CalendarSidebarView: View {
     @Binding var selectedDate: Date
-    let project: AetheriumProject
+    let project: Workspace
     let modelContext: ModelContext
 
     @State private var displayedMonth = Date()
+    @State private var currentDailyNote: DailyNote?
     @StateObject private var templateEngine: NoteTemplateEngine
 
-    init(selectedDate: Binding<Date>, project: AetheriumProject, modelContext: ModelContext) {
+    init(selectedDate: Binding<Date>, project: Workspace, modelContext: ModelContext) {
         self._selectedDate = selectedDate
         self.project = project
         self.modelContext = modelContext
@@ -162,8 +163,23 @@ struct CalendarSidebarView: View {
                 modelContext: modelContext
             )
             .padding()
+
+            Divider()
+
+            // Alarm panel
+            AlarmPanelView(
+                project: project,
+                dailyNote: currentDailyNote
+            )
+            .padding()
         }
         .background(Color.secondary.opacity(0.05))
+        .task(id: selectedDate) {
+            currentDailyNote = templateEngine.getOrCreateDailyNote(
+                for: selectedDate,
+                project: project
+            )
+        }
     }
 
     private var monthYearString: String {
@@ -186,7 +202,7 @@ struct CalendarSidebarView: View {
 struct CalendarGridView: View {
     let month: Date
     @Binding var selectedDate: Date
-    let project: AetheriumProject
+    let project: Workspace
     let modelContext: ModelContext
 
     private let columns = Array(repeating: GridItem(.flexible()), count: 7)
@@ -371,7 +387,7 @@ struct DailyNoteHeader: View {
 
 struct DailyNoteEditorView: View {
     let dailyNote: DailyNote
-    let project: AetheriumProject
+    let project: Workspace
     let modelContext: ModelContext
 
     var body: some View {
@@ -443,7 +459,7 @@ struct DailyNoteMetadataView: View {
 
 struct DailyNoteStatsView: View {
     let month: Date
-    let project: AetheriumProject
+    let project: Workspace
     let modelContext: ModelContext
 
     @State private var stats: Stats?

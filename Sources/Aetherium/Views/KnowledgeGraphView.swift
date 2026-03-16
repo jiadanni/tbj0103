@@ -3,7 +3,7 @@ import SwiftData
 
 struct KnowledgeGraphView: View {
     @Environment(\.modelContext) private var modelContext
-    let project: AetheriumProject
+    let project: Workspace
 
     @Query private var allConcepts: [ConceptNode]
     @State private var selectedConcept: ConceptNode?
@@ -17,6 +17,8 @@ struct KnowledgeGraphView: View {
     @State private var isExtractingConcepts = false
     @State private var extractionProgress: Double = 0.0
     @State private var extractionError: String?
+    @State private var showDemoTip = false
+    @EnvironmentObject var demoModeManager: DemoModeManager
 
     enum GraphLayout {
         case force      // Force-directed
@@ -121,11 +123,33 @@ struct KnowledgeGraphView: View {
                 )
             }
         }
+        .overlay(alignment: .bottom) {
+            if showDemoTip {
+                DemoTipCallout(message: "Tap any node to see connections", systemImage: "cursorarrow.rays")
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 24)
+            }
+        }
+        .onAppear {
+            guard demoModeManager.isActive else { return }
+            withAnimation(.easeIn(duration: 0.3).delay(0.6)) { showDemoTip = true }
+            Task {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                withAnimation(.easeOut(duration: 0.3)) { showDemoTip = false }
+            }
+        }
         .sheet(isPresented: $showingStatistics) {
             GraphStatisticsView(concepts: filteredConcepts)
         }
         .sheet(isPresented: $showingShortestPath) {
             ShortestPathView(concepts: filteredConcepts)
+        }
+        .task {
+            // Auto-extract concepts when the graph is empty and there's content to process
+            let hasContent = !project.chatSessions.isEmpty || !project.sources.isEmpty
+            if filteredConcepts.isEmpty && hasContent && !isExtractingConcepts {
+                extractConcepts()
+            }
         }
     }
 
@@ -534,99 +558,210 @@ struct KnowledgeGraphView: View {
 
 // MARK: - Graph Renderers
 
+// Lightweight edge value type used by Canvas — avoids per-frame SwiftData relationship faults.
+private struct GraphEdge {
+    let from: UUID
+    let to: UUID
+    let lineWidth: CGFloat
+}
+
+// Lightweight node snapshot used by the background force simulation.
+private struct GraphNodeSnapshot: @unchecked Sendable {
+    let id: UUID
+    let linkedIDs: [UUID]
+}
+
 struct ForceDirectedGraphView: View {
     let concepts: [ConceptNode]
     @Binding var selectedConcept: ConceptNode?
     let size: CGSize
 
     @State private var nodePositions: [UUID: CGPoint] = [:]
+    // Pre-computed edges: built once per layout so Canvas never touches SwiftData relationships.
+    @State private var edgeSnapshot: [GraphEdge] = []
+    @State private var simTask: Task<Void, Never>? = nil
+    // Zoom
+    @GestureState private var magnifyDelta: CGFloat = 1.0
+    @State private var zoom: CGFloat = 1.0
+
+    private var effectiveZoom: CGFloat { zoom * magnifyDelta }
 
     var body: some View {
-        Canvas { context, size in
-            // Draw links
-            for concept in concepts {
-                guard let sourcePos = nodePositions[concept.id] else { continue }
+        let showAllLabels = effectiveZoom >= 0.6 && concepts.count <= 75
+        let showHubLabels = effectiveZoom >= 0.4 && concepts.count > 75
 
-                for link in concept.outgoingLinks {
-                    guard let target = link.target,
-                          let targetPos = nodePositions[target.id] else { continue }
-
+        ZStack {
+            // Canvas: draws edges and node circles without touching SwiftData
+            Canvas { context, _ in
+                for edge in edgeSnapshot {
+                    guard let src = nodePositions[edge.from],
+                          let dst = nodePositions[edge.to] else { continue }
                     var path = Path()
-                    path.move(to: sourcePos)
-                    path.addLine(to: targetPos)
-
-                    context.stroke(
-                        path,
-                        with: .color(.secondary.opacity(0.3)),
-                        lineWidth: CGFloat(link.strength) * 2
+                    path.move(to: src)
+                    path.addLine(to: dst)
+                    context.stroke(path, with: .color(.secondary.opacity(0.3)), lineWidth: edge.lineWidth)
+                }
+                for concept in concepts {
+                    guard let pos = nodePositions[concept.id] else { continue }
+                    let isSelected = selectedConcept?.id == concept.id
+                    let r: CGFloat = isSelected ? 9 : 6
+                    context.fill(
+                        Circle().path(in: CGRect(x: pos.x - r, y: pos.y - r, width: r * 2, height: r * 2)),
+                        with: .color(colorForType(concept.type))
                     )
                 }
             }
 
-            // Draw nodes
-            for concept in concepts {
-                guard let pos = nodePositions[concept.id] else { continue }
-
-                let isSelected = selectedConcept?.id == concept.id
-                let radius: CGFloat = isSelected ? 8 : 6
-
-                context.fill(
-                    Circle().path(in: CGRect(x: pos.x - radius, y: pos.y - radius, width: radius * 2, height: radius * 2)),
-                    with: .color(colorForType(concept.type))
-                )
-            }
-        }
-        .overlay {
-            // Node labels
-            ForEach(concepts) { concept in
-                if let pos = nodePositions[concept.id] {
-                    Text(concept.name)
-                        .font(.caption2)
-                        .padding(4)
-                        .background(.ultraThinMaterial)
-                        .cornerRadius(4)
-                        .position(x: pos.x, y: pos.y - 20)
-                        .onTapGesture {
-                            selectedConcept = concept
-                        }
+            // Label overlay with LOD: avoid creating N views for large graphs when zoomed out
+            if showAllLabels || showHubLabels {
+                let visibleConcepts = showAllLabels ? concepts : concepts.filter { $0.referenceCount > 2 }
+                ForEach(visibleConcepts) { concept in
+                    if let pos = nodePositions[concept.id] {
+                        Text(concept.name)
+                            .font(.caption2)
+                            .padding(4)
+                            .background(.ultraThinMaterial)
+                            .cornerRadius(4)
+                            .position(x: pos.x, y: pos.y - 18)
+                            .onTapGesture { selectedConcept = concept }
+                    }
                 }
             }
         }
-        .onAppear {
-            initializeLayout()
-        }
-        .onChange(of: concepts.count) { _, _ in
-            initializeLayout()
-        }
+        .scaleEffect(effectiveZoom, anchor: .center)
+        .gesture(
+            MagnifyGesture()
+                .updating($magnifyDelta) { value, state, _ in
+                    state = value.magnification
+                }
+                .onEnded { value in
+                    zoom = max(0.25, min(4.0, zoom * value.magnification))
+                }
+        )
+        .onAppear { initializeLayout() }
+        .onChange(of: concepts.count) { _, _ in initializeLayout() }
     }
 
     private func initializeLayout() {
-        // Simple random layout (in production, use force-directed algorithm)
+        simTask?.cancel()
+
+        // Circular seed positions
         var positions: [UUID: CGPoint] = [:]
-
         for (index, concept) in concepts.enumerated() {
-            let angle = Double(index) * (2.0 * .pi / Double(concepts.count))
+            let angle = Double(index) * (2.0 * .pi / Double(max(concepts.count, 1)))
             let radius = min(size.width, size.height) * 0.35
+            positions[concept.id] = CGPoint(
+                x: size.width / 2 + CGFloat(cos(angle)) * radius,
+                y: size.height / 2 + CGFloat(sin(angle)) * radius
+            )
+        }
+        nodePositions = positions
 
-            let x = size.width / 2 + CGFloat(cos(angle)) * radius
-            let y = size.height / 2 + CGFloat(sin(angle)) * radius
-
-            positions[concept.id] = CGPoint(x: x, y: y)
+        // Snapshot edges once so Canvas never faults SwiftData relationships per frame
+        edgeSnapshot = concepts.flatMap { concept -> [GraphEdge] in
+            concept.outgoingLinks.compactMap { link -> GraphEdge? in
+                guard let targetID = link.target?.id else { return nil }
+                return GraphEdge(from: concept.id, to: targetID, lineWidth: CGFloat(link.strength) * 2)
+            }
         }
 
-        nodePositions = positions
+        guard concepts.count > 1 else { return }
+
+        // Build Sendable snapshots for the background task
+        let nodeSnapshots = concepts.map { c in
+            GraphNodeSnapshot(id: c.id, linkedIDs: c.outgoingLinks.compactMap { $0.target?.id })
+        }
+        let w = size.width, h = size.height
+
+        simTask = Task.detached(priority: .utility) {
+            let finalPositions = Self.runFruchtermanReingold(
+                nodes: nodeSnapshots,
+                initialPositions: positions,
+                width: w,
+                height: h
+            )
+            guard !Task.isCancelled else { return }
+            await MainActor.run { nodePositions = finalPositions }
+        }
+    }
+
+    /// Fruchterman–Reingold force-directed layout.
+    /// Runs entirely on the cooperative thread pool; returns the final position dictionary.
+    private static func runFruchtermanReingold(
+        nodes: [GraphNodeSnapshot],
+        initialPositions: [UUID: CGPoint],
+        width: CGFloat,
+        height: CGFloat
+    ) -> [UUID: CGPoint] {
+        guard nodes.count > 1 else { return initialPositions }
+
+        let area = width * height
+        let k = sqrt(area / CGFloat(nodes.count)) * 0.8
+        var temperature = width / 8.0
+        let cooling: CGFloat = 0.96
+        let iterations = min(180, 60 + nodes.count)
+
+        var pos = initialPositions
+
+        for _ in 0..<iterations {
+            var disp: [UUID: CGVector] = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, .zero) })
+
+            // Repulsive forces between every pair
+            for i in 0..<nodes.count {
+                for j in (i + 1)..<nodes.count {
+                    let a = nodes[i].id, b = nodes[j].id
+                    guard let pa = pos[a], let pb = pos[b] else { continue }
+                    let dx = pa.x - pb.x, dy = pa.y - pb.y
+                    let dist = max(sqrt(dx * dx + dy * dy), 0.01)
+                    let rep = k * k / dist
+                    let fx = dx / dist * rep, fy = dy / dist * rep
+                    disp[a]?.dx += fx;  disp[a]?.dy += fy
+                    disp[b]?.dx -= fx;  disp[b]?.dy -= fy
+                }
+            }
+
+            // Attractive forces along edges
+            for node in nodes {
+                guard let pa = pos[node.id] else { continue }
+                for linkedID in node.linkedIDs {
+                    guard let pb = pos[linkedID] else { continue }
+                    let dx = pb.x - pa.x, dy = pb.y - pa.y
+                    let dist = max(sqrt(dx * dx + dy * dy), 0.01)
+                    let att = dist * dist / k
+                    let fx = dx / dist * att, fy = dy / dist * att
+                    disp[node.id]?.dx += fx;    disp[node.id]?.dy += fy
+                    disp[linkedID]?.dx -= fx;   disp[linkedID]?.dy -= fy
+                }
+            }
+
+            // Apply displacements, clamped to temperature, then bound to canvas
+            for node in nodes {
+                guard var p = pos[node.id], let d = disp[node.id] else { continue }
+                let len = max(sqrt(d.dx * d.dx + d.dy * d.dy), 0.01)
+                let clamp = min(len, temperature)
+                p.x += d.dx / len * clamp
+                p.y += d.dy / len * clamp
+                p.x = max(20, min(width - 20, p.x))
+                p.y = max(20, min(height - 20, p.y))
+                pos[node.id] = p
+            }
+
+            temperature *= cooling
+        }
+
+        return pos
     }
 
     private func colorForType(_ type: ConceptNodeType) -> Color {
         switch type {
-        case .topic: return .blue
-        case .person: return .purple
+        case .topic:      return .blue
+        case .person:     return .purple
         case .technology: return .green
         case .definition: return .orange
-        case .question: return .red
-        case .insight: return .yellow
-        case .resource: return .cyan
-        case .custom: return .gray
+        case .question:   return .red
+        case .insight:    return .yellow
+        case .resource:   return .cyan
+        case .custom:     return .gray
         }
     }
 }
@@ -636,9 +771,80 @@ struct CircularGraphView: View {
     @Binding var selectedConcept: ConceptNode?
     let size: CGSize
 
+    // Positions are pure functions of the concepts array — no State needed.
+    private var positions: [UUID: CGPoint] {
+        var result: [UUID: CGPoint] = [:]
+        let count = max(concepts.count, 1)
+        let radius = min(size.width, size.height) * 0.38
+        for (index, concept) in concepts.enumerated() {
+            let angle = Double(index) * (2.0 * .pi / Double(count))
+            result[concept.id] = CGPoint(
+                x: size.width / 2 + CGFloat(cos(angle)) * radius,
+                y: size.height / 2 + CGFloat(sin(angle)) * radius
+            )
+        }
+        return result
+    }
+
+    private var edgeSnapshot: [GraphEdge] {
+        concepts.flatMap { concept in
+            concept.outgoingLinks.compactMap { link -> GraphEdge? in
+                guard let targetID = link.target?.id else { return nil }
+                return GraphEdge(from: concept.id, to: targetID, lineWidth: CGFloat(link.strength) * 2)
+            }
+        }
+    }
+
     var body: some View {
-        Text("Circular Layout")
-            .foregroundColor(.secondary)
+        let pos = positions
+        let edges = edgeSnapshot
+        let showLabels = concepts.count <= 60
+
+        ZStack {
+            Canvas { context, _ in
+                for edge in edges {
+                    guard let src = pos[edge.from], let dst = pos[edge.to] else { continue }
+                    var path = Path()
+                    path.move(to: src); path.addLine(to: dst)
+                    context.stroke(path, with: .color(.secondary.opacity(0.3)), lineWidth: edge.lineWidth)
+                }
+                for concept in concepts {
+                    guard let p = pos[concept.id] else { continue }
+                    let r: CGFloat = selectedConcept?.id == concept.id ? 9 : 6
+                    context.fill(
+                        Circle().path(in: CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2)),
+                        with: .color(colorForType(concept.type))
+                    )
+                }
+            }
+
+            if showLabels {
+                ForEach(concepts) { concept in
+                    if let p = pos[concept.id] {
+                        Text(concept.name)
+                            .font(.caption2)
+                            .padding(4)
+                            .background(.ultraThinMaterial)
+                            .cornerRadius(4)
+                            .position(x: p.x, y: p.y - 18)
+                            .onTapGesture { selectedConcept = concept }
+                    }
+                }
+            }
+        }
+    }
+
+    private func colorForType(_ type: ConceptNodeType) -> Color {
+        switch type {
+        case .topic:      return .blue
+        case .person:     return .purple
+        case .technology: return .green
+        case .definition: return .orange
+        case .question:   return .red
+        case .insight:    return .yellow
+        case .resource:   return .cyan
+        case .custom:     return .gray
+        }
     }
 }
 
@@ -647,9 +853,99 @@ struct HierarchicalGraphView: View {
     @Binding var selectedConcept: ConceptNode?
     let size: CGSize
 
+    // Group nodes by type; each type occupies its own horizontal row.
+    private var positions: [UUID: CGPoint] {
+        var result: [UUID: CGPoint] = [:]
+        let rows = ConceptNodeType.allCases
+            .compactMap { type -> (ConceptNodeType, [ConceptNode])? in
+                let group = concepts.filter { $0.type == type }
+                return group.isEmpty ? nil : (type, group)
+            }
+        guard !rows.isEmpty else { return result }
+        let rowHeight = size.height / CGFloat(rows.count)
+        for (rowIdx, (_, nodesInRow)) in rows.enumerated() {
+            let colWidth = size.width / CGFloat(max(nodesInRow.count, 1))
+            for (colIdx, concept) in nodesInRow.enumerated() {
+                result[concept.id] = CGPoint(
+                    x: colWidth * (CGFloat(colIdx) + 0.5),
+                    y: rowHeight * (CGFloat(rowIdx) + 0.5)
+                )
+            }
+        }
+        return result
+    }
+
+    private var edgeSnapshot: [GraphEdge] {
+        concepts.flatMap { concept in
+            concept.outgoingLinks.compactMap { link -> GraphEdge? in
+                guard let targetID = link.target?.id else { return nil }
+                return GraphEdge(from: concept.id, to: targetID, lineWidth: CGFloat(link.strength) * 2)
+            }
+        }
+    }
+
     var body: some View {
-        Text("Hierarchical Layout")
-            .foregroundColor(.secondary)
+        let pos = positions
+        let edges = edgeSnapshot
+        let rowTypes = ConceptNodeType.allCases.filter { type in concepts.contains { $0.type == type } }
+        let rowHeight = size.height / CGFloat(max(rowTypes.count, 1))
+
+        ZStack {
+            // Row type labels on the left edge
+            VStack(spacing: 0) {
+                ForEach(rowTypes, id: \.self) { type in
+                    Text(type.rawValue.capitalized)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: rowHeight, alignment: .leading)
+                        .padding(.leading, 6)
+                }
+            }
+
+            Canvas { context, _ in
+                for edge in edges {
+                    guard let src = pos[edge.from], let dst = pos[edge.to] else { continue }
+                    var path = Path()
+                    path.move(to: src); path.addLine(to: dst)
+                    context.stroke(path, with: .color(.secondary.opacity(0.3)), lineWidth: edge.lineWidth)
+                }
+                for concept in concepts {
+                    guard let p = pos[concept.id] else { continue }
+                    let r: CGFloat = selectedConcept?.id == concept.id ? 9 : 6
+                    context.fill(
+                        Circle().path(in: CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2)),
+                        with: .color(colorForType(concept.type))
+                    )
+                }
+            }
+
+            if concepts.count <= 60 {
+                ForEach(concepts) { concept in
+                    if let p = pos[concept.id] {
+                        Text(concept.name)
+                            .font(.caption2)
+                            .padding(4)
+                            .background(.ultraThinMaterial)
+                            .cornerRadius(4)
+                            .position(x: p.x, y: p.y - 18)
+                            .onTapGesture { selectedConcept = concept }
+                    }
+                }
+            }
+        }
+    }
+
+    private func colorForType(_ type: ConceptNodeType) -> Color {
+        switch type {
+        case .topic:      return .blue
+        case .person:     return .purple
+        case .technology: return .green
+        case .definition: return .orange
+        case .question:   return .red
+        case .insight:    return .yellow
+        case .resource:   return .cyan
+        case .custom:     return .gray
+        }
     }
 }
 

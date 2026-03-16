@@ -17,7 +17,7 @@ class RetrievalEngine: ObservableObject {
     /// Find relevant document chunks for a given query
     func findRelevantChunks(
         _ query: String,
-        in project: AetheriumProject,
+        in project: Workspace,
         limit: Int = 5
     ) async -> [RetrievalResult] {
         // Get all document chunks from project sources
@@ -126,7 +126,7 @@ class RetrievalEngine: ObservableObject {
 
     /// Get all chunks from project sources
     private func getAllChunksFromProject(
-        _ project: AetheriumProject
+        _ project: Workspace
     ) -> [(chunk: DocumentChunk, sourceTitle: String, sourceType: ProjectSourceType)] {
         var allChunks: [(DocumentChunk, String, ProjectSourceType)] = []
 
@@ -205,7 +205,7 @@ class GroundedChatEngine: ObservableObject {
     func sendMessage(
         _ content: String,
         in chatSession: ChatSession,
-        project: AetheriumProject?
+        project: Workspace?
     ) async throws -> (response: String, citations: [Citation]) {
         var relevantSources: [RetrievalResult] = []
 
@@ -295,7 +295,7 @@ class ContentGenerator: ObservableObject {
     }
 
     /// Generate study guide from project sources
-    func generateStudyGuide(from project: AetheriumProject) async throws -> ProjectNote {
+    func generateStudyGuide(from project: Workspace) async throws -> ProjectNote {
         let allContent = collectProjectContent(project)
 
         let prompt = """
@@ -323,7 +323,7 @@ class ContentGenerator: ObservableObject {
     }
 
     /// Extract key concepts and create learning goals
-    func extractKeyConcepts(from project: AetheriumProject) async throws -> [LearningGoal] {
+    func extractKeyConcepts(from project: Workspace) async throws -> [LearningGoal] {
         let allContent = collectProjectContent(project)
 
         let prompt = """
@@ -349,7 +349,7 @@ class ContentGenerator: ObservableObject {
     }
 
     /// Generate quiz based on project content
-    func generateQuiz(from project: AetheriumProject, questionCount: Int = 5) async throws -> ProjectNote {
+    func generateQuiz(from project: Workspace, questionCount: Int = 5) async throws -> ProjectNote {
         let allContent = collectProjectContent(project)
 
         let prompt = """
@@ -378,7 +378,7 @@ class ContentGenerator: ObservableObject {
 
     // MARK: - Helper Methods
 
-    private func collectProjectContent(_ project: AetheriumProject) -> String {
+    private func collectProjectContent(_ project: Workspace) -> String {
         var content = ""
 
         for source in project.sources {
