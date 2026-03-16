@@ -14,6 +14,8 @@ import SettingsView from "../views/SettingsView";
 import DocumentBrowserView from "../views/DocumentBrowserView";
 import LearningPathView from "../views/LearningPathView";
 import BackupSettingsSection from "../views/BackupSettingsSection";
+import BacklinksView from "../views/BacklinksView";
+import GroundedChatView from "../views/GroundedChatView";
 
 export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -70,6 +72,8 @@ export default function Layout() {
             <Route path="/learning" element={<LearningPathView />} />
             <Route path="/backup" element={<BackupSettingsSection />} />
             <Route path="/settings" element={<SettingsView />} />
+            <Route path="/backlinks" element={<BacklinksView />} />
+            <Route path="/grounded" element={<GroundedChatView />} />
           </Routes>
         </Panel>
       </PanelGroup>

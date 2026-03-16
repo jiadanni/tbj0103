@@ -75,6 +75,9 @@ pub fn run() {
             commands::note::get_or_create_daily_note,
             commands::note::list_templates,
             commands::note::create_template,
+            commands::note::apply_template,
+            commands::note::get_backlinks,
+            commands::note::get_note_outbound_links,
             // Document commands
             commands::document::upload_document,
             commands::document::list_documents,

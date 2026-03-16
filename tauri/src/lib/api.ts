@@ -79,6 +79,15 @@ export interface AppSettings {
   embedding_model: string;
 }
 
+export interface BacklinkEntry {
+  source_type: string; source_id: string; context: string; concept_name: string;
+}
+
+export interface RetrievedChunk {
+  chunk_id: string; document_id: string; filename: string;
+  content: string; score: number; chunk_index: number;
+}
+
 export interface CalendarAlarm {
   id: string; workspace_id?: string; title: string; fire_date: string;
   duration_seconds: number; input_prompt: string; is_dismissed: boolean;
@@ -161,6 +170,12 @@ export const api = {
     listTemplates: (workspaceId: string) => invoke<NoteTemplate[]>("list_templates", { workspaceId }),
     createTemplate: (workspaceId: string, name: string, content: string) =>
       invoke<NoteTemplate>("create_template", { workspaceId, name, content }),
+    applyTemplate: (templateId: string, extraVars?: Record<string, string>) =>
+      invoke<string>("apply_template", { templateId, extraVars: extraVars ?? {} }),
+    getBacklinks: (workspaceId: string, conceptName: string) =>
+      invoke<BacklinkEntry[]>("get_backlinks", { workspaceId, conceptName }),
+    getOutboundLinks: (noteId: string) =>
+      invoke<string[]>("get_note_outbound_links", { noteId }),
   },
 
   document: {
