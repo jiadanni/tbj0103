@@ -10,6 +10,7 @@ struct ContentView: View {
     @EnvironmentObject var modelOrchestrator: ModelOrchestrator
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var shortcutManager: ShortcutManager
+    @ObservedObject private var appSettings = AppSettings.shared
 
     @Query(sort: \AetheriumProject.updatedAt, order: .reverse)
     private var projects: [AetheriumProject]
@@ -20,51 +21,11 @@ struct ContentView: View {
     @State private var showingSettings = false
 
     var body: some View {
-        NavigationSplitView(columnVisibility: Binding(
-            get: { themeManager.isSidebarCollapsed ? .detailOnly : .all },
-            set: { newValue in themeManager.isSidebarCollapsed = (newValue == .detailOnly) }
-        )) {
-            // Sidebar with project selection and navigation
-            VStack(spacing: 0) {
-                // Project selector
-                ProjectSelectorView(
-                    projects: projects,
-                    selectedProject: $selectedProject,
-                    showingNewProjectSheet: $showingNewProjectSheet
-                )
-                .environmentObject(shortcutManager)
-
-                Divider()
-
-                // Navigation menu
-                if selectedProject != nil {
-                    NavigationMenuView(selectedView: $selectedView)
-                } else {
-                    ContentUnavailableView(
-                        "No Project Selected",
-                        systemImage: "folder.badge.questionmark",
-                        description: Text("Create or select a project to get started")
-                    )
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 200, ideal: CGFloat(themeManager.sidebarWidth), max: 400)
-        } detail: {
-            // Main content area
-            if let project = selectedProject {
-                NavigationStack {
-                    DetailViewRouter(
-                        project: project,
-                        selectedView: selectedView,
-                        modelContext: modelContext
-                    )
-                    .environmentObject(themeManager)
-                }
+        Group {
+            if appSettings.tabPosition == .top {
+                topTabLayout
             } else {
-                WelcomeView(
-                    onCreateProject: { showingNewProjectSheet = true },
-                    hasProjects: !projects.isEmpty
-                )
-                .environmentObject(shortcutManager)
+                sidebarLayout
             }
         }
         .sheet(isPresented: $showingNewProjectSheet) {
@@ -76,6 +37,10 @@ struct ContentView: View {
                 .environmentObject(shortcutManager)
         }
         .toolbar {
+            ToolbarItem(placement: .automatic) {
+                GlobalModelPicker(ollamaService: ollamaService, appSettings: appSettings)
+            }
+
             ToolbarItem(placement: .automatic) {
                 Menu {
                     Button("App Settings") {
@@ -91,17 +56,9 @@ struct ContentView: View {
 
                     Divider()
 
-                    if let project = selectedProject {
-                        NavigationLink(destination: ProjectSettingsView(project: project)) {
-                            Label("Project Settings", systemImage: "gear")
-                        }
-
-                        Divider()
-                    }
-
                     Button("Check Ollama Status") {
                         Task {
-                            await ollamaService.checkAvailability()
+                            _ = await ollamaService.checkAvailability()
                         }
                     }
 
@@ -118,7 +75,10 @@ struct ContentView: View {
             }
         }
         .task {
-            await ollamaService.checkAvailability()
+            let available = await ollamaService.checkAvailability()
+            if available {
+                _ = try? await ollamaService.fetchAvailableModels()
+            }
         }
         .commandPalette(onNavigate: handleSearchNavigation)
         .background {
@@ -131,10 +91,88 @@ struct ContentView: View {
         .keyboardShortcut(shortcutManager.searchKeyEquivalent, modifiers: shortcutManager.searchModifiers)
     }
 
+    // MARK: - Top Tab Layout
+
+    private var topTabLayout: some View {
+        VStack(spacing: 0) {
+            // Project tabs bar
+            ProjectTabBar(
+                projects: projects,
+                selectedProject: $selectedProject,
+                showingNewProjectSheet: $showingNewProjectSheet
+            )
+
+            Divider()
+
+            if selectedProject != nil {
+                // Navigation tab bar
+                NavigationTabBar(selectedView: $selectedView)
+
+                Divider()
+
+                // Content
+                if let project = selectedProject {
+                    DetailViewRouter(
+                        project: project,
+                        selectedView: selectedView,
+                        modelContext: modelContext
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else {
+                WelcomeView(
+                    onCreateProject: { showingNewProjectSheet = true },
+                    hasProjects: !projects.isEmpty
+                )
+            }
+        }
+    }
+
+    // MARK: - Sidebar Layout
+
+    private var sidebarLayout: some View {
+        NavigationSplitView {
+            VStack(spacing: 0) {
+                ProjectSelectorView(
+                    projects: projects,
+                    selectedProject: $selectedProject,
+                    showingNewProjectSheet: $showingNewProjectSheet
+                )
+
+                Divider()
+
+                if selectedProject != nil {
+                    SidebarNavigationMenuView(selectedView: $selectedView)
+                } else {
+                    ContentUnavailableView(
+                        "No Project Selected",
+                        systemImage: "folder.badge.questionmark",
+                        description: Text("Create or select a project to get started")
+                    )
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
+        } detail: {
+            if let project = selectedProject {
+                NavigationStack {
+                    DetailViewRouter(
+                        project: project,
+                        selectedView: selectedView,
+                        modelContext: modelContext
+                    )
+                }
+            } else {
+                WelcomeView(
+                    onCreateProject: { showingNewProjectSheet = true },
+                    hasProjects: !projects.isEmpty
+                )
+            }
+        }
+    }
+
     // MARK: - Command Palette Navigation
 
     private func handleSearchNavigation(_ result: SearchResult) {
-        // Find and select the appropriate project
         switch result.type {
         case .chatMessage:
             if let project = projects.first(where: { project in
@@ -297,9 +335,137 @@ struct ProjectRowView: View {
     }
 }
 
-// MARK: - Navigation Menu
+// MARK: - Project Tab Bar (Horizontal)
 
-struct NavigationMenuView: View {
+struct ProjectTabBar: View {
+    let projects: [AetheriumProject]
+    @Binding var selectedProject: AetheriumProject?
+    @Binding var showingNewProjectSheet: Bool
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                ForEach(projects) { project in
+                    ProjectTab(
+                        project: project,
+                        isSelected: selectedProject?.id == project.id,
+                        onSelect: { selectedProject = project }
+                    )
+                }
+
+                // New project button
+                Button(action: { showingNewProjectSheet = true }) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("New Project (Cmd+N)")
+                .keyboardShortcut("n", modifiers: .command)
+                .padding(.horizontal, 4)
+
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+        }
+        .frame(height: 40)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+struct ProjectTab: View {
+    let project: AetheriumProject
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 6) {
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 12))
+
+                Text(project.title)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(
+                isSelected
+                    ? Color.accentColor.opacity(0.15)
+                    : isHovering ? Color.secondary.opacity(0.1) : Color.clear
+            )
+            .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in isHovering = hovering }
+    }
+}
+
+// MARK: - Navigation Tab Bar (Horizontal, below project tabs)
+
+struct NavigationTabBar: View {
+    @Binding var selectedView: NavigationView
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                ForEach(NavigationView.allCases) { view in
+                    NavigationTab(
+                        view: view,
+                        isSelected: selectedView == view,
+                        onSelect: { selectedView = view }
+                    )
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+        }
+        .frame(height: 44)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+}
+
+struct NavigationTab: View {
+    let view: NavigationView
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 6) {
+                Image(systemName: view.icon)
+                    .font(.system(size: 14))
+
+                Text(view.rawValue)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+            }
+            .foregroundColor(isSelected ? .accentColor : .primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                isSelected
+                    ? Color.accentColor.opacity(0.12)
+                    : isHovering ? Color.secondary.opacity(0.08) : Color.clear
+            )
+            .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(view.keyboardShortcut ?? " ", modifiers: .command)
+        .onHover { hovering in isHovering = hovering }
+    }
+}
+
+// MARK: - Sidebar Navigation Menu
+
+struct SidebarNavigationMenuView: View {
     @Binding var selectedView: NavigationView
 
     var body: some View {
@@ -388,15 +554,20 @@ struct ChatNavigationView: View {
 
             // Chat detail
             if let chat = selectedChat {
-                ChatView(chatSession: chat)
+                ChatView(chatSession: chat) { branchedSession in
+                                selectedChat = branchedSession
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ContentUnavailableView(
                     "No Chat Selected",
                     systemImage: "message.badge.questionmark",
                     description: Text("Select a chat to start conversing")
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -526,15 +697,31 @@ struct NewChatSheet: View {
 
     @State private var title = ""
     @State private var customSystemPrompt = ""
-    @State private var selectedModel = "qwen2.5:7b"
+    @State private var selectedModel = AppSettings.shared.preferredModel
 
     var body: some View {
         VStack(spacing: 20) {
             Text("New Chat")
                 .font(.headline)
 
-            TextField("Chat Title", text: $title)
-                .textFieldStyle(.roundedBorder)
+            if !ollamaService.availableModels.isEmpty {
+                Picker("Model", selection: $selectedModel) {
+                    ForEach(ollamaService.availableModels) { model in
+                        Text(model.name).tag(model.name)
+                    }
+                }
+            } else {
+                HStack {
+                    Text("Model")
+                    Spacer()
+                    Text(selectedModel)
+                        .foregroundColor(.secondary)
+                }
+
+                Label("Start Ollama to see installed models", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+            }
 
             TextField("System Prompt (optional)", text: $customSystemPrompt, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
@@ -562,15 +749,12 @@ struct NewChatSheet: View {
                     createChat()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(title.isEmpty)
             }
         }
         .padding()
         .frame(width: 350)
         .task {
-            try? await ollamaService.fetchAvailableModels()
-            selectedModel = project.defaultModelName ?? "qwen2.5:7b"
-            customSystemPrompt = project.systemPrompt ?? ""
+            _ = try? await ollamaService.fetchAvailableModels()
         }
     }
 
@@ -587,4 +771,38 @@ struct NewChatSheet: View {
     }
 }
 
+// MARK: - Global Model Picker
 
+struct GlobalModelPicker: View {
+    @ObservedObject var ollamaService: OllamaService
+    @ObservedObject var appSettings: AppSettings
+
+    var body: some View {
+        Menu {
+            if ollamaService.availableModels.isEmpty {
+                Text("No models available")
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(ollamaService.availableModels) { model in
+                    Button {
+                        appSettings.preferredModel = model.name
+                    } label: {
+                        HStack {
+                            Text(model.name)
+                            if model.name == appSettings.preferredModel {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "brain")
+                Text(appSettings.preferredModel)
+                    .lineLimit(1)
+            }
+            .font(.caption)
+        }
+    }
+}

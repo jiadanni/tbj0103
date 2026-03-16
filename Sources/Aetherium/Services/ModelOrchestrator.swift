@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import os
 
 enum ModelProvider {
     case ollama
@@ -16,32 +17,18 @@ struct ModelConfiguration: Codable, Identifiable {
     let isLocal: Bool
     let displayName: String
 
-    static let defaultLocalModels = [
-        ModelConfiguration(
+    @MainActor
+    static func fromPreferred() -> ModelConfiguration {
+        let name = AppSettings.shared.preferredModel
+        return ModelConfiguration(
             id: UUID(),
-            name: "qwen2.5:7b",
+            name: name,
             provider: "ollama",
             contextWindow: 8192,
             isLocal: true,
-            displayName: "Qwen 2.5 7B (Local)"
-        ),
-        ModelConfiguration(
-            id: UUID(),
-            name: "llama3.2:latest",
-            provider: "ollama",
-            contextWindow: 8192,
-            isLocal: true,
-            displayName: "Llama 3.2 (Local)"
-        ),
-        ModelConfiguration(
-            id: UUID(),
-            name: "mistral:latest",
-            provider: "ollama",
-            contextWindow: 8192,
-            isLocal: true,
-            displayName: "Mistral (Local)"
+            displayName: name
         )
-    ]
+    }
 }
 
 @MainActor
@@ -53,6 +40,7 @@ class ModelOrchestrator: ObservableObject {
 
     private let ollamaService: OllamaService
     private let localContextWindow: Int = 8192
+    private let logger = Logger(subsystem: "com.aetherium.app", category: "ModelOrchestrator")
 
     // API fallback services (to be implemented)
     // private let openAIService: OpenAIService?
@@ -60,12 +48,12 @@ class ModelOrchestrator: ObservableObject {
 
     init() {
         self.ollamaService = OllamaService()
-        self.currentModel = ModelConfiguration.defaultLocalModels[0]
+        self.currentModel = ModelConfiguration.fromPreferred()
     }
 
     init(ollamaService: OllamaService) {
         self.ollamaService = ollamaService
-        self.currentModel = ModelConfiguration.defaultLocalModels[0]
+        self.currentModel = ModelConfiguration.fromPreferred()
     }
 
     // MARK: - Message Processing
@@ -73,6 +61,7 @@ class ModelOrchestrator: ObservableObject {
     func processMessage(
         _ content: String,
         context: [Message],
+        model: String? = nil,
         temperature: Double = 0.7
     ) async throws -> String {
         isProcessing = true
@@ -87,6 +76,7 @@ class ModelOrchestrator: ObservableObject {
              throw ModelOrchestratorError.offlineMode("Ollama is currently offline. Please check your connection or start the service.")
         }
 
+        let modelName = model ?? currentModel.name
         let tokenCount = estimateTokenCount(content, context: context)
 
         // 2. Try local model first if preferred and within context window
@@ -94,7 +84,7 @@ class ModelOrchestrator: ObservableObject {
             do {
                 let response = try await ollamaService.sendMessage(
                     content,
-                    model: currentModel.name,
+                    model: modelName,
                     context: context,
                     temperature: temperature,
                     contextWindow: currentModel.contextWindow
@@ -123,6 +113,20 @@ class ModelOrchestrator: ObservableObject {
         }
     }
 
+    // MARK: - Streaming Message Processing
+
+    func processMessageStreaming(
+        _ content: String,
+        context: [Message],
+        model: String? = nil
+    ) async throws -> AsyncThrowingStream<String, Error> {
+        if ollamaService.isOfflineMode {
+            throw ModelOrchestratorError.offlineMode("Ollama is currently offline. Please check your connection or start the service.")
+        }
+        let modelName = model ?? currentModel.name
+        return try await ollamaService.streamMessage(content, model: modelName, context: context)
+    }
+
     // MARK: - Token Estimation
 
     private func estimateTokenCount(_ message: String, context: [Message]) -> Int {
@@ -146,10 +150,10 @@ class ModelOrchestrator: ObservableObject {
     func checkLocalModelsAvailability() async {
         do {
             let available = try await ollamaService.fetchAvailableModels()
-            print("Available Ollama models: \(available.map { $0.name })")
+            logger.info("Available Ollama models: \(available.map { $0.name })")
         } catch {
             lastError = error
-            print("Failed to fetch Ollama models: \(error)")
+            logger.error("Failed to fetch Ollama models: \(error)")
         }
     }
 }

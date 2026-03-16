@@ -32,7 +32,7 @@ class AIContentGenerator: ObservableObject {
 
         let response = try await ollamaService.sendMessage(
             prompt,
-            model: "qwen2.5:7b"
+            model: AppSettings.shared.preferredModel
         )
 
         // Parse tags from response
@@ -76,7 +76,7 @@ class AIContentGenerator: ObservableObject {
 
         let response = try await ollamaService.sendMessage(
             prompt,
-            model: "qwen2.5:7b"
+            model: AppSettings.shared.preferredModel
         )
 
         return response.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
@@ -121,7 +121,7 @@ class AIContentGenerator: ObservableObject {
 
         let response = try await ollamaService.sendMessage(
             prompt,
-            model: "qwen2.5:7b"
+            model: AppSettings.shared.preferredModel
         )
 
         progress = 0.6
@@ -211,7 +211,7 @@ class AIContentGenerator: ObservableObject {
 
         let response = try await ollamaService.sendMessage(
             prompt,
-            model: "qwen2.5:7b"
+            model: AppSettings.shared.preferredModel
         )
 
         progress = 0.6
@@ -265,7 +265,7 @@ class AIContentGenerator: ObservableObject {
 
         let response = try await ollamaService.sendMessage(
             prompt,
-            model: "qwen2.5:7b"
+            model: AppSettings.shared.preferredModel
         )
 
         // Parse numbered list
@@ -307,7 +307,7 @@ class AIContentGenerator: ObservableObject {
 
         let response = try await ollamaService.sendMessage(
             prompt,
-            model: "qwen2.5:7b"
+            model: AppSettings.shared.preferredModel
         )
 
         guard let jsonData = extractJSON(from: response),

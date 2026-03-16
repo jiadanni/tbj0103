@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import SwiftUI
 import SwiftData
 
@@ -17,7 +18,8 @@ class PluginManager: ObservableObject {
 
     init() {
         // Create plugins directory in Application Support
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
         pluginsDirectory = appSupport.appendingPathComponent("Aetherium/Plugins")
 
         try? fileManager.createDirectory(at: pluginsDirectory, withIntermediateDirectories: true)
@@ -116,6 +118,13 @@ class PluginManager: ObservableObject {
     func loadPlugin(id: String) async throws {
         guard !loadedPlugins.keys.contains(id) else {
             return // Already loaded
+        }
+
+        // Find metadata so we can check permissions
+        if let metadata = availablePlugins.first(where: { $0.id == id }) {
+            guard await requestPermissions(for: metadata) else {
+                throw PluginError.missingPermissions(metadata.requiresPermissions)
+            }
         }
 
         // Load built-in plugin
@@ -217,7 +226,9 @@ class PluginManager: ObservableObject {
         }
 
         // Check version compatibility
-        // TODO: Implement version checking
+        guard meetsMinimumVersion(metadata.minimumAetheriumVersion) else {
+            throw PluginError.incompatibleVersion
+        }
 
         // Copy to plugins directory
         let destination = pluginsDirectory.appendingPathComponent("\(metadata.id).aetheriumplugin")
@@ -252,14 +263,58 @@ class PluginManager: ObservableObject {
     // MARK: - Plugin Permissions
 
     func requestPermissions(for plugin: PluginMetadata) async -> Bool {
-        // TODO: Implement permission request UI
-        // For now, auto-grant all permissions
+        guard !plugin.requiresPermissions.isEmpty else { return true }
+        if hasPermissions(for: plugin) { return true }
+
+        let permissionList = plugin.requiresPermissions
+            .map { "  • \($0.rawValue)" }
+            .joined(separator: "\n")
+
+        let alert = NSAlert()
+        alert.messageText = "\"\(plugin.name)\" Requires Permissions"
+        alert.informativeText = "This plugin needs the following permissions:\n\(permissionList)\n\nGrant access to continue."
+        alert.addButton(withTitle: "Grant Permissions")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+
+        var current = grantedPermissions
+        current[plugin.id] = plugin.requiresPermissions.map { $0.rawValue }
+        grantedPermissions = current
         return true
     }
 
     func hasPermissions(for plugin: PluginMetadata) -> Bool {
-        // TODO: Check granted permissions
+        guard !plugin.requiresPermissions.isEmpty else { return true }
+        let granted = Set(grantedPermissions[plugin.id] ?? [])
+        return plugin.requiresPermissions.allSatisfy { granted.contains($0.rawValue) }
+    }
+
+    // MARK: - Private Helpers
+
+    private let currentAppVersion = "1.0.0"
+    private let permissionsKey = "Aetherium.GrantedPluginPermissions"
+
+    private var grantedPermissions: [String: [String]] {
+        get { UserDefaults.standard.dictionary(forKey: permissionsKey) as? [String: [String]] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: permissionsKey) }
+    }
+
+    private func meetsMinimumVersion(_ minimumVersion: String) -> Bool {
+        let cur = versionComponents(currentAppVersion)
+        let min = versionComponents(minimumVersion)
+        for i in 0..<3 {
+            let c = i < cur.count ? cur[i] : 0
+            let m = i < min.count ? min[i] : 0
+            if c > m { return true }
+            if c < m { return false }
+        }
         return true
+    }
+
+    private func versionComponents(_ version: String) -> [Int] {
+        version.split(separator: ".").compactMap { Int($0) }
     }
 }
 
@@ -271,13 +326,21 @@ class PluginStore: ObservableObject {
     @Published var categories: [String: [PluginMetadata]] = [:]
 
     func loadFeaturedPlugins() async {
-        // TODO: Fetch from plugin registry/API
-        featuredPlugins = []
+        if PluginManager.shared.availablePlugins.isEmpty {
+            await PluginManager.shared.discoverPlugins()
+        }
+        featuredPlugins = PluginManager.shared.availablePlugins
+        categories = Dictionary(grouping: featuredPlugins, by: { $0.type.rawValue })
     }
 
     func searchPlugins(query: String) async -> [PluginMetadata] {
-        // TODO: Implement plugin search
-        return []
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return featuredPlugins }
+        return featuredPlugins.filter {
+            $0.name.lowercased().contains(trimmed) ||
+            $0.description.lowercased().contains(trimmed) ||
+            $0.author.lowercased().contains(trimmed)
+        }
     }
 
     func downloadPlugin(id: String) async throws -> URL {

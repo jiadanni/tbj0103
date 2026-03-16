@@ -6,6 +6,7 @@ struct ProjectListView: View {
     let projects: [AetheriumProject]
     @Binding var selectedProject: AetheriumProject?
     @Binding var showingNewProjectSheet: Bool
+    @State private var projectToEdit: AetheriumProject?
 
     var body: some View {
         List(selection: $selectedProject) {
@@ -14,7 +15,7 @@ struct ProjectListView: View {
                     .tag(project)
                     .contextMenu {
                         Button("Edit Project") {
-                            // TODO: Show edit sheet
+                            projectToEdit = project
                         }
 
                         Divider()
@@ -32,6 +33,9 @@ struct ProjectListView: View {
                     Label("New Project", systemImage: "plus")
                 }
             }
+        }
+        .sheet(item: $projectToEdit) { project in
+            EditProjectSheet(project: project)
         }
     }
 
@@ -76,41 +80,40 @@ struct NewProjectSheet: View {
     @State private var description = ""
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Project Details") {
-                    TextField("Project Title", text: $title)
-                        .textFieldStyle(.roundedBorder)
+        VStack(spacing: 20) {
+            Text("New Project")
+                .font(.headline)
 
-                    TextField("Description", text: $description, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(3...6)
-                }
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("Project Title", text: $title)
+                    .textFieldStyle(.roundedBorder)
 
-                Section {
-                    Text("Projects help organize your learning goals and related conversations.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                TextField("Description", text: $description, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(3...6)
             }
-            .formStyle(.grouped)
-            .navigationTitle("New Project")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        createProject()
-                    }
-                    .disabled(title.isEmpty)
+            Text("Projects help organize your learning goals and related conversations.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            HStack {
+                Button("Cancel") {
+                    dismiss()
                 }
+                .buttonStyle(.bordered)
+                .keyboardShortcut(.cancelAction)
+
+                Button("Create") {
+                    createProject()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(title.isEmpty)
+                .keyboardShortcut(.defaultAction)
             }
         }
-        .frame(width: 500, height: 300)
+        .padding(24)
+        .frame(width: 450)
     }
 
     private func createProject() {
@@ -120,6 +123,57 @@ struct NewProjectSheet: View {
         )
         modelContext.insert(newProject)
         dismiss()
+    }
+}
+
+// MARK: - Edit Project Sheet
+
+struct EditProjectSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let project: AetheriumProject
+
+    @State private var title: String
+    @State private var description: String
+
+    init(project: AetheriumProject) {
+        self.project = project
+        _title = State(initialValue: project.title)
+        _description = State(initialValue: project.projectDescription)
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Edit Project")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("Project Title", text: $title)
+                    .textFieldStyle(.roundedBorder)
+
+                TextField("Description", text: $description, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(3...6)
+            }
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+
+                Button("Save") {
+                    project.title = title
+                    project.projectDescription = description
+                    project.updateTimestamp()
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 450)
     }
 }
 

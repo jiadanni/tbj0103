@@ -56,6 +56,7 @@ struct DailyNotesView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("Daily Notes")
         .sheet(isPresented: $showingTemplates) {
             TemplatePickerView(

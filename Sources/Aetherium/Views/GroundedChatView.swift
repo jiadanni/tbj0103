@@ -7,17 +7,22 @@ struct GroundedChatView: View {
 
     let chatSession: ChatSession
     var project: AetheriumProject?
+    private let ollamaService: OllamaService
 
     @StateObject private var groundedEngine: GroundedChatEngine
     @State private var messageText = ""
     @State private var isStreaming = false
+    @State private var isGeneratingTitle = false
     @State private var errorMessage: String?
     @State private var showingSourcesPopover = false
+    @State private var showingExportSheet = false
+    @State private var showingClearConfirmation = false
     @FocusState private var isInputFocused: Bool
 
     init(chatSession: ChatSession, project: AetheriumProject? = nil, modelOrchestrator: ModelOrchestrator, ollamaService: OllamaService) {
         self.chatSession = chatSession
         self.project = project
+        self.ollamaService = ollamaService
         _groundedEngine = StateObject(wrappedValue: GroundedChatEngine(modelOrchestrator: modelOrchestrator, ollamaService: ollamaService))
     }
 
@@ -97,6 +102,14 @@ struct GroundedChatView: View {
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Menu {
+                    Button(action: { regenerateTitle() }) {
+                        Label(
+                            isGeneratingTitle ? "Generating..." : "Regenerate Title",
+                            systemImage: "arrow.triangle.2.circlepath"
+                        )
+                    }
+                    .disabled(chatSession.messages.isEmpty || isGeneratingTitle)
+
                     if project != nil {
                         Button(action: { showingSourcesPopover.toggle() }) {
                             Label("View Sources (\(project!.sources.count))", systemImage: "doc.text")
@@ -105,28 +118,49 @@ struct GroundedChatView: View {
                         Divider()
                     }
 
-                    Button(action: { /* TODO: Export chat */ }) {
+                    Button(action: { showingExportSheet = true }) {
                         Label("Export Chat", systemImage: "square.and.arrow.up")
                     }
 
-                    Button(action: { /* TODO: Clear history */ }) {
+                    Button(action: { showingClearConfirmation = true }) {
                         Label("Clear History", systemImage: "trash")
                     }
+                    .disabled(chatSession.messages.isEmpty)
 
                     Divider()
 
                     Menu("Switch Model") {
-                        ForEach(ModelConfiguration.defaultLocalModels) { model in
-                            Button(model.displayName) {
+                        ForEach(ollamaService.availableModels) { model in
+                            Button(model.name) {
                                 chatSession.modelName = model.name
                                 chatSession.updatedAt = Date()
                             }
+                        }
+
+                        if ollamaService.availableModels.isEmpty {
+                            Text("No models available")
+                                .foregroundColor(.secondary)
                         }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
             }
+        }
+        .sheet(isPresented: $showingExportSheet) {
+            ChatExportSheet(chatSession: chatSession)
+        }
+        .alert("Clear Chat History?", isPresented: $showingClearConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Clear", role: .destructive) {
+                for message in chatSession.messages {
+                    modelContext.delete(message)
+                }
+                chatSession.messages.removeAll()
+                chatSession.updatedAt = Date()
+            }
+        } message: {
+            Text("This will permanently delete all messages in this chat.")
         }
         .popover(isPresented: $showingSourcesPopover) {
             if let project = project {
@@ -135,6 +169,43 @@ struct GroundedChatView: View {
         }
         .onAppear {
             isInputFocused = true
+        }
+    }
+
+    private func regenerateTitle() {
+        guard !chatSession.messages.isEmpty else { return }
+        isGeneratingTitle = true
+        Task {
+            do {
+                let title = try await ollamaService.generateChatTitle(
+                    from: chatSession.messages,
+                    model: chatSession.modelName
+                )
+                chatSession.title = title
+                chatSession.updatedAt = Date()
+            } catch {
+                // Silently fail
+            }
+            isGeneratingTitle = false
+        }
+    }
+
+    private func autoTitleIfNeeded() {
+        let userMessages = chatSession.messages.filter { $0.role == .user }
+        let assistantMessages = chatSession.messages.filter { $0.role == .assistant }
+        guard userMessages.count == 1 && assistantMessages.count == 1 else { return }
+
+        Task {
+            do {
+                let title = try await ollamaService.generateChatTitle(
+                    from: chatSession.messages,
+                    model: chatSession.modelName
+                )
+                chatSession.title = title
+                chatSession.updatedAt = Date()
+            } catch {
+                // Keep the fallback truncated title
+            }
         }
     }
 
@@ -177,6 +248,9 @@ struct GroundedChatView: View {
 
                 chatSession.messages.append(assistantMessage)
                 chatSession.updatedAt = Date()
+
+                // Auto-generate a descriptive title after the first exchange
+                autoTitleIfNeeded()
 
             } catch {
                 errorMessage = error.localizedDescription
@@ -243,72 +317,63 @@ struct EnhancedMessageBubbleView: View {
     @State private var showingCitations = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            if message.role == .user {
-                Spacer()
+        VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 8) {
+            // Message header
+            HStack(spacing: 6) {
+                Image(systemName: message.role == .user ? "person.circle.fill" : "brain.head.profile")
+                    .font(.caption)
+
+                Text(message.role == .user ? "You" : "AI")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+
+                Text(message.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+
+                if !message.citations.isEmpty {
+                    Button(action: { showingCitations.toggle() }) {
+                        HStack(spacing: 2) {
+                            Image(systemName: "doc.text")
+                            Text("\(message.citations.count)")
+                        }
+                        .font(.caption2)
+                        .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 8) {
-                // Message header
-                HStack(spacing: 6) {
-                    Image(systemName: message.role == .user ? "person.circle.fill" : "brain.head.profile")
-                        .font(.caption)
+            // Message content
+            Text(message.content)
+                .textSelection(.enabled)
+                .padding(12)
+                .background(
+                    message.role == .user
+                        ? Color.blue.opacity(0.1)
+                        : Color.secondary.opacity(0.1)
+                )
+                .cornerRadius(12)
 
-                    Text(message.role == .user ? "You" : "AI")
+            // Citations (if expanded)
+            if showingCitations && !message.citations.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Sources:")
                         .font(.caption)
                         .fontWeight(.semibold)
-
-                    Text(message.timestamp.formatted(date: .omitted, time: .shortened))
-                        .font(.caption2)
                         .foregroundColor(.secondary)
 
-                    if !message.citations.isEmpty {
-                        Button(action: { showingCitations.toggle() }) {
-                            HStack(spacing: 2) {
-                                Image(systemName: "doc.text")
-                                Text("\(message.citations.count)")
-                            }
-                            .font(.caption2)
-                            .foregroundColor(.blue)
-                        }
-                        .buttonStyle(.plain)
+                    ForEach(message.citations) { citation in
+                        CitationView(citation: citation)
                     }
                 }
-
-                // Message content
-                Text(message.content)
-                    .textSelection(.enabled)
-                    .padding(12)
-                    .background(
-                        message.role == .user
-                            ? Color.blue.opacity(0.1)
-                            : Color.secondary.opacity(0.1)
-                    )
-                    .cornerRadius(12)
-
-                // Citations (if expanded)
-                if showingCitations && !message.citations.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Sources:")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-
-                        ForEach(message.citations) { citation in
-                            CitationView(citation: citation)
-                        }
-                    }
-                    .padding(12)
-                    .background(Color.blue.opacity(0.05))
-                    .cornerRadius(12)
-                }
-            }
-            .frame(maxWidth: 600, alignment: message.role == .user ? .trailing : .leading)
-
-            if message.role == .assistant {
-                Spacer()
+                .padding(12)
+                .background(Color.blue.opacity(0.05))
+                .cornerRadius(12)
             }
         }
+        .frame(maxWidth: 600, alignment: message.role == .user ? .trailing : .leading)
+        .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
     }
 }
 

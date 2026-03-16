@@ -338,21 +338,10 @@ extension ConceptExtractor {
         let chatBatches = chats.conceptChunked(into: 3)
 
         for batch in chatBatches {
-            let batchConcepts = try await withThrowingTaskGroup(of: [ConceptNode].self) { group in
-                for chat in batch {
-                    group.addTask {
-                        try await self.extractFromChat(chat)
-                    }
-                }
-
-                var results: [ConceptNode] = []
-                for try await concepts in group {
-                    results.append(contentsOf: concepts)
-                }
-                return results
+            for chat in batch {
+                let concepts = try await self.extractFromChat(chat)
+                allConcepts.append(contentsOf: concepts)
             }
-
-            allConcepts.append(contentsOf: batchConcepts)
         }
 
         return deduplicateConcepts(allConcepts)

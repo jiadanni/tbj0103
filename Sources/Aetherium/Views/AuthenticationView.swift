@@ -98,6 +98,12 @@ struct AuthenticationView: View {
     }
 
     private func authenticate() {
+        // If Touch ID is disabled, just unlock immediately
+        guard AppSettings.shared.touchIDEnabled else {
+            securityManager.isAuthenticated = true
+            return
+        }
+
         isAuthenticating = true
         errorMessage = nil
 

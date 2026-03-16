@@ -201,7 +201,7 @@ class YouTubeImporterPlugin: ImporterPlugin {
         // Create note from transcript
         let note = ProjectNote(
             title: "YouTube: \(videoID)",
-            content: transcript,
+            content: "# Transcript\n\n" + transcript,
             noteType: .extracted,
             tags: ["youtube", "video", "transcript"]
         )
@@ -230,19 +230,44 @@ class YouTubeImporterPlugin: ImporterPlugin {
     }
 
     private func fetchTranscript(videoID: String) async throws -> String {
-        // TODO: Implement actual YouTube API integration
-        // For now, return placeholder
-        return """
-        # Transcript for Video: \(videoID)
+        // Use YouTube's timedtext API (works for public videos with captions)
+        guard let url = URL(string: "https://www.youtube.com/api/timedtext?v=\(videoID)&lang=en&fmt=json3") else {
+            throw PluginError.executionFailed("Invalid video ID")
+        }
 
-        (Transcript would be fetched from YouTube API)
+        let (data, response) = try await URLSession.shared.data(from: url)
 
-        This is a placeholder. To enable actual transcripts, you would:
-        1. Get YouTube Data API key
-        2. Fetch video details
-        3. Extract captions/subtitles
-        4. Format as markdown
-        """
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw PluginError.executionFailed("Failed to reach YouTube — check your network connection")
+        }
+
+        let caption = try JSONDecoder().decode(CaptionResponse.self, from: data)
+
+        guard let events = caption.events, !events.isEmpty else {
+            throw PluginError.executionFailed("No English captions available for this video")
+        }
+
+        let lines = events.compactMap { event -> String? in
+            guard let segs = event.segs else { return nil }
+            let text = segs.compactMap(\.utf8).joined()
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        return lines.joined(separator: "\n")
+    }
+}
+
+private struct CaptionResponse: Decodable {
+    let events: [CaptionEvent]?
+
+    struct CaptionEvent: Decodable {
+        let segs: [CaptionSegment]?
+    }
+
+    struct CaptionSegment: Decodable {
+        let utf8: String?
     }
 }
 

@@ -19,6 +19,10 @@ final class ChatSession {
     var extractedTopics: [String]
     var relatedGoalIDs: [String]
 
+    // Branching support
+    var parentMessageID: UUID? // The message this branch forked from
+    var branchLabel: String? // e.g. "Branch from message #3"
+
     init(
         id: UUID = UUID(),
         title: String = "New Chat",
@@ -26,7 +30,9 @@ final class ChatSession {
         updatedAt: Date = Date(),
         modelName: String = "qwen2.5:7b",
         isLocal: Bool = true,
-        systemPrompt: String? = nil
+        systemPrompt: String? = nil,
+        parentMessageID: UUID? = nil,
+        branchLabel: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -38,6 +44,12 @@ final class ChatSession {
         self.messages = []
         self.extractedTopics = []
         self.relatedGoalIDs = []
+        self.parentMessageID = parentMessageID
+        self.branchLabel = branchLabel
+    }
+
+    var needsAutoTitle: Bool {
+        title == "New Chat"
     }
 
     func addMessage(content: String, role: MessageRole) {
@@ -45,8 +57,8 @@ final class ChatSession {
         messages.append(message)
         updatedAt = Date()
 
-        // Auto-generate title from first user message if still default
-        if title == "New Chat" && role == .user && messages.count <= 2 {
+        // Set a quick fallback title from the first user message
+        if needsAutoTitle && role == .user && messages.count <= 2 {
             title = String(content.prefix(50))
         }
     }
@@ -62,6 +74,44 @@ final class ChatSession {
         }
 
         return context
+    }
+
+    /// Remove all messages after (and including) the given message, for edit/rerun flows.
+    func truncateFrom(_ message: Message) {
+        let sorted = messages.sorted(by: { $0.timestamp < $1.timestamp })
+        guard let index = sorted.firstIndex(where: { $0.id == message.id }) else { return }
+        let toRemove = sorted[index...]
+        messages.removeAll { msg in toRemove.contains(where: { $0.id == msg.id }) }
+        updatedAt = Date()
+    }
+
+    /// Create a branched copy of this session up to (but not including) the given message.
+    func branch(upTo message: Message, modelContext: ModelContext) -> ChatSession {
+        let sorted = messages.sorted(by: { $0.timestamp < $1.timestamp })
+        let index = sorted.firstIndex(where: { $0.id == message.id }) ?? sorted.endIndex
+
+        let branchSession = ChatSession(
+            title: "\(title) (branch)",
+            modelName: modelName,
+            isLocal: isLocal,
+            parentMessageID: message.id,
+            branchLabel: "Branched at message #\(index + 1)"
+        )
+        branchSession.project = project
+        branchSession.extractedTopics = extractedTopics
+        branchSession.relatedGoalIDs = relatedGoalIDs
+
+        modelContext.insert(branchSession)
+
+        // Copy messages up to the branch point
+        for msg in sorted.prefix(index) {
+            let copy = Message(content: msg.content, role: msg.role, timestamp: msg.timestamp, tokenCount: msg.tokenCount)
+            copy.chatSession = branchSession
+            branchSession.messages.append(copy)
+            modelContext.insert(copy)
+        }
+
+        return branchSession
     }
 }
 
