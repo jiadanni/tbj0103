@@ -113,14 +113,17 @@ export const api = {
     get: (id: string) => invoke<Project | null>("get_project", { id }),
     update: (id: string, fields: Partial<Project>) => invoke<void>("update_project", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_project", { id }),
+    getStats: (id: string) => invoke<{ note_count: number; document_count: number; chat_session_count: number; flashcard_count: number; web_capture_count: number }>("get_project_stats", { id }),
   },
 
   chat: {
-    createSession: (projectId: string, opts?: { title?: string; modelName?: string; systemPrompt?: string }) =>
-      invoke<ChatSession>("create_chat_session", { req: { project_id: projectId, title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt } }),
-    listSessions: (projectId: string) => invoke<ChatSession[]>("list_chat_sessions", { projectId }),
+    createSession: (projectId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string }) =>
+      invoke<ChatSession>("create_chat_session", { req: { project_id: projectId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt } }),
+    listSessions: (projectId?: string | null) => invoke<ChatSession[]>("list_chat_sessions", { projectId: projectId ?? '' }),
     getSession: (id: string) => invoke<ChatSession | null>("get_chat_session", { id }),
     deleteSession: (id: string) => invoke<void>("delete_chat_session", { id }),
+    updateSession: (id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string }) =>
+      invoke<void>("update_chat_session", { id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt }),
     addMessage: (sessionId: string, role: "user" | "assistant", content: string) =>
       invoke<Message>("add_message", { req: { session_id: sessionId, role, content } }),
     getMessages: (sessionId: string) => invoke<Message[]>("get_messages", { sessionId }),
@@ -167,9 +170,14 @@ export const api = {
     delete: (id: string) => invoke<void>("delete_note", { id }),
     getDailyNote: (workspaceId: string, date?: string) =>
       invoke<DailyNote>("get_or_create_daily_note", { req: { workspace_id: workspaceId, date } }),
+    updateDailyNote: (id: string, content?: string, mood?: number, productivity?: number) =>
+      invoke<void>("update_daily_note", { id, content, mood: mood !== undefined ? mood : null, productivity: productivity !== undefined ? productivity : null }),
     listTemplates: (workspaceId: string) => invoke<NoteTemplate[]>("list_templates", { workspaceId }),
     createTemplate: (workspaceId: string, name: string, content: string) =>
       invoke<NoteTemplate>("create_template", { workspaceId, name, content }),
+    deleteTemplate: (id: string) => invoke<void>("delete_template", { id }),
+    updateTemplate: (id: string, fields: { name?: string; content?: string; icon?: string }) =>
+      invoke<void>("update_template", { id, ...fields }),
     applyTemplate: (templateId: string, extraVars?: Record<string, string>) =>
       invoke<string>("apply_template", { templateId, extraVars: extraVars ?? {} }),
     getBacklinks: (workspaceId: string, conceptName: string) =>
@@ -241,6 +249,24 @@ export const api = {
       invoke<CalendarAlarm>("create_alarm", { req: { title, fire_date: fireDate, workspace_id: workspaceId } }),
     list: (workspaceId?: string) => invoke<CalendarAlarm[]>("list_alarms", { workspaceId }),
     delete: (id: string) => invoke<void>("delete_alarm", { id }),
+  },
+
+  webCapture: {
+    create: (projectId: string, url: string, title: string, content: string, summary?: string) =>
+      invoke<{ id: string; project_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string }>(
+        "create_web_capture", { projectId, url, title, content, summary }
+      ),
+    list: (projectId: string) =>
+      invoke<{ id: string; project_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string }[]>(
+        "list_web_captures", { projectId }
+      ),
+    get: (id: string) =>
+      invoke<{ id: string; project_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string } | null>(
+        "get_web_capture", { id }
+      ),
+    delete: (id: string) => invoke<void>("delete_web_capture", { id }),
+    update: (id: string, fields: { title?: string; summary?: string; is_processed?: boolean }) =>
+      invoke<void>("update_web_capture", { id, ...fields }),
   },
 
   // Streaming: listen to Ollama stream events for a session

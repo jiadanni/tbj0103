@@ -8,15 +8,24 @@ interface Props {
 }
 
 const COMMANDS = [
-  { label: "Go to Chat",            value: "chat",       path: "/chat" },
-  { label: "Go to Daily Notes",     value: "daily",      path: "/daily" },
-  { label: "Go to Knowledge Graph", value: "graph",      path: "/graph" },
-  { label: "Go to Flashcards",      value: "flashcards", path: "/flashcards" },
-  { label: "Go to Projects",        value: "projects",   path: "/project" },
-  { label: "Go to Documents",       value: "documents",  path: "/documents" },
-  { label: "Go to Learning Paths",  value: "learning",   path: "/learning" },
-  { label: "Go to Backups",         value: "backup",     path: "/backup" },
-  { label: "Open Settings",         value: "settings",   path: "/settings" },
+  { label: "Go to Dashboard",          value: "dashboard",      path: "/project"       },
+  { label: "Go to Chat",               value: "chat",           path: "/chat"          },
+  { label: "Chat Sessions",            value: "chat-sessions",  path: "/chat-sessions" },
+  { label: "Go to Notes",              value: "notes",          path: "/notes"         },
+  { label: "Go to Daily Notes",        value: "daily",          path: "/daily"         },
+  { label: "Go to Documents",          value: "documents",      path: "/documents"     },
+  { label: "Web Captures",             value: "webcapture",     path: "/webcapture"    },
+  { label: "Go to Knowledge Graph",    value: "graph",          path: "/graph"         },
+  { label: "Go to Flashcards",         value: "flashcards",     path: "/flashcards"    },
+  { label: "Go to Learning Paths",     value: "learning",       path: "/learning"      },
+  { label: "Compare Models",           value: "compare",        path: "/compare"       },
+  { label: "Grounded Chat",            value: "grounded",       path: "/grounded"      },
+  { label: "Backlinks",                value: "backlinks",      path: "/backlinks"     },
+  { label: "Concept Deduplication",    value: "dedup",          path: "/dedup"         },
+  { label: "Manage Workspaces",        value: "workspaces",     path: "/workspaces"    },
+  { label: "Go to Backups",            value: "backup",         path: "/backup"        },
+  { label: "Plugins",                  value: "plugins",        path: "/plugins"       },
+  { label: "Open Settings",            value: "settings",       path: "/settings"      },
 ];
 
 export default function CommandPalette({ onClose, onNavigate }: Props) {

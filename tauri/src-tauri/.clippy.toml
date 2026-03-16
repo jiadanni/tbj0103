@@ -1,0 +1,8 @@
+# Clippy configuration for Aetherium Tauri backend
+# https://doc.rust-lang.org/clippy/configuration.html
+
+# Allow slightly longer functions given the Tauri command surface area
+too-many-arguments-threshold = 8
+
+# Cognitive complexity threshold
+cognitive-complexity-threshold = 25

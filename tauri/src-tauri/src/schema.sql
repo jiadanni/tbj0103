@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS projects (
 
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id TEXT PRIMARY KEY NOT NULL,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL DEFAULT '',
     title TEXT NOT NULL DEFAULT 'New Chat',
     model_name TEXT NOT NULL DEFAULT 'qwen2.5:7b',
     system_prompt TEXT NOT NULL DEFAULT '',

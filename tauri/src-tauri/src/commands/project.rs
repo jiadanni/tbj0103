@@ -1,6 +1,7 @@
 use tauri::State;
 use crate::db::DbState;
 use crate::models::project::{Project, CreateProjectRequest, UpdateProjectRequest};
+use serde::Serialize;
 
 #[tauri::command]
 pub fn create_project(state: State<DbState>, req: CreateProjectRequest) -> Result<Project, String> {
@@ -93,4 +94,45 @@ pub fn delete_project(state: State<DbState>, id: String) -> Result<(), String> {
     conn.execute("DELETE FROM projects WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProjectStats {
+    pub note_count: i64,
+    pub document_count: i64,
+    pub chat_session_count: i64,
+    pub flashcard_count: i64,
+    pub web_capture_count: i64,
+}
+
+#[tauri::command]
+pub fn get_project_stats(state: State<DbState>, id: String) -> Result<ProjectStats, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let note_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM project_notes WHERE project_id = ?1",
+        rusqlite::params![id], |r| r.get(0)
+    ).unwrap_or(0);
+    let document_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM uploaded_documents WHERE project_id = ?1",
+        rusqlite::params![id], |r| r.get(0)
+    ).unwrap_or(0);
+    let chat_session_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM chat_sessions WHERE project_id = ?1",
+        rusqlite::params![id], |r| r.get(0)
+    ).unwrap_or(0);
+    let flashcard_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM learning_cards WHERE project_id = ?1",
+        rusqlite::params![id], |r| r.get(0)
+    ).unwrap_or(0);
+    let web_capture_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM web_captures WHERE project_id = ?1",
+        rusqlite::params![id], |r| r.get(0)
+    ).unwrap_or(0);
+    Ok(ProjectStats {
+        note_count,
+        document_count,
+        chat_session_count,
+        flashcard_count,
+        web_capture_count,
+    })
 }
