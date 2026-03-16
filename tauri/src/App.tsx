@@ -8,7 +8,7 @@ import AuthenticationView from "./views/AuthenticationView";
 
 export default function App() {
   const { theme, accentColor, fontSize } = useSettingsStore();
-  const { setWorkspaces, setProjects, isDemoMode, setDemo } = useWorkspaceStore();
+  const { setWorkspaces, setProjects, setActiveWorkspaceId, activeWorkspaceId, isDemoMode, setDemo } = useWorkspaceStore();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -30,6 +30,7 @@ export default function App() {
       try {
         const workspaces = await api.workspace.list();
         setWorkspaces(workspaces);
+        if (workspaces.length > 0) setActiveWorkspaceId(workspaces[0].id);
         // Auto-authenticate if no touch ID required (settings check)
         const settings = await api.settings.get();
         if (!settings.touch_id_enabled) setIsAuthenticated(true);
@@ -44,7 +45,6 @@ export default function App() {
   }, [setWorkspaces]);
 
   // Reload projects whenever active workspace changes
-  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   useEffect(() => {
     if (!activeWorkspaceId) return;
     api.project.list(activeWorkspaceId).then(setProjects).catch(() => {});

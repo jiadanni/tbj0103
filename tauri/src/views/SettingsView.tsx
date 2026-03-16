@@ -3,9 +3,10 @@
  * Mirrors SettingsView.swift.
  */
 import { useEffect, useState } from "react";
-import { Save, Palette, Bot, ShieldCheck, HardDrive } from "lucide-react";
-import { api, type AppSettings } from "../lib/api";
+import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus } from "lucide-react";
+import { api, type AppSettings, type AiModel } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 
 const THEMES = ["system", "light", "dark", "oled", "sepia", "hacker"] as const;
 const ACCENT_COLORS = [
@@ -41,15 +42,26 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 
 export default function SettingsView() {
   const zustandSettings = useSettingsStore();
-  const [models, setModels] = useState<string[]>([]);
+  const { navLayout, setNavLayout } = useWorkspaceStore();
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("appearance");
 
   const [dbSettings, setDbSettings] = useState<AppSettings | null>(null);
+  const [aiModels, setAiModels] = useState<AiModel[]>([]);
+  const [showAddModel, setShowAddModel] = useState(false);
+  const [newModelId, setNewModelId] = useState("");
+  const [newModelName, setNewModelName] = useState("");
+  const [newModelIsPaid, setNewModelIsPaid] = useState(false);
+
+  function loadAiModels() {
+    api.aiModel.list().then(setAiModels).catch(() => {});
+  }
 
   useEffect(() => {
     api.settings.get().then(setDbSettings).catch(() => {});
-    api.ollama.listModels().then((m) => setModels(m.map((x) => x.name))).catch(() => {});
+    api.ollama.listModels().then((m) => setOllamaModels(m.map((x) => x.name))).catch(() => {});
+    loadAiModels();
   }, []);
 
   async function save() {
@@ -168,6 +180,25 @@ export default function SettingsView() {
                   className="w-48 accent-[var(--accent-color)]"
                 />
               </div>
+
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Navigation Layout</label>
+                <div className="flex gap-2">
+                  {(["sidebar", "tabs"] as const).map((layout) => (
+                    <button
+                      key={layout}
+                      onClick={() => setNavLayout(layout)}
+                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${
+                        navLayout === layout
+                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      }`}
+                    >
+                      {layout === "sidebar" ? "Sidebar" : "Horizontal Tabs"}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </>
           )}
 
@@ -185,20 +216,6 @@ export default function SettingsView() {
               </div>
 
               <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Preferred Model</label>
-                <select
-                  value={dbSettings.preferred_model}
-                  onChange={(e) => set("preferred_model", e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-secondary)] outline-none"
-                >
-                  {models.length > 0
-                    ? models.map((m) => <option key={m} value={m}>{m}</option>)
-                    : <option value={dbSettings.preferred_model}>{dbSettings.preferred_model}</option>
-                  }
-                </select>
-              </div>
-
-              <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-1 block">Embedding Model</label>
                 <input
                   value={dbSettings.embedding_model}
@@ -206,6 +223,126 @@ export default function SettingsView() {
                   placeholder="nomic-embed-text"
                   className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
                 />
+              </div>
+
+              {/* Model Priority List */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs text-[var(--text-secondary)]">Model Priority List</label>
+                  <button
+                    onClick={() => { setShowAddModel(!showAddModel); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); }}
+                    className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
+                  >
+                    <Plus size={11} /> Add Model
+                  </button>
+                </div>
+
+                {showAddModel && (
+                  <div className="mb-3 p-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] space-y-2">
+                    <select
+                      value={newModelId}
+                      onChange={(e) => { setNewModelId(e.target.value); if (!newModelName) setNewModelName(e.target.value.split(":")[0]); }}
+                      className="w-full px-2 py-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-xs text-[var(--text-secondary)] outline-none"
+                    >
+                      <option value="">Select Ollama model...</option>
+                      {ollamaModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <input
+                      value={newModelName}
+                      onChange={(e) => setNewModelName(e.target.value)}
+                      placeholder="Display name"
+                      className="w-full px-2 py-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+                    />
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+                        <input type="checkbox" checked={newModelIsPaid} onChange={(e) => setNewModelIsPaid(e.target.checked)} className="accent-[var(--accent-color)]" />
+                        Paid model
+                      </label>
+                      <div className="flex gap-2">
+                        <button onClick={() => setShowAddModel(false)} className="px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">Cancel</button>
+                        <button
+                          disabled={!newModelId || !newModelName}
+                          onClick={async () => {
+                            await api.aiModel.add(newModelName, newModelId, { is_paid: newModelIsPaid });
+                            loadAiModels();
+                            setShowAddModel(false); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false);
+                          }}
+                          className="px-2 py-1 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {aiModels.length === 0 ? (
+                  <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {aiModels.map((m, idx) => (
+                      <div key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)]">
+                        {/* Priority arrows */}
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            disabled={idx === 0}
+                            onClick={async () => {
+                              const prev = aiModels[idx - 1];
+                              await api.aiModel.update(m.id, { priority: prev.priority });
+                              await api.aiModel.update(prev.id, { priority: m.priority });
+                              loadAiModels();
+                            }}
+                            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
+                          >
+                            <ChevronUp size={11} />
+                          </button>
+                          <button
+                            disabled={idx === aiModels.length - 1}
+                            onClick={async () => {
+                              const next = aiModels[idx + 1];
+                              await api.aiModel.update(m.id, { priority: next.priority });
+                              await api.aiModel.update(next.id, { priority: m.priority });
+                              loadAiModels();
+                            }}
+                            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
+                          >
+                            <ChevronDown size={11} />
+                          </button>
+                        </div>
+
+                        {/* Model info */}
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-[var(--text-primary)]">{m.name}</span>
+                          <span className="ml-2 text-xs text-[var(--text-muted)]">{m.model_id}</span>
+                        </div>
+
+                        {/* Badges */}
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--text-muted)]">{m.provider}</span>
+                        {m.is_paid && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">PAID</span>
+                        )}
+                        <span className="text-[10px] text-[var(--text-muted)] tabular-nums">{m.tokens_used_total.toLocaleString()} tok</span>
+
+                        {/* Enabled toggle */}
+                        <Toggle
+                          on={m.enabled}
+                          onToggle={async () => {
+                            await api.aiModel.update(m.id, { enabled: !m.enabled });
+                            loadAiModels();
+                          }}
+                        />
+
+                        {/* Delete */}
+                        <button
+                          onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); }}
+                          className="p-1 text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}

@@ -283,3 +283,16 @@ CREATE INDEX IF NOT EXISTS idx_doc_chunks_document ON document_chunks(document_i
 CREATE INDEX IF NOT EXISTS idx_web_captures_project ON web_captures(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_notes_project ON project_notes(project_id);
 CREATE INDEX IF NOT EXISTS idx_alarms_fire_date ON calendar_alarms(fire_date);
+
+-- AI model priority list with token tracking
+CREATE TABLE IF NOT EXISTS ai_models (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT 'ollama',
+    priority INTEGER NOT NULL DEFAULT 0,
+    is_paid INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    tokens_used_total INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

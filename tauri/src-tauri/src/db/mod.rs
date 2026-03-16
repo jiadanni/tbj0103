@@ -62,5 +62,29 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v2: add ai_models table for multi-model priority list with token tracking
+    let applied_v2: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v2_ai_models_table'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v2 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS ai_models (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                provider TEXT NOT NULL DEFAULT 'ollama',
+                priority INTEGER NOT NULL DEFAULT 0,
+                is_paid INTEGER NOT NULL DEFAULT 0,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                tokens_used_total INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO _migrations(name) VALUES('v2_ai_models_table');",
+        )?;
+    }
+
     Ok(())
 }
