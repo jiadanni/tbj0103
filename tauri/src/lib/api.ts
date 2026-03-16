@@ -172,6 +172,8 @@ export const api = {
       invoke<DailyNote>("get_or_create_daily_note", { req: { workspace_id: workspaceId, date } }),
     updateDailyNote: (id: string, content?: string, mood?: number, productivity?: number) =>
       invoke<void>("update_daily_note", { id, content, mood: mood !== undefined ? mood : null, productivity: productivity !== undefined ? productivity : null }),
+    listDailyNotesInRange: (workspaceId: string, startDate: string, endDate: string) =>
+      invoke<DailyNote[]>("list_daily_notes_in_range", { workspaceId, startDate, endDate }),
     listTemplates: (workspaceId: string) => invoke<NoteTemplate[]>("list_templates", { workspaceId }),
     createTemplate: (workspaceId: string, name: string, content: string) =>
       invoke<NoteTemplate>("create_template", { workspaceId, name, content }),
