@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import { Send, Plus, Trash2, Copy, ChevronDown } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
-import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useWorkspaceStore, type Project } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession } from "../stores/chatStore";
 
@@ -17,12 +17,12 @@ export default function ChatView() {
     streamingSessionId, streamingContent,
   } = useChatStore();
 
-  const { activeProjectId } = useWorkspaceStore();
+  const { activeProjectId, projects, setActiveProjectId } = useWorkspaceStore();
   const { preferredModel, ollamaUrl } = useSettingsStore();
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(preferredModel || "llama3.2");
+  const [selectedModel, setSelectedModel] = useState(preferredModel || "");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [showSessions, setShowSessions] = useState(false);
 
@@ -32,9 +32,8 @@ export default function ChatView() {
   const activeMessages = activeChatId ? (messages[activeChatId] ?? []) : [];
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
 
-  // Load sessions for active project
+  // Load sessions (scoped to active project, or unscoped when none selected)
   useEffect(() => {
-    if (!activeProjectId) return;
     api.chat.listSessions(activeProjectId).then(setSessions).catch(() => {});
   }, [activeProjectId, setSessions]);
 
@@ -51,10 +50,16 @@ export default function ChatView() {
       .catch(() => {});
   }, [activeChatId, messages, setMessages]);
 
-  // Load available models
+  // Load available models — auto-select if preferred model is not installed
   useEffect(() => {
     api.ollama.listModels(ollamaUrl).then((m) => {
-      if (m.length > 0) setAvailableModels(m.map((x) => x.name));
+      if (m.length > 0) {
+        const names = m.map((x) => x.name);
+        setAvailableModels(names);
+        if (!names.includes(selectedModel)) {
+          setSelectedModel(names[0]);
+        }
+      }
     }).catch(() => {});
   }, [ollamaUrl]);
 
@@ -64,7 +69,6 @@ export default function ChatView() {
   }, [activeMessages.length, streamingContent]);
 
   async function createNewSession() {
-    if (!activeProjectId) return;
     const session = await api.chat.createSession(activeProjectId, { modelName: selectedModel });
     useChatStore.getState().addSession(session);
     setActiveChatId(session.id);
@@ -72,7 +76,7 @@ export default function ChatView() {
   }
 
   async function sendMessage() {
-    if (!input.trim() || isStreaming || !activeProjectId) return;
+    if (!input.trim() || isStreaming || !selectedModel) return;
 
     let sessionId = activeChatId;
     if (!sessionId) {
@@ -148,24 +152,111 @@ export default function ChatView() {
     navigator.clipboard.writeText(content);
   }
 
+  const activeProject = projects.find((p) => p.id === activeProjectId);
+
+  // ── State 1: No project selected ──────────────────────────────────────────
+  if (!activeProjectId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-6 text-center">
+        <p className="text-[var(--text-muted)] text-sm font-medium">Select a project to start chatting</p>
+        {projects.length === 0 ? (
+          <p className="text-xs text-[var(--text-muted)]">No projects yet — create one from the sidebar.</p>
+        ) : (
+          <div className="flex flex-col gap-2 w-64">
+            {projects.map((p: Project) => (
+              <button
+                key={p.id}
+                onClick={() => setActiveProjectId(p.id)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] hover:border-[var(--accent-color)] text-[var(--text-primary)] text-sm transition-colors"
+              >
+                {p.icon && <span>{p.icon}</span>}
+                <span className="truncate">{p.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── State 2: Project selected, no active chat (conversations list) ────────
+  if (!activeChatId) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)]">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">{activeProject?.name ?? "Chat"}</h2>
+            {activeProject?.project_description && (
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">{activeProject.project_description}</p>
+            )}
+          </div>
+          <button
+            onClick={createNewSession}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent-color)] text-white text-xs hover:opacity-90 transition-opacity"
+          >
+            <Plus size={13} /> New Chat
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {sessions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+              <p className="text-[var(--text-muted)] text-sm">No conversations yet</p>
+              <button
+                onClick={createNewSession}
+                className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
+              >
+                Start a new chat
+              </button>
+            </div>
+          ) : (
+            <div className="divide-y divide-[var(--border-color)]">
+              {sessions.map((s) => (
+                <div
+                  key={s.id}
+                  onClick={() => setActiveChatId(s.id)}
+                  className="group flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-[var(--text-primary)] truncate">{s.title || "New Chat"}</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">{s.model_name}</p>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:text-red-400 text-[var(--text-muted)] transition-all"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── State 3: Active session — side panel + chat ───────────────────────────
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Session list panel */}
+      {/* Conversations side panel */}
       <div className="w-52 border-r border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)] overflow-hidden">
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)]">
-          <span className="text-xs font-medium text-[var(--text-secondary)]">Sessions</span>
+          <button
+            onClick={() => setActiveChatId(null)}
+            className="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] truncate transition-colors"
+            title="Back to conversations"
+          >
+            {activeProject?.name ?? "Conversations"}
+          </button>
           <button
             onClick={createNewSession}
             className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-            title="New session"
+            title="New chat"
           >
             <Plus size={14} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {sessions.length === 0 && (
-            <p className="px-3 py-6 text-xs text-center text-[var(--text-muted)]">No sessions yet</p>
-          )}
           {sessions.map((s) => (
             <div
               key={s.id}
@@ -195,7 +286,9 @@ export default function ChatView() {
           <span className="text-sm font-medium text-[var(--text-primary)] flex-1 truncate">
             {sessions.find((s) => s.id === activeChatId)?.title || "New Chat"}
           </span>
-          {/* Model selector */}
+          {availableModels.length === 0 && (
+            <span className="text-xs text-amber-400">No Ollama models found</span>
+          )}
           <select
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
@@ -210,22 +303,6 @@ export default function ChatView() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          {!activeChatId && (
-            <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-              <p className="text-[var(--text-muted)] text-sm">
-                {activeProjectId ? "Start a new conversation" : "Select a project to begin"}
-              </p>
-              {activeProjectId && (
-                <button
-                  onClick={createNewSession}
-                  className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
-                >
-                  New Chat
-                </button>
-              )}
-            </div>
-          )}
-
           {activeMessages.map((msg) => (
             <div
               key={msg.id}
@@ -280,7 +357,7 @@ export default function ChatView() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={isStreaming}
-              placeholder={activeChatId ? "Message… (⏎ send, ⇧⏎ newline)" : "Select or create a session first"}
+              placeholder={isStreaming ? "Waiting for response…" : !selectedModel ? "No models available — install one via ollama pull" : "Message… (⏎ send, ⇧⏎ newline)"}
               rows={1}
               className="flex-1 resize-none px-3.5 py-2.5 text-sm rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors max-h-40 overflow-y-auto"
               style={{ minHeight: 40 }}
@@ -292,7 +369,7 @@ export default function ChatView() {
             />
             <button
               onClick={sendMessage}
-              disabled={isStreaming || !input.trim()}
+              disabled={isStreaming || !input.trim() || !selectedModel}
               className="flex-shrink-0 p-2.5 rounded-xl bg-[var(--accent-color)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
               <Send size={16} />

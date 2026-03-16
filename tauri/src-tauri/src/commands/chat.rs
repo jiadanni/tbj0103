@@ -133,3 +133,32 @@ pub fn get_messages(state: State<DbState>, session_id: String) -> Result<Vec<Mes
     .map_err(|e| e.to_string())?;
     Ok(items)
 }
+
+/// Update a chat session's title, is_pinned flag, or system_prompt.
+#[tauri::command]
+pub fn update_chat_session(
+    state: State<DbState>,
+    id: String,
+    title: Option<String>,
+    is_pinned: Option<bool>,
+    system_prompt: Option<String>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE chat_sessions SET
+            title = COALESCE(?1, title),
+            is_pinned = COALESCE(?2, is_pinned),
+            system_prompt = COALESCE(?3, system_prompt),
+            updated_at = ?4
+         WHERE id = ?5",
+        rusqlite::params![
+            title,
+            is_pinned.map(|v| v as i32),
+            system_prompt,
+            now,
+            id
+        ],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}

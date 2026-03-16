@@ -25,7 +25,7 @@ interface SettingsStore extends AppSettings {
 export const useSettingsStore = create<SettingsStore>()(
   persist(
     (set) => ({
-      preferredModel: "qwen2.5:7b",
+      preferredModel: "",
       ollamaUrl: "http://localhost:11434",
       embeddingModel: "nomic-embed-text",
       theme: "system",
