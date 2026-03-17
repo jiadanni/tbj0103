@@ -2,19 +2,35 @@
 
 > **Your local-first AI learning companion**
 
-Aetherium is a comprehensive macOS application that combines ChatGPT-style conversations, NotebookLM's source grounding, Obsidian's knowledge graphs, and Notion's organization—all powered by local Ollama AI models for complete privacy.
+Aetherium combines ChatGPT-style conversations, NotebookLM's source grounding, Obsidian's knowledge graphs, and Notion's organisation—all powered by local Ollama AI models for complete privacy. No data leaves your machine.
 
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)
 ![SwiftUI](https://img.shields.io/badge/SwiftUI-macOS%2014+-blue.svg)
+![Rust](https://img.shields.io/badge/Rust-Tauri%20v2-orange.svg)
+![React](https://img.shields.io/badge/React-TypeScript-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
+
+## Two Implementations
+
+| | Swift / macOS | Tauri (active) |
+|---|---|---|
+| **Language** | Swift 5.9 + SwiftUI + SwiftData | Rust (Tauri v2) + React + TypeScript |
+| **Platform** | macOS 14+ only | macOS, Windows, Linux |
+| **Storage** | SwiftData (Core Data) | SQLite via `rusqlite` |
+| **Entry point** | `Sources/Aetherium/` | `tauri/` |
+| **Status** | Feature-complete | **Active development target** |
+
+The Tauri port is the primary development target and receives all new features.
 
 ## ✨ Features
 
 ### 🤖 AI Chat with Source Grounding
 - Converse with local Ollama models (qwen2.5:7b, llama3, etc.)
-- **Source-grounded responses** with automatic citations
-- Upload documents (PDF, TXT, Markdown, HTML, RTF) for RAG
-- Capture web pages and audio transcriptions
+- **Source-grounded responses** with automatic citations (RAG)
+- Upload documents (PDF, TXT, Markdown, HTML, RTF)
+- Capture web pages; audio transcriptions via macOS Speech framework
+- Chat session history with rename / delete
+- Model comparison view to benchmark responses side-by-side
 - AI-generated study guides and quizzes
 
 ### 🧠 Knowledge Graph
@@ -109,19 +125,13 @@ Aetherium is a comprehensive macOS application that combines ChatGPT-style conve
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### Prerequisites (both apps)
 
-- **macOS 14.0+** (Sonoma or later)
-- **Xcode 15.0+**
 - **Ollama** installed and running ([ollama.ai](https://ollama.ai))
 
-### Ollama Setup
-
 ```bash
-# Install Ollama
+# Install and start Ollama
 brew install ollama
-
-# Start Ollama service
 ollama serve
 
 # Pull required models
@@ -129,28 +139,49 @@ ollama pull qwen2.5:7b
 ollama pull nomic-embed-text
 ```
 
-### Installation
+---
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/your-username/aetherium.git
-   cd aetherium
-   ```
+### Tauri App (cross-platform — recommended)
 
-2. **Open in Xcode**
-   ```bash
-   open Package.swift
-   ```
+**Additional prerequisites:**
+- [Rust](https://rustup.rs) toolchain (`cargo`)
+- Node.js 20+ (via [nvm](https://github.com/nvm-sh/nvm) or directly)
+- On macOS: Xcode command-line tools
 
-3. **Build and Run**
-   - Select your Mac as the run destination
-   - Press `Cmd+R` to build and run
+```bash
+# Clone
+git clone https://github.com/your-username/aetherium.git
+cd aetherium/tauri
 
-### First Launch
+# Install JS dependencies
+npm install
+
+# Run in development mode
+npm run tauri dev
+```
+
+> **Note:** If `node`/`npm` are not on `$PATH`, use absolute paths:
+> ```bash
+> PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v20.19.5/bin:$PATH" npm run tauri dev
+> ```
+
+---
+
+### Swift App (macOS only)
+
+**Additional prerequisites:**
+- macOS 14.0+ (Sonoma or later)
+- Xcode 15.0+
+
+```bash
+# From repo root
+open Package.swift   # opens in Xcode
+# or: swift run Aetherium
+```
 
 1. **Authenticate** with Touch ID / Face ID
-2. **Create your first project**
-3. **Start learning!**
+2. **Create a workspace**, then a project
+3. Start learning!
 
 ## 📖 Usage Guide
 
@@ -261,60 +292,105 @@ Navigate to **Plugins** (Cmd+8):
 
 ## 🏗️ Architecture
 
-### Tech Stack
-
-- **SwiftUI** - Modern declarative UI
-- **SwiftData** - Core Data replacement with modern API
-- **Ollama** - Local AI models
-- **Speech Framework** - Voice transcription
-- **Charts** - Data visualization
-- **AVFoundation** - Audio processing
-
-### Data Models
+### Tauri App (active target)
 
 ```
-AetheriumProject
-├── ChatSession
-│   └── Message
-│       └── Citation
-├── ProjectSource
-│   ├── UploadedDocument
-│   │   └── DocumentChunk (with embeddings)
-│   ├── WebCapture
-│   ├── AudioTranscription
-│   └── ProjectNote
-├── ConceptNode
-│   ├── ConceptLink
-│   └── ConceptMention
-├── LearningGoal
-├── LearningPath
-│   └── PathMilestone
-├── LearningCard (flashcards)
-├── DailyNote
-└── NoteTemplate
+tauri/
+├── src/                    # React + TypeScript frontend
+│   ├── views/              # 20 page-level views
+│   ├── components/         # Shared UI (Layout, Sidebar, CommandPalette…)
+│   ├── lib/api.ts          # All Tauri invoke() wrappers (single source)
+│   ├── stores/             # Zustand global state
+│   └── styles/             # Tailwind CSS v3
+└── src-tauri/              # Rust backend (Tauri v2)
+    ├── src/commands/       # Thin Tauri command handlers
+    ├── src/services/       # Business logic (linking, search, RAG…)
+    ├── src/models/         # Rust structs (Serialize / Deserialize)
+    ├── src/db/             # SQLite connection pool (rusqlite + Mutex)
+    ├── src/ollama/         # Ollama HTTP client
+    └── schema.sql          # SQLite schema — source of truth
 ```
 
-### Services
+**Frontend stack:** React 18, TypeScript (strict), Tailwind CSS v3, Zustand, Vite  
+**Backend stack:** Rust, Tauri v2, rusqlite, serde, reqwest
 
-- **OllamaService** - AI model communication
-- **ModelOrchestrator** - Model selection and routing
-- **DocumentProcessor** - Extract text, chunk, embed
-- **EmbeddingGenerator** - Generate vectors with Ollama
-- **SemanticSearchEngine** - Vector similarity search
-- **LinkingEngine** - Bidirectional link management
-- **ConceptExtractor** - AI-powered concept detection
-- **GroundedChatEngine** - RAG implementation
-- **SpacedRepetitionEngine** - SM-2 algorithm
-- **NoteTemplateEngine** - Template processing
-- **ExportEngine** - Multi-format export
-- **VoiceTranscriptionService** - Speech-to-text
-- **AIContentGenerator** - Auto-tagging, summaries, questions
-- **PluginManager** - Plugin discovery, loading, and management
-- **SecurityManager** - Biometric authentication
+#### SQLite Tables
+
+| Table | Purpose |
+|---|---|
+| `workspaces` | Top-level multi-workspace |
+| `projects` | Chat-only containers within a workspace |
+| `chat_sessions` / `messages` / `citations` | Chat history + RAG citations |
+| `concept_nodes` / `concept_links` / `concept_mentions` | Knowledge graph |
+| `daily_notes` / `note_templates` | Notes + templates |
+| `learning_cards` / `learning_paths` / `path_milestones` | Flashcards + SM-2 |
+| `uploaded_documents` / `document_chunks` | Documents + embeddings |
+| `web_captures` | Saved web pages |
+| `audio_transcriptions` | Voice recordings |
+| `calendar_alarms` | Scheduled reminders |
+| `project_notes` | Workspace-scoped freeform notes |
+
+---
+
+### Swift App (macOS)
+
+**Tech stack:** SwiftUI, SwiftData, Ollama HTTP, AVFoundation, Speech, Charts
+
+```
+Sources/Aetherium/
+├── Models/        # @Model SwiftData entities
+├── Views/         # SwiftUI views
+├── Services/      # Business logic
+├── Demo/          # Demo mode infrastructure
+├── Managers/      # Theme, shortcuts
+└── Plugins/       # Plugin system
+```
+
+#### Services
+
+- **OllamaService** — AI model communication
+- **ModelOrchestrator** — Model selection and routing
+- **DocumentProcessor** — Text extraction, chunking, embedding
+- **SemanticSearchEngine** — Vector similarity search
+- **LinkingEngine** — Bidirectional `[[wiki-link]]` management
+- **ConceptExtractor** — AI-powered concept detection
+- **RetrievalEngine** — RAG retrieval
+- **SpacedRepetitionEngine** — SM-2 algorithm
+- **NoteTemplateEngine** — Template variable substitution
+- **ExportEngine** — Markdown, Obsidian Vault, PDF, JSON
+- **VoiceTranscriptionService** — macOS Speech framework
+- **AIContentGenerator** — Auto-tagging, summaries, quizzes
+- **BackupService** — Incremental backups with timeline
+- **PluginManager** — Plugin discovery, loading, permissions
+- **SecurityManager** — Biometric authentication
+
+## 🔨 Build & Check
+
+### Swift app
+```bash
+swift build     # compile
+swift test      # run tests
+```
+
+### Tauri app
+```bash
+# TypeScript type-check
+cd tauri
+~/.nvm/versions/node/v20.19.5/bin/npx tsc --noEmit
+
+# Rust type-check
+~/.cargo/bin/cargo check --manifest-path tauri/src-tauri/Cargo.toml
+
+# Development server
+cd tauri
+PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v20.19.5/bin:$PATH" npm run tauri dev
+```
+
+Both `cargo check` and `tsc --noEmit` must exit 0 before committing.
 
 ## 🎯 Roadmap
 
-### Phase 1-10: Complete ✅
+### Swift app — Phases 1–10: Complete ✅
 - ✅ Foundation (Projects, Auth, Chat)
 - ✅ Document Intelligence (RAG, Citations)
 - ✅ Knowledge Graph (Bidirectional Links)
@@ -326,16 +402,23 @@ AetheriumProject
 - ✅ Dashboard + Analytics (AI Insights)
 - ✅ Plugin System (7 plugin types, built-in plugins)
 
-### Future Enhancements (Phase 11+)
-- [ ] iCloud sync
+### Tauri app — In progress
+- ✅ Core scaffold (Tauri v2, SQLite, React, Tailwind)
+- ✅ All 20 views wired (chat, notes, graph, flashcards, documents, settings…)
+- ✅ Rust service layer (linking engine, document processor, semantic search, RAG, backup…)
+- ✅ Backlinks + `[[wiki-link]]` auto-indexing
+- ✅ Workspace-scoped data model
+- [ ] Full Ollama embedding pipeline (nomic-embed-text)
+- [ ] Plugin system port
+- [ ] Voice transcription (cross-platform)
+- [ ] Multi-platform packages (Windows, Linux)
+
+### Future (both apps)
+- [ ] iCloud / cloud sync
 - [ ] iOS companion app
 - [ ] Collaboration features
-- [ ] Plugin store with community plugins
-- [ ] Custom AI model fine-tuning
-- [ ] Advanced graph algorithms (PageRank, clustering)
+- [ ] Plugin marketplace
 - [ ] Multi-language support
-- [ ] Themes and customization
-- [ ] Mobile-optimized plugin API
 
 ## 🤝 Contributing
 
@@ -365,4 +448,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ using Swift and local-first AI principles**
+**Built with ❤️ using Swift, Rust, React, and local-first AI principles**

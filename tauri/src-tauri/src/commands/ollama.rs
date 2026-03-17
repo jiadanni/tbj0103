@@ -18,6 +18,15 @@ pub struct EmbeddingRequest {
     pub ollama_url: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DualModelRequest {
+    pub session_id: String,
+    pub draft_model: String,
+    pub refine_model: String,
+    pub messages: Vec<OllamaMessage>,
+    pub ollama_url: Option<String>,
+}
+
 /// Send a chat message (streaming or non-streaming).
 /// For streaming: emits "ollama-stream-{session_id}" events to frontend.
 #[tauri::command]
@@ -57,4 +66,18 @@ pub async fn generate_embedding(req: EmbeddingRequest) -> Result<Vec<f32>, Strin
     let client = OllamaClient::new(req.ollama_url);
     let model = req.model.as_deref().unwrap_or("nomic-embed-text");
     client.generate_embedding(model, &req.text).await
+}
+
+/// Dual-model chat: streams the draft (small) model first via "ollama-stream-{session_id}",
+/// then streams the refine (large) model via "ollama-refine-{session_id}" events.
+/// The frontend shows the draft answer instantly and upgrades it when the refinement arrives.
+#[tauri::command]
+pub async fn send_dual_model_message(app: AppHandle, req: DualModelRequest) -> Result<String, String> {
+    let client = OllamaClient::new(req.ollama_url);
+
+    // Phase 1: stream the fast/draft model
+    client.stream_message(&app, &req.session_id, &req.draft_model, req.messages.clone()).await?;
+
+    // Phase 2: stream the large/refine model (separate event channel)
+    client.stream_refine_message(&app, &req.session_id, &req.refine_model, req.messages).await
 }

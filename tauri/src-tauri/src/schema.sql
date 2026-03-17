@@ -245,6 +245,25 @@ CREATE TABLE IF NOT EXISTS calendar_alarms (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Thought queue: scheduled / deferred AI processing items
+CREATE TABLE IF NOT EXISTS thought_queue (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'scheduled', 'processing', 'done')),
+    process_at TEXT,
+    model_name TEXT NOT NULL DEFAULT 'qwen2.5:7b',
+    prompt_prefix TEXT NOT NULL DEFAULT '',
+    result TEXT,
+    result_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_thought_queue_workspace ON thought_queue(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_thought_queue_status ON thought_queue(status);
+
 -- Settings (flat key-value store, mirrors @AppStorage)
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY NOT NULL,
@@ -312,3 +331,14 @@ CREATE TABLE IF NOT EXISTS ai_models (
     tokens_used_total INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Default web AI provider entries (disabled until user opts in)
+INSERT OR IGNORE INTO ai_models(id, name, model_id, provider, priority, is_paid, enabled)
+VALUES
+    ('web-chatgpt',  'ChatGPT (Web)',  'chatgpt-web',  'web_chatgpt',  100, 0, 0),
+    ('web-deepseek', 'DeepSeek (Web)', 'deepseek-web', 'web_deepseek', 101, 0, 0),
+    ('web-claude',   'Claude (Web)',   'claude-web',   'web_claude',   102, 0, 0),
+    ('web-gemini',   'Gemini (Web)',   'gemini-web',   'web_gemini',   103, 0, 0);
+
+-- Default settings for web session preservation (false = wipe after each query)
+INSERT OR IGNORE INTO settings(key, value) VALUES ('web_session_preserve', 'false');

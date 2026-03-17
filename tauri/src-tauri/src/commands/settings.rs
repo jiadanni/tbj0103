@@ -16,6 +16,9 @@ pub struct Settings {
     pub embedding_model: String,
     pub chat_title_auto_refresh: String,
     pub chat_title_refresh_interval: i64,
+    pub chat_json_storage: bool,
+    pub chat_encryption_enabled: bool,
+    pub web_session_preserve: bool,
 }
 
 impl Default for Settings {
@@ -33,6 +36,9 @@ impl Default for Settings {
             embedding_model: "nomic-embed-text".to_string(),
             chat_title_auto_refresh: "initial_only".to_string(),
             chat_title_refresh_interval: 5,
+            chat_json_storage: true,
+            chat_encryption_enabled: false,
+            web_session_preserve: false,
         }
     }
 }
@@ -89,6 +95,15 @@ pub fn get_settings(state: State<DbState>) -> Result<Settings, String> {
         chat_title_refresh_interval: get_setting(&conn, "chat_title_refresh_interval")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.chat_title_refresh_interval),
+        chat_json_storage: get_setting(&conn, "chat_json_storage")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.chat_json_storage),
+        chat_encryption_enabled: get_setting(&conn, "chat_encryption_enabled")
+            .map(|v| v == "true")
+            .unwrap_or(def.chat_encryption_enabled),
+        web_session_preserve: get_setting(&conn, "web_session_preserve")
+            .map(|v| v == "true")
+            .unwrap_or(def.web_session_preserve),
     })
 }
 
@@ -107,5 +122,8 @@ pub fn update_settings(state: State<DbState>, settings: Settings) -> Result<(), 
     set_setting(&conn, "embedding_model", &serde_json::to_string(&settings.embedding_model).unwrap())?;
     set_setting(&conn, "chat_title_auto_refresh", &settings.chat_title_auto_refresh)?;
     set_setting(&conn, "chat_title_refresh_interval", &settings.chat_title_refresh_interval.to_string())?;
+    set_setting(&conn, "chat_json_storage", &settings.chat_json_storage.to_string())?;
+    set_setting(&conn, "web_session_preserve", &settings.web_session_preserve.to_string())?;
+    // chat_encryption_enabled is managed by setup_chat_encryption / disable_chat_encryption
     Ok(())
 }
