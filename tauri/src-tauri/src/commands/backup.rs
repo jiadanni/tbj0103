@@ -1,7 +1,7 @@
 use tauri::State;
 use serde::{Deserialize, Serialize};
 use crate::db::DbState;
-use crate::models::backup::BackupManifestEntry;
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupInfo {

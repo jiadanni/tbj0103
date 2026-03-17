@@ -1,10 +1,10 @@
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  MessageSquare, Network, BookOpen, Calendar, CreditCard,
-  FolderOpen, FileText, Map, Settings, Archive, Zap, Link2,
-  BarChart2, PuzzleIcon, SplitSquareHorizontal,
-  Globe, GitMerge, LayoutGrid, FileEdit,
+  MessageSquare, Network, CreditCard,
+  FileText, Settings, Zap,
+  BarChart2,
+  Globe, FileEdit,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -16,23 +16,14 @@ const NAV_ITEMS = [
   { path: "/project",       icon: BarChart2,             label: "Dashboard"        },
   { path: "/chat",          icon: MessageSquare,          label: "Chat"             },
   { path: "/notes",         icon: FileEdit,               label: "Notes"            },
-  { path: "/daily",         icon: Calendar,               label: "Daily Notes"      },
   { path: "/documents",     icon: FileText,               label: "Documents"        },
   { path: "/webcapture",    icon: Globe,                  label: "Web Captures"     },
   { path: "/graph",         icon: Network,                label: "Knowledge Graph"  },
   { path: "/flashcards",    icon: CreditCard,             label: "Flashcards"       },
-  { path: "/learning",      icon: Map,                    label: "Learning Paths"   },
-  { path: "/plugins",       icon: PuzzleIcon,             label: "Plugins"          },
-  { path: "/compare",       icon: SplitSquareHorizontal,  label: "Compare Models"   },
-  { path: "/backup",        icon: Archive,                label: "Backups"          },
 ];
 
 // Secondary nav
 const SECONDARY_ITEMS = [
-  { path: "/grounded",   icon: BookOpen,    label: "Grounded Chat"  },
-  { path: "/backlinks",  icon: Link2,       label: "Backlinks"      },
-  { path: "/dedup",      icon: GitMerge,    label: "Deduplication"  },
-  { path: "/workspaces", icon: LayoutGrid,  label: "Workspaces"     },
   { path: "/settings",   icon: Settings,    label: "Settings"       },
 ];
 

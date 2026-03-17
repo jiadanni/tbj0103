@@ -284,6 +284,22 @@ CREATE INDEX IF NOT EXISTS idx_web_captures_project ON web_captures(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_notes_project ON project_notes(project_id);
 CREATE INDEX IF NOT EXISTS idx_alarms_fire_date ON calendar_alarms(fire_date);
 
+-- AI memory for cross-session context
+CREATE TABLE IF NOT EXISTS memories (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    memory_type TEXT NOT NULL DEFAULT 'fact'
+        CHECK(memory_type IN ('fact', 'preference', 'context')),
+    source_session_id TEXT,
+    is_pinned INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_memories_workspace ON memories(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_memories_active ON memories(workspace_id, is_active);
+
 -- AI model priority list with token tracking
 CREATE TABLE IF NOT EXISTS ai_models (
     id TEXT PRIMARY KEY NOT NULL,

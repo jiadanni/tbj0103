@@ -3,10 +3,13 @@
  * Mirrors SettingsView.swift.
  */
 import { useEffect, useState } from "react";
-import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus } from "lucide-react";
-import { api, type AppSettings, type AiModel } from "../lib/api";
+import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network } from "lucide-react";
+import { api, type AppSettings, type AiModel, type MCPServerConfig } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import WorkspaceSettingsView from "./WorkspaceSettingsView";
+import BackupSettingsSection from "./BackupSettingsSection";
+import PluginManagerView from "./PluginManagerView";
 
 const THEMES = ["system", "light", "dark", "oled", "sepia", "hacker"] as const;
 const ACCENT_COLORS = [
@@ -18,13 +21,16 @@ const ACCENT_COLORS = [
   { label: "Cyan",   value: "#06b6d4" },
 ];
 
-type Tab = "appearance" | "ai" | "security" | "backup";
+type Tab = "appearance" | "ai" | "security" | "workspaces" | "backup" | "plugins" | "mcp";
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
-  { id: "appearance", label: "Appearance", Icon: Palette },
-  { id: "ai",         label: "AI",         Icon: Bot },
-  { id: "security",   label: "Security",   Icon: ShieldCheck },
-  { id: "backup",     label: "Backup",     Icon: HardDrive },
+  { id: "appearance",  label: "Appearance",  Icon: Palette },
+  { id: "ai",          label: "AI",          Icon: Bot },
+  { id: "security",    label: "Security",    Icon: ShieldCheck },
+  { id: "workspaces",  label: "Workspaces",  Icon: LayoutGrid },
+  { id: "backup",      label: "Backup",      Icon: HardDrive },
+  { id: "plugins",     label: "Plugins",     Icon: PuzzleIcon },
+  { id: "mcp",         label: "MCP",         Icon: Network },
 ];
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
@@ -54,6 +60,13 @@ export default function SettingsView() {
   const [newModelName, setNewModelName] = useState("");
   const [newModelIsPaid, setNewModelIsPaid] = useState(false);
 
+  // MCP state
+  const [mcpServers, setMcpServers] = useState<MCPServerConfig[]>([]);
+  const [showAddMcpServer, setShowAddMcpServer] = useState(false);
+  const [newMcpName, setNewMcpName] = useState("");
+  const [newMcpCommand, setNewMcpCommand] = useState("");
+  const [newMcpArgs, setNewMcpArgs] = useState("");
+
   function loadAiModels() {
     api.aiModel.list().then(setAiModels).catch(() => {});
   }
@@ -62,6 +75,7 @@ export default function SettingsView() {
     api.settings.get().then(setDbSettings).catch(() => {});
     api.ollama.listModels().then((m) => setOllamaModels(m.map((x) => x.name))).catch(() => {});
     loadAiModels();
+    api.mcp.listServers().then(setMcpServers).catch(() => {});
   }, []);
 
   async function save() {
@@ -126,7 +140,8 @@ export default function SettingsView() {
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* Tab content — inline sections */}
+      {(activeTab === "appearance" || activeTab === "ai" || activeTab === "security") && (
       <div className="flex-1 overflow-y-auto px-6 py-5">
         <div className="max-w-lg space-y-5">
 
@@ -344,6 +359,59 @@ export default function SettingsView() {
                   </div>
                 )}
               </div>
+
+              {/* Chat Title Auto-Generation */}
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Chat Title Auto-Generation</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="chat_title_refresh"
+                      checked={dbSettings.chat_title_auto_refresh === "disabled"}
+                      onChange={() => set("chat_title_auto_refresh", "disabled")}
+                      className="accent-[var(--accent-color)]"
+                    />
+                    <span className="text-[var(--text-secondary)]">Disabled</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="chat_title_refresh"
+                      checked={dbSettings.chat_title_auto_refresh === "initial_only"}
+                      onChange={() => set("chat_title_auto_refresh", "initial_only")}
+                      className="accent-[var(--accent-color)]"
+                    />
+                    <span className="text-[var(--text-secondary)]">Initial title only</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="chat_title_refresh"
+                      checked={dbSettings.chat_title_auto_refresh === "periodic"}
+                      onChange={() => set("chat_title_auto_refresh", "periodic")}
+                      className="accent-[var(--accent-color)]"
+                    />
+                    <span className="text-[var(--text-secondary)]">Refresh periodically every</span>
+                  </label>
+                  {dbSettings.chat_title_auto_refresh === "periodic" && (
+                    <div className="ml-5 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={2}
+                        max={50}
+                        value={dbSettings.chat_title_refresh_interval || 5}
+                        onChange={(e) => set("chat_title_refresh_interval", Number(e.target.value))}
+                        className="w-16 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                      />
+                      <span className="text-xs text-[var(--text-secondary)]">messages</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mt-2">
+                  AI-generated titles improve chat organization. 'Periodic' refreshes the title based on conversation progress.
+                </p>
+              </div>
             </>
           )}
 
@@ -359,35 +427,202 @@ export default function SettingsView() {
               </div>
 
               <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">
-                  Auto-lock after {dbSettings.auto_lock_minutes} {dbSettings.auto_lock_minutes === 1 ? "minute" : "minutes"}
-                </label>
-                <input
-                  type="range" min={1} max={60} step={1}
-                  value={dbSettings.auto_lock_minutes}
-                  onChange={(e) => set("auto_lock_minutes", Number(e.target.value))}
-                  className="w-48 accent-[var(--accent-color)]"
-                />
-                <div className="flex justify-between text-xs text-[var(--text-muted)] w-48 mt-1">
-                  <span>1 min</span><span>60 min</span>
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Auto-lock</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="auto_lock"
+                      checked={dbSettings.auto_lock_minutes === 0}
+                      onChange={() => set("auto_lock_minutes", 0)}
+                      className="accent-[var(--accent-color)]"
+                    />
+                    <span className="text-[var(--text-secondary)]">Off</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="auto_lock"
+                      checked={dbSettings.auto_lock_minutes > 0}
+                      onChange={() => set("auto_lock_minutes", dbSettings.auto_lock_minutes > 0 ? dbSettings.auto_lock_minutes : 5)}
+                      className="accent-[var(--accent-color)]"
+                    />
+                    <span className="text-[var(--text-secondary)]">Lock after</span>
+                  </label>
+                  {dbSettings.auto_lock_minutes > 0 && (
+                    <div className="ml-5 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={1440}
+                        value={dbSettings.auto_lock_minutes}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          if (val > 0) set("auto_lock_minutes", val);
+                        }}
+                        className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                      />
+                      <span className="text-xs text-[var(--text-secondary)]">minutes</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
           )}
 
-          {/* ── Backup ── */}
-          {activeTab === "backup" && (
-            <div className="flex items-center justify-between py-1">
-              <div>
-                <p className="text-sm text-[var(--text-secondary)]">Automatic backups</p>
-                <p className="text-xs text-[var(--text-muted)] mt-0.5">Periodically snapshot your data for restore</p>
+        </div>
+      </div>
+      )}
+
+      {/* ── Full-bleed tabs (workspaces, backup, plugins) ── */}
+      {activeTab === "workspaces" && (
+        <div className="flex-1 overflow-hidden">
+          <WorkspaceSettingsView />
+        </div>
+      )}
+
+      {activeTab === "backup" && (
+        <div className="flex-1 overflow-hidden">
+          <BackupSettingsSection />
+        </div>
+      )}
+
+      {activeTab === "plugins" && (
+        <div className="flex-1 overflow-hidden">
+          <PluginManagerView />
+        </div>
+      )}
+
+      {activeTab === "mcp" && (
+        <div className="flex-1 overflow-y-auto p-6">
+          <h2 className="text-2xl font-bold mb-4">Model Context Protocol Servers</h2>
+
+          <div className="mb-6">
+            <p className="text-sm text-[var(--text-secondary)] mb-4">
+              Configure external MCP servers to integrate with external knowledge sources and tools.
+            </p>
+          </div>
+
+          <div className="mb-6">
+            <button
+              onClick={() => setShowAddMcpServer(!showAddMcpServer)}
+              className="flex items-center gap-2 px-4 py-2 rounded bg-[var(--accent-color)] text-white hover:opacity-90 transition"
+            >
+              <Plus size={18} /> Add MCP Server
+            </button>
+          </div>
+
+          {showAddMcpServer && (
+            <div className="mb-6 p-4 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+              <h3 className="font-bold mb-4">New MCP Server</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Server Name</label>
+                  <input
+                    type="text"
+                    value={newMcpName}
+                    onChange={(e) => setNewMcpName(e.target.value)}
+                    className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
+                    placeholder="e.g., my-knowledge-server"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Command</label>
+                  <input
+                    type="text"
+                    value={newMcpCommand}
+                    onChange={(e) => setNewMcpCommand(e.target.value)}
+                    className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
+                    placeholder="e.g., /path/to/server-binary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Arguments (comma-separated)</label>
+                  <input
+                    type="text"
+                    value={newMcpArgs}
+                    onChange={(e) => setNewMcpArgs(e.target.value)}
+                    className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
+                    placeholder="e.g., --config /path/config.json"
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => {
+                      setShowAddMcpServer(false);
+                      setNewMcpName("");
+                      setNewMcpCommand("");
+                      setNewMcpArgs("");
+                    }}
+                    className="px-4 py-2 rounded border border-[var(--border-color)] hover:bg-[var(--bg-hover)] transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.mcp.addServer(
+                          newMcpName,
+                          newMcpCommand,
+                          newMcpArgs.split(",").map((s) => s.trim()).filter(Boolean),
+                          "" // workspace_id
+                        );
+                        const servers = await api.mcp.listServers();
+                        setMcpServers(servers);
+                        setShowAddMcpServer(false);
+                        setNewMcpName("");
+                        setNewMcpCommand("");
+                        setNewMcpArgs("");
+                      } catch (err) {
+                        console.error("Failed to add MCP server:", err);
+                      }
+                    }}
+                    className="px-4 py-2 rounded bg-[var(--accent-color)] text-white hover:opacity-90 transition"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
-              <Toggle on={dbSettings.backup_enabled} onToggle={() => set("backup_enabled", !dbSettings.backup_enabled)} />
             </div>
           )}
 
+          <div className="space-y-3">
+            {mcpServers.length === 0 ? (
+              <p className="text-sm text-[var(--text-secondary)] italic">No MCP servers configured yet.</p>
+            ) : (
+              mcpServers.map((server) => (
+                <div key={server.id} className="p-4 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h4 className="font-bold">{server.name}</h4>
+                      <p className="text-sm text-[var(--text-secondary)] font-mono">{server.command}</p>
+                      {server.args.length > 0 && (
+                        <p className="text-xs text-[var(--text-secondary)] mt-1">{server.args.join(" ")}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.mcp.deleteServer(server.name);
+                            const servers = await api.mcp.listServers();
+                            setMcpServers(servers);
+                          } catch (err) {
+                            console.error("Failed to delete MCP server:", err);
+                          }
+                        }}
+                        className="p-2 rounded hover:bg-[var(--bg-hover)] transition text-red-500"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

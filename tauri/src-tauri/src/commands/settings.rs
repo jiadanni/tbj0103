@@ -14,6 +14,8 @@ pub struct Settings {
     pub sidebar_width: i64,
     pub ollama_base_url: String,
     pub embedding_model: String,
+    pub chat_title_auto_refresh: String,
+    pub chat_title_refresh_interval: i64,
 }
 
 impl Default for Settings {
@@ -29,6 +31,8 @@ impl Default for Settings {
             sidebar_width: 240,
             ollama_base_url: "http://localhost:11434".to_string(),
             embedding_model: "nomic-embed-text".to_string(),
+            chat_title_auto_refresh: "initial_only".to_string(),
+            chat_title_refresh_interval: 5,
         }
     }
 }
@@ -80,6 +84,11 @@ pub fn get_settings(state: State<DbState>) -> Result<Settings, String> {
         embedding_model: get_setting(&conn, "embedding_model")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.embedding_model),
+        chat_title_auto_refresh: get_setting(&conn, "chat_title_auto_refresh")
+            .unwrap_or(def.chat_title_auto_refresh),
+        chat_title_refresh_interval: get_setting(&conn, "chat_title_refresh_interval")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.chat_title_refresh_interval),
     })
 }
 
@@ -96,5 +105,7 @@ pub fn update_settings(state: State<DbState>, settings: Settings) -> Result<(), 
     set_setting(&conn, "sidebar_width", &settings.sidebar_width.to_string())?;
     set_setting(&conn, "ollama_base_url", &serde_json::to_string(&settings.ollama_base_url).unwrap())?;
     set_setting(&conn, "embedding_model", &serde_json::to_string(&settings.embedding_model).unwrap())?;
+    set_setting(&conn, "chat_title_auto_refresh", &settings.chat_title_auto_refresh)?;
+    set_setting(&conn, "chat_title_refresh_interval", &settings.chat_title_refresh_interval.to_string())?;
     Ok(())
 }
