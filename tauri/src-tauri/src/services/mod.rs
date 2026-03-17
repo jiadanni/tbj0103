@@ -1,3 +1,4 @@
+pub mod chat_file_store;
 pub mod spaced_repetition;
 pub mod graph_algorithms;
 pub mod link_parser;

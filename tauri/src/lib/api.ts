@@ -79,6 +79,9 @@ export interface AppSettings {
   embedding_model: string;
   chat_title_auto_refresh: "disabled" | "initial_only" | "periodic";
   chat_title_refresh_interval: number;
+  chat_json_storage: boolean;
+  chat_encryption_enabled: boolean;
+  web_session_preserve: boolean;
 }
 
 export interface BacklinkEntry {
@@ -97,6 +100,13 @@ export interface CalendarAlarm {
 }
 
 export interface StreamEvent { session_id: string; chunk: string; done: boolean; tokens_used?: number; duration_ms?: number; }
+
+export interface ThoughtItem {
+  id: string; workspace_id: string; content: string;
+  status: 'pending' | 'scheduled' | 'processing' | 'done';
+  process_at?: string; model_name: string; prompt_prefix: string;
+  result?: string; result_at?: string; created_at: string; updated_at: string;
+}
 
 export interface AnalysisResult {
   concepts_created: number;
@@ -147,6 +157,17 @@ export const api = {
     addMessage: (sessionId: string, role: "user" | "assistant", content: string, modelName?: string, tokensUsed?: number) =>
       invoke<Message>("add_message", { req: { session_id: sessionId, role, content, model_name: modelName, tokens_used: tokensUsed } }),
     getMessages: (sessionId: string) => invoke<Message[]>("get_messages", { sessionId }),
+  },
+
+  chatFile: {
+    getInfo: () => invoke<{ chats_dir: string; encryption_enabled: boolean }>("get_chat_file_info"),
+    setupEncryption: (passphrase: string) => invoke<number>("setup_chat_encryption", { passphrase }),
+    disableEncryption: () => invoke<number>("disable_chat_encryption"),
+    exportAsJson: (sessionId: string, destPath: string) =>
+      invoke<void>("export_chat_as_json", { sessionId, destPath }),
+    importFromJson: (path: string, passphrase?: string) =>
+      invoke<string>("import_chat_from_json", { path, passphrase }),
+    syncAll: () => invoke<number>("sync_all_chats_to_files"),
   },
 
   graph: {
@@ -229,6 +250,8 @@ export const api = {
   ollama: {
     sendMessage: (sessionId: string, model: string, messages: { role: string; content: string }[], stream: boolean, ollamaUrl?: string) =>
       invoke<string>("send_message", { req: { session_id: sessionId, model, messages, stream, ollama_url: ollamaUrl } }),
+    sendDualModelMessage: (sessionId: string, draftModel: string, refineModel: string, messages: { role: string; content: string }[], ollamaUrl?: string) =>
+      invoke<string>("send_dual_model_message", { req: { session_id: sessionId, draft_model: draftModel, refine_model: refineModel, messages, ollama_url: ollamaUrl } }),
     listModels: (ollamaUrl?: string) => invoke<OllamaModel[]>("list_models", { ollamaUrl }),
     generateTitle: (model: string, firstMessage: string, ollamaUrl?: string) =>
       invoke<string>("generate_title", { model, firstMessage, ollamaUrl }),
@@ -323,14 +346,58 @@ export const api = {
       }),
   },
 
+  thoughtQueue: {
+    create: (workspaceId: string, content: string, opts?: { processAt?: string; modelName?: string; promptPrefix?: string }) =>
+      invoke<ThoughtItem>("create_thought", {
+        req: { workspace_id: workspaceId, content, process_at: opts?.processAt, model_name: opts?.modelName, prompt_prefix: opts?.promptPrefix },
+      }),
+    list: (workspaceId: string) => invoke<ThoughtItem[]>("list_thoughts", { workspaceId }),
+    getDue: (workspaceId: string) => invoke<ThoughtItem[]>("get_due_thoughts", { workspaceId }),
+    updateStatus: (id: string, status: string) => invoke<void>("update_thought_status", { id, status }),
+    updateResult: (id: string, result: string) => invoke<void>("update_thought_result", { id, result }),
+    delete: (id: string) => invoke<void>("delete_thought", { id }),
+  },
+
+  webAI: {
+    /** Send a query to a web AI provider via the Playwright bridge. */
+    sendMessage: (sessionId: string, provider: string, query: string, preserveSession: boolean) =>
+      invoke<string>("send_web_message", { sessionId: sessionId, provider, query, preserveSession }),
+  },
+
   // Streaming: listen to Ollama stream events for a session
   listenStream: (sessionId: string, onChunk: (chunk: string, done: boolean, tokensUsed?: number, durationMs?: number) => void): Promise<UnlistenFn> =>
     listen<StreamEvent>(`ollama-stream-${sessionId}`, (event) => {
       onChunk(event.payload.chunk, event.payload.done, event.payload.tokens_used, event.payload.duration_ms);
     }),
-};
 
-// ====== MCP (Model Context Protocol) ======
+  // Streaming: listen to the refine (large model) events for a dual-model session
+  listenRefineStream: (sessionId: string, onChunk: (chunk: string, done: boolean, tokensUsed?: number, durationMs?: number) => void): Promise<UnlistenFn> =>
+    listen<StreamEvent>(`ollama-refine-${sessionId}`, (event) => {
+      onChunk(event.payload.chunk, event.payload.done, event.payload.tokens_used, event.payload.duration_ms);
+    }),
+
+  mcp: {
+    listServers: () => invoke<MCPServerConfig[]>("list_mcp_servers", {}),
+    addServer: (name: string, command: string, args: string[], workspaceId: string) =>
+      invoke<MCPServerConfig>("add_mcp_server", { name, command, args, workspace_id: workspaceId }),
+    updateServer: (name: string, command: string, args: string[], enabled: boolean) =>
+      invoke<void>("update_mcp_server", { name, command, args, enabled }),
+    deleteServer: (name: string) =>
+      invoke<void>("delete_mcp_server", { name }),
+    connectServer: (serverName: string) =>
+      invoke<void>("mcp_connect_server", { server_name: serverName }),
+    disconnectServer: (serverName: string) =>
+      invoke<void>("mcp_disconnect_server", { server_name: serverName }),
+    listTools: (serverName: string) =>
+      invoke<MCPTool[]>("mcp_list_tools", { server_name: serverName }),
+    callTool: (serverName: string, toolName: string, toolArguments: Record<string, unknown>) =>
+      invoke<string>("mcp_call_tool", { server_name: serverName, tool_name: toolName, arguments: toolArguments }),
+    listResources: (serverName: string) =>
+      invoke<[MCPResource[], MCPResourceTemplate[]]>("mcp_list_resources", { server_name: serverName }),
+    readResource: (serverName: string, uri: string) =>
+      invoke<string>("mcp_read_resource", { server_name: serverName, uri }),
+  },
+};
 
 export interface MCPServerConfig {
   id: string;
@@ -379,8 +446,8 @@ export const mcp = {
   // Tool discovery and invocation
   listTools: (serverName: string) =>
     invoke<MCPTool[]>("mcp_list_tools", { server_name: serverName }),
-  callTool: (serverName: string, toolName: string, arguments: Record<string, unknown>) =>
-    invoke<string>("mcp_call_tool", { server_name: serverName, tool_name: toolName, arguments }),
+  callTool: (serverName: string, toolName: string, toolArguments: Record<string, unknown>) =>
+    invoke<string>("mcp_call_tool", { server_name: serverName, tool_name: toolName, arguments: toolArguments }),
 
   // Resource discovery and access
   listResources: (serverName: string) =>

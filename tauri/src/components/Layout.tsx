@@ -13,12 +13,13 @@ import {
   MessageSquare, Network, CreditCard,
   FileText, Settings,
   BarChart2, LucideIcon,
-  Globe, FileEdit,
+  Globe, FileEdit, Inbox,
 } from "lucide-react";
 
 const NAV_ITEMS: { path: string; icon: LucideIcon; label: string }[] = [
   { path: "/project",       icon: BarChart2,             label: "Dashboard"        },
   { path: "/chat",          icon: MessageSquare,          label: "Chat"             },
+  { path: "/thoughts",      icon: Inbox,                  label: "Thought Queue"    },
   { path: "/notes",         icon: FileEdit,               label: "Notes"            },
   { path: "/documents",     icon: FileText,               label: "Documents"        },
   { path: "/webcapture",    icon: Globe,                  label: "Web Captures"     },
@@ -34,6 +35,7 @@ import SettingsView from "../views/SettingsView";
 import DocumentBrowserView from "../views/DocumentBrowserView";
 import NoteEditorView from "../views/NoteEditorView";
 import WebCaptureView from "../views/WebCaptureView";
+import ThoughtQueueView from "../views/ThoughtQueueView";
 
 function WorkspaceTabBar() {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace } = useWorkspaceStore();
@@ -158,6 +160,7 @@ export default function Layout() {
             <Route path="/chat" element={<ChatView />} />
             <Route path="/chat/:sessionId" element={<ChatView />} />
             <Route path="/notes" element={<NoteEditorView />} />
+            <Route path="/thoughts" element={<ThoughtQueueView />} />
             <Route path="/documents" element={<DocumentBrowserView />} />
             <Route path="/webcapture" element={<WebCaptureView />} />
             <Route path="/graph" element={<KnowledgeGraphView />} />
@@ -189,6 +192,7 @@ export default function Layout() {
             <Route path="/chat" element={<ChatView />} />
             <Route path="/chat/:sessionId" element={<ChatView />} />
             <Route path="/notes" element={<NoteEditorView />} />
+            <Route path="/thoughts" element={<ThoughtQueueView />} />
             <Route path="/documents" element={<DocumentBrowserView />} />
             <Route path="/webcapture" element={<WebCaptureView />} />
             <Route path="/graph" element={<KnowledgeGraphView />} />

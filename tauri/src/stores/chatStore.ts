@@ -29,6 +29,9 @@ interface ChatStore {
   messages: Record<string, Message[]>;
   streamingSessionId: string | null;
   streamingContent: string;
+  // Dual-model refine phase state
+  refiningSessionId: string | null;
+  refineContent: string;
   setActiveChatId: (id: string | null) => void;
   setSessions: (sessions: ChatSession[]) => void;
   setMessages: (sessionId: string, messages: Message[]) => void;
@@ -39,6 +42,9 @@ interface ChatStore {
   setStreamingSession: (id: string | null) => void;
   appendStreamChunk: (sessionId: string, chunk: string) => void;
   finalizeStream: (sessionId: string, modelName?: string) => void;
+  // Refine (large model second pass)
+  appendRefineChunk: (sessionId: string, chunk: string) => void;
+  finalizeRefine: (sessionId: string, modelName?: string) => void;
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -47,6 +53,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: {},
   streamingSessionId: null,
   streamingContent: "",
+  refiningSessionId: null,
+  refineContent: "",
   setActiveChatId: (activeChatId) => set({ activeChatId }),
   setSessions: (sessions) => set({ sessions }),
   setMessages: (sessionId, messages) =>
@@ -86,5 +94,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         [sessionId]: [...(s.messages[sessionId] ?? []), assistantMsg],
       },
     }));
+  },
+  appendRefineChunk: (sessionId, chunk) =>
+    set((s) => ({ refiningSessionId: sessionId, refineContent: s.refineContent + chunk })),
+  finalizeRefine: (sessionId, modelName) => {
+    const { refineContent } = get();
+    // Replace the last assistant message (the draft) with the refined content
+    set((s) => {
+      const msgs = s.messages[sessionId] ?? [];
+      const assistantEntries = msgs.map((m, i) => ({ m, i })).filter(({ m }) => m.role === "assistant");
+      const lastAssistantIdx = assistantEntries.length > 0 ? assistantEntries[assistantEntries.length - 1].i : -1;
+      if (lastAssistantIdx === -1) return { refiningSessionId: null, refineContent: "" };
+      const refined: Message = {
+        ...msgs[lastAssistantIdx],
+        content: refineContent,
+        model_name: modelName ?? msgs[lastAssistantIdx].model_name,
+      };
+      const updated = [...msgs];
+      updated[lastAssistantIdx] = refined;
+      return {
+        refiningSessionId: null,
+        refineContent: "",
+        messages: { ...s.messages, [sessionId]: updated },
+      };
+    });
   },
 }));

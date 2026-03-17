@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp } from "lucide-react";
-import { api, type AiModel, type OllamaModel, type SearchResult } from "../lib/api";
+import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe } from "lucide-react";
+import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 import { useWorkspaceStore, type Project } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -17,11 +17,11 @@ export default function ChatView() {
   const {
     sessions, messages, activeChatId, setActiveChatId,
     setSessions, setMessages, appendMessage, appendStreamChunk, finalizeStream,
-    streamingSessionId, streamingContent,
+    streamingSessionId, streamingContent, setStreamingSession,
   } = useChatStore();
 
-  const { activeProjectId, projects, setActiveProjectId } = useWorkspaceStore();
-  const { preferredModel, ollamaUrl } = useSettingsStore();
+  const { activeProjectId, projects, setActiveProjectId, activeWorkspaceId } = useWorkspaceStore();
+  const { preferredModel, ollamaUrl, dualModelEnabled, draftModel, setDualModelEnabled, setDraftModel } = useSettingsStore();
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -61,11 +61,103 @@ export default function ChatView() {
   // Per-message metadata (tokens, duration) keyed by message ID
   const [messageStats, setMessageStats] = useState<Record<string, { tokens?: number; durationMs?: number }>>({});
 
+  // ── Thought Queue panel ────────────────────────────────────────────────
+  const [thoughtPanelOpen, setThoughtPanelOpen] = useState(false);
+  const [thoughts, setThoughts] = useState<ThoughtItem[]>([]);
+  const [thoughtDraft, setThoughtDraft] = useState("");
+  const [thoughtSchedule, setThoughtSchedule] = useState("");
+  const [thoughtScheduleEnabled, setThoughtScheduleEnabled] = useState(false);
+  const [thoughtSubmitting, setThoughtSubmitting] = useState(false);
+  const [thoughtExpandedId, setThoughtExpandedId] = useState<string | null>(null);
+  const thoughtProcessingRef = useRef<Set<string>>(new Set());
+
+  const loadThoughts = useCallback(async () => {
+    if (!activeWorkspaceId) return;
+    try {
+      const items = await api.thoughtQueue.list(activeWorkspaceId);
+      setThoughts(items);
+    } catch { /* ignore */ }
+  }, [activeWorkspaceId]);
+
+  useEffect(() => {
+    if (!thoughtPanelOpen) return;
+    loadThoughts();
+  }, [thoughtPanelOpen, loadThoughts]);
+
+  const processDueThought = useCallback(async (thought: ThoughtItem) => {
+    if (thoughtProcessingRef.current.has(thought.id)) return;
+    thoughtProcessingRef.current.add(thought.id);
+    try {
+      await api.thoughtQueue.updateStatus(thought.id, "processing");
+      setThoughts((prev) => prev.map((t) => t.id === thought.id ? { ...t, status: "processing" } : t));
+      const userContent = thought.prompt_prefix.trim()
+        ? `${thought.prompt_prefix}\n\n${thought.content}`
+        : thought.content;
+      const result = await api.ollama.sendMessage(thought.id, thought.model_name, [{ role: "user", content: userContent }], false, ollamaUrl);
+      await api.thoughtQueue.updateResult(thought.id, result);
+      setThoughts((prev) => prev.map((t) => t.id === thought.id ? { ...t, status: "done", result, result_at: new Date().toISOString() } : t));
+      setThoughtExpandedId(thought.id);
+    } catch {
+      await api.thoughtQueue.updateStatus(thought.id, "scheduled").catch(() => {});
+      setThoughts((prev) => prev.map((t) => t.id === thought.id ? { ...t, status: "scheduled" } : t));
+    } finally {
+      thoughtProcessingRef.current.delete(thought.id);
+    }
+  }, [ollamaUrl]);
+
+  useEffect(() => {
+    if (!activeWorkspaceId || !thoughtPanelOpen) return;
+    async function pollDue() {
+      if (!activeWorkspaceId) return;
+      try {
+        const due = await api.thoughtQueue.getDue(activeWorkspaceId);
+        for (const t of due) processDueThought(t);
+      } catch { /* ignore */ }
+    }
+    pollDue();
+    const timer = setInterval(pollDue, 60_000);
+    return () => clearInterval(timer);
+  }, [activeWorkspaceId, thoughtPanelOpen, processDueThought]);
+
+  async function submitThought() {
+    if (!activeWorkspaceId || !thoughtDraft.trim()) return;
+    setThoughtSubmitting(true);
+    try {
+      const processAt = thoughtScheduleEnabled && thoughtSchedule ? new Date(thoughtSchedule).toISOString() : undefined;
+      const item = await api.thoughtQueue.create(activeWorkspaceId, thoughtDraft.trim(), {
+        processAt, modelName: selectedModel || undefined,
+      });
+      setThoughts((prev) => [item, ...prev]);
+      setThoughtDraft("");
+      setThoughtScheduleEnabled(false);
+    } finally {
+      setThoughtSubmitting(false);
+    }
+  } 
+
+  // Web AI session settings
+  const [preserveWebSession, setPreserveWebSession] = useState(false);
+
+  useEffect(() => {
+    api.settings.get().then((s) => setPreserveWebSession(s.web_session_preserve)).catch(() => {});
+  }, []);
+
+  // Dual-model (draft + refine) state
+  const [isRefiningPhase, setIsRefiningPhase] = useState(false);
+  const [draftSnapshot, setDraftSnapshot] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const activeMessages = activeChatId ? (messages[activeChatId] ?? []) : [];
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
+
+  // Web AI provider detection
+  const selectedModelMeta = aiModelList.find((m) => m.model_id === selectedModel);
+  const isWebProvider = selectedModelMeta?.provider.startsWith("web_") ?? false;
+  const webProviderKey = isWebProvider ? selectedModelMeta!.provider.replace("web_", "") : "";
+  const webProviderLabel: Record<string, string> = {
+    chatgpt: "ChatGPT", deepseek: "DeepSeek", claude: "Claude", gemini: "Gemini",
+  };
 
   // Filter + sort sessions: pinned first, then by date
   const filteredSessions = sessions.filter(
@@ -257,34 +349,108 @@ export default function ChatView() {
 
     history.push({ role: "user", content: finalUserContent });
 
-    try {
-      const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
-        if (done) {
-          finalizeStream(sid!, selectedModel);
-          setIsStreaming(false);
-          unlisten();
-          const store = useChatStore.getState();
-          const assembled = store.streamingContent;
-          const msgs = store.messages[sid!] ?? [];
-          const lastMsg = msgs[msgs.length - 1];
-          if (lastMsg && (tokensUsed || durationMs)) {
-            setMessageStats((prev) => ({ ...prev, [lastMsg.id]: { tokens: tokensUsed, durationMs } }));
+    if (isWebProvider && webProviderKey) {
+      // ── Web AI (Playwright) path ───────────────────────────────────────────
+      try {
+        const unlisten = await api.listenStream(sid, (chunk, done) => {
+          if (done) {
+            const assembled = useChatStore.getState().streamingContent;
+            finalizeStream(sid!, selectedModel);
+            setIsStreaming(false);
+            unlisten();
+            api.chat.addMessage(sid!, "assistant", assembled, selectedModel).catch(() => {});
+          } else {
+            appendStreamChunk(sid!, chunk);
           }
-          api.chat.addMessage(sid!, "assistant", assembled, selectedModel, tokensUsed).catch(() => {});
-          if (tokensUsed && tokensUsed > 0) {
-            api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
+        });
+        await api.webAI.sendMessage(sid, webProviderKey, finalUserContent, preserveWebSession);
+      } catch (err) {
+        setIsStreaming(false);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
+        finalizeStream(sid, selectedModel);
+      }
+    } else if (dualModelEnabled && draftModel && draftModel !== selectedModel) {
+      // ── Dual-model path: draft first (small model), then refine (large model) ──
+      setIsRefiningPhase(false);
+      try {
+        let draftUnlisten: (() => void) | null = null;
+        draftUnlisten = await api.listenStream(sid!, (chunk, done) => {
+          if (done) {
+            // Snapshot the draft BEFORE clearing the streaming state
+            const draftText = useChatStore.getState().streamingContent;
+            setDraftSnapshot(draftText);
+            setStreamingSession(null); // clear streaming bubble without finalizing
+            setIsRefiningPhase(true);
+            draftUnlisten?.();
+          } else {
+            appendStreamChunk(sid!, chunk);
           }
-        } else {
-          appendStreamChunk(sid!, chunk);
-        }
-      });
+        });
 
-      await api.ollama.sendMessage(sid, selectedModel, history, true, ollamaUrl);
-    } catch (err) {
-      setIsStreaming(false);
-      const errMsg = err instanceof Error ? err.message : String(err);
-      appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
-      finalizeStream(sid, selectedModel);
+        let refineUnlisten: (() => void) | null = null;
+        refineUnlisten = await api.listenRefineStream(sid!, (chunk, done, tokensUsed, durationMs) => {
+          if (done) {
+            const refineText = useChatStore.getState().streamingContent;
+            finalizeStream(sid!, selectedModel);
+            setIsRefiningPhase(false);
+            setDraftSnapshot("");
+            setIsStreaming(false);
+            refineUnlisten?.();
+            const store = useChatStore.getState();
+            const msgs = store.messages[sid!] ?? [];
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && (tokensUsed || durationMs)) {
+              setMessageStats((prev) => ({ ...prev, [lastMsg.id]: { tokens: tokensUsed, durationMs } }));
+            }
+            api.chat.addMessage(sid!, "assistant", refineText, selectedModel, tokensUsed).catch(() => {});
+            if (tokensUsed && tokensUsed > 0) {
+              api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
+            }
+          } else {
+            appendStreamChunk(sid!, chunk);
+          }
+        });
+
+        await api.ollama.sendDualModelMessage(sid!, draftModel, selectedModel, history, ollamaUrl);
+      } catch (err) {
+        setIsStreaming(false);
+        setIsRefiningPhase(false);
+        setDraftSnapshot("");
+        const errMsg = err instanceof Error ? err.message : String(err);
+        appendStreamChunk(sid!, `\n\n⚠️ Error: ${errMsg}`);
+        finalizeStream(sid!, selectedModel);
+      }
+    } else {
+      // ── Normal single-model path ──
+      try {
+        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
+          if (done) {
+            const assembled = useChatStore.getState().streamingContent;
+            finalizeStream(sid!, selectedModel);
+            setIsStreaming(false);
+            unlisten();
+            const msgs = useChatStore.getState().messages[sid!] ?? [];
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && (tokensUsed || durationMs)) {
+              setMessageStats((prev) => ({ ...prev, [lastMsg.id]: { tokens: tokensUsed, durationMs } }));
+            }
+            api.chat.addMessage(sid!, "assistant", assembled, selectedModel, tokensUsed).catch(() => {});
+            if (tokensUsed && tokensUsed > 0) {
+              api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
+            }
+          } else {
+            appendStreamChunk(sid!, chunk);
+          }
+        });
+
+        await api.ollama.sendMessage(sid, selectedModel, history, true, ollamaUrl);
+      } catch (err) {
+        setIsStreaming(false);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
+        finalizeStream(sid, selectedModel);
+      }
     }
 
     // Auto-generate title based on settings
@@ -749,6 +915,32 @@ export default function ChatView() {
                 Try {nextModel.name}
               </button>
             )}
+            {/* Dual-model toggle */}
+            <button
+              onClick={() => setDualModelEnabled(!dualModelEnabled)}
+              title={dualModelEnabled ? `Dual model ON — draft: ${draftModel || "(none)"} → refine: ${selectedModel}` : "Enable dual-model mode (draft + refine)"}
+              className={`flex items-center gap-1 px-2 py-1 text-xs rounded border transition-colors ${
+                dualModelEnabled
+                  ? "bg-amber-500/15 border-amber-500/50 text-amber-400"
+                  : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+              }`}
+            >
+              <Zap size={12} />
+              {dualModelEnabled && <span className="text-[10px] hidden sm:inline">Draft</span>}
+            </button>
+            {dualModelEnabled && (
+              <select
+                value={draftModel}
+                onChange={(e) => setDraftModel(e.target.value)}
+                title="Draft model (small/fast)"
+                className="text-xs px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 outline-none max-w-[120px]"
+              >
+                <option value="">Draft model…</option>
+                {availableModels.map((m) => (
+                  <option key={m} value={m}>{modelDisplayName(m)}</option>
+                ))}
+              </select>
+            )}
             {/* Grounded (RAG) toggle */}
             <button
               onClick={() => setGroundedEnabled((v) => !v)}
@@ -774,7 +966,33 @@ export default function ChatView() {
                 {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
               </select>
             )}
+            {/* Thought queue toggle */}
+            <button
+              onClick={() => setThoughtPanelOpen((v) => !v)}
+              title="Thought Queue"
+              className={`flex items-center gap-1 px-2 py-1 text-xs rounded border transition-colors ${
+                thoughtPanelOpen
+                  ? "bg-[var(--accent-color)]/15 border-[var(--accent-color)] text-[var(--accent-color)]"
+                  : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+              }`}
+            >
+              <Inbox size={12} />
+              {thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length > 0 && (
+                <span className="text-[10px]">{thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length}</span>
+              )}
+            </button>
           </div>
+
+          {/* Web AI provider notice */}
+          {isWebProvider && webProviderKey && (
+            <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-400 flex items-center gap-1.5">
+              <Globe size={12} />
+              A browser window will open — log in to {webProviderLabel[webProviderKey] ?? webProviderKey} and your query will be submitted automatically.
+              {!preserveWebSession && (
+                <span className="ml-auto text-[10px] opacity-60">Session cleared after query</span>
+              )}
+            </div>
+          )}
 
           {/* Grounded mode warning if no processed docs */}
           {groundedEnabled && processedDocCount === 0 && activeProjectId && (
@@ -906,10 +1124,42 @@ export default function ChatView() {
               </div>
             ))}
 
-            {/* Streaming bubble */}
+            {/* Draft snapshot bubble — shown during refine phase */}
+            {isRefiningPhase && draftSnapshot && (
+              <div className="flex flex-col gap-1 items-start">
+                <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm message-assistant opacity-60 border border-amber-500/20">
+                  <div className="flex items-center gap-1 mb-1 text-[10px] text-amber-400">
+                    <Zap size={9} /> Draft ({draftModel})
+                  </div>
+                  <div className="prose prose-sm prose-invert max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{draftSnapshot}</ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Refining indicator — between draft done and first refine chunk */}
+            {isRefiningPhase && !isCurrentlyStreaming && (
+              <div className="flex items-center gap-2 text-xs text-amber-400 px-1">
+                <Zap size={11} className="animate-pulse" />
+                <span className="animate-pulse">Refining with {selectedModel}…</span>
+              </div>
+            )}
+
+            {/* Streaming bubble (draft phase or refine phase) */}
             {isCurrentlyStreaming && streamingContent && (
               <div className="flex flex-col gap-1 items-start">
                 <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm message-assistant">
+                  {dualModelEnabled && draftModel && !isRefiningPhase && (
+                    <div className="flex items-center gap-1 mb-1 text-[10px] text-amber-400">
+                      <Zap size={9} /> Drafting with {draftModel}…
+                    </div>
+                  )}
+                  {isRefiningPhase && (
+                    <div className="flex items-center gap-1 mb-1 text-[10px] text-[var(--accent-color)]">
+                      <Zap size={9} /> Refining with {selectedModel}…
+                    </div>
+                  )}
                   <div className="prose prose-sm prose-invert max-w-none">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
                   </div>
@@ -948,6 +1198,102 @@ export default function ChatView() {
                 <Send size={16} />
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Thought Queue right panel ─────────────────────────────────────── */}
+      {thoughtPanelOpen && (
+        <div className="w-72 shrink-0 border-l border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)] overflow-hidden">
+          {/* header */}
+          <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)] shrink-0">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
+              <Inbox size={13} /> Thought Queue
+            </div>
+            <button onClick={() => setThoughtPanelOpen(false)} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+              <X size={13} />
+            </button>
+          </div>
+
+          {/* quick-add */}
+          <div className="p-3 border-b border-[var(--border-color)] shrink-0 space-y-2">
+            <textarea
+              value={thoughtDraft}
+              onChange={(e) => setThoughtDraft(e.target.value)}
+              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submitThought(); }}
+              placeholder="Dump a thought… (⌘↵ to add)"
+              rows={3}
+              className="w-full text-xs px-2.5 py-1.5 rounded-md bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none resize-none focus:border-[var(--accent-color)]"
+            />
+            <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] cursor-pointer select-none">
+              <input type="checkbox" checked={thoughtScheduleEnabled} onChange={(e) => setThoughtScheduleEnabled(e.target.checked)} className="rounded" />
+              <Clock size={11} /> Schedule
+            </label>
+            {thoughtScheduleEnabled && (
+              <input
+                type="datetime-local"
+                value={thoughtSchedule}
+                onChange={(e) => setThoughtSchedule(e.target.value)}
+                className="w-full text-[11px] px-2 py-1 rounded-md bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+              />
+            )}
+            <button
+              onClick={submitThought}
+              disabled={thoughtSubmitting || !thoughtDraft.trim()}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-[var(--accent-color)] text-white text-xs font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
+            >
+              {thoughtSubmitting ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+              {thoughtScheduleEnabled ? "Schedule" : "Add"}
+            </button>
+          </div>
+
+          {/* list */}
+          <div className="flex-1 overflow-y-auto p-2 space-y-2">
+            {thoughts.length === 0 ? (
+              <p className="text-[11px] text-[var(--text-muted)] text-center pt-6">No thoughts yet.</p>
+            ) : (
+              [...thoughts.filter((t) => t.status === "processing"), ...thoughts.filter((t) => t.status === "scheduled"), ...thoughts.filter((t) => t.status === "pending"), ...thoughts.filter((t) => t.status === "done")].map((t) => (
+                <div
+                  key={t.id}
+                  className={`rounded-lg border text-[11px] ${
+                    t.status === "processing" ? "border-yellow-500/30 bg-yellow-500/5" :
+                    t.status === "done" ? "border-green-500/20 bg-[var(--bg-primary)]" :
+                    "border-[var(--border-color)] bg-[var(--bg-primary)]"
+                  }`}
+                >
+                  <div className="p-2">
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                      {t.status === "pending" && <span className="text-[var(--text-muted)]">pending</span>}
+                      {t.status === "scheduled" && <span className="flex items-center gap-0.5 text-blue-400"><Clock size={9} /> scheduled</span>}
+                      {t.status === "processing" && <span className="flex items-center gap-0.5 text-yellow-400"><Loader2 size={9} className="animate-spin" /> running</span>}
+                      {t.status === "done" && <span className="flex items-center gap-0.5 text-green-400"><CheckCircle2 size={9} /> done</span>}
+                      <span className="ml-auto text-[var(--text-muted)] opacity-60">{new Date(t.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <p className="text-[var(--text-primary)] leading-snug line-clamp-3 whitespace-pre-wrap">{t.content}</p>
+                    <div className="flex items-center gap-1 mt-1.5">
+                      {(t.status === "pending" || t.status === "scheduled") && (
+                        <button onClick={() => processDueThought({ ...t, status: "scheduled" })} title="Process now" className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors">
+                          <Zap size={11} />
+                        </button>
+                      )}
+                      {t.result && (
+                        <button onClick={() => setThoughtExpandedId(thoughtExpandedId === t.id ? null : t.id)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                          {thoughtExpandedId === t.id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                        </button>
+                      )}
+                      <button onClick={async () => { await api.thoughtQueue.delete(t.id).catch(() => {}); setThoughts((prev) => prev.filter((x) => x.id !== t.id)); }} className="ml-auto text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  </div>
+                  {thoughtExpandedId === t.id && t.result && (
+                    <div className="border-t border-[var(--border-color)] px-2 py-2">
+                      <p className="text-[var(--text-primary)] whitespace-pre-wrap leading-snug">{t.result}</p>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

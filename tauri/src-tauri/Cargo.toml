@@ -37,6 +37,9 @@ base64 = "0.22"
 sha2 = "0.10"
 keyring = { version = "3", features = ["apple-native"] }
 dirs = "5.0"
+aes-gcm = "0.10"
+pbkdf2 = "0.12"
+hmac = "0.12"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

@@ -1,6 +1,7 @@
 pub mod workspace;
 pub mod project;
 pub mod chat;
+pub mod thought_queue;
 pub mod knowledge_graph;
 pub mod learning_goal;
 pub mod learning_card;
