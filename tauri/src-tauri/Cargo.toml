@@ -36,6 +36,7 @@ lopdf = "0.34"
 base64 = "0.22"
 sha2 = "0.10"
 keyring = { version = "3", features = ["apple-native"] }
+dirs = "5.0"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

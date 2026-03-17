@@ -1,6 +1,5 @@
-use tauri::{AppHandle, State};
+use tauri::AppHandle;
 use serde::{Deserialize, Serialize};
-use crate::db::DbState;
 use crate::ollama::client::{OllamaClient, OllamaMessage, ModelInfo};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +40,16 @@ pub async fn list_models(ollama_url: Option<String>) -> Result<Vec<ModelInfo>, S
 pub async fn generate_title(model: String, first_message: String, ollama_url: Option<String>) -> Result<String, String> {
     let client = OllamaClient::new(ollama_url);
     client.generate_title(&model, &first_message).await
+}
+
+#[tauri::command]
+pub async fn generate_title_from_conversation(
+    model: String,
+    conversation: Vec<OllamaMessage>,
+    ollama_url: Option<String>,
+) -> Result<String, String> {
+    let client = OllamaClient::new(ollama_url);
+    client.generate_title_from_conversation(&model, conversation).await
 }
 
 #[tauri::command]

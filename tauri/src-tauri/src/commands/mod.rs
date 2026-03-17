@@ -16,3 +16,6 @@ pub mod demo;
 pub mod alarm;
 pub mod web_capture;
 pub mod ai_model;
+pub mod ai_knowledge;
+pub mod memory;
+pub mod mcp;

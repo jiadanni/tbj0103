@@ -1,7 +1,8 @@
 use tauri::State;
 use crate::db::DbState;
-use crate::models::learning_card::{LearningCard, ReviewRequest, ReviewStats, CreateCardRequest};
+use crate::models::learning_card::{LearningCard, ReviewRequest, ReviewStats, CreateCardRequest, GenerateCardsRequest};
 use crate::services::spaced_repetition;
+use crate::ollama::client::{OllamaClient, OllamaMessage};
 
 fn row_to_card(row: &rusqlite::Row) -> rusqlite::Result<LearningCard> {
     Ok(LearningCard {
@@ -101,4 +102,61 @@ pub fn get_review_stats(state: State<DbState>, workspace_id: String) -> Result<R
         rusqlite::params![workspace_id], |r| r.get(0)
     ).unwrap_or(2.5);
     Ok(ReviewStats { total_cards, due_today, learned, avg_ease })
+}
+
+/// Use an LLM to generate flashcards from a topic, then bulk-insert them.
+#[tauri::command]
+pub async fn generate_flashcards(state: State<'_, DbState>, req: GenerateCardsRequest) -> Result<Vec<LearningCard>, String> {
+    let count = req.count.unwrap_or(5).min(20);
+    let prompt = format!(
+        "Generate exactly {count} flashcards about: \"{topic}\"\n\n\
+        Output ONLY a JSON array of objects, each with \"front\" (question) and \"back\" (answer) keys.\n\
+        No markdown, no explanation, no code fences — just the raw JSON array.\n\
+        Example: [{{\"front\":\"What is X?\",\"back\":\"X is...\"}}]",
+        count = count,
+        topic = req.topic,
+    );
+    let client = OllamaClient::new(req.ollama_url);
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+    let raw = client.send_message(&req.model, messages).await?;
+
+    // Parse the JSON array from the response, stripping any markdown fences
+    let trimmed = raw.trim();
+    let json_str = if let Some(start) = trimmed.find('[') {
+        if let Some(end) = trimmed.rfind(']') {
+            &trimmed[start..=end]
+        } else {
+            return Err("AI response did not contain a valid JSON array".to_string());
+        }
+    } else {
+        return Err("AI response did not contain a JSON array".to_string());
+    };
+
+    #[derive(serde::Deserialize)]
+    struct CardPair {
+        front: String,
+        back: String,
+    }
+
+    let pairs: Vec<CardPair> = serde_json::from_str(json_str)
+        .map_err(|e| format!("Failed to parse AI-generated cards: {e}\nRaw: {json_str}"))?;
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut cards = Vec::new();
+    for pair in pairs {
+        if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
+        let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
+        card.source_type = "ai_generated".to_string();
+        conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id,
+                              card.ease_factor, card.interval, card.repetitions, card.next_review_date, card.last_reviewed_at, card.created_at],
+        ).map_err(|e| e.to_string())?;
+        cards.push(card);
+    }
+    Ok(cards)
 }

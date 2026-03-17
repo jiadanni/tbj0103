@@ -1,6 +1,6 @@
 use tauri::State;
 use crate::db::DbState;
-use crate::models::chat::{ChatSession, Message, Citation, CreateChatSessionRequest, AddMessageRequest};
+use crate::models::chat::{ChatSession, Message, CreateChatSessionRequest, AddMessageRequest};
 
 #[tauri::command]
 pub fn create_chat_session(state: State<DbState>, req: CreateChatSessionRequest) -> Result<ChatSession, String> {

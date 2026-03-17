@@ -3,6 +3,8 @@ pub mod models;
 pub mod services;
 pub mod commands;
 pub mod ollama;
+pub mod mcp_server;
+pub mod mcp_client;
 
 use tauri::Manager;
 
@@ -24,6 +26,12 @@ pub fn run() {
             let conn = db::initialize_database(&db_path)
                 .expect("Failed to initialize database");
             app.manage(db::DbState(std::sync::Mutex::new(conn)));
+
+            // Initialize MCP Client Manager
+            let mcp_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
+                mcp_client::MCPClientManager::new()
+            ));
+            app.manage(mcp_manager);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -66,6 +74,7 @@ pub fn run() {
             commands::flashcard::list_flashcards_due,
             commands::flashcard::review_flashcard,
             commands::flashcard::get_review_stats,
+            commands::flashcard::generate_flashcards,
             // Note & template commands
             commands::note::create_note,
             commands::note::list_notes,
@@ -91,6 +100,7 @@ pub fn run() {
             commands::ollama::send_message,
             commands::ollama::list_models,
             commands::ollama::generate_title,
+            commands::ollama::generate_title_from_conversation,
             commands::ollama::generate_embedding,
             // Export commands
             commands::export::export_markdown,
@@ -137,6 +147,27 @@ pub fn run() {
             commands::ai_model::delete_ai_model,
             commands::ai_model::get_default_model,
             commands::ai_model::record_model_token_usage,
+            // AI knowledge commands
+            commands::ai_knowledge::analyze_workspace,
+            commands::ai_knowledge::suggest_learning_goals,
+            // Memory commands
+            commands::memory::create_memory,
+            commands::memory::list_memories,
+            commands::memory::update_memory,
+            commands::memory::delete_memory,
+            commands::memory::get_active_memories,
+            commands::memory::extract_memories,
+            // MCP commands
+            commands::mcp::list_mcp_servers,
+            commands::mcp::add_mcp_server,
+            commands::mcp::update_mcp_server,
+            commands::mcp::delete_mcp_server,
+            commands::mcp::mcp_list_tools,
+            commands::mcp::mcp_list_resources,
+            commands::mcp::mcp_call_tool,
+            commands::mcp::mcp_read_resource,
+            commands::mcp::mcp_connect_server,
+            commands::mcp::mcp_disconnect_server,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

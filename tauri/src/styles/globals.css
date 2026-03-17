@@ -9,6 +9,7 @@
 
 :root {
   --accent-color: #007AFF;
+  --accent-color-rgb: 0, 122, 255;
   --sidebar-width: 240px;
   --font-size-base: 14px;
 }
@@ -24,8 +25,12 @@
   --bg-secondary: #f5f5f5;
   --bg-sidebar: #f0f0f0;
   --text-primary: #1a1a1a;
-  --text-secondary: #6b7280;
-  --border: #e5e7eb;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --bg-elevated: #fafafa;
+  --bg-hover: #efefef;
+  --bg-input: #ffffff;
+  --border-color: #e5e7eb;
 }
 
 /* Dark */
@@ -34,8 +39,12 @@
   --bg-secondary: #242424;
   --bg-sidebar: #1e1e1e;
   --text-primary: #f9fafb;
-  --text-secondary: #9ca3af;
-  --border: #374151;
+  --text-secondary: #d1d5db;
+  --text-muted: #6b7280;
+  --bg-elevated: #2d2d2d;
+  --bg-hover: #333333;
+  --bg-input: #0f0f0f;
+  --border-color: #374151;
 }
 
 /* OLED black */
@@ -44,8 +53,12 @@
   --bg-secondary: #0a0a0a;
   --bg-sidebar: #050505;
   --text-primary: #ffffff;
-  --text-secondary: #a1a1aa;
-  --border: #27272a;
+  --text-secondary: #d4d4d8;
+  --text-muted: #71717a;
+  --bg-elevated: #1a1a1a;
+  --bg-hover: #27272a;
+  --bg-input: #000000;
+  --border-color: #27272a;
 }
 
 /* Sepia */
@@ -53,9 +66,13 @@
   --bg-primary: #f4ecd8;
   --bg-secondary: #ede4cc;
   --bg-sidebar: #e8dfc8;
-  --text-primary: #3b2f1e;
-  --text-secondary: #7a6040;
-  --border: #d6c9a8;
+  --text-primary: #2a1810;
+  --text-secondary: #5a4830;
+  --text-muted: #8b7355;
+  --bg-elevated: #f9f3e6;
+  --bg-hover: #e0d7c3;
+  --bg-input: #ffffff;
+  --border-color: #d6c9a8;
 }
 
 /* Hacker green */
@@ -64,8 +81,12 @@
   --bg-secondary: #0d150d;
   --bg-sidebar: #0b110b;
   --text-primary: #00ff41;
-  --text-secondary: #008f11;
-  --border: #003b00;
+  --text-secondary: #00d633;
+  --text-muted: #008f11;
+  --bg-elevated: #0f1a0f;
+  --bg-hover: #112011;
+  --bg-input: #050a05;
+  --border-color: #003b00;
 }
 
 /* =====================================================
@@ -109,12 +130,42 @@ body {
 /* =====================================================
    Markdown prose styling overrides
    ===================================================== */
+.prose {
+  color: var(--text-primary);
+}
+.prose a {
+  color: var(--accent-color);
+}
+.prose strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
 .prose pre {
   @apply rounded-lg text-sm;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
 }
 .prose code:not(pre code) {
-  @apply px-1.5 py-0.5 rounded text-sm bg-gray-100 dark:bg-gray-800 text-pink-600 dark:text-pink-400;
+  @apply px-1.5 py-0.5 rounded text-sm;
+  background-color: var(--bg-secondary);
+  color: var(--accent-color);
   font-weight: normal;
+}
+.prose table {
+  @apply w-full text-sm border-collapse my-3;
+}
+.prose th {
+  @apply px-3 py-1.5 text-left font-semibold border-b-2;
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+.prose td {
+  @apply px-3 py-1.5 border-b;
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+.prose tr:hover td {
+  background-color: var(--bg-hover);
 }
 
 /* =====================================================
@@ -134,7 +185,9 @@ body {
   @apply bg-blue-600 text-white rounded-2xl rounded-tr-sm;
 }
 .message-assistant {
-  @apply bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-2xl rounded-tl-sm;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  @apply rounded-2xl rounded-tl-sm;
 }
 
 /* =====================================================
@@ -147,4 +200,67 @@ body {
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+
+/* =====================================================
+   Checkbox and Radio Button Styling
+   ===================================================== */
+input[type="checkbox"],
+input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 3px;
+  background-color: var(--bg-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  background-image: none;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 12px;
+}
+
+input[type="radio"] {
+  border-radius: 50%;
+}
+
+input[type="checkbox"]:hover,
+input[type="radio"]:hover {
+  border-color: var(--accent-color);
+  background-color: var(--bg-secondary);
+}
+
+input[type="checkbox"]:checked {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='white' d='M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 11-1.06-1.06l7.25-7.25a.75.75 0 011.06 0z'/%3E%3C/svg%3E");
+}
+
+input[type="radio"]:checked {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+  background-image: radial-gradient(circle, white 3px, transparent 3px);
+}
+
+input[type="checkbox"]:focus,
+input[type="radio"]:focus {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 1px;
+}
+
+/* =====================================================
+   Textarea and Input Focus Styling
+   ===================================================== */
+textarea:focus,
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+select:focus {
+  border-color: var(--accent-color) !important;
+  box-shadow: 0 0 0 3px rgba(var(--accent-color-rgb), 0.1);
 }
