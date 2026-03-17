@@ -3,7 +3,7 @@
  * Mirrors SettingsView.swift.
  */
 import { useEffect, useState } from "react";
-import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network } from "lucide-react";
+import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -21,11 +21,12 @@ const ACCENT_COLORS = [
   { label: "Cyan",   value: "#06b6d4" },
 ];
 
-type Tab = "appearance" | "ai" | "security" | "workspaces" | "backup" | "plugins" | "mcp";
+type Tab = "appearance" | "ai" | "webai" | "security" | "workspaces" | "backup" | "plugins" | "mcp";
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: "appearance",  label: "Appearance",  Icon: Palette },
   { id: "ai",          label: "AI",          Icon: Bot },
+  { id: "webai",       label: "Web AI",      Icon: Globe },
   { id: "security",    label: "Security",    Icon: ShieldCheck },
   { id: "workspaces",  label: "Workspaces",  Icon: LayoutGrid },
   { id: "backup",      label: "Backup",      Icon: HardDrive },
@@ -141,7 +142,7 @@ export default function SettingsView() {
       </div>
 
       {/* Tab content — inline sections */}
-      {(activeTab === "appearance" || activeTab === "ai" || activeTab === "security") && (
+      {(activeTab === "appearance" || activeTab === "ai" || activeTab === "security" || activeTab === "webai") && (
       <div className="flex-1 overflow-y-auto px-6 py-5">
         <div className="max-w-lg space-y-5">
 
@@ -410,6 +411,43 @@ export default function SettingsView() {
                 </div>
                 <p className="text-xs text-[var(--text-muted)] mt-2">
                   AI-generated titles improve chat organization. 'Periodic' refreshes the title based on conversation progress.
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* ── Web AI ── */}
+          {activeTab === "webai" && (
+            <>
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Web AI Providers</h3>
+                <p className="text-xs text-[var(--text-muted)] mb-3">
+                  Use ChatGPT, DeepSeek, Claude, and Gemini via browser automation. Select a web provider from the Chat view model dropdown to activate. Requires Node.js and the <code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">playwright</code> npm package (<code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">npm install -g playwright && npx playwright install chromium</code>).
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between py-2 border-b border-[var(--border-color)]">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Preserve browser session</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-sm">
+                    When <strong>off</strong> (default): login cookies are wiped from disk after every query — safest. When <strong>on</strong>: session is saved so you stay logged in between queries.
+                  </p>
+                  {dbSettings.web_session_preserve && (
+                    <p className="mt-1.5 text-[11px] px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 max-w-sm">
+                      ⚠ Login cookies for web AI providers are stored on disk. Disable to wipe credentials after every query.
+                    </p>
+                  )}
+                </div>
+                <Toggle
+                  on={dbSettings.web_session_preserve}
+                  onToggle={() => set("web_session_preserve", !dbSettings.web_session_preserve)}
+                />
+              </div>
+
+              <div className="pt-2 space-y-2">
+                <p className="text-xs text-[var(--text-secondary)] font-medium">Enabling web providers</p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Go to the <strong>AI</strong> tab → Model Priority List and enable any web AI entry (ChatGPT Web, DeepSeek Web, Claude Web, Gemini Web) to make it appear in the Chat view model dropdown.
                 </p>
               </div>
             </>

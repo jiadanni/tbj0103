@@ -1,9 +1,16 @@
 use tauri::State;
 use crate::db::DbState;
 use crate::models::chat::{ChatSession, Message, CreateChatSessionRequest, AddMessageRequest};
+use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
+use crate::services::chat_file_store;
 
 #[tauri::command]
-pub fn create_chat_session(state: State<DbState>, req: CreateChatSessionRequest) -> Result<ChatSession, String> {
+pub fn create_chat_session(
+    state: State<DbState>,
+    chats_dir: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
+    req: CreateChatSessionRequest,
+) -> Result<ChatSession, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut s = ChatSession::new(req.project_id.clone());
     if let Some(t) = req.title { s.title = t; }
@@ -17,6 +24,9 @@ pub fn create_chat_session(state: State<DbState>, req: CreateChatSessionRequest)
         rusqlite::params![s.id, s.project_id, s.title, s.model_name, s.system_prompt, s.is_pinned as i32,
                           s.parent_session_id, s.branch_message_id, s.created_at, s.updated_at],
     ).map_err(|e| e.to_string())?;
+    // Sync to file (best-effort)
+    let pass = crypto.0.lock().ok().and_then(|g| g.clone());
+    let _ = chat_file_store::write_session_file(&conn, &chats_dir.0, &s.id, pass.as_deref());
     Ok(s)
 }
 
@@ -74,15 +84,26 @@ pub fn get_chat_session(state: State<DbState>, id: String) -> Result<Option<Chat
 }
 
 #[tauri::command]
-pub fn delete_chat_session(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_chat_session(
+    state: State<DbState>,
+    chats_dir: State<ChatsDirState>,
+    id: String,
+) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM chat_sessions WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
+    // Remove JSON file
+    chat_file_store::delete_session_file(&chats_dir.0, &id);
     Ok(())
 }
 
 #[tauri::command]
-pub fn add_message(state: State<DbState>, req: AddMessageRequest) -> Result<Message, String> {
+pub fn add_message(
+    state: State<DbState>,
+    chats_dir: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
+    req: AddMessageRequest,
+) -> Result<Message, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let msg = Message {
         id: uuid::Uuid::new_v4().to_string(),
@@ -105,6 +126,9 @@ pub fn add_message(state: State<DbState>, req: AddMessageRequest) -> Result<Mess
         "UPDATE chat_sessions SET updated_at = ?1 WHERE id = ?2",
         rusqlite::params![now, req.session_id],
     );
+    // Sync full session to file (best-effort)
+    let pass = crypto.0.lock().ok().and_then(|g| g.clone());
+    let _ = chat_file_store::write_session_file(&conn, &chats_dir.0, &req.session_id, pass.as_deref());
     Ok(msg)
 }
 
@@ -138,6 +162,8 @@ pub fn get_messages(state: State<DbState>, session_id: String) -> Result<Vec<Mes
 #[tauri::command]
 pub fn update_chat_session(
     state: State<DbState>,
+    chats_dir: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
     id: String,
     title: Option<String>,
     is_pinned: Option<bool>,
@@ -160,5 +186,8 @@ pub fn update_chat_session(
             id
         ],
     ).map_err(|e| e.to_string())?;
+    // Sync to file (best-effort)
+    let pass = crypto.0.lock().ok().and_then(|g| g.clone());
+    let _ = chat_file_store::write_session_file(&conn, &chats_dir.0, &id, pass.as_deref());
     Ok(())
 }

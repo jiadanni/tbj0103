@@ -1,6 +1,7 @@
 pub mod workspace;
 pub mod project;
 pub mod chat;
+pub mod chat_file;
 pub mod knowledge_graph;
 pub mod learning_goal;
 pub mod flashcard;
@@ -19,3 +20,5 @@ pub mod ai_model;
 pub mod ai_knowledge;
 pub mod memory;
 pub mod mcp;
+pub mod thought_queue;
+pub mod web_ai;

@@ -11,6 +11,8 @@ interface AppSettings {
   accentColor: string;
   fontSize: number;
   sidebarWidth: number;
+  dualModelEnabled: boolean;
+  draftModel: string;
 }
 
 interface SettingsStore extends AppSettings {
@@ -20,6 +22,8 @@ interface SettingsStore extends AppSettings {
   setAccentColor: (c: string) => void;
   setFontSize: (n: number) => void;
   setSidebarWidth: (n: number) => void;
+  setDualModelEnabled: (v: boolean) => void;
+  setDraftModel: (m: string) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -32,12 +36,16 @@ export const useSettingsStore = create<SettingsStore>()(
       accentColor: "#007AFF",
       fontSize: 14,
       sidebarWidth: 240,
+      dualModelEnabled: false,
+      draftModel: "",
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
       setTheme: (theme) => set({ theme }),
       setAccentColor: (accentColor) => set({ accentColor }),
       setFontSize: (fontSize) => set({ fontSize }),
       setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
+      setDualModelEnabled: (dualModelEnabled) => set({ dualModelEnabled }),
+      setDraftModel: (draftModel) => set({ draftModel }),
     }),
     { name: "aetherium-settings" }
   )

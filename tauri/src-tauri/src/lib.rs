@@ -25,7 +25,16 @@ pub fn run() {
             let db_path = app_dir.join("aetherium.db");
             let conn = db::initialize_database(&db_path)
                 .expect("Failed to initialize database");
+
+            // Resolve the chats directory and try to load encryption passphrase
+            let chats_dir = app_dir.join("chats");
+            let passphrase = commands::chat_file::load_crypto_state_from_keyring(&conn);
+
             app.manage(db::DbState(std::sync::Mutex::new(conn)));
+            app.manage(commands::chat_file::ChatsDirState(chats_dir));
+            app.manage(commands::chat_file::ChatCryptoState(
+                std::sync::Mutex::new(passphrase),
+            ));
 
             // Initialize MCP Client Manager
             let mcp_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -102,6 +111,7 @@ pub fn run() {
             commands::ollama::generate_title,
             commands::ollama::generate_title_from_conversation,
             commands::ollama::generate_embedding,
+            commands::ollama::send_dual_model_message,
             // Export commands
             commands::export::export_markdown,
             commands::export::export_json,
@@ -168,6 +178,22 @@ pub fn run() {
             commands::mcp::mcp_read_resource,
             commands::mcp::mcp_connect_server,
             commands::mcp::mcp_disconnect_server,
+            // Thought queue commands
+            commands::thought_queue::create_thought,
+            commands::thought_queue::list_thoughts,
+            commands::thought_queue::get_due_thoughts,
+            commands::thought_queue::update_thought_status,
+            commands::thought_queue::update_thought_result,
+            commands::thought_queue::delete_thought,
+            // Chat file / encryption commands
+            commands::chat_file::get_chat_file_info,
+            commands::chat_file::setup_chat_encryption,
+            commands::chat_file::disable_chat_encryption,
+            commands::chat_file::export_chat_as_json,
+            commands::chat_file::import_chat_from_json,
+            commands::chat_file::sync_all_chats_to_files,
+            // Web AI (Playwright bridge)
+            commands::web_ai::send_web_message,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
