@@ -77,6 +77,8 @@ export interface AppSettings {
   auto_lock_minutes: number; theme: string; accent_color: string;
   font_size: number; sidebar_width: number; ollama_base_url: string;
   embedding_model: string;
+  chat_title_auto_refresh: "disabled" | "initial_only" | "periodic";
+  chat_title_refresh_interval: number;
 }
 
 export interface BacklinkEntry {
@@ -94,7 +96,19 @@ export interface CalendarAlarm {
   created_at: string;
 }
 
-export interface StreamEvent { session_id: string; chunk: string; done: boolean; tokens_used?: number; }
+export interface StreamEvent { session_id: string; chunk: string; done: boolean; tokens_used?: number; duration_ms?: number; }
+
+export interface AnalysisResult {
+  concepts_created: number;
+  links_created: number;
+  concepts_skipped: number;
+}
+
+export interface SuggestedGoal {
+  title: string;
+  description: string;
+  related_concepts: string[];
+}
 
 export interface AiModel {
   id: string; name: string; model_id: string; provider: string;
@@ -165,6 +179,8 @@ export const api = {
     review: (cardId: string, quality: number) =>
       invoke<LearningCard>("review_flashcard", { req: { card_id: cardId, quality } }),
     getStats: (workspaceId: string) => invoke<ReviewStats>("get_review_stats", { workspaceId }),
+    generate: (workspaceId: string, topic: string, model: string, count?: number, ollamaUrl?: string) =>
+      invoke<LearningCard[]>("generate_flashcards", { req: { workspace_id: workspaceId, topic, model, count, ollama_url: ollamaUrl } }),
   },
 
   note: {
@@ -216,6 +232,8 @@ export const api = {
     listModels: (ollamaUrl?: string) => invoke<OllamaModel[]>("list_models", { ollamaUrl }),
     generateTitle: (model: string, firstMessage: string, ollamaUrl?: string) =>
       invoke<string>("generate_title", { model, firstMessage, ollamaUrl }),
+    generateTitleFromConversation: (model: string, conversation: { role: string; content: string }[], ollamaUrl?: string) =>
+      invoke<string>("generate_title_from_conversation", { model, conversation, ollamaUrl }),
     generateEmbedding: (text: string, model?: string, ollamaUrl?: string) =>
       invoke<number[]>("generate_embedding", { req: { text, model, ollama_url: ollamaUrl } }),
   },
@@ -289,9 +307,84 @@ export const api = {
       invoke<void>("record_model_token_usage", { modelId, tokens }),
   },
 
+  knowledge: {
+    analyzeWorkspace: (workspaceId: string, model: string, opts?: { ollamaUrl?: string; focusTopic?: string }) =>
+      invoke<AnalysisResult>("analyze_workspace", {
+        req: {
+          workspace_id: workspaceId,
+          model,
+          ollama_url: opts?.ollamaUrl,
+          focus_topic: opts?.focusTopic,
+        },
+      }),
+    suggestGoals: (workspaceId: string, model: string, ollamaUrl?: string) =>
+      invoke<SuggestedGoal[]>("suggest_learning_goals", {
+        req: { workspace_id: workspaceId, model, ollama_url: ollamaUrl },
+      }),
+  },
+
   // Streaming: listen to Ollama stream events for a session
-  listenStream: (sessionId: string, onChunk: (chunk: string, done: boolean, tokensUsed?: number) => void): Promise<UnlistenFn> =>
+  listenStream: (sessionId: string, onChunk: (chunk: string, done: boolean, tokensUsed?: number, durationMs?: number) => void): Promise<UnlistenFn> =>
     listen<StreamEvent>(`ollama-stream-${sessionId}`, (event) => {
-      onChunk(event.payload.chunk, event.payload.done, event.payload.tokens_used);
+      onChunk(event.payload.chunk, event.payload.done, event.payload.tokens_used, event.payload.duration_ms);
     }),
+};
+
+// ====== MCP (Model Context Protocol) ======
+
+export interface MCPServerConfig {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  enabled: boolean;
+  workspace_id: string;
+  created_at: string;
+}
+
+export interface MCPTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface MCPResource {
+  uri: string;
+  name: string;
+  description?: string;
+  mime_type?: string;
+}
+
+export interface MCPResourceTemplate {
+  uri_template: string;
+  name: string;
+  description?: string;
+  mime_type?: string;
+}
+
+export const mcp = {
+  // Server management
+  listServers: () => invoke<MCPServerConfig[]>("list_mcp_servers", {}),
+  addServer: (name: string, command: string, args: string[], workspaceId: string) =>
+    invoke<MCPServerConfig>("add_mcp_server", { name, command, args, workspace_id: workspaceId }),
+  updateServer: (name: string, command: string, args: string[], enabled: boolean) =>
+    invoke<void>("update_mcp_server", { name, command, args, enabled }),
+  deleteServer: (name: string) =>
+    invoke<void>("delete_mcp_server", { name }),
+  connectServer: (serverName: string) =>
+    invoke<void>("mcp_connect_server", { server_name: serverName }),
+  disconnectServer: (serverName: string) =>
+    invoke<void>("mcp_disconnect_server", { server_name: serverName }),
+
+  // Tool discovery and invocation
+  listTools: (serverName: string) =>
+    invoke<MCPTool[]>("mcp_list_tools", { server_name: serverName }),
+  callTool: (serverName: string, toolName: string, arguments: Record<string, unknown>) =>
+    invoke<string>("mcp_call_tool", { server_name: serverName, tool_name: toolName, arguments }),
+
+  // Resource discovery and access
+  listResources: (serverName: string) =>
+    invoke<[MCPResource[], MCPResourceTemplate[]]>("mcp_list_resources", { server_name: serverName }),
+  readResource: (serverName: string, uri: string) =>
+    invoke<string>("mcp_read_resource", { server_name: serverName, uri }),
 };

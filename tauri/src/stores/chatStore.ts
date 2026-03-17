@@ -6,6 +6,7 @@ export interface Message {
   role: "user" | "assistant" | "system";
   content: string;
   model_name?: string;
+  tokens_used?: number;
   created_at: string;
 }
 
@@ -18,6 +19,8 @@ export interface ChatSession {
   is_pinned: boolean;
   created_at: string;
   updated_at: string;
+  title_generated_at?: string;
+  message_count_at_title_gen?: number;
 }
 
 interface ChatStore {

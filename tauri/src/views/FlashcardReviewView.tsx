@@ -1,11 +1,13 @@
 /**
  * FlashcardReviewView — SM-2 spaced repetition card flip UI.
- * Mirrors FlashcardReviewView.swift.
+ * Primary flow: generate cards from a topic via AI.
+ * Manual creation available as secondary option.
  */
 import { useEffect, useState } from "react";
-import { RotateCcw, Plus, CheckCircle, XCircle, Minus, ChevronRight } from "lucide-react";
-import { api, type LearningCard, type ReviewStats } from "../lib/api";
+import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2 } from "lucide-react";
+import { api, type LearningCard, type ReviewStats, type AiModel } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useSettingsStore } from "../stores/settingsStore";
 
 const QUALITY_LABELS = [
   { q: 0, label: "Blackout",   color: "text-red-500",    bg: "bg-red-500/10 hover:bg-red-500/20" },
@@ -18,17 +20,54 @@ const QUALITY_LABELS = [
 
 export default function FlashcardReviewView() {
   const { activeWorkspaceId } = useWorkspaceStore();
+  const { preferredModel, ollamaUrl } = useSettingsStore();
+
   const [cards, setCards] = useState<LearningCard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [reviewed, setReviewed] = useState(0);
+
+  // Generate state
+  const [topic, setTopic] = useState("");
+  const [cardCount, setCardCount] = useState(5);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState("");
+  const [selectedModel, setSelectedModel] = useState(preferredModel || "");
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+
+  // Manual create state
   const [showCreate, setShowCreate] = useState(false);
   const [newFront, setNewFront] = useState("");
   const [newBack, setNewBack] = useState("");
 
   const currentCard = cards[currentIndex] ?? null;
 
+  // Load models
+  useEffect(() => {
+    api.aiModel.list().then((models) => {
+      const enabled = models.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
+      if (enabled.length > 0) {
+        const ids = enabled.map((m) => m.model_id);
+        setAvailableModels(ids);
+        if (!ids.includes(selectedModel)) setSelectedModel(ids[0]);
+        return;
+      }
+      api.ollama.listModels(ollamaUrl).then((m) => {
+        const names = m.map((x) => x.name);
+        setAvailableModels(names);
+        if (!names.includes(selectedModel)) setSelectedModel(names[0] || "");
+      }).catch(() => {});
+    }).catch(() => {
+      api.ollama.listModels(ollamaUrl).then((m) => {
+        const names = m.map((x) => x.name);
+        setAvailableModels(names);
+        if (!names.includes(selectedModel)) setSelectedModel(names[0] || "");
+      }).catch(() => {});
+    });
+  }, [ollamaUrl]);
+
+  // Load due cards + stats
   useEffect(() => {
     if (!activeWorkspaceId) return;
     Promise.all([
@@ -52,12 +91,27 @@ export default function FlashcardReviewView() {
     });
     setReviewed((r) => r + 1);
     setIsFlipped(false);
-    // Move to next card
     if (currentIndex < cards.length - 1) {
       setCurrentIndex((i) => i + 1);
     } else {
-      // Done — reload stats
       if (activeWorkspaceId) api.flashcard.getStats(activeWorkspaceId).then(setStats).catch(() => {});
+    }
+  }
+
+  async function generateCards() {
+    if (!topic.trim() || !activeWorkspaceId || !selectedModel || isGenerating) return;
+    setIsGenerating(true);
+    setGenerateError("");
+    try {
+      const generated = await api.flashcard.generate(activeWorkspaceId, topic.trim(), selectedModel, cardCount, ollamaUrl);
+      setCards((prev) => [...prev, ...generated]);
+      setTopic("");
+      // Refresh stats
+      api.flashcard.getStats(activeWorkspaceId).then(setStats).catch(() => {});
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsGenerating(false);
     }
   }
 
@@ -74,20 +128,75 @@ export default function FlashcardReviewView() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Stats sidebar */}
-      <div className="w-56 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] flex flex-col px-4 py-4 gap-4">
-        <div className="flex items-center justify-between">
+      {/* Sidebar */}
+      <div className="w-56 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] flex flex-col overflow-hidden shrink-0">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)]">
           <h2 className="text-sm font-semibold text-[var(--text-primary)]">Flashcards</h2>
           <button
             onClick={() => setShowCreate(true)}
             className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            title="Add card manually"
           >
             <Plus size={14} />
           </button>
         </div>
 
+        {/* Generate from topic — primary action */}
+        <div className="px-3 py-3 border-b border-[var(--border-color)] space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--accent-color)]">
+            <Sparkles size={12} />
+            Generate from Topic
+          </div>
+          <input
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") generateCards(); }}
+            placeholder="e.g. Rust ownership model"
+            disabled={isGenerating}
+            className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors"
+          />
+          <div className="flex gap-1.5">
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="flex-1 text-[11px] px-1.5 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none min-w-0"
+            >
+              {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <select
+              value={cardCount}
+              onChange={(e) => setCardCount(Number(e.target.value))}
+              className="w-14 text-[11px] px-1 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none"
+            >
+              {[3, 5, 8, 10, 15, 20].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <button
+            onClick={generateCards}
+            disabled={isGenerating || !topic.trim() || !selectedModel}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-[var(--accent-color)] text-white text-xs font-medium hover:opacity-90 disabled:opacity-40 transition-opacity"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles size={12} />
+                Generate {cardCount} Cards
+              </>
+            )}
+          </button>
+          {generateError && (
+            <p className="text-[10px] text-red-400 leading-tight">{generateError}</p>
+          )}
+        </div>
+
+        {/* Stats */}
         {stats && (
-          <div className="space-y-2">
+          <div className="px-4 py-2.5 border-b border-[var(--border-color)] space-y-1.5">
             {[
               { label: "Total", value: stats.total_cards },
               { label: "Due today", value: stats.due_today, accent: true },
@@ -101,33 +210,32 @@ export default function FlashcardReviewView() {
                 </span>
               </div>
             ))}
-          </div>
-        )}
-
-        {reviewed > 0 && (
-          <div className="text-xs text-[var(--text-muted)]">
-            Reviewed this session: <span className="text-[var(--accent-color)]">{reviewed}</span>
+            {reviewed > 0 && (
+              <div className="text-xs text-[var(--text-muted)] pt-1">
+                Reviewed: <span className="text-[var(--accent-color)]">{reviewed}</span>
+              </div>
+            )}
           </div>
         )}
 
         {/* Card list */}
-        <div className="flex-1 overflow-y-auto space-y-0.5">
+        <div className="flex-1 overflow-y-auto">
           {cards.map((c, i) => (
             <button
               key={c.id}
               onClick={() => { setCurrentIndex(i); setIsFlipped(false); }}
-              className={`w-full text-left px-2 py-1.5 rounded text-xs truncate transition-colors ${
+              className={`w-full text-left px-3 py-1.5 text-xs truncate transition-colors ${
                 i === currentIndex
                   ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
                   : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
               }`}
             >
-              {c.front.slice(0, 32)}{c.front.length > 32 ? "…" : ""}
+              {c.front.slice(0, 32)}{c.front.length > 32 ? "\u2026" : ""}
             </button>
           ))}
           {cards.length === 0 && (
-            <p className="text-xs text-[var(--text-muted)] py-2">
-              {activeWorkspaceId ? "No cards due — great job!" : "No workspace active"}
+            <p className="text-xs text-[var(--text-muted)] py-4 px-3 text-center">
+              {activeWorkspaceId ? "No cards due. Generate some from a topic above!" : "No workspace active"}
             </p>
           )}
         </div>
@@ -159,7 +267,7 @@ export default function FlashcardReviewView() {
             <div className="w-full max-w-lg">
               <div className="flex justify-between text-xs text-[var(--text-muted)] mb-1">
                 <span>{currentIndex + 1} / {cards.length}</span>
-                <span className="capitalize">{currentCard.source_type}</span>
+                <span className="capitalize">{currentCard.source_type === "ai_generated" ? "AI generated" : currentCard.source_type}</span>
               </div>
               <div className="h-1 bg-[var(--bg-hover)] rounded-full overflow-hidden">
                 <div
@@ -177,7 +285,7 @@ export default function FlashcardReviewView() {
             >
               <div className={`relative min-h-[220px] rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-7 flex flex-col justify-center transition-all duration-300 ${isFlipped ? "shadow-lg shadow-[var(--accent-color)]/10" : ""}`}>
                 <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-3">
-                  {isFlipped ? "Answer" : "Question — click to reveal"}
+                  {isFlipped ? "Answer" : "Question \u2014 click to reveal"}
                 </div>
                 <p className="text-base text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
                   {isFlipped ? currentCard.back : currentCard.front}
@@ -206,17 +314,21 @@ export default function FlashcardReviewView() {
             )}
           </>
         ) : (
-          <p className="text-[var(--text-muted)] text-sm">
-            {activeWorkspaceId ? "No cards due right now" : "No workspace active"}
-          </p>
+          <div className="flex flex-col items-center gap-5 text-center max-w-md">
+            <Sparkles size={40} className="text-[var(--accent-color)] opacity-50" />
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">No cards due right now</h2>
+            <p className="text-sm text-[var(--text-muted)]">
+              Type a topic in the sidebar and generate flashcards with AI, or add one manually with the + button.
+            </p>
+          </div>
         )}
       </div>
 
-      {/* Create card modal */}
+      {/* Manual create card modal */}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="w-96 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)]">New Flashcard</h3>
+            <h3 className="text-sm font-semibold text-[var(--text-primary)]">Add Card Manually</h3>
             <textarea
               autoFocus
               value={newFront}

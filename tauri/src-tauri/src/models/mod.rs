@@ -9,3 +9,5 @@ pub mod source;
 pub mod alarm;
 pub mod backup;
 pub mod ai_model;
+pub mod memory;
+pub mod mcp;

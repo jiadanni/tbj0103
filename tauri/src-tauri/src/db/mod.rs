@@ -86,5 +86,32 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v3: add memories table for cross-session AI memory
+    let applied_v3: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v3_memories_table'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v3 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS memories (
+                id TEXT PRIMARY KEY NOT NULL,
+                workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                memory_type TEXT NOT NULL DEFAULT 'fact'
+                    CHECK(memory_type IN ('fact', 'preference', 'context')),
+                source_session_id TEXT,
+                is_pinned INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_memories_workspace ON memories(workspace_id);
+            CREATE INDEX IF NOT EXISTS idx_memories_active ON memories(workspace_id, is_active);
+            INSERT INTO _migrations(name) VALUES('v3_memories_table');",
+        )?;
+    }
+
     Ok(())
 }

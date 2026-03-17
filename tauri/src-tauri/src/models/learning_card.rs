@@ -42,6 +42,15 @@ pub struct CreateCardRequest {
     pub source_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateCardsRequest {
+    pub workspace_id: String,
+    pub topic: String,
+    pub count: Option<u32>,
+    pub model: String,
+    pub ollama_url: Option<String>,
+}
+
 impl LearningCard {
     pub fn new(workspace_id: impl Into<String>, front: impl Into<String>, back: impl Into<String>) -> Self {
         let now = chrono::Utc::now().to_rfc3339();

@@ -1,62 +1,42 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   Panel, PanelGroup, PanelResizeHandle,
 } from "react-resizable-panels";
-import { Plus, PanelLeft, LayoutList } from "lucide-react";
+import { Plus } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { api } from "../lib/api";
 
 import {
-  MessageSquare, Network, BookOpen, Calendar, CreditCard,
-  FileText, Map, Settings, Archive, Link2,
-  BarChart2, PuzzleIcon, SplitSquareHorizontal, LucideIcon,
-  Globe, GitMerge, LayoutGrid, FileEdit, MessagesSquare,
+  MessageSquare, Network, CreditCard,
+  FileText, Settings,
+  BarChart2, LucideIcon,
+  Globe, FileEdit,
 } from "lucide-react";
 
 const NAV_ITEMS: { path: string; icon: LucideIcon; label: string }[] = [
   { path: "/project",       icon: BarChart2,             label: "Dashboard"        },
   { path: "/chat",          icon: MessageSquare,          label: "Chat"             },
-  { path: "/chat-sessions", icon: MessagesSquare,         label: "Chat Sessions"    },
   { path: "/notes",         icon: FileEdit,               label: "Notes"            },
-  { path: "/daily",         icon: Calendar,               label: "Daily Notes"      },
   { path: "/documents",     icon: FileText,               label: "Documents"        },
   { path: "/webcapture",    icon: Globe,                  label: "Web Captures"     },
   { path: "/graph",         icon: Network,                label: "Knowledge Graph"  },
   { path: "/flashcards",    icon: CreditCard,             label: "Flashcards"       },
-  { path: "/learning",      icon: Map,                    label: "Learning Paths"   },
-  { path: "/plugins",       icon: PuzzleIcon,             label: "Plugins"          },
-  { path: "/compare",       icon: SplitSquareHorizontal,  label: "Compare Models"   },
-  { path: "/backup",        icon: Archive,                label: "Backups"          },
-  { path: "/grounded",      icon: BookOpen,               label: "Grounded Chat"    },
-  { path: "/backlinks",     icon: Link2,                  label: "Backlinks"        },
-  { path: "/dedup",         icon: GitMerge,               label: "Deduplication"    },
-  { path: "/workspaces",    icon: LayoutGrid,             label: "Workspaces"       },
   { path: "/settings",      icon: Settings,               label: "Settings"         },
 ];
 import ChatView from "../views/ChatView";
 import KnowledgeGraphView from "../views/KnowledgeGraphView";
-import DailyNotesView from "../views/DailyNotesView";
 import FlashcardReviewView from "../views/FlashcardReviewView";
 import ProjectDashboardView from "../views/ProjectDashboardView";
 import SettingsView from "../views/SettingsView";
 import DocumentBrowserView from "../views/DocumentBrowserView";
-import LearningPathView from "../views/LearningPathView";
-import BackupSettingsSection from "../views/BackupSettingsSection";
-import BacklinksView from "../views/BacklinksView";
-import GroundedChatView from "../views/GroundedChatView";
-import PluginManagerView from "../views/PluginManagerView";
-import ModelComparisonView from "../views/ModelComparisonView";
 import NoteEditorView from "../views/NoteEditorView";
-import ChatSessionListView from "../views/ChatSessionListView";
-import DeduplicationView from "../views/DeduplicationView";
-import WorkspaceSettingsView from "../views/WorkspaceSettingsView";
 import WebCaptureView from "../views/WebCaptureView";
 
 function WorkspaceTabBar() {
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, navLayout, setNavLayout } = useWorkspaceStore();
+  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace } = useWorkspaceStore();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
 
@@ -110,15 +90,6 @@ function WorkspaceTabBar() {
           <Plus size={14} />
         </button>
       )}
-      <div className="ml-auto flex items-center">
-        <button
-          onClick={() => setNavLayout(navLayout === "sidebar" ? "tabs" : "sidebar")}
-          title={navLayout === "sidebar" ? "Switch to tab navigation" : "Switch to sidebar navigation"}
-          className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-        >
-          {navLayout === "sidebar" ? <LayoutList size={14} /> : <PanelLeft size={14} />}
-        </button>
-      </div>
     </div>
   );
 }
@@ -129,18 +100,18 @@ function NavigationTabBar() {
   const activeSegment = "/" + location.pathname.split("/")[1];
 
   return (
-    <div className="flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 overflow-x-auto">
+    <div className="flex items-center h-11 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-3 shrink-0 overflow-x-auto gap-1">
       {NAV_ITEMS.map(({ path, icon: Icon, label }) => (
         <button
           key={path}
           onClick={() => navigate(path)}
-          className={`flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-b-2 transition-colors ${
+          className={`flex items-center gap-2 px-3.5 py-1.5 h-fit text-sm whitespace-nowrap rounded-md transition-colors ${
             activeSegment === path
-              ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
-              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              ? "bg-[var(--accent-color)] text-white font-medium"
+              : "text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]"
           }`}
         >
-          <Icon size={13} />
+          <Icon size={16} />
           {label}
         </button>
       ))}
@@ -186,22 +157,12 @@ export default function Layout() {
             <Route path="/project" element={<ProjectDashboardView />} />
             <Route path="/chat" element={<ChatView />} />
             <Route path="/chat/:sessionId" element={<ChatView />} />
-            <Route path="/chat-sessions" element={<ChatSessionListView />} />
             <Route path="/notes" element={<NoteEditorView />} />
-            <Route path="/daily" element={<DailyNotesView />} />
             <Route path="/documents" element={<DocumentBrowserView />} />
             <Route path="/webcapture" element={<WebCaptureView />} />
             <Route path="/graph" element={<KnowledgeGraphView />} />
             <Route path="/flashcards" element={<FlashcardReviewView />} />
-            <Route path="/learning" element={<LearningPathView />} />
-            <Route path="/plugins" element={<PluginManagerView />} />
-            <Route path="/compare" element={<ModelComparisonView />} />
-            <Route path="/backup" element={<BackupSettingsSection />} />
             <Route path="/settings" element={<SettingsView />} />
-            <Route path="/backlinks" element={<BacklinksView />} />
-            <Route path="/grounded" element={<GroundedChatView />} />
-            <Route path="/dedup" element={<DeduplicationView />} />
-            <Route path="/workspaces" element={<WorkspaceSettingsView />} />
           </Routes>
         </div>
       ) : (
@@ -227,22 +188,12 @@ export default function Layout() {
             <Route path="/project" element={<ProjectDashboardView />} />
             <Route path="/chat" element={<ChatView />} />
             <Route path="/chat/:sessionId" element={<ChatView />} />
-            <Route path="/chat-sessions" element={<ChatSessionListView />} />
             <Route path="/notes" element={<NoteEditorView />} />
-            <Route path="/daily" element={<DailyNotesView />} />
             <Route path="/documents" element={<DocumentBrowserView />} />
             <Route path="/webcapture" element={<WebCaptureView />} />
             <Route path="/graph" element={<KnowledgeGraphView />} />
             <Route path="/flashcards" element={<FlashcardReviewView />} />
-            <Route path="/learning" element={<LearningPathView />} />
-            <Route path="/plugins" element={<PluginManagerView />} />
-            <Route path="/compare" element={<ModelComparisonView />} />
-            <Route path="/backup" element={<BackupSettingsSection />} />
             <Route path="/settings" element={<SettingsView />} />
-            <Route path="/backlinks" element={<BacklinksView />} />
-            <Route path="/grounded" element={<GroundedChatView />} />
-            <Route path="/dedup" element={<DeduplicationView />} />
-            <Route path="/workspaces" element={<WorkspaceSettingsView />} />
           </Routes>
         </Panel>
       </PanelGroup>
