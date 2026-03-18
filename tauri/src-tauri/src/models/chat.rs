@@ -52,6 +52,7 @@ pub struct Message {
     pub content: String,
     pub model_name: Option<String>,
     pub tokens_used: Option<i64>,
+    pub duration_ms: Option<i64>,
     pub created_at: String,
 }
 
@@ -83,6 +84,7 @@ pub struct AddMessageRequest {
     pub content: String,
     pub model_name: Option<String>,
     pub tokens_used: Option<i64>,
+    pub duration_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,6 +123,7 @@ impl Message {
             content: content.into(),
             model_name: None,
             tokens_used: None,
+            duration_ms: None,
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }

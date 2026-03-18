@@ -7,6 +7,7 @@ export interface Message {
   content: string;
   model_name?: string;
   tokens_used?: number;
+  duration_ms?: number;
   created_at: string;
 }
 
@@ -39,6 +40,7 @@ interface ChatStore {
   addSession: (session: ChatSession) => void;
   removeSession: (id: string) => void;
   updateSession: (session: ChatSession) => void;
+  updateMessage: (sessionId: string, message: Message) => void;
   setStreamingSession: (id: string | null) => void;
   appendStreamChunk: (sessionId: string, chunk: string) => void;
   finalizeStream: (sessionId: string, modelName?: string) => void;
@@ -72,6 +74,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((s) => ({ sessions: s.sessions.filter((x) => x.id !== id) })),
   updateSession: (session) =>
     set((s) => ({ sessions: s.sessions.map((x) => x.id === session.id ? session : x) })),
+  updateMessage: (sessionId, message) =>
+    set((s) => ({
+      messages: {
+        ...s.messages,
+        [sessionId]: (s.messages[sessionId] ?? []).map((m) => m.id === message.id ? message : m),
+      },
+    })),
   setStreamingSession: (streamingSessionId) =>
     set({ streamingSessionId, streamingContent: "" }),
   appendStreamChunk: (sessionId, chunk) =>

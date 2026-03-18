@@ -154,8 +154,8 @@ export const api = {
     deleteSession: (id: string) => invoke<void>("delete_chat_session", { id }),
     updateSession: (id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string }) =>
       invoke<void>("update_chat_session", { id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt }),
-    addMessage: (sessionId: string, role: "user" | "assistant", content: string, modelName?: string, tokensUsed?: number) =>
-      invoke<Message>("add_message", { req: { session_id: sessionId, role, content, model_name: modelName, tokens_used: tokensUsed } }),
+    addMessage: (sessionId: string, role: "user" | "assistant", content: string, modelName?: string, tokensUsed?: number, durationMs?: number) =>
+      invoke<Message>("add_message", { req: { session_id: sessionId, role, content, model_name: modelName, tokens_used: tokensUsed, duration_ms: durationMs } }),
     getMessages: (sessionId: string) => invoke<Message[]>("get_messages", { sessionId }),
   },
 
@@ -257,6 +257,8 @@ export const api = {
       invoke<string>("generate_title", { model, firstMessage, ollamaUrl }),
     generateTitleFromConversation: (model: string, conversation: { role: string; content: string }[], ollamaUrl?: string) =>
       invoke<string>("generate_title_from_conversation", { model, conversation, ollamaUrl }),
+    extractTopics: (texts: string[], model: string, ollamaUrl?: string) =>
+      invoke<{ topic: string; weight: number }[]>("extract_topics", { texts, model, ollamaUrl }),
     generateEmbedding: (text: string, model?: string, ollamaUrl?: string) =>
       invoke<number[]>("generate_embedding", { req: { text, model, ollama_url: ollamaUrl } }),
   },

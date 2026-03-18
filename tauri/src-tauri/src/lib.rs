@@ -112,6 +112,7 @@ pub fn run() {
             commands::ollama::generate_title_from_conversation,
             commands::ollama::generate_embedding,
             commands::ollama::send_dual_model_message,
+            commands::ollama::extract_topics,
             // Export commands
             commands::export::export_markdown,
             commands::export::export_json,
