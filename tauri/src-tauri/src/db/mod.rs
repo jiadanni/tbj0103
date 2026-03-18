@@ -113,5 +113,22 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v4: add duration_ms column to messages for tok/s persistence
+    let applied_v4: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v4_messages_duration_ms'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v4 == 0 {
+        // Ignore error if column already exists (fresh installs have it from schema.sql)
+        let _ = conn.execute_batch(
+            "ALTER TABLE messages ADD COLUMN duration_ms INTEGER;",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v4_messages_duration_ms');",
+        )?;
+    }
+
     Ok(())
 }

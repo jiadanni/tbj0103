@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   FileText, MessageSquare, CreditCard, Network, Lightbulb,
-  Sparkles, Clock, Copy, Brain,
+  Sparkles, Clock, Copy, Brain, RefreshCw,
 } from "lucide-react";
 import {
   api,
@@ -15,6 +15,7 @@ import {
 } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useChatStore } from "../stores/chatStore";
+import { useSettingsStore } from "../stores/settingsStore";
 import { useNavigate } from "react-router-dom";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -132,7 +133,14 @@ const CLOUD_BG = [
   "bg-pink-400/10", "bg-cyan-400/10", "bg-indigo-400/10", "bg-teal-400/10",
 ];
 
-function TopicCloud({ topics }: { topics: { topic: string; count: number }[] }) {
+function TopicCloud({
+  topics, loading, error, onRefresh,
+}: {
+  topics: { topic: string; count: number }[];
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
   const max = topics[0]?.count ?? 1;
 
   function fontSize(count: number) {
@@ -143,23 +151,48 @@ function TopicCloud({ topics }: { topics: { topic: string; count: number }[] }) 
   return (
     <div className="rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)]">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Topic Cloud</h3>
-        {topics.length > 0 && (
-          <span className="text-[10px] text-[var(--text-muted)]">{topics.length} topics</span>
-        )}
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Topic Cloud</h3>
+          <span className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-color)]/10 text-[var(--accent-color)]">
+            <Sparkles size={9} /> AI
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {topics.length > 0 && !loading && (
+            <span className="text-[10px] text-[var(--text-muted)]">{topics.length} topics</span>
+          )}
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            title="Refresh topics with AI"
+            className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors disabled:opacity-40"
+          >
+            <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
       </div>
-      {topics.length === 0 ? (
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-8 gap-2">
+          <RefreshCw size={18} className="animate-spin text-[var(--accent-color)]" />
+          <p className="text-xs text-[var(--text-muted)]">AI is analysing your topics…</p>
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center py-6 gap-2">
+          <p className="text-xs text-red-400">Could not load topics: {error}</p>
+          <button onClick={onRefresh} className="text-[10px] text-[var(--accent-color)] hover:underline">Retry</button>
+        </div>
+      ) : topics.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-6 gap-2">
           <span className="text-2xl opacity-30">☁️</span>
           <p className="text-xs text-[var(--text-muted)]">No topics yet</p>
-          <p className="text-[10px] text-[var(--text-muted)] opacity-70">Topics will appear as you chat</p>
+          <p className="text-[10px] text-[var(--text-muted)] opacity-70">Topics will appear as you chat and take notes</p>
         </div>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {topics.slice(0, 40).map(({ topic, count }, i) => (
             <span
               key={topic}
-              title={`${topic}: ${count} occurrence${count !== 1 ? "s" : ""}`}
+              title={`Relevance weight: ${count}`}
               className={`px-2 py-0.5 rounded-md font-medium ${CLOUD_COLORS[i % CLOUD_COLORS.length]} ${CLOUD_BG[i % CLOUD_BG.length]}`}
               style={{ fontSize: fontSize(count) }}
             >
@@ -244,6 +277,7 @@ function InsightCard({ text }: { text: string }) {
 export default function ProjectDashboardView() {
   const { activeWorkspaceId, activeProjectId, projects, workspaces } = useWorkspaceStore();
   const { sessions } = useChatStore();
+  const { preferredModel, ollamaUrl } = useSettingsStore();
   const navigate = useNavigate();
 
   const project = projects.find((p) => p.id === activeProjectId);
@@ -255,6 +289,11 @@ export default function ProjectDashboardView() {
   const [graphStats, setGraphStats] = useState<GraphStatistics | null>(null);
   const [recentNotes, setRecentNotes] = useState<ProjectNote[]>([]);
   const [concepts, setConcepts] = useState<ConceptNode[]>([]);
+
+  // AI-powered topic cloud
+  const [aiTopics, setAiTopics] = useState<{ topic: string; count: number }[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [topicsError, setTopicsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeProjectId) return;
@@ -273,6 +312,36 @@ export default function ProjectDashboardView() {
     }).catch(() => {});
   }, [activeWorkspaceId]);
 
+  // Fetch AI topics whenever sessions or notes change (debounced by dependency)
+  const fetchAiTopics = async () => {
+    const model = preferredModel;
+    if (!model) { setTopicsError("No model selected"); return; }
+    const texts = [
+      ...sessions.map((s) => s.title).filter(Boolean),
+      ...recentNotes.map((n) => n.title).filter(Boolean),
+      ...concepts.map((c) => c.name).filter(Boolean),
+    ];
+    if (texts.length === 0) return;
+    setTopicsLoading(true);
+    setTopicsError(null);
+    try {
+      const result = await api.ollama.extractTopics(texts, model, ollamaUrl || undefined);
+      setAiTopics(result.map((t) => ({ topic: t.topic, count: t.weight })));
+    } catch (e: unknown) {
+      setTopicsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTopicsLoading(false);
+    }
+  };
+
+  // Auto-fetch topics once sessions + notes are loaded
+  useEffect(() => {
+    if (sessions.length === 0 && recentNotes.length === 0) return;
+    if (aiTopics.length > 0) return; // already loaded, refresh is manual
+    fetchAiTopics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions.length, recentNotes.length]);
+
   const days = RANGE_DAYS[timeRange];
 
   // ── Activity map: count notes, concepts, chats by created_at date ─────────
@@ -288,21 +357,8 @@ export default function ProjectDashboardView() {
     return map;
   }, [recentNotes, concepts, sessions]);
 
-  // ── Topic cloud from chat titles ──────────────────────────────────────────
-  const topics = useMemo(() => {
-    const STOP = new Set(["the", "and", "for", "with", "this", "that", "about", "from", "into", "have", "been"]);
-    const counts: Record<string, number> = {};
-    sessions.forEach((s) => {
-      if (!s.title) return;
-      s.title.split(/\s+/).forEach((word) => {
-        const w = word.replace(/[^a-z]/gi, "").toLowerCase();
-        if (w.length >= 4 && !STOP.has(w)) counts[w] = (counts[w] ?? 0) + 1;
-      });
-    });
-    return Object.entries(counts)
-      .map(([topic, count]) => ({ topic, count }))
-      .sort((a, b) => b.count - a.count);
-  }, [sessions]);
+  // ── Topic cloud fed by AI (aiTopics state replaces the useMemo word-split) ─
+  const topics = aiTopics;
 
   // ── Mock growth data (same approach as Swift: cumulative random) ──────────
   const growthData = useMemo(() => {
@@ -480,7 +536,12 @@ export default function ProjectDashboardView() {
         <ActivityHeatmap days={days} activityMap={activityMap} />
 
         {/* ── Topic Cloud ────────────────────────────────────────────── */}
-        <TopicCloud topics={topics} />
+        <TopicCloud
+          topics={topics}
+          loading={topicsLoading}
+          error={topicsError}
+          onRefresh={fetchAiTopics}
+        />
 
         {/* ── Charts ─────────────────────────────────────────────────── */}
         <div className="flex gap-3">

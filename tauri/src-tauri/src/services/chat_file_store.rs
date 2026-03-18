@@ -43,6 +43,8 @@ pub struct ChatFileMessage {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tokens_used: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
     pub timestamp: String,
 }
 
@@ -90,7 +92,7 @@ fn load_from_db(conn: &Connection, session_id: &str) -> Result<ChatFileData, Str
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, role, content, model_name, tokens_used, created_at
+            "SELECT id, role, content, model_name, tokens_used, duration_ms, created_at
              FROM messages WHERE session_id = ?1 ORDER BY created_at ASC",
         )
         .map_err(|e| e.to_string())?;
@@ -103,7 +105,8 @@ fn load_from_db(conn: &Connection, session_id: &str) -> Result<ChatFileData, Str
                 content: r.get(2)?,
                 model: r.get(3)?,
                 tokens_used: r.get(4)?,
-                timestamp: r.get(5)?,
+                duration_ms: r.get(5)?,
+                timestamp: r.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -235,11 +238,11 @@ pub fn import_session_from_file(
     for msg in &data.messages {
         conn.execute(
             "INSERT OR IGNORE INTO messages
-                 (id, session_id, role, content, model_name, tokens_used, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                 (id, session_id, role, content, model_name, tokens_used, duration_ms, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
                 msg.id, data.id, msg.role, msg.content,
-                msg.model, msg.tokens_used, msg.timestamp
+                msg.model, msg.tokens_used, msg.duration_ms, msg.timestamp
             ],
         )
         .map_err(|e| e.to_string())?;

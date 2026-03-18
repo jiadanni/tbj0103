@@ -81,3 +81,61 @@ pub async fn send_dual_model_message(app: AppHandle, req: DualModelRequest) -> R
     // Phase 2: stream the large/refine model (separate event channel)
     client.stream_refine_message(&app, &req.session_id, &req.refine_model, req.messages).await
 }
+
+/// Extracts key topics from a list of text snippets (chat titles, note titles, etc.)
+/// using Ollama. Returns a JSON array of { topic, weight } objects.
+/// Falls back to an empty array if the model is unavailable.
+#[tauri::command]
+pub async fn extract_topics(
+    texts: Vec<String>,
+    model: String,
+    ollama_url: Option<String>,
+) -> Result<Vec<TopicEntry>, String> {
+    if texts.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let combined: String = texts
+        .iter()
+        .take(60)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" | ");
+
+    let prompt = format!(
+        "Analyze these text snippets and identify the 10-15 most important knowledge topics being studied:\n\n\
+        {combined}\n\n\
+        Return ONLY a JSON array like: \
+        [{{\"topic\":\"Machine Learning\",\"weight\":9}},{{\"topic\":\"Rust Programming\",\"weight\":6}}]\n\
+        Use meaningful multi-word topics, not single generic words. \
+        Weight 1-10 based on how prominent the topic is. No explanation, just the JSON array."
+    );
+
+    let client = OllamaClient::new(ollama_url);
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+
+    let raw = client.send_message(&model, messages).await?;
+
+    // Parse the JSON array from the response (model may wrap it in markdown)
+    let json_str = extract_json_array(&raw);
+    serde_json::from_str::<Vec<TopicEntry>>(&json_str)
+        .map_err(|e| format!("Failed to parse topics: {e} — raw: {raw}"))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopicEntry {
+    pub topic: String,
+    pub weight: u32,
+}
+
+/// Extracts the first JSON array `[...]` substring from a raw model response.
+fn extract_json_array(s: &str) -> String {
+    if let (Some(start), Some(end)) = (s.find('['), s.rfind(']')) {
+        s[start..=end].to_string()
+    } else {
+        "[]".to_string()
+    }
+}

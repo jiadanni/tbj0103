@@ -17,7 +17,7 @@ export default function ChatView() {
   const {
     sessions, messages, activeChatId, setActiveChatId,
     setSessions, setMessages, appendMessage, appendStreamChunk, finalizeStream,
-    streamingSessionId, streamingContent, setStreamingSession,
+    streamingSessionId, streamingContent, setStreamingSession, updateMessage,
   } = useChatStore();
 
   const { activeProjectId, projects, setActiveProjectId, activeWorkspaceId } = useWorkspaceStore();
@@ -58,8 +58,8 @@ export default function ChatView() {
   const [messageSources, setMessageSources] = useState<Record<string, SearchResult[]>>({});
   const [expandedSources, setExpandedSources] = useState<string | null>(null);
 
-  // Per-message metadata (tokens, duration) keyed by message ID
-  const [messageStats, setMessageStats] = useState<Record<string, { tokens?: number; durationMs?: number }>>({});
+  // Per-message metadata (tok/s and duration) persisted on the Message itself;
+  // no in-memory state needed — loaded from DB on session open.;
 
   // ── Thought Queue panel ────────────────────────────────────────────────
   const [thoughtPanelOpen, setThoughtPanelOpen] = useState(false);
@@ -358,7 +358,9 @@ export default function ChatView() {
             finalizeStream(sid!, selectedModel);
             setIsStreaming(false);
             unlisten();
-            api.chat.addMessage(sid!, "assistant", assembled, selectedModel).catch(() => {});
+            api.chat.addMessage(sid!, "assistant", assembled, selectedModel)
+              .then((persisted) => updateMessage(sid!, persisted))
+              .catch(() => {});
           } else {
             appendStreamChunk(sid!, chunk);
           }
@@ -397,13 +399,9 @@ export default function ChatView() {
             setDraftSnapshot("");
             setIsStreaming(false);
             refineUnlisten?.();
-            const store = useChatStore.getState();
-            const msgs = store.messages[sid!] ?? [];
-            const lastMsg = msgs[msgs.length - 1];
-            if (lastMsg && (tokensUsed || durationMs)) {
-              setMessageStats((prev) => ({ ...prev, [lastMsg.id]: { tokens: tokensUsed, durationMs } }));
-            }
-            api.chat.addMessage(sid!, "assistant", refineText, selectedModel, tokensUsed).catch(() => {});
+            api.chat.addMessage(sid!, "assistant", refineText, selectedModel, tokensUsed, durationMs)
+              .then((persisted) => updateMessage(sid!, persisted))
+              .catch(() => {});
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
             }
@@ -430,12 +428,9 @@ export default function ChatView() {
             finalizeStream(sid!, selectedModel);
             setIsStreaming(false);
             unlisten();
-            const msgs = useChatStore.getState().messages[sid!] ?? [];
-            const lastMsg = msgs[msgs.length - 1];
-            if (lastMsg && (tokensUsed || durationMs)) {
-              setMessageStats((prev) => ({ ...prev, [lastMsg.id]: { tokens: tokensUsed, durationMs } }));
-            }
-            api.chat.addMessage(sid!, "assistant", assembled, selectedModel, tokensUsed).catch(() => {});
+            api.chat.addMessage(sid!, "assistant", assembled, selectedModel, tokensUsed, durationMs)
+              .then((persisted) => updateMessage(sid!, persisted))
+              .catch(() => {});
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
             }
@@ -521,14 +516,10 @@ export default function ChatView() {
           finalizeStream(sid, selectedModel);
           setIsStreaming(false);
           unlisten();
-          const store = useChatStore.getState();
-          const assembled = store.streamingContent;
-          const msgs = store.messages[sid] ?? [];
-          const lastMsg = msgs[msgs.length - 1];
-          if (lastMsg && (tokensUsed || durationMs)) {
-            setMessageStats((prev) => ({ ...prev, [lastMsg.id]: { tokens: tokensUsed, durationMs } }));
-          }
-          api.chat.addMessage(sid, "assistant", assembled, selectedModel, tokensUsed).catch(() => {});
+          const assembled = useChatStore.getState().streamingContent;
+          api.chat.addMessage(sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
+            .then((persisted) => updateMessage(sid, persisted))
+            .catch(() => {});
           if (tokensUsed && tokensUsed > 0) {
             api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
           }
@@ -562,14 +553,10 @@ export default function ChatView() {
           finalizeStream(sid, selectedModel);
           setIsStreaming(false);
           unlisten();
-          const store = useChatStore.getState();
-          const assembled = store.streamingContent;
-          const msgs = store.messages[sid] ?? [];
-          const lastMsg = msgs[msgs.length - 1];
-          if (lastMsg && (tokensUsed || durationMs)) {
-            setMessageStats((prev) => ({ ...prev, [lastMsg.id]: { tokens: tokensUsed, durationMs } }));
-          }
-          api.chat.addMessage(sid, "assistant", assembled, selectedModel, tokensUsed).catch(() => {});
+          const assembled = useChatStore.getState().streamingContent;
+          api.chat.addMessage(sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
+            .then((persisted) => updateMessage(sid, persisted))
+            .catch(() => {});
           if (tokensUsed && tokensUsed > 0) {
             api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
           }
@@ -1081,17 +1068,22 @@ export default function ChatView() {
                         </button>
                       )}
                     </div>
-                    {/* Token count + duration */}
-                    {msg.role === "assistant" && (messageStats[msg.id] || msg.tokens_used) && (
+                    {/* Token count + duration + tok/s */}
+                    {msg.role === "assistant" && (msg.tokens_used || msg.duration_ms) && (
                       <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)] tabular-nums">
-                        {(messageStats[msg.id]?.tokens ?? msg.tokens_used) && (
-                          <span>{(messageStats[msg.id]?.tokens ?? msg.tokens_used)!.toLocaleString()} tokens</span>
+                        {msg.tokens_used && (
+                          <span>{msg.tokens_used.toLocaleString()} tok</span>
                         )}
-                        {messageStats[msg.id]?.durationMs && (
+                        {msg.duration_ms && (
                           <span>
-                            {messageStats[msg.id].durationMs! >= 1000
-                              ? `${(messageStats[msg.id].durationMs! / 1000).toFixed(1)}s`
-                              : `${messageStats[msg.id].durationMs}ms`}
+                            {msg.duration_ms >= 1000
+                              ? `${(msg.duration_ms / 1000).toFixed(1)}s`
+                              : `${msg.duration_ms}ms`}
+                          </span>
+                        )}
+                        {msg.tokens_used && msg.duration_ms && msg.duration_ms > 0 && (
+                          <span className="text-[var(--accent-color)] font-medium">
+                            {(msg.tokens_used / (msg.duration_ms / 1000)).toFixed(1)} tok/s
                           </span>
                         )}
                       </div>
@@ -1143,6 +1135,28 @@ export default function ChatView() {
               <div className="flex items-center gap-2 text-xs text-amber-400 px-1">
                 <Zap size={11} className="animate-pulse" />
                 <span className="animate-pulse">Refining with {selectedModel}…</span>
+              </div>
+            )}
+
+            {/* Thinking indicator — spinner shown before the first token arrives */}
+            {isStreaming && !isCurrentlyStreaming && !isRefiningPhase && (
+              <div className="flex flex-col gap-1 items-start">
+                <div className="flex items-center gap-2.5 max-w-[75%] rounded-2xl px-4 py-3 text-sm message-assistant">
+                  <span className="flex gap-1 items-center">
+                    <span
+                      className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
+                      style={{ animation: "thinking-dot 1.2s ease-in-out infinite" }}
+                    />
+                    <span
+                      className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
+                      style={{ animation: "thinking-dot 1.2s ease-in-out 0.2s infinite" }}
+                    />
+                    <span
+                      className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
+                      style={{ animation: "thinking-dot 1.2s ease-in-out 0.4s infinite" }}
+                    />
+                  </span>
+                </div>
               </div>
             )}
 
