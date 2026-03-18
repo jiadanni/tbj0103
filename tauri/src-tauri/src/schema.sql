@@ -295,7 +295,7 @@ CREATE INDEX IF NOT EXISTS idx_concept_links_source ON concept_links(source_id);
 CREATE INDEX IF NOT EXISTS idx_concept_links_target ON concept_links(target_id);
 CREATE INDEX IF NOT EXISTS idx_concept_mentions_concept ON concept_mentions(concept_id);
 CREATE INDEX IF NOT EXISTS idx_learning_goals_workspace ON learning_goals(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_learning_cards_project ON learning_cards(project_id);
+CREATE INDEX IF NOT EXISTS idx_learning_cards_workspace ON learning_cards(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_learning_cards_review ON learning_cards(next_review_date);
 CREATE INDEX IF NOT EXISTS idx_daily_notes_workspace_date ON daily_notes(workspace_id, date);
 CREATE INDEX IF NOT EXISTS idx_uploaded_docs_project ON uploaded_documents(project_id);
