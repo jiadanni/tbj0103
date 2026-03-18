@@ -86,3 +86,6 @@ tauri/src-tauri/gen/
 
 # Logs
 *.log
+
+# Override global gitignore for source ollama module
+!**/src/ollama/
