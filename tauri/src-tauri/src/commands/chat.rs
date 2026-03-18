@@ -112,13 +112,14 @@ pub fn add_message(
         content: req.content,
         model_name: req.model_name,
         tokens_used: req.tokens_used,
+        duration_ms: req.duration_ms,
         created_at: chrono::Utc::now().to_rfc3339(),
     };
     let role_str = msg.role.to_string();
     conn.execute(
-        "INSERT INTO messages (id, session_id, role, content, model_name, tokens_used, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![msg.id, msg.session_id, role_str, msg.content, msg.model_name, msg.tokens_used, msg.created_at],
+        "INSERT INTO messages (id, session_id, role, content, model_name, tokens_used, duration_ms, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![msg.id, msg.session_id, role_str, msg.content, msg.model_name, msg.tokens_used, msg.duration_ms, msg.created_at],
     ).map_err(|e| e.to_string())?;
     // Update session's updated_at
     let now = chrono::Utc::now().to_rfc3339();
@@ -136,7 +137,7 @@ pub fn add_message(
 pub fn get_messages(state: State<DbState>, session_id: String) -> Result<Vec<Message>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, session_id, role, content, model_name, tokens_used, created_at
+        "SELECT id, session_id, role, content, model_name, tokens_used, duration_ms, created_at
          FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
     ).map_err(|e| e.to_string())?;
     let items = stmt.query_map(rusqlite::params![session_id], |row| {
@@ -150,7 +151,8 @@ pub fn get_messages(state: State<DbState>, session_id: String) -> Result<Vec<Mes
             content: row.get(3)?,
             model_name: row.get(4)?,
             tokens_used: row.get(5)?,
-            created_at: row.get(6)?,
+            duration_ms: row.get(6)?,
+            created_at: row.get(7)?,
         })
     }).map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>()

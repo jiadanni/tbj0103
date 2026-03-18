@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT NOT NULL,
     model_name TEXT,
     tokens_used INTEGER,
+    duration_ms INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
