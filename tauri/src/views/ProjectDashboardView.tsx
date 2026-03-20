@@ -7,11 +7,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   FileText, MessageSquare, CreditCard, Network, Lightbulb,
-  Sparkles, Clock, Copy, Brain, RefreshCw,
+  Sparkles, Clock, Copy, Brain, RefreshCw, BarChart2, Cpu,
 } from "lucide-react";
 import {
   api,
-  type ProjectNote, type ReviewStats, type GraphStatistics, type ConceptNode,
+  type ProjectNote, type ReviewStats, type GraphStatistics, type ConceptNode, type AiModel,
 } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useChatStore } from "../stores/chatStore";
@@ -295,6 +295,10 @@ export default function ProjectDashboardView() {
   const [topicsLoading, setTopicsLoading] = useState(false);
   const [topicsError, setTopicsError] = useState<string | null>(null);
 
+  // AI Usage Dashboard
+  const [tokenByDate, setTokenByDate] = useState<{ day: string; total_tokens: number }[]>([]);
+  const [aiModels, setAiModels] = useState<AiModel[]>([]);
+
   useEffect(() => {
     if (!activeProjectId) return;
     api.project.getStats(activeProjectId).then(setProjectStats).catch(() => {});
@@ -310,6 +314,9 @@ export default function ProjectDashboardView() {
         [...notes].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       );
     }).catch(() => {});
+    // AI usage data
+    api.chat.getTokenUsageByDate(activeWorkspaceId, 90).then(setTokenByDate).catch(() => {});
+    api.aiModel.list().then(setAiModels).catch(() => {});
   }, [activeWorkspaceId]);
 
   // Fetch AI topics whenever sessions or notes change (debounced by dependency)
@@ -454,6 +461,43 @@ export default function ProjectDashboardView() {
     return "/documents";
   };
 
+  // Token usage map for the heatmap (day => tokens)
+  const tokenMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    tokenByDate.forEach(({ day, total_tokens }) => { map[day] = total_tokens; });
+    return map;
+  }, [tokenByDate]);
+
+  // Total tokens in the selected time range
+  const totalTokensInRange = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - RANGE_DAYS[timeRange]);
+    return tokenByDate
+      .filter(({ day }) => new Date(day) >= cutoff)
+      .reduce((sum, { total_tokens }) => sum + total_tokens, 0);
+  }, [tokenByDate, timeRange]);
+
+  // Messages in the selected time range
+  const messagesInRange = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - RANGE_DAYS[timeRange]);
+    let count = 0;
+    sessions.forEach((s) => {
+      if (new Date(s.updated_at) >= cutoff) count++;
+    });
+    return count;
+  }, [sessions, timeRange]);
+
+  // Models with token usage > 0
+  const modelsWithUsage = useMemo(() => {
+    return aiModels
+      .filter((m) => m.tokens_used_total > 0)
+      .sort((a, b) => b.tokens_used_total - a.tokens_used_total)
+      .slice(0, 8);
+  }, [aiModels]);
+
+  const maxModelTokens = modelsWithUsage[0]?.tokens_used_total ?? 1;
+
   const title = project?.name ?? workspace?.name ?? "Dashboard";
   const subtitle = project?.project_description ?? workspace?.name ?? "";
 
@@ -584,6 +628,117 @@ export default function ProjectDashboardView() {
           <span className="flex-1 text-sm text-[var(--text-secondary)]">Find Duplicate Notes</span>
           <span className="text-[var(--text-muted)]">›</span>
         </button>
+
+        {/* ── AI Usage ───────────────────────────────────────────────── */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <BarChart2 size={13} className="text-[var(--accent-color)]" />
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">AI Usage</h2>
+          </div>
+
+          {/* Summary row */}
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <MetricCard
+              label="Total Sessions"
+              value={sessions.length}
+              icon={MessageSquare}
+              color="text-purple-400"
+            />
+            <MetricCard
+              label={`Sent (${timeRange})`}
+              value={messagesInRange}
+              icon={MessageSquare}
+              color="text-blue-400"
+            />
+            <MetricCard
+              label={`Tokens (${timeRange})`}
+              value={totalTokensInRange > 0 ? (totalTokensInRange >= 1000 ? `${(totalTokensInRange / 1000).toFixed(1)}k` : totalTokensInRange) : "—"}
+              icon={Cpu}
+              color="text-green-400"
+            />
+          </div>
+
+          {/* Token activity heatmap */}
+          {tokenByDate.length > 0 ? (
+            <div className="rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)] mb-4">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Token Activity</h3>
+              <div
+                className="grid gap-1"
+                style={{ gridTemplateColumns: `repeat(${Math.min(days, 7)}, minmax(0, 1fr))` }}
+              >
+                {(() => {
+                  const cells: { key: string; count: number }[] = [];
+                  const today = new Date();
+                  for (let i = days - 1; i >= 0; i--) {
+                    const d = new Date(today);
+                    d.setDate(today.getDate() - i);
+                    const key = d.toISOString().slice(0, 10);
+                    cells.push({ key, count: tokenMap[key] ?? 0 });
+                  }
+                  const maxTok = Math.max(1, ...cells.map((c) => c.count));
+                  return cells.map(({ key, count }) => {
+                    const pct = count / maxTok;
+                    const bg = count === 0
+                      ? "bg-[var(--bg-primary)] border border-[var(--border-color)]"
+                      : pct > 0.75 ? "bg-violet-500"
+                      : pct > 0.5 ? "bg-violet-400"
+                      : pct > 0.25 ? "bg-violet-300 opacity-80"
+                      : "bg-violet-200 opacity-60";
+                    return (
+                      <div
+                        key={key}
+                        title={`${key}: ${count.toLocaleString()} tokens`}
+                        className={`aspect-square rounded-sm ${bg}`}
+                      />
+                    );
+                  });
+                })()}
+              </div>
+              <div className="flex items-center gap-1.5 mt-2">
+                <span className="text-[10px] text-[var(--text-muted)]">Less</span>
+                {[0, 0.25, 0.5, 0.75, 1].map((p) => (
+                  <div
+                    key={p}
+                    className="w-3 h-3 rounded-sm"
+                    style={{ background: p === 0 ? "var(--bg-primary)" : `rgba(167,139,250,${0.2 + p * 0.8})` }}
+                  />
+                ))}
+                <span className="text-[10px] text-[var(--text-muted)]">More</span>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)] mb-4 flex items-center justify-center py-8">
+              <p className="text-xs text-[var(--text-muted)]">No token data yet — start chatting to see activity</p>
+            </div>
+          )}
+
+          {/* Per-model bar chart */}
+          {modelsWithUsage.length > 0 && (
+            <div className="rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)]">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Token Usage by Model</h3>
+              <div className="space-y-2">
+                {modelsWithUsage.map((m) => (
+                  <div key={m.id}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[11px] text-[var(--text-secondary)] truncate max-w-[160px]">{m.name}</span>
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        {m.tokens_used_total >= 1000
+                          ? `${(m.tokens_used_total / 1000).toFixed(1)}k`
+                          : m.tokens_used_total}
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-[var(--bg-primary)] overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-[var(--accent-color)] transition-all"
+                        style={{ width: `${(m.tokens_used_total / maxModelTokens) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ── AI Insights ────────────────────────────────────────────── */}
         <div>

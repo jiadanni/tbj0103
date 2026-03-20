@@ -193,6 +193,8 @@ export const api = {
     addMessage: (workspaceId: string, sessionId: string, role: "user" | "assistant", content: string, modelName?: string, tokensUsed?: number, durationMs?: number) =>
       invoke<Message>("add_message", { req: { workspace_id: workspaceId, session_id: sessionId, role, content, model_name: modelName, tokens_used: tokensUsed, duration_ms: durationMs } }),
     getMessages: (workspaceId: string, sessionId: string) => invoke<Message[]>("get_messages", { workspaceId, sessionId }),
+    getTokenUsageByDate: (workspaceId: string, days?: number) =>
+      invoke<{ day: string; total_tokens: number }[]>("get_token_usage_by_date", { workspaceId, days }),
   },
 
   chatFile: {

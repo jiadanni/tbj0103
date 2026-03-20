@@ -1,8 +1,15 @@
 use tauri::State;
+use serde::Serialize;
 use crate::db::DbState;
 use crate::models::chat::{ChatSession, Message, CreateChatSessionRequest, AddMessageRequest};
 use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
 use crate::services::chat_file_store;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TokenUsageByDate {
+    pub day: String,
+    pub total_tokens: i64,
+}
 
 #[tauri::command]
 pub fn create_chat_session(
@@ -252,4 +259,37 @@ pub fn update_chat_session(
     let pass = crypto.0.lock().ok().and_then(|g| g.clone());
     let _ = chat_file_store::write_session_file(&conn, &chats_dir.0, &id, pass.as_deref());
     Ok(())
+}
+
+/// Return daily token usage for a workspace over the last N days (default: 90).
+/// Used to drive the AI usage heatmap in ProjectDashboardView.
+#[tauri::command]
+pub fn get_token_usage_by_date(
+    state: State<DbState>,
+    workspace_id: String,
+    days: Option<i64>,
+) -> Result<Vec<TokenUsageByDate>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let days = days.unwrap_or(90);
+    let mut stmt = conn.prepare(
+        "SELECT substr(m.created_at, 1, 10) AS day,
+                SUM(COALESCE(m.tokens_used, 0)) AS total_tokens
+         FROM messages m
+         JOIN chat_sessions cs ON cs.id = m.session_id
+         WHERE cs.workspace_id = ?1
+           AND m.created_at >= datetime('now', '-' || ?2 || ' days')
+         GROUP BY day
+         ORDER BY day ASC"
+    ).map_err(|e| e.to_string())?;
+
+    let items = stmt.query_map(rusqlite::params![workspace_id, days], |row| {
+        Ok(TokenUsageByDate {
+            day: row.get(0)?,
+            total_tokens: row.get(1)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())?;
+
+    Ok(items)
 }

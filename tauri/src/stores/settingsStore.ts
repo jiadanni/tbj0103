@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type Theme = "system" | "light" | "dark" | "oled" | "sepia" | "hacker";
+export type Theme = "system" | "light" | "dark" | "oled" | "sepia" | "hacker" | "glasscode";
 
 interface AppSettings {
   preferredModel: string;
