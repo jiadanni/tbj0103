@@ -55,7 +55,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                  created_at TEXT NOT NULL DEFAULT (datetime('now')),
                  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
              );
-             INSERT OR IGNORE INTO chat_sessions_v2 SELECT * FROM chat_sessions;
+             INSERT OR IGNORE INTO chat_sessions_v2 (id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at)
+             SELECT id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at FROM chat_sessions;
              DROP TABLE IF EXISTS chat_sessions;
              ALTER TABLE chat_sessions_v2 RENAME TO chat_sessions;
              INSERT INTO _migrations(name) VALUES('v1_chat_project_no_fk');",
@@ -181,13 +182,13 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             "PRAGMA foreign_keys=OFF;
              CREATE TABLE IF NOT EXISTS chat_sessions_v3 (
                  id TEXT PRIMARY KEY NOT NULL,
-                 workspace_id TEXT NOT NULL DEFAULT '',
+                 workspace_id TEXT NOT NULL DEFAULT '' REFERENCES workspaces(id) ON DELETE CASCADE,
                  project_id TEXT NOT NULL DEFAULT '',
                  title TEXT NOT NULL DEFAULT 'New Chat',
                  model_name TEXT NOT NULL DEFAULT '',
                  system_prompt TEXT NOT NULL DEFAULT '',
                  is_pinned INTEGER NOT NULL DEFAULT 0,
-                 parent_session_id TEXT,
+                 parent_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
                  branch_message_id TEXT,
                  created_at TEXT NOT NULL DEFAULT (datetime('now')),
                  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -201,7 +202,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
              
              UPDATE chat_sessions_v3
              SET workspace_id = (SELECT id FROM workspaces LIMIT 1)
-             WHERE workspace_id = '' OR workspace_id IS NULL;
+             WHERE (workspace_id = '' OR workspace_id IS NULL) AND EXISTS (SELECT 1 FROM workspaces);
 
              DROP TABLE IF EXISTS chat_sessions;
              ALTER TABLE chat_sessions_v3 RENAME TO chat_sessions;
