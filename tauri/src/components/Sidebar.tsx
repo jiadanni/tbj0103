@@ -1,133 +1,112 @@
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useChatStore } from "../stores/chatStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  MessageSquare, Network, CreditCard,
-  FileText, Settings, Zap,
-  BarChart2,
-  Globe, FileEdit,
+  SquarePen, LayoutGrid, BarChart2, Folder, Settings,
+  MessageSquare, ChevronRight
 } from "lucide-react";
+import { api } from "../lib/api";
 
 interface SidebarProps {
   onOpenCommandPalette: () => void;
 }
 
-// Primary nav matches Swift NavigationView enum order exactly
-const NAV_ITEMS = [
-  { path: "/project",       icon: BarChart2,             label: "Dashboard"        },
-  { path: "/chat",          icon: MessageSquare,          label: "Chat"             },
-  { path: "/notes",         icon: FileEdit,               label: "Notes"            },
-  { path: "/documents",     icon: FileText,               label: "Documents"        },
-  { path: "/webcapture",    icon: Globe,                  label: "Web Captures"     },
-  { path: "/graph",         icon: Network,                label: "Knowledge Graph"  },
-  { path: "/flashcards",    icon: CreditCard,             label: "Flashcards"       },
-];
-
-// Secondary nav
-const SECONDARY_ITEMS = [
-  { path: "/settings",   icon: Settings,    label: "Settings"       },
-];
-
 export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const {
-    projects, activeProjectId, setActiveProjectId, isDemoMode,
-  } = useWorkspaceStore();
-
-  function selectProject(id: string) {
-    setActiveProjectId(id);
-    navigate("/project");
-  }
+  const { activeProjectId } = useWorkspaceStore();
+  const { sessions } = useChatStore();
 
   const activeSegment = "/" + location.pathname.split("/")[1];
+  const activeChatId = location.pathname.startsWith("/chat/") ? location.pathname.split("/")[2] : null;
+
+  async function handleNewThread() {
+    try {
+      const s = await api.chat.createSession(activeProjectId || "");
+      navigate(`/chat/${s.id}`);
+    } catch (e) {
+      console.error(e);
+    }
+  }
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-sidebar)] text-sm select-none">
-      {/* App title + demo badge */}
-      <div className="px-3 py-3 flex items-center gap-2 border-b border-[var(--border-color)]">
-        <Zap size={16} className="text-[var(--accent-color)]" />
-        <span className="font-semibold text-[var(--text-primary)]">Aetherium</span>
-        {isDemoMode && (
-          <span className="ml-auto text-[10px] px-1.5 py-0.5 bg-amber-400/30 text-amber-400 rounded font-mono">
-            DEMO
+    <div className="flex flex-col h-full bg-transparent text-sm select-none pt-8">
+      {/* Top Primary Actions */}
+      <div className="px-3 pb-4 space-y-1">
+        <button
+          onClick={handleNewThread}
+          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+        >
+          <SquarePen size={14} className="text-[var(--text-muted)]" />
+          New thread
+        </button>
+        
+        <button
+          onClick={() => navigate("/settings")} // Assuming Skills might be in settings for now
+          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+            activeSegment === "/settings" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <LayoutGrid size={14} className="text-[var(--text-muted)]" />
+          Skills
+        </button>
+
+        <button
+          onClick={() => navigate("/project")}
+          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-colors ${
+            activeSegment === "/project" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <BarChart2 size={14} className="text-[var(--text-muted)]" />
+            Usage
+          </div>
+          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+            Tokens Live
           </span>
-        )}
+        </button>
       </div>
 
-
-
-      {/* Project list */}
-      {projects.length > 0 && (
-        <div className="px-2 pb-1">
-          <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] px-1 mb-1">
-            Projects
-          </div>
-          <div className="space-y-0.5 max-h-36 overflow-y-auto">
-            {projects.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => selectProject(p.id)}
-                className={`w-full text-left px-2 py-1.5 rounded text-xs truncate flex items-center gap-2 transition-colors ${
-                  activeProjectId === p.id
-                    ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                }`}
-              >
-                {p.icon && <span>{p.icon}</span>}
-                <span className="truncate">{p.name}</span>
-              </button>
-            ))}
-          </div>
+      {/* Threads Section */}
+      <div className="flex-1 overflow-y-auto px-3 space-y-1">
+        <div className="flex items-center justify-between text-[10px] font-semibold tracking-wider text-[var(--text-muted)] px-2 mb-2 uppercase">
+          <span>Threads</span>
+          <Folder size={12} className="opacity-50" />
         </div>
-      )}
 
-      {/* Nav */}
-      <nav className="flex-1 px-2 pt-2 space-y-0.5 overflow-y-auto">
-        <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] px-1 mb-1">
-          Navigation
-        </div>
-        {NAV_ITEMS.map(({ path, icon: Icon, label }) => (
+        {sessions.map((s) => (
           <button
-            key={path}
-            onClick={() => navigate(path)}
-            className={`w-full flex items-center gap-2.5 px-2 py-2 rounded text-xs transition-colors ${
-              activeSegment === path
-                ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
-                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+            key={s.id}
+            onClick={() => navigate(`/chat/${s.id}`)}
+            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-colors group ${
+              activeChatId === s.id
+                ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
             }`}
           >
-            <Icon size={14} />
-            {label}
+            <span className="truncate pr-2 flex-1 text-left">{s.title || "New Chat"}</span>
+            <span className="text-[10px] text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+              <ChevronRight size={12} />
+            </span>
           </button>
         ))}
+      </div>
 
-        {/* Secondary items */}
-        <div className="pt-2 mt-2 border-t border-[var(--border-color)]">
-          {SECONDARY_ITEMS.map(({ path, icon: Icon, label }) => (
-            <button
-              key={path}
-              onClick={() => navigate(path)}
-              className={`w-full flex items-center gap-2.5 px-2 py-2 rounded text-xs transition-colors ${
-                activeSegment === path
-                  ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
-                  : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
-              }`}
-            >
-              <Icon size={13} />
-              {label}
-            </button>
-          ))}
-        </div>
-      </nav>
-
-      {/* Bottom: cmd+K hint */}
-      <div className="px-3 py-2 border-t border-[var(--border-color)]">
+      {/* Bottom Actions */}
+      <div className="p-3">
         <button
-          onClick={onOpenCommandPalette}
-          className="flex w-full items-center gap-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+          onClick={() => navigate("/settings")}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-colors border border-transparent ${
+            activeSegment === "/settings"
+              ? "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-primary)]"
+              : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:border-[var(--border-color)] hover:text-[var(--text-primary)]"
+          }`}
         >
-          <span className="flex-1 text-left">Command Palette</span>
-          <kbd className="text-[10px] px-1 py-0.5 bg-[var(--bg-hover)] rounded font-mono">⌘K</kbd>
+          <div className="flex items-center gap-2">
+            <Settings size={14} />
+            Settings
+          </div>
+          <ChevronRight size={14} className="text-[var(--text-muted)]" />
         </button>
       </div>
     </div>

@@ -198,6 +198,7 @@ pub fn run() {
             commands::note::update_template,
             // Chat session update
             commands::chat::update_chat_session,
+            commands::chat::get_token_usage_by_date,
             // Project stats
             commands::project::get_project_stats,
             // Web capture commands

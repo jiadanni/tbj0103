@@ -232,3 +232,12 @@ These are lower-priority or higher-complexity ideas. Revisit when there's clear 
 6. **Performance Optimization** (#3) — profile first, then optimise
 7. **AI Enhancements** (#9)
 8. **Collaboration & Sync** (#10) — long-term
+
+---
+
+## 🧊 On Ice — GlassCode-Inspired
+
+These features were evaluated from the GlassCode UI study but deferred. Revisit when the core composer bar and dashboard are stable.
+
+- **Skills Marketplace UI** — Browsable skill/plugin cards with icons, descriptions, and toggle switches layered on top of the existing MCP server system. Requires a plugin registry backend or curated card list.
+- **Inline Diff / File Change Cards in Chat** — When an AI tool call (via MCP) performs a file operation, show inline diff cards with `+N / -N` counts and a Review button alongside the chat message. Requires streaming MCP tool result events into the message renderer.

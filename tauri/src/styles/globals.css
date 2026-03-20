@@ -89,6 +89,23 @@
   --border-color: #003b00;
 }
 
+/* GlassCode */
+.theme-glasscode {
+  color-scheme: dark;
+  --bg-primary: #0e0e0e;
+  --bg-secondary: rgba(255, 255, 255, 0.05);
+  --bg-sidebar: #151515;
+  --text-primary: #f8f9fa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --bg-elevated: rgba(25, 25, 25, 0.7);
+  --bg-hover: rgba(255, 255, 255, 0.08);
+  --bg-input: rgba(0, 0, 0, 0.4);
+  --border-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
 /* =====================================================
    Global Reset
    ===================================================== */

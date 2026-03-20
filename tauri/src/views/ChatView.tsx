@@ -1043,7 +1043,7 @@ export default function ChatView() {
         </div>
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Toolbar */}
+          {/* Slim title bar */}
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
             <span className="text-sm font-medium text-[var(--text-primary)] flex-1 truncate">
               {sessions.find((s) => s.id === activeChatId)?.title || "New Chat"}
@@ -1051,106 +1051,6 @@ export default function ChatView() {
             {availableModels.length === 0 && (
               <span className="text-xs text-amber-400">No Ollama models found</span>
             )}
-            <select
-              value={selectedModel}
-              onChange={(e) => {
-                setSelectedModel(e.target.value);
-                persistModelChoice(e.target.value);
-              }}
-              className="text-xs px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none"
-            >
-              {availableModels.length > 0
-                ? availableModels.map((m) => <option key={m} value={m}>{modelDisplayName(m)}</option>)
-                : <option value={selectedModel}>{modelDisplayName(selectedModel)}</option>
-              }
-            </select>
-            {nextModel && !isStreaming && activeMessages.length > 0 && (
-              <button
-                onClick={() => {
-                  setSelectedModel(nextModel.model_id);
-                  persistModelChoice(nextModel.model_id);
-                  if (lastUserMessage) setInput(lastUserMessage);
-                }}
-                title={`Try ${nextModel.name}`}
-                className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
-              >
-                <ArrowUpCircle size={12} />
-                Try {nextModel.name}
-              </button>
-            )}
-            {/* Dual-model toggle */}
-            <button
-              onClick={() => {
-                const newValue = !dualModelEnabled;
-                setDualModelEnabled(newValue);
-                persistSetting("dual_model_enabled", newValue);
-              }}
-              title={dualModelEnabled ? `Dual model ON — draft: ${draftModel || "(none)"} → refine: ${selectedModel}` : "Enable dual-model mode (draft + refine)"}
-              className={`flex items-center gap-1 px-2 py-1 text-xs rounded border transition-colors ${
-                dualModelEnabled
-                  ? "bg-amber-500/15 border-amber-500/50 text-amber-400"
-                  : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-              }`}
-            >
-              <Zap size={12} />
-              {dualModelEnabled && <span className="text-[10px] hidden sm:inline">Draft</span>}
-            </button>
-            {dualModelEnabled && (
-              <select
-                value={draftModel}
-                onChange={(e) => {
-                  setDraftModel(e.target.value);
-                  persistSetting("draft_model", e.target.value);
-                }}
-                title="Draft model (small/fast)"
-                className="text-xs px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 outline-none max-w-[120px]"
-              >
-                <option value="">Draft model…</option>
-                {availableModels.map((m) => (
-                  <option key={m} value={m}>{modelDisplayName(m)}</option>
-                ))}
-              </select>
-            )}
-            {/* Grounded (RAG) toggle */}
-            <button
-              onClick={() => setGroundedEnabled((v) => !v)}
-              title={groundedEnabled ? `Grounded mode ON (${processedDocCount} docs)` : "Enable grounded mode (RAG)"}
-              className={`flex items-center gap-1 px-2 py-1 text-xs rounded border transition-colors ${
-                groundedEnabled
-                  ? "bg-[var(--accent-color)]/15 border-[var(--accent-color)] text-[var(--accent-color)]"
-                  : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-              }`}
-            >
-              <BookOpen size={12} />
-              {groundedEnabled && processedDocCount > 0 && (
-                <span className="text-[10px]">{processedDocCount}</span>
-              )}
-            </button>
-            {groundedEnabled && (
-              <select
-                value={groundedTopK}
-                onChange={(e) => setGroundedTopK(Number(e.target.value))}
-                className="text-[11px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none"
-                title="Number of document chunks to retrieve"
-              >
-                {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
-              </select>
-            )}
-            {/* Thought queue toggle */}
-            <button
-              onClick={() => setThoughtPanelOpen((v) => !v)}
-              title="Thought Queue"
-              className={`flex items-center gap-1 px-2 py-1 text-xs rounded border transition-colors ${
-                thoughtPanelOpen
-                  ? "bg-[var(--accent-color)]/15 border-[var(--accent-color)] text-[var(--accent-color)]"
-                  : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-              }`}
-            >
-              <Inbox size={12} />
-              {thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length > 0 && (
-                <span className="text-[10px]">{thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length}</span>
-              )}
-            </button>
           </div>
 
           {/* Web AI provider notice */}
@@ -1382,50 +1282,229 @@ export default function ChatView() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input area */}
-          <div className="border-t border-[var(--border-color)] px-4 py-3 bg-[var(--bg-primary)] flex flex-col">
-            {activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
-              <TopicChips 
-                tags={activeTopicSignature.domain_tags} 
-                onChipClick={(tag) => setInput(prev => `[${tag}] ${prev}`)} 
-              />
-            )}
-            <div className="flex items-end gap-2">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={isStreaming}
-                placeholder={isStreaming ? "Waiting for response…" : !selectedModel ? "No models available — install one via ollama pull" : "Message… (⏎ send, ⇧⏎ newline)"}
-                rows={1}
-                className="flex-1 resize-none px-3.5 py-2.5 text-sm rounded-xl bg-[var(--bg-input)] border-2 border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] focus:shadow-[0_0_0_3px_rgba(var(--accent-color-rgb),0.1)] transition-colors max-h-40 overflow-y-auto"
-                style={{ minHeight: 40 }}
-                onInput={(e) => {
-                  const el = e.currentTarget;
-                  el.style.height = "auto";
-                  el.style.height = Math.min(el.scrollHeight, 160) + "px";
+          {/* Input / composer area */}
+          <div className="px-4 pb-6 pt-2 bg-transparent flex flex-col items-center flex-shrink-0">
+            <div className="w-full max-w-4xl flex flex-col bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-2 shadow-md">
+              {activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
+                <div className="px-2 pt-1 pb-2">
+                  <TopicChips
+                    tags={activeTopicSignature.domain_tags}
+                    onChipClick={(tag) => setInput(prev => `[${tag}] ${prev}`)}
+                  />
+                </div>
+              )}
+              {/* Textarea + send button */}
+              <div className="flex items-end gap-2 px-1">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isStreaming}
+                  placeholder={isStreaming ? "Waiting for response…" : !selectedModel ? "No models available — install one via ollama pull" : "Message… (⏎ send, ⇧⏎ newline)"}
+                  rows={1}
+                  className="flex-1 resize-none px-3 py-2 text-sm bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors max-h-40 overflow-y-auto"
+                  style={{ minHeight: 40 }}
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    el.style.height = "auto";
+                    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+                  }}
+                />
+                {isStreaming ? (
+                  <button
+                    onClick={() => { if (activeChatId) api.ollama.stopStream(activeChatId).catch(() => {}); }}
+                    className="flex-shrink-0 p-2 mb-1 mr-1 rounded-xl bg-red-500 text-white hover:opacity-90 transition-opacity"
+                    title="Stop generation"
+                  >
+                    <X size={16} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={sendMessage}
+                    disabled={!input.trim() || !selectedModel}
+                    className="flex-shrink-0 p-2 mb-1 mr-1 rounded-xl bg-[var(--accent-color)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
+                  >
+                    <Send size={16} />
+                  </button>
+                )}
+              </div>
+
+              {/* ── Composer tool row ─────────────────────────────────────── */}
+              <div className="flex items-center gap-1.5 mt-1 px-2 pb-1 flex-wrap">
+              {/* Model picker */}
+              <select
+                value={selectedModel}
+                onChange={(e) => {
+                  setSelectedModel(e.target.value);
+                  persistModelChoice(e.target.value);
                 }}
-              />
-              {isStreaming ? (
+                className="text-[11px] px-2 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none max-w-[160px] truncate"
+                title="Active model"
+              >
+                {availableModels.length > 0
+                  ? availableModels.map((m) => <option key={m} value={m}>{modelDisplayName(m)}</option>)
+                  : <option value={selectedModel}>{modelDisplayName(selectedModel)}</option>
+                }
+              </select>
+
+              {/* Try better model */}
+              {nextModel && !isStreaming && activeMessages.length > 0 && (
                 <button
-                  onClick={() => { if (activeChatId) api.ollama.stopStream(activeChatId).catch(() => {}); }}
-                  className="flex-shrink-0 p-2.5 rounded-xl bg-red-500 text-white hover:opacity-90 transition-opacity"
-                  title="Stop generation"
+                  onClick={() => {
+                    setSelectedModel(nextModel.model_id);
+                    persistModelChoice(nextModel.model_id);
+                    if (lastUserMessage) setInput(lastUserMessage);
+                  }}
+                  title={`Try ${nextModel.name}`}
+                  className="p-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
                 >
-                  <X size={16} />
-                </button>
-              ) : (
-                <button
-                  onClick={sendMessage}
-                  disabled={!input.trim() || !selectedModel}
-                  className="flex-shrink-0 p-2.5 rounded-xl bg-[var(--accent-color)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
-                >
-                  <Send size={16} />
+                  <ArrowUpCircle size={12} />
                 </button>
               )}
+
+              {/* Dual-model toggle */}
+              <button
+                onClick={() => {
+                  const newValue = !dualModelEnabled;
+                  setDualModelEnabled(newValue);
+                  persistSetting("dual_model_enabled", newValue);
+                }}
+                title={dualModelEnabled ? `Dual model ON — draft: ${draftModel || "(none)"} → refine: ${selectedModel}` : "Dual-model mode (draft + refine)"}
+                className={`p-1.5 rounded-lg border transition-colors ${
+                  dualModelEnabled
+                    ? "bg-amber-500/15 border-amber-500/50 text-amber-400"
+                    : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                }`}
+              >
+                <Zap size={12} />
+              </button>
+
+              {/* Draft model picker (only when dual is on) */}
+              {dualModelEnabled && (
+                <select
+                  value={draftModel}
+                  onChange={(e) => {
+                    setDraftModel(e.target.value);
+                    persistSetting("draft_model", e.target.value);
+                  }}
+                  title="Draft model (small/fast)"
+                  className="text-[11px] px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 outline-none max-w-[120px]"
+                >
+                  <option value="">Draft…</option>
+                  {availableModels.map((m) => (
+                    <option key={m} value={m}>{modelDisplayName(m)}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Grounded (RAG) toggle */}
+              <button
+                onClick={() => setGroundedEnabled((v) => !v)}
+                title={groundedEnabled ? `Grounded ON (${processedDocCount} docs)` : "Grounded mode (RAG)"}
+                className={`relative p-1.5 rounded-lg border transition-colors ${
+                  groundedEnabled
+                    ? "bg-[var(--accent-color)]/15 border-[var(--accent-color)] text-[var(--accent-color)]"
+                    : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                }`}
+              >
+                <BookOpen size={12} />
+                {groundedEnabled && processedDocCount > 0 && (
+                  <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                    {processedDocCount > 9 ? "9+" : processedDocCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Top-K picker (only when grounded is on) */}
+              {groundedEnabled && (
+                <select
+                  value={groundedTopK}
+                  onChange={(e) => setGroundedTopK(Number(e.target.value))}
+                  className="text-[11px] px-1.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none"
+                  title="Document chunks to retrieve"
+                >
+                  {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
+                </select>
+              )}
+
+              {/* Thought queue toggle */}
+              <button
+                onClick={() => setThoughtPanelOpen((v) => !v)}
+                title="Thought Queue"
+                className={`relative p-1.5 rounded-lg border transition-colors ${
+                  thoughtPanelOpen
+                    ? "bg-[var(--accent-color)]/15 border-[var(--accent-color)] text-[var(--accent-color)]"
+                    : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                }`}
+              >
+                <Inbox size={12} />
+                {(() => {
+                  const pending = thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length;
+                  return pending > 0 ? (
+                    <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                      {pending > 9 ? "9+" : pending}
+                    </span>
+                  ) : null;
+                })()}
+              </button>
+
+              {/* ── Context window indicator (right-aligned) ─────────── */}
+              {(() => {
+                const sessionTokensUsed = activeMessages.reduce(
+                  (sum, m) => sum + (m.tokens_used ?? 0), 0
+                );
+                if (sessionTokensUsed === 0) return null;
+
+                // Approximate context window size from model name
+                const modelLower = selectedModel.toLowerCase();
+                let ctxSize = 4096;
+                if (modelLower.includes("llama3") || modelLower.includes("llama-3")) ctxSize = 8192;
+                else if (modelLower.includes("gemma")) ctxSize = 8192;
+                else if (modelLower.includes("mistral")) ctxSize = 32768;
+                else if (modelLower.includes("mixtral")) ctxSize = 32768;
+                else if (modelLower.includes("qwen2") || modelLower.includes("qwen-2")) ctxSize = 32768;
+                else if (modelLower.includes("phi")) ctxSize = 4096;
+                else if (modelLower.includes("deepseek")) ctxSize = 32768;
+                else if (modelLower.includes("command")) ctxSize = 4096;
+
+                const pct = Math.min(sessionTokensUsed / ctxSize, 1);
+                const pctText = Math.round(pct * 100);
+                const pillColor = pct > 0.85 ? "text-red-400 border-red-500/30 bg-red-500/10"
+                  : pct > 0.6 ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
+                  : "text-[var(--text-muted)] border-[var(--border-color)] bg-[var(--bg-elevated)]";
+                const barColor = pct > 0.85 ? "bg-red-400" : pct > 0.6 ? "bg-amber-400" : "bg-[var(--accent-color)]";
+
+                return (
+                  <div className="ml-auto group/ctx relative">
+                    {/* Collapsed pill */}
+                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] cursor-default transition-colors ${pillColor}`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${barColor}`} />
+                      <span className="font-mono">
+                        {sessionTokensUsed >= 1000 ? `${(sessionTokensUsed / 1000).toFixed(1)}k` : sessionTokensUsed}
+                        {" / "}
+                        {ctxSize >= 1000 ? `${(ctxSize / 1000).toFixed(0)}k` : ctxSize}
+                      </span>
+                    </div>
+                    {/* Hover tooltip */}
+                    <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover/ctx:flex flex-col gap-1 p-2.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] shadow-lg z-20 min-w-[160px]">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] text-[var(--text-muted)]">Context used</span>
+                        <span className={`text-[10px] font-medium ${pct > 0.85 ? "text-red-400" : pct > 0.6 ? "text-amber-400" : "text-[var(--text-secondary)]"}`}>{pctText}%</span>
+                      </div>
+                      <div className="h-1 rounded-full bg-[var(--bg-primary)] overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pctText}%` }} />
+                      </div>
+                      <span className="text-[10px] text-[var(--text-muted)] truncate">{modelDisplayName(selectedModel)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
-            <WorkspaceMigrationBanner />
+            </div>
+            <div className="w-full max-w-4xl mt-3">
+              <WorkspaceMigrationBanner />
+            </div>
           </div>
         </div>
       )}

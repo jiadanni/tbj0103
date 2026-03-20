@@ -11,7 +11,7 @@ import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import PluginManagerView from "./PluginManagerView";
 
-const THEMES = ["system", "light", "dark", "oled", "sepia", "hacker"] as const;
+const THEMES = ["system", "light", "dark", "oled", "sepia", "hacker", "glasscode"] as const;
 const ACCENT_COLORS = [
   { label: "Blue",   value: "#3b82f6" },
   { label: "Purple", value: "#8b5cf6" },
