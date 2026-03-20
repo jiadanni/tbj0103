@@ -41,6 +41,56 @@ pub fn run() {
                 mcp_client::MCPClientManager::new()
             ));
             app.manage(mcp_manager);
+            
+            // Spawn background timer for topic signatures
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // Initial delay
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                loop {
+                    let interval_minutes = {
+                        let state = app_handle.state::<db::DbState>();
+                        let conn = state.0.lock().unwrap();
+                        let val: String = conn.query_row(
+                            "SELECT value FROM settings WHERE key = 'topic_analysis_interval_minutes'",
+                            [],
+                            |row| row.get(0)
+                        ).unwrap_or_else(|_| "30".to_string());
+                        val.parse::<u64>().unwrap_or(30)
+                    };
+
+                    {
+                        let db = app_handle.state::<db::DbState>();
+                        let conn = db.0.lock().unwrap();
+
+                        let workspace_ids: Vec<String> = conn
+                            .prepare("SELECT id FROM workspaces")
+                            .and_then(|mut stmt| {
+                                stmt.query_map([], |row| row.get::<_, String>(0))?
+                                    .collect::<Result<Vec<_>, _>>()
+                            })
+                            .unwrap_or_default();
+
+                        for id in workspace_ids {
+                            if let Ok((text, count)) = crate::services::topic_signature::collect_workspace_text(&conn, &id) {
+                                if count > 0 {
+                                    let mut sig = crate::services::topic_signature::generate_heuristic(&text);
+                                    sig.message_count_at_gen = Some(count);
+                                    if let Ok(sig_json) = serde_json::to_string(&sig) {
+                                        let now = chrono::Utc::now().to_rfc3339();
+                                        let _ = conn.execute(
+                                            "UPDATE workspaces SET topic_signature = ?1, signature_updated_at = ?2 WHERE id = ?3",
+                                            rusqlite::params![sig_json, now, id],
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -195,6 +245,10 @@ pub fn run() {
             commands::chat_file::sync_all_chats_to_files,
             // Web AI (Playwright bridge)
             commands::web_ai::send_web_message,
+            // Topic signatures
+            commands::topic_signature::get_topic_signature,
+            commands::topic_signature::regenerate_topic_signature,
+            commands::topic_signature::check_workspace_match,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

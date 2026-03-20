@@ -8,6 +8,8 @@ import { useChatStore } from "../stores/chatStore";
 import { useWorkspaceStore, type Project } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession } from "../stores/chatStore";
+import { TopicChips } from "../components/TopicChips";
+import { WorkspaceMigrationBanner } from "../components/WorkspaceMigrationBanner";
 
 type ChatMode = "chat" | "compare";
 
@@ -20,7 +22,10 @@ export default function ChatView() {
     streamingSessionId, streamingContent, setStreamingSession, updateMessage,
   } = useChatStore();
 
-  const { activeProjectId, projects, setActiveProjectId, activeWorkspaceId } = useWorkspaceStore();
+  const { 
+    activeProjectId, projects, setActiveProjectId, activeWorkspaceId, 
+    activeTopicSignature, setActiveTopicSignature, setMigrationSuggestion 
+  } = useWorkspaceStore();
   const { preferredModel, ollamaUrl, dualModelEnabled, draftModel, setDualModelEnabled, setDraftModel } = useSettingsStore();
 
   const [input, setInput] = useState("");
@@ -181,6 +186,17 @@ export default function ChatView() {
     api.chat.listSessions(activeProjectId).then(setSessions).catch(() => {});
   }, [activeProjectId, setSessions]);
 
+  // Load active topic signature when workspace changes
+  useEffect(() => {
+    if (activeWorkspaceId) {
+      api.topicSignature.get(activeWorkspaceId)
+        .then(sig => setActiveTopicSignature(sig))
+        .catch(() => setActiveTopicSignature(null));
+    } else {
+      setActiveTopicSignature(null);
+    }
+  }, [activeWorkspaceId, setActiveTopicSignature]);
+
   // Activate session from URL
   useEffect(() => {
     if (sessionId) setActiveChatId(sessionId);
@@ -315,6 +331,13 @@ export default function ChatView() {
     setInput("");
     setIsStreaming(true);
     setLastUserMessage(userContent);
+
+    // Migration check
+    if (activeWorkspaceId) {
+      api.topicSignature.checkMatch(activeWorkspaceId, userContent)
+        .then(result => { if (!result.is_match && result.suggestion) setMigrationSuggestion(result); })
+        .catch(() => {});
+    }
 
     // Persist user message
     const userMsg = await api.chat.addMessage(sid, "user", userContent);
@@ -1186,7 +1209,13 @@ export default function ChatView() {
           </div>
 
           {/* Input area */}
-          <div className="border-t border-[var(--border-color)] px-4 py-3 bg-[var(--bg-primary)]">
+          <div className="border-t border-[var(--border-color)] px-4 py-3 bg-[var(--bg-primary)] flex flex-col">
+            {activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
+              <TopicChips 
+                tags={activeTopicSignature.domain_tags} 
+                onChipClick={(tag) => setInput(prev => `[${tag}] ${prev}`)} 
+              />
+            )}
             <div className="flex items-end gap-2">
               <textarea
                 ref={inputRef}
@@ -1212,6 +1241,7 @@ export default function ChatView() {
                 <Send size={16} />
               </button>
             </div>
+            <WorkspaceMigrationBanner />
           </div>
         </div>
       )}

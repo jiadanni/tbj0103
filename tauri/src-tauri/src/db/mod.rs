@@ -130,5 +130,25 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v5: add topic_signature and signature_updated_at to workspaces, plus new settings
+    let applied_v5: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v5_workspace_topic_signature'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v5 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE workspaces ADD COLUMN topic_signature TEXT NOT NULL DEFAULT '{}';
+             ALTER TABLE workspaces ADD COLUMN signature_updated_at TEXT;
+             INSERT OR IGNORE INTO settings (key, value) VALUES
+                ('topic_analysis_interval_minutes', '30'),
+                ('migration_suggestion_threshold', '0.3');",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v5_workspace_topic_signature');",
+        )?;
+    }
+
     Ok(())
 }

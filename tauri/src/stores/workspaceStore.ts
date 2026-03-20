@@ -1,8 +1,11 @@
 import { create } from "zustand";
+import type { TopicSignature, WorkspaceMatchResult } from "../lib/api";
 
 export interface Workspace {
   id: string;
   name: string;
+  topic_signature: TopicSignature;
+  signature_updated_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -26,6 +29,8 @@ interface WorkspaceStore {
   projects: Project[];
   isDemoMode: boolean;
   navLayout: "sidebar" | "tabs";
+  activeTopicSignature: TopicSignature | null;
+  migrationSuggestion: WorkspaceMatchResult | null;
   setWorkspaces: (ws: Workspace[]) => void;
   setActiveWorkspaceId: (id: string | null) => void;
   setActiveProjectId: (id: string | null) => void;
@@ -35,6 +40,9 @@ interface WorkspaceStore {
   addProject: (p: Project) => void;
   removeProject: (id: string) => void;
   setNavLayout: (layout: "sidebar" | "tabs") => void;
+  setActiveTopicSignature: (sig: TopicSignature | null) => void;
+  setMigrationSuggestion: (suggestion: WorkspaceMatchResult | null) => void;
+  dismissMigrationSuggestion: () => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
@@ -44,6 +52,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   projects: [],
   isDemoMode: false,
   navLayout: (localStorage.getItem("navLayout") as "sidebar" | "tabs") ?? "sidebar",
+  activeTopicSignature: null,
+  migrationSuggestion: null,
   setWorkspaces: (workspaces) => set({ workspaces }),
   setActiveWorkspaceId: (activeWorkspaceId) => set({ activeWorkspaceId }),
   setActiveProjectId: (activeProjectId) => set({ activeProjectId }),
@@ -56,4 +66,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     localStorage.setItem("navLayout", navLayout);
     set({ navLayout });
   },
+  setActiveTopicSignature: (activeTopicSignature) => set({ activeTopicSignature }),
+  setMigrationSuggestion: (migrationSuggestion) => set({ migrationSuggestion }),
+  dismissMigrationSuggestion: () => set({ migrationSuggestion: null }),
 }));
