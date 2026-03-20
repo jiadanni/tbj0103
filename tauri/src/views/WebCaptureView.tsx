@@ -5,7 +5,9 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Globe, Search, ExternalLink, RefreshCw } from "lucide-react";
 import { api } from "../lib/api";
+import { open } from "@tauri-apps/plugin-shell";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useSettingsStore } from "../stores/settingsStore";
 
 interface WebCapture {
   id: string;
@@ -20,6 +22,7 @@ interface WebCapture {
 
 export default function WebCaptureView() {
   const { activeWorkspaceId } = useWorkspaceStore();
+  const { skipLinkConfirm, setSkipLinkConfirm } = useSettingsStore();
   const [captures, setCaptures] = useState<WebCapture[]>([]);
   const [selected, setSelected] = useState<WebCapture | null>(null);
   const [query, setQuery] = useState("");
@@ -28,6 +31,17 @@ export default function WebCaptureView() {
   const [newTitle, setNewTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingLink, setPendingLink] = useState<string | null>(null);
+  const [linkDontAsk, setLinkDontAsk] = useState(false);
+
+  const handleLinkClick = (href: string) => {
+    if (skipLinkConfirm) {
+      open(href);
+    } else {
+      setPendingLink(href);
+      setLinkDontAsk(false);
+    }
+  };
 
   useEffect(() => {
     if (!activeWorkspaceId) return;
@@ -174,9 +188,8 @@ export default function WebCaptureView() {
               <div className="text-sm font-medium text-[var(--text-primary)] truncate">{selected.title}</div>
               <a
                 href={selected.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-[var(--accent-color)] hover:underline truncate flex items-center gap-1"
+                onClick={(e) => { e.preventDefault(); handleLinkClick(selected.url); }}
+                className="text-[11px] text-[var(--accent-color)] hover:underline truncate flex items-center gap-1 cursor-pointer"
               >
                 {selected.url}
                 <ExternalLink size={10} />
@@ -226,6 +239,42 @@ export default function WebCaptureView() {
                 + Add web capture
               </button>
             )}
+          </div>
+        </div>
+      )}
+      {pendingLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl shadow-xl max-w-sm w-full mx-4 p-5">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">Open External Link</h3>
+            <p className="text-xs text-[var(--text-secondary)] mb-1">This will open in your browser:</p>
+            <p className="text-xs text-[var(--accent-color)] break-all mb-4 font-mono">{pendingLink}</p>
+            <label className="flex items-center gap-2 mb-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={linkDontAsk}
+                onChange={(e) => setLinkDontAsk(e.target.checked)}
+                className="rounded border-[var(--border-color)] accent-[var(--accent-color)]"
+              />
+              <span className="text-xs text-[var(--text-secondary)]">Don't ask again</span>
+            </label>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingLink(null)}
+                className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (pendingLink) open(pendingLink);
+                  if (linkDontAsk) setSkipLinkConfirm(true);
+                  setPendingLink(null);
+                }}
+                className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 transition-opacity"
+              >
+                Open Link
+              </button>
+            </div>
           </div>
         </div>
       )}

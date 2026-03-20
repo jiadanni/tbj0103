@@ -108,6 +108,10 @@ export interface AppSettings {
   chat_json_storage: boolean;
   chat_encryption_enabled: boolean;
   web_session_preserve: boolean;
+  dual_model_enabled: boolean;
+  draft_model: string;
+  compare_model_a: string;
+  compare_model_b: string;
 }
 
 export interface BacklinkEntry {
@@ -179,16 +183,16 @@ export const api = {
   },
 
   chat: {
-    createSession: (projectId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string }) =>
-      invoke<ChatSession>("create_chat_session", { req: { project_id: projectId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt } }),
-    listSessions: (projectId?: string | null) => invoke<ChatSession[]>("list_chat_sessions", { projectId: projectId ?? '' }),
-    getSession: (id: string) => invoke<ChatSession | null>("get_chat_session", { id }),
-    deleteSession: (id: string) => invoke<void>("delete_chat_session", { id }),
-    updateSession: (id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string }) =>
-      invoke<void>("update_chat_session", { id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt }),
-    addMessage: (sessionId: string, role: "user" | "assistant", content: string, modelName?: string, tokensUsed?: number, durationMs?: number) =>
-      invoke<Message>("add_message", { req: { session_id: sessionId, role, content, model_name: modelName, tokens_used: tokensUsed, duration_ms: durationMs } }),
-    getMessages: (sessionId: string) => invoke<Message[]>("get_messages", { sessionId }),
+    createSession: (workspaceId: string, projectId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string }) =>
+      invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, project_id: projectId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt } }),
+    listSessions: (workspaceId: string, projectId?: string | null) => invoke<ChatSession[]>("list_chat_sessions", { workspaceId, projectId: projectId ?? '' }),
+    getSession: (workspaceId: string, id: string) => invoke<ChatSession | null>("get_chat_session", { workspaceId, id }),
+    deleteSession: (workspaceId: string, id: string) => invoke<void>("delete_chat_session", { workspaceId, id }),
+    updateSession: (workspaceId: string, id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string }) =>
+      invoke<void>("update_chat_session", { workspaceId, id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt }),
+    addMessage: (workspaceId: string, sessionId: string, role: "user" | "assistant", content: string, modelName?: string, tokensUsed?: number, durationMs?: number) =>
+      invoke<Message>("add_message", { req: { workspace_id: workspaceId, session_id: sessionId, role, content, model_name: modelName, tokens_used: tokensUsed, duration_ms: durationMs } }),
+    getMessages: (workspaceId: string, sessionId: string) => invoke<Message[]>("get_messages", { workspaceId, sessionId }),
   },
 
   chatFile: {
@@ -293,6 +297,9 @@ export const api = {
       invoke<{ topic: string; weight: number }[]>("extract_topics", { texts, model, ollamaUrl }),
     generateEmbedding: (text: string, model?: string, ollamaUrl?: string) =>
       invoke<number[]>("generate_embedding", { req: { text, model, ollama_url: ollamaUrl } }),
+    generateFollowUps: (model: string, messages: { role: string; content: string }[], ollamaUrl?: string) =>
+      invoke<string[]>("generate_follow_ups", { model, messages, ollamaUrl }),
+    stopStream: (sessionId: string) => invoke<void>("stop_stream", { sessionId }),
   },
 
   export: {

@@ -12,15 +12,16 @@ import type { ChatSession } from "../stores/chatStore";
 
 export default function ChatSessionListView() {
   const navigate = useNavigate();
-  const { activeProjectId, projects } = useWorkspaceStore();
+  const { activeProjectId, projects, activeWorkspaceId } = useWorkspaceStore();
   const { sessions, setSessions, setActiveChatId } = useChatStore();
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
 
   useEffect(() => {
-    api.chat.listSessions(activeProjectId).then(setSessions).catch(() => {});
-  }, [activeProjectId]);
+    if (!activeWorkspaceId) return;
+    api.chat.listSessions(activeWorkspaceId, activeProjectId).then(setSessions).catch(() => {});
+  }, [activeWorkspaceId, activeProjectId]);
 
   const filtered = sessions.filter(
     (s) =>
@@ -37,7 +38,8 @@ export default function ChatSessionListView() {
   }
 
   async function togglePin(session: ChatSession) {
-    await api.chat.updateSession(session.id, { is_pinned: !session.is_pinned });
+    if (!activeWorkspaceId) return;
+    await api.chat.updateSession(activeWorkspaceId, session.id, { is_pinned: !session.is_pinned });
     setSessions(
       sessions.map((s) =>
         s.id === session.id ? { ...s, is_pinned: !s.is_pinned } : s
@@ -46,20 +48,21 @@ export default function ChatSessionListView() {
   }
 
   async function deleteSession(id: string) {
-    if (!confirm("Delete this chat session and all its messages?")) return;
-    await api.chat.deleteSession(id);
+    if (!activeWorkspaceId || !confirm("Delete this chat session and all its messages?")) return;
+    await api.chat.deleteSession(activeWorkspaceId, id);
     setSessions(sessions.filter((s) => s.id !== id));
   }
 
   async function renameSession(id: string) {
-    if (!editTitle.trim()) { setEditingId(null); return; }
-    await api.chat.updateSession(id, { title: editTitle });
+    if (!editTitle.trim() || !activeWorkspaceId) { setEditingId(null); return; }
+    await api.chat.updateSession(activeWorkspaceId, id, { title: editTitle });
     setSessions(sessions.map((s) => s.id === id ? { ...s, title: editTitle } : s));
     setEditingId(null);
   }
 
   async function createSession() {
-    const session = await api.chat.createSession(activeProjectId);
+    if (!activeWorkspaceId) return;
+    const session = await api.chat.createSession(activeWorkspaceId, activeProjectId);
     setSessions([session, ...sessions]);
     setActiveChatId(session.id);
     navigate(`/chat/${session.id}`);

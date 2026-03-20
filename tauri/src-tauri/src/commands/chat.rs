@@ -12,16 +12,16 @@ pub fn create_chat_session(
     req: CreateChatSessionRequest,
 ) -> Result<ChatSession, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let mut s = ChatSession::new(req.project_id.clone());
+    let mut s = ChatSession::new(req.workspace_id.clone(), req.project_id.clone());
     if let Some(t) = req.title { s.title = t; }
     if let Some(m) = req.model_name { s.model_name = m; }
     if let Some(sp) = req.system_prompt { s.system_prompt = sp; }
     s.parent_session_id = req.parent_session_id;
     s.branch_message_id = req.branch_message_id;
     conn.execute(
-        "INSERT INTO chat_sessions (id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        rusqlite::params![s.id, s.project_id, s.title, s.model_name, s.system_prompt, s.is_pinned as i32,
+        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        rusqlite::params![s.id, s.workspace_id, s.project_id, s.title, s.model_name, s.system_prompt, s.is_pinned as i32,
                           s.parent_session_id, s.branch_message_id, s.created_at, s.updated_at],
     ).map_err(|e| e.to_string())?;
     // Sync to file (best-effort)
@@ -31,24 +31,33 @@ pub fn create_chat_session(
 }
 
 #[tauri::command]
-pub fn list_chat_sessions(state: State<DbState>, project_id: String) -> Result<Vec<ChatSession>, String> {
+pub fn list_chat_sessions(state: State<DbState>, workspace_id: String, project_id: String) -> Result<Vec<ChatSession>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at
-         FROM chat_sessions WHERE project_id = ?1 ORDER BY is_pinned DESC, updated_at DESC"
-    ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![project_id], |row| {
+    
+    let (sql, params) = if project_id.is_empty() {
+        ("SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at
+          FROM chat_sessions WHERE workspace_id = ?1 ORDER BY is_pinned DESC, updated_at DESC", 
+         rusqlite::params![workspace_id])
+    } else {
+        ("SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at
+          FROM chat_sessions WHERE workspace_id = ?1 AND project_id = ?2 ORDER BY is_pinned DESC, updated_at DESC",
+         rusqlite::params![workspace_id, project_id])
+    };
+
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+    let items = stmt.query_map(params, |row| {
         Ok(ChatSession {
             id: row.get(0)?,
-            project_id: row.get(1)?,
-            title: row.get(2)?,
-            model_name: row.get(3)?,
-            system_prompt: row.get(4)?,
-            is_pinned: row.get::<_, i32>(5)? != 0,
-            parent_session_id: row.get(6)?,
-            branch_message_id: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
+            workspace_id: row.get(1)?,
+            project_id: row.get(2)?,
+            title: row.get(3)?,
+            model_name: row.get(4)?,
+            system_prompt: row.get(5)?,
+            is_pinned: row.get::<_, i32>(6)? != 0,
+            parent_session_id: row.get(7)?,
+            branch_message_id: row.get(8)?,
+            created_at: row.get(9)?,
+            updated_at: row.get(10)?,
         })
     }).map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>()
@@ -57,23 +66,24 @@ pub fn list_chat_sessions(state: State<DbState>, project_id: String) -> Result<V
 }
 
 #[tauri::command]
-pub fn get_chat_session(state: State<DbState>, id: String) -> Result<Option<ChatSession>, String> {
+pub fn get_chat_session(state: State<DbState>, workspace_id: String, id: String) -> Result<Option<ChatSession>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at
-         FROM chat_sessions WHERE id = ?1",
-        rusqlite::params![id],
+        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at
+         FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2",
+        rusqlite::params![id, workspace_id],
         |row| Ok(ChatSession {
             id: row.get(0)?,
-            project_id: row.get(1)?,
-            title: row.get(2)?,
-            model_name: row.get(3)?,
-            system_prompt: row.get(4)?,
-            is_pinned: row.get::<_, i32>(5)? != 0,
-            parent_session_id: row.get(6)?,
-            branch_message_id: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
+            workspace_id: row.get(1)?,
+            project_id: row.get(2)?,
+            title: row.get(3)?,
+            model_name: row.get(4)?,
+            system_prompt: row.get(5)?,
+            is_pinned: row.get::<_, i32>(6)? != 0,
+            parent_session_id: row.get(7)?,
+            branch_message_id: row.get(8)?,
+            created_at: row.get(9)?,
+            updated_at: row.get(10)?,
         }),
     );
     match result {
@@ -87,9 +97,22 @@ pub fn get_chat_session(state: State<DbState>, id: String) -> Result<Option<Chat
 pub fn delete_chat_session(
     state: State<DbState>,
     chats_dir: State<ChatsDirState>,
+    workspace_id: String,
     id: String,
 ) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+    
+    // Validate workspace ownership
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2)",
+        rusqlite::params![id, workspace_id],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    
+    if !exists {
+        return Err("Chat session not found in this workspace".to_string());
+    }
+
     conn.execute("DELETE FROM chat_sessions WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     // Remove JSON file
@@ -105,6 +128,18 @@ pub fn add_message(
     req: AddMessageRequest,
 ) -> Result<Message, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+    
+    // Validate workspace ownership of the session
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2)",
+        rusqlite::params![req.session_id, req.workspace_id],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    
+    if !exists {
+        return Err("Chat session not found in this workspace".to_string());
+    }
+
     let msg = Message {
         id: uuid::Uuid::new_v4().to_string(),
         session_id: req.session_id.clone(),
@@ -134,8 +169,20 @@ pub fn add_message(
 }
 
 #[tauri::command]
-pub fn get_messages(state: State<DbState>, session_id: String) -> Result<Vec<Message>, String> {
+pub fn get_messages(state: State<DbState>, workspace_id: String, session_id: String) -> Result<Vec<Message>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+    
+    // Validate workspace ownership of the session
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2)",
+        rusqlite::params![session_id, workspace_id],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    
+    if !exists {
+        return Err("Chat session not found in this workspace".to_string());
+    }
+
     let mut stmt = conn.prepare(
         "SELECT id, session_id, role, content, model_name, tokens_used, duration_ms, created_at
          FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
@@ -166,12 +213,25 @@ pub fn update_chat_session(
     state: State<DbState>,
     chats_dir: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
+    workspace_id: String,
     id: String,
     title: Option<String>,
     is_pinned: Option<bool>,
     system_prompt: Option<String>,
 ) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+    
+    // Validate workspace ownership
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2)",
+        rusqlite::params![id, workspace_id],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    
+    if !exists {
+        return Err("Chat session not found in this workspace".to_string());
+    }
+
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE chat_sessions SET
