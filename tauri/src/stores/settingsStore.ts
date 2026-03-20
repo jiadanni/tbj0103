@@ -13,6 +13,10 @@ interface AppSettings {
   sidebarWidth: number;
   dualModelEnabled: boolean;
   draftModel: string;
+  compareModelA: string;
+  compareModelB: string;
+  modelLabels: Record<string, string>;
+  skipLinkConfirm: boolean;
 }
 
 interface SettingsStore extends AppSettings {
@@ -24,6 +28,10 @@ interface SettingsStore extends AppSettings {
   setSidebarWidth: (n: number) => void;
   setDualModelEnabled: (v: boolean) => void;
   setDraftModel: (m: string) => void;
+  setCompareModelA: (m: string) => void;
+  setCompareModelB: (m: string) => void;
+  setModelLabel: (id: string, label: string) => void;
+  setSkipLinkConfirm: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -38,6 +46,10 @@ export const useSettingsStore = create<SettingsStore>()(
       sidebarWidth: 240,
       dualModelEnabled: false,
       draftModel: "",
+      compareModelA: "",
+      compareModelB: "",
+      modelLabels: {},
+      skipLinkConfirm: false,
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
       setTheme: (theme) => set({ theme }),
@@ -46,6 +58,10 @@ export const useSettingsStore = create<SettingsStore>()(
       setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
       setDualModelEnabled: (dualModelEnabled) => set({ dualModelEnabled }),
       setDraftModel: (draftModel) => set({ draftModel }),
+      setCompareModelA: (compareModelA) => set({ compareModelA }),
+      setCompareModelB: (compareModelB) => set({ compareModelB }),
+      setModelLabel: (id, label) => set((state) => ({ modelLabels: { ...state.modelLabels, [id]: label } })),
+      setSkipLinkConfirm: (skipLinkConfirm) => set({ skipLinkConfirm }),
     }),
     { name: "aetherium-settings" }
   )

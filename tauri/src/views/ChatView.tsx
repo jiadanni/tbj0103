@@ -3,7 +3,8 @@ import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe } from "lucide-react";
-import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem } from "../lib/api";
+import { open } from "@tauri-apps/plugin-shell";
+import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 import { useWorkspaceStore, type Project } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -26,13 +27,52 @@ export default function ChatView() {
     activeProjectId, projects, setActiveProjectId, activeWorkspaceId, 
     activeTopicSignature, setActiveTopicSignature, setMigrationSuggestion 
   } = useWorkspaceStore();
-  const { preferredModel, ollamaUrl, dualModelEnabled, draftModel, setDualModelEnabled, setDraftModel } = useSettingsStore();
+  const {
+    preferredModel, setPreferredModel, ollamaUrl, dualModelEnabled, draftModel,
+    setDualModelEnabled, setDraftModel, compareModelA: savedCompareA, compareModelB: savedCompareB,
+    setCompareModelA: saveCompareA, setCompareModelB: saveCompareB, modelLabels,
+    skipLinkConfirm, setSkipLinkConfirm,
+  } = useSettingsStore();
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [selectedModel, setSelectedModel] = useState(preferredModel || "");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
+
+  // Persist model choice to global settings
+  const persistModelChoice = useCallback(async (model: string) => {
+    if (!model) return;
+    setPreferredModel(model);
+    try {
+      const current = await api.settings.get();
+      if (current.preferred_model !== model) {
+        await api.settings.update({ ...current, preferred_model: model });
+      }
+    } catch (err) {
+      console.error("Failed to persist model choice:", err);
+    }
+  }, [setPreferredModel]);
+
+  // Persist other settings
+  const persistSetting = useCallback(async (key: keyof AppSettings, value: any) => {
+    try {
+      const current = await api.settings.get();
+      if (current[key] !== value) {
+        await api.settings.update({ ...current, [key]: value });
+      }
+    } catch (err) {
+      console.error(`Failed to persist ${key}:`, err);
+    }
+  }, []);
+
+  // Sync selectedModel with store if store hydrates after initial render
+  useEffect(() => {
+    if (preferredModel && !selectedModel) {
+      setSelectedModel(preferredModel);
+    }
+  }, [preferredModel, selectedModel]);
+
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
@@ -47,8 +87,54 @@ export default function ChatView() {
   const [renameTitle, setRenameTitle] = useState("");
 
   // Model comparison state
-  const [compareModelA, setCompareModelA] = useState("");
-  const [compareModelB, setCompareModelB] = useState("");
+  const [compareModelA, setCompareModelA] = useState(savedCompareA || "");
+  const [compareModelB, setCompareModelB] = useState(savedCompareB || "");
+
+  // Sync comparison models when store hydrates
+  useEffect(() => {
+    if (savedCompareA && !compareModelA) setCompareModelA(savedCompareA);
+    if (savedCompareB && !compareModelB) setCompareModelB(savedCompareB);
+  }, [savedCompareA, savedCompareB]);
+
+  // External link confirmation dialog
+  const [pendingLink, setPendingLink] = useState<string | null>(null);
+  const [linkDontAsk, setLinkDontAsk] = useState(false);
+
+  const handleLinkClick = useCallback((href: string) => {
+    if (skipLinkConfirm) {
+      open(href);
+    } else {
+      setPendingLink(href);
+      setLinkDontAsk(false);
+    }
+  }, [skipLinkConfirm]);
+
+  const confirmOpenLink = useCallback(() => {
+    if (pendingLink) open(pendingLink);
+    if (linkDontAsk) setSkipLinkConfirm(true);
+    setPendingLink(null);
+  }, [pendingLink, linkDontAsk, setSkipLinkConfirm]);
+
+  const cancelOpenLink = useCallback(() => {
+    setPendingLink(null);
+  }, []);
+
+  const markdownComponents = {
+    a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+      <a
+        {...props}
+        href={href}
+        onClick={(e) => {
+          e.preventDefault();
+          if (href) handleLinkClick(href);
+        }}
+        style={{ cursor: "pointer" }}
+      >
+        {children}
+      </a>
+    ),
+  };
+
   const [comparePrompt, setComparePrompt] = useState("");
   const [compareResponseA, setCompareResponseA] = useState("");
   const [compareResponseB, setCompareResponseB] = useState("");
@@ -62,6 +148,7 @@ export default function ChatView() {
   const [processedDocCount, setProcessedDocCount] = useState(0);
   const [messageSources, setMessageSources] = useState<Record<string, SearchResult[]>>({});
   const [expandedSources, setExpandedSources] = useState<string | null>(null);
+  const [followUps, setFollowUps] = useState<string[]>([]);
 
   // Per-message metadata (tok/s and duration) persisted on the Message itself;
   // no in-memory state needed — loaded from DB on session open.;
@@ -183,8 +270,9 @@ export default function ChatView() {
 
   // Load sessions (scoped to active project, or unscoped when none selected)
   useEffect(() => {
-    api.chat.listSessions(activeProjectId).then(setSessions).catch(() => {});
-  }, [activeProjectId, setSessions]);
+    if (!activeWorkspaceId) return;
+    api.chat.listSessions(activeWorkspaceId, activeProjectId).then(setSessions).catch(() => {});
+  }, [activeWorkspaceId, activeProjectId, setSessions]);
 
   // Load active topic signature when workspace changes
   useEffect(() => {
@@ -202,13 +290,23 @@ export default function ChatView() {
     if (sessionId) setActiveChatId(sessionId);
   }, [sessionId, setActiveChatId]);
 
+  // Sync selectedModel with active session's model
+  useEffect(() => {
+    if (activeChatId) {
+      const session = sessions.find((s) => s.id === activeChatId);
+      if (session && session.model_name && session.model_name !== selectedModel) {
+        setSelectedModel(session.model_name);
+      }
+    }
+  }, [activeChatId, sessions, selectedModel]);
+
   // Load messages when session changes
   useEffect(() => {
-    if (!activeChatId || messages[activeChatId]) return;
-    api.chat.getMessages(activeChatId)
+    if (!activeChatId || messages[activeChatId] || !activeWorkspaceId) return;
+    api.chat.getMessages(activeWorkspaceId, activeChatId)
       .then((msgs) => setMessages(activeChatId, msgs))
       .catch(() => {});
-  }, [activeChatId, messages, setMessages]);
+  }, [activeChatId, activeWorkspaceId, messages, setMessages]);
 
   // Load AI model priority list + fallback to raw Ollama models
   useEffect(() => {
@@ -253,7 +351,8 @@ export default function ChatView() {
   }, [activeMessages.length, streamingContent]);
 
   async function createNewSession() {
-    const session = await api.chat.createSession(activeProjectId, { modelName: selectedModel });
+    if (!activeWorkspaceId) return;
+    const session = await api.chat.createSession(activeWorkspaceId, activeProjectId, { modelName: selectedModel });
     useChatStore.getState().addSession(session);
     setActiveChatId(session.id);
     setMessages(session.id, []);
@@ -271,11 +370,11 @@ export default function ChatView() {
     const isFirstMessage = userMessageCount <= 1;
 
     // Initial title generation on first message
-    if (isFirstMessage) {
+    if (isFirstMessage && activeWorkspaceId) {
       try {
         const title = await api.ollama.generateTitle(model, firstMessage, ollamaUrl);
         // Persist to DB
-        await api.chat.updateSession(sessionId, { title });
+        await api.chat.updateSession(activeWorkspaceId, sessionId, { title });
         // Update local store
         useChatStore.getState().updateSession({
           ...session,
@@ -290,7 +389,7 @@ export default function ChatView() {
     }
 
     // Periodic title refresh — only in "periodic" mode, skip if "initial_only"
-    if (settings.chat_title_auto_refresh === "periodic") {
+    if (settings.chat_title_auto_refresh === "periodic" && activeWorkspaceId) {
       const lastTitleGenCount = session.message_count_at_title_gen ?? 0;
       const interval = settings.chat_title_refresh_interval || 5;
 
@@ -300,7 +399,7 @@ export default function ChatView() {
           const conversation = sessionMessages.map(m => ({ role: m.role, content: m.content }));
           const title = await api.ollama.generateTitleFromConversation(model, conversation, ollamaUrl);
           // Persist to DB
-          await api.chat.updateSession(sessionId, { title });
+          await api.chat.updateSession(activeWorkspaceId, sessionId, { title });
           // Update local store
           useChatStore.getState().updateSession({
             ...session,
@@ -315,12 +414,21 @@ export default function ChatView() {
     }
   }
 
+  function triggerFollowUps(sessionId: string) {
+    const history = (useChatStore.getState().messages[sessionId] ?? []).map(m => ({ role: m.role, content: m.content }));
+    const model = selectedModel || useChatStore.getState().sessions.find(s => s.id === sessionId)?.model_name || "";
+    if (!model) return;
+    api.ollama.generateFollowUps(model, history, ollamaUrl)
+      .then(suggestions => setFollowUps(suggestions))
+      .catch(() => {});
+  }
+
   async function sendMessage() {
-    if (!input.trim() || isStreaming || !selectedModel) return;
+    if (!input.trim() || isStreaming || !selectedModel || !activeWorkspaceId) return;
 
     let sid = activeChatId;
     if (!sid) {
-      const session = await api.chat.createSession(activeProjectId, { modelName: selectedModel });
+      const session = await api.chat.createSession(activeWorkspaceId, activeProjectId, { modelName: selectedModel });
       useChatStore.getState().addSession(session);
       sid = session.id;
       setActiveChatId(session.id);
@@ -331,6 +439,7 @@ export default function ChatView() {
     setInput("");
     setIsStreaming(true);
     setLastUserMessage(userContent);
+    setFollowUps([]);
 
     // Migration check
     if (activeWorkspaceId) {
@@ -340,7 +449,7 @@ export default function ChatView() {
     }
 
     // Persist user message
-    const userMsg = await api.chat.addMessage(sid, "user", userContent);
+    const userMsg = await api.chat.addMessage(activeWorkspaceId, sid, "user", userContent);
     appendMessage(sid, userMsg);
 
     // Build context for Ollama
@@ -353,7 +462,7 @@ export default function ChatView() {
     let finalUserContent = userContent;
     if (groundedEnabled && activeProjectId) {
       try {
-        const keywordResults = await api.search.keyword(userContent, activeProjectId, undefined);
+        const keywordResults = await api.search.keyword(userContent, activeWorkspaceId, activeProjectId);
         const chunkResults = keywordResults.filter((r) => r.result_type === "document_chunk").slice(0, groundedTopK);
         if (chunkResults.length > 0) {
           const contextParts = chunkResults.map((r, i) => `[${i + 1}] **${r.title}**: ${r.excerpt}`);
@@ -381,8 +490,8 @@ export default function ChatView() {
             finalizeStream(sid!, selectedModel);
             setIsStreaming(false);
             unlisten();
-            api.chat.addMessage(sid!, "assistant", assembled, selectedModel)
-              .then((persisted) => updateMessage(sid!, persisted))
+            api.chat.addMessage(activeWorkspaceId, sid!, "assistant", assembled, selectedModel)
+              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
           } else {
             appendStreamChunk(sid!, chunk);
@@ -422,8 +531,8 @@ export default function ChatView() {
             setDraftSnapshot("");
             setIsStreaming(false);
             refineUnlisten?.();
-            api.chat.addMessage(sid!, "assistant", refineText, selectedModel, tokensUsed, durationMs)
-              .then((persisted) => updateMessage(sid!, persisted))
+            api.chat.addMessage(activeWorkspaceId, sid!, "assistant", refineText, selectedModel, tokensUsed, durationMs)
+              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
@@ -451,8 +560,8 @@ export default function ChatView() {
             finalizeStream(sid!, selectedModel);
             setIsStreaming(false);
             unlisten();
-            api.chat.addMessage(sid!, "assistant", assembled, selectedModel, tokensUsed, durationMs)
-              .then((persisted) => updateMessage(sid!, persisted))
+            api.chat.addMessage(activeWorkspaceId, sid!, "assistant", assembled, selectedModel, tokensUsed, durationMs)
+              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
@@ -483,13 +592,15 @@ export default function ChatView() {
   }
 
   async function deleteSession(id: string) {
-    await api.chat.deleteSession(id);
+    if (!activeWorkspaceId) return;
+    await api.chat.deleteSession(activeWorkspaceId, id);
     useChatStore.getState().removeSession(id);
     if (activeChatId === id) setActiveChatId(null);
   }
 
   async function togglePin(session: ChatSession) {
-    await api.chat.updateSession(session.id, { is_pinned: !session.is_pinned });
+    if (!activeWorkspaceId) return;
+    await api.chat.updateSession(activeWorkspaceId, session.id, { is_pinned: !session.is_pinned });
     setSessions(
       sessions.map((s) =>
         s.id === session.id ? { ...s, is_pinned: !s.is_pinned } : s
@@ -498,8 +609,8 @@ export default function ChatView() {
   }
 
   async function renameSession(id: string) {
-    if (!renameTitle.trim()) { setRenamingId(null); return; }
-    await api.chat.updateSession(id, { title: renameTitle });
+    if (!renameTitle.trim() || !activeWorkspaceId) { setRenamingId(null); return; }
+    await api.chat.updateSession(activeWorkspaceId, id, { title: renameTitle });
     setSessions(sessions.map((s) => s.id === id ? { ...s, title: renameTitle } : s));
     setRenamingId(null);
   }
@@ -516,7 +627,7 @@ export default function ChatView() {
   }
 
   async function submitEdit(msgId: string) {
-    if (!activeChatId || !editContent.trim()) return;
+    if (!activeChatId || !editContent.trim() || !activeWorkspaceId) return;
     setEditingMessageId(null);
     const idx = activeMessages.findIndex((m) => m.id === msgId);
     if (idx < 0) return;
@@ -526,7 +637,7 @@ export default function ChatView() {
     setIsStreaming(true);
     setLastUserMessage(editContent.trim());
 
-    const userMsg = await api.chat.addMessage(activeChatId, "user", editContent.trim());
+    const userMsg = await api.chat.addMessage(activeWorkspaceId, activeChatId, "user", editContent.trim());
     appendMessage(activeChatId, userMsg);
 
     const history = trimmedMessages.map((m) => ({ role: m.role, content: m.content }));
@@ -540,7 +651,7 @@ export default function ChatView() {
           setIsStreaming(false);
           unlisten();
           const assembled = useChatStore.getState().streamingContent;
-          api.chat.addMessage(sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
+          api.chat.addMessage(activeWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
             .then((persisted) => updateMessage(sid, persisted))
             .catch(() => {});
           if (tokensUsed && tokensUsed > 0) {
@@ -560,7 +671,7 @@ export default function ChatView() {
   }
 
   async function redoMessage(msgId: string) {
-    if (!activeChatId || isStreaming) return;
+    if (!activeChatId || isStreaming || !activeWorkspaceId) return;
     const idx = activeMessages.findIndex((m) => m.id === msgId);
     if (idx < 0) return;
     const trimmedMessages = activeMessages.slice(0, idx);
@@ -577,7 +688,7 @@ export default function ChatView() {
           setIsStreaming(false);
           unlisten();
           const assembled = useChatStore.getState().streamingContent;
-          api.chat.addMessage(sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
+          api.chat.addMessage(activeWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
             .then((persisted) => updateMessage(sid, persisted))
             .catch(() => {});
           if (tokensUsed && tokensUsed > 0) {
@@ -637,8 +748,9 @@ export default function ChatView() {
   const currentModelIdx = enabledModels.findIndex((m) => m.model_id === selectedModel);
   const nextModel = currentModelIdx >= 0 && currentModelIdx < enabledModels.length - 1 ? enabledModels[currentModelIdx + 1] : null;
 
-  // Map model_id to display name from priority list
+  // Map model_id to display name from global labels or priority list
   const modelDisplayName = (modelId: string) => {
+    if (modelLabels[modelId]) return modelLabels[modelId];
     const found = aiModelList.find((m) => m.model_id === modelId);
     return found ? found.name : modelId;
   };
@@ -813,11 +925,29 @@ export default function ChatView() {
             <div className="flex-1 px-4 py-3 flex flex-col gap-1 border-r border-[var(--border-color)]">
               <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Model A</label>
               {compareModels.length === 0 ? (
-                <input value={compareModelA} onChange={(e) => setCompareModelA(e.target.value)} placeholder="e.g. qwen2.5:7b" className="text-sm bg-transparent border-b border-[var(--border-color)] text-[var(--text-primary)] outline-none py-0.5 w-full placeholder:text-[var(--text-muted)]" />
+                <input
+                  value={compareModelA}
+                  onChange={(e) => {
+                    setCompareModelA(e.target.value);
+                    saveCompareA(e.target.value);
+                    persistSetting("compare_model_a", e.target.value);
+                  }}
+                  placeholder="e.g. qwen2.5:7b"
+                  className="text-sm bg-transparent border-b border-[var(--border-color)] text-[var(--text-primary)] outline-none py-0.5 w-full placeholder:text-[var(--text-muted)]"
+                />
               ) : (
-                <select value={compareModelA} onChange={(e) => setCompareModelA(e.target.value)} className="text-sm bg-transparent text-[var(--text-primary)] outline-none py-0.5 w-full cursor-pointer">
-                  {compareModels.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
+                <select
+                  value={compareModelA}
+                  onChange={(e) => {
+                    setCompareModelA(e.target.value);
+                    saveCompareA(e.target.value);
+                    persistSetting("compare_model_a", e.target.value);
+                  }}
+                  className="text-sm bg-transparent text-[var(--text-primary)] outline-none py-0.5 w-full cursor-pointer"
+                >
+                  {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
                 </select>
+
               )}
             </div>
             <div className="flex items-center px-3">
@@ -828,11 +958,29 @@ export default function ChatView() {
             <div className="flex-1 px-4 py-3 flex flex-col gap-1 border-l border-[var(--border-color)]">
               <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Model B</label>
               {compareModels.length === 0 ? (
-                <input value={compareModelB} onChange={(e) => setCompareModelB(e.target.value)} placeholder="e.g. llama3:8b" className="text-sm bg-transparent border-b border-[var(--border-color)] text-[var(--text-primary)] outline-none py-0.5 w-full placeholder:text-[var(--text-muted)]" />
+                <input
+                  value={compareModelB}
+                  onChange={(e) => {
+                    setCompareModelB(e.target.value);
+                    saveCompareB(e.target.value);
+                    persistSetting("compare_model_b", e.target.value);
+                  }}
+                  placeholder="e.g. llama3:8b"
+                  className="text-sm bg-transparent border-b border-[var(--border-color)] text-[var(--text-primary)] outline-none py-0.5 w-full placeholder:text-[var(--text-muted)]"
+                />
               ) : (
-                <select value={compareModelB} onChange={(e) => setCompareModelB(e.target.value)} className="text-sm bg-transparent text-[var(--text-primary)] outline-none py-0.5 w-full cursor-pointer">
-                  {compareModels.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
+                <select
+                  value={compareModelB}
+                  onChange={(e) => {
+                    setCompareModelB(e.target.value);
+                    saveCompareB(e.target.value);
+                    persistSetting("compare_model_b", e.target.value);
+                  }}
+                  className="text-sm bg-transparent text-[var(--text-primary)] outline-none py-0.5 w-full cursor-pointer"
+                >
+                  {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
                 </select>
+
               )}
             </div>
           </div>
@@ -843,8 +991,9 @@ export default function ChatView() {
               <div key={panel.label} className="flex-1 flex flex-col overflow-hidden">
                 <div className="px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] flex-shrink-0">
                   <span className="text-xs font-medium text-[var(--text-primary)]">{panel.label}</span>
-                  {panel.model && <span className="ml-2 text-xs text-[var(--text-muted)]">{panel.model}</span>}
+                  {panel.model && <span className="ml-2 text-xs text-[var(--text-muted)]">{modelDisplayName(panel.model)}</span>}
                 </div>
+
                 <div className="flex-1 overflow-y-auto px-4 py-4">
                   {compareLoading && !panel.text ? (
                     <div className="flex items-center gap-2 text-[var(--text-muted)] text-sm"><span className="animate-pulse">●</span> Generating…</div>
@@ -904,7 +1053,10 @@ export default function ChatView() {
             )}
             <select
               value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
+              onChange={(e) => {
+                setSelectedModel(e.target.value);
+                persistModelChoice(e.target.value);
+              }}
               className="text-xs px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none"
             >
               {availableModels.length > 0
@@ -916,6 +1068,7 @@ export default function ChatView() {
               <button
                 onClick={() => {
                   setSelectedModel(nextModel.model_id);
+                  persistModelChoice(nextModel.model_id);
                   if (lastUserMessage) setInput(lastUserMessage);
                 }}
                 title={`Try ${nextModel.name}`}
@@ -927,7 +1080,11 @@ export default function ChatView() {
             )}
             {/* Dual-model toggle */}
             <button
-              onClick={() => setDualModelEnabled(!dualModelEnabled)}
+              onClick={() => {
+                const newValue = !dualModelEnabled;
+                setDualModelEnabled(newValue);
+                persistSetting("dual_model_enabled", newValue);
+              }}
               title={dualModelEnabled ? `Dual model ON — draft: ${draftModel || "(none)"} → refine: ${selectedModel}` : "Enable dual-model mode (draft + refine)"}
               className={`flex items-center gap-1 px-2 py-1 text-xs rounded border transition-colors ${
                 dualModelEnabled
@@ -941,7 +1098,10 @@ export default function ChatView() {
             {dualModelEnabled && (
               <select
                 value={draftModel}
-                onChange={(e) => setDraftModel(e.target.value)}
+                onChange={(e) => {
+                  setDraftModel(e.target.value);
+                  persistSetting("draft_model", e.target.value);
+                }}
                 title="Draft model (small/fast)"
                 className="text-xs px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 outline-none max-w-[120px]"
               >
@@ -1014,7 +1174,7 @@ export default function ChatView() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-            {activeMessages.map((msg) => (
+            {activeMessages.map((msg, i) => (
               <div
                 key={msg.id}
                 className={`group/msg flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}
@@ -1058,7 +1218,7 @@ export default function ChatView() {
                     >
                       {msg.role === "assistant" ? (
                         <div className="prose prose-sm prose-invert max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{msg.content}</ReactMarkdown>
                         </div>
                       ) : (
                         <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -1134,6 +1294,20 @@ export default function ChatView() {
                         )}
                       </div>
                     )}
+                    {/* Follow-up suggestion pills */}
+                    {msg.role === "assistant" && i === activeMessages.length - 1 && followUps.length > 0 && (
+                      <div className="flex flex-col gap-1.5 mt-2 max-w-[75%]">
+                        {followUps.map((q, j) => (
+                          <button
+                            key={j}
+                            onClick={() => { setInput(q); inputRef.current?.focus(); }}
+                            className="text-left px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[12px] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] transition-colors"
+                          >
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -1147,7 +1321,7 @@ export default function ChatView() {
                     <Zap size={9} /> Draft ({draftModel})
                   </div>
                   <div className="prose prose-sm prose-invert max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{draftSnapshot}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{draftSnapshot}</ReactMarkdown>
                   </div>
                 </div>
               </div>
@@ -1198,7 +1372,7 @@ export default function ChatView() {
                     </div>
                   )}
                   <div className="prose prose-sm prose-invert max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{streamingContent}</ReactMarkdown>
                   </div>
                   <span className="streaming-cursor" />
                 </div>
@@ -1233,13 +1407,23 @@ export default function ChatView() {
                   el.style.height = Math.min(el.scrollHeight, 160) + "px";
                 }}
               />
-              <button
-                onClick={sendMessage}
-                disabled={isStreaming || !input.trim() || !selectedModel}
-                className="flex-shrink-0 p-2.5 rounded-xl bg-[var(--accent-color)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
-              >
-                <Send size={16} />
-              </button>
+              {isStreaming ? (
+                <button
+                  onClick={() => { if (activeChatId) api.ollama.stopStream(activeChatId).catch(() => {}); }}
+                  className="flex-shrink-0 p-2.5 rounded-xl bg-red-500 text-white hover:opacity-90 transition-opacity"
+                  title="Stop generation"
+                >
+                  <X size={16} />
+                </button>
+              ) : (
+                <button
+                  onClick={sendMessage}
+                  disabled={!input.trim() || !selectedModel}
+                  className="flex-shrink-0 p-2.5 rounded-xl bg-[var(--accent-color)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
+                >
+                  <Send size={16} />
+                </button>
+              )}
             </div>
             <WorkspaceMigrationBanner />
           </div>
@@ -1338,6 +1522,39 @@ export default function ChatView() {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      )}
+      {/* External link confirmation dialog */}
+      {pendingLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl shadow-xl max-w-sm w-full mx-4 p-5">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">Open External Link</h3>
+            <p className="text-xs text-[var(--text-secondary)] mb-1">This will open in your browser:</p>
+            <p className="text-xs text-[var(--accent-color)] break-all mb-4 font-mono">{pendingLink}</p>
+            <label className="flex items-center gap-2 mb-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={linkDontAsk}
+                onChange={(e) => setLinkDontAsk(e.target.checked)}
+                className="rounded border-[var(--border-color)] accent-[var(--accent-color)]"
+              />
+              <span className="text-xs text-[var(--text-secondary)]">Don't ask again</span>
+            </label>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={cancelOpenLink}
+                className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmOpenLink}
+                className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 transition-opacity"
+              >
+                Open Link
+              </button>
+            </div>
           </div>
         </div>
       )}

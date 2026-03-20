@@ -2,6 +2,8 @@ use tauri::AppHandle;
 use serde::{Deserialize, Serialize};
 use crate::ollama::client::{OllamaClient, OllamaMessage, ModelInfo};
 
+pub struct StreamAbortState(pub std::sync::Mutex<std::collections::HashMap<String, bool>>);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMessageRequest {
     pub session_id: String,
@@ -82,6 +84,26 @@ pub async fn send_dual_model_message(app: AppHandle, req: DualModelRequest) -> R
     client.stream_refine_message(&app, &req.session_id, &req.refine_model, req.messages).await
 }
 
+#[tauri::command]
+pub async fn generate_follow_ups(
+    model: String,
+    messages: Vec<OllamaMessage>,
+    ollama_url: Option<String>,
+) -> Result<Vec<String>, String> {
+    let client = OllamaClient::new(ollama_url);
+
+    let mut prompt_messages = messages;
+    prompt_messages.push(OllamaMessage {
+        role: "user".to_string(),
+        content: "Based on this conversation, suggest exactly 3 short follow-up questions the user might ask next.\nReturn ONLY a JSON array of strings, no markdown: [\"question 1\", \"question 2\", \"question 3\"]".to_string(),
+    });
+
+    let raw = client.send_message(&model, prompt_messages).await?;
+    let json_str = extract_json_array(&raw);
+    serde_json::from_str::<Vec<String>>(&json_str)
+        .map_err(|e| format!("Failed to parse follow-ups: {e} — raw: {raw}"))
+}
+
 /// Extracts key topics from a list of text snippets (chat titles, note titles, etc.)
 /// using Ollama. Returns a JSON array of { topic, weight } objects.
 /// Falls back to an empty array if the model is unavailable.
@@ -138,4 +160,11 @@ fn extract_json_array(s: &str) -> String {
     } else {
         "[]".to_string()
     }
+}
+
+/// Cancel an in-progress stream for the given session.
+#[tauri::command]
+pub async fn stop_stream(session_id: String, state: tauri::State<'_, StreamAbortState>) -> Result<(), String> {
+    state.0.lock().unwrap().insert(session_id, true);
+    Ok(())
 }
