@@ -6,9 +6,12 @@ use crate::models::workspace::{Workspace, CreateWorkspaceRequest, UpdateWorkspac
 pub fn create_workspace(state: State<DbState>, req: CreateWorkspaceRequest) -> Result<Workspace, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let ws = Workspace::new(req.name);
+    
+    let sig_json = serde_json::to_string(&ws.topic_signature).map_err(|e| e.to_string())?;
+
     conn.execute(
-        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![ws.id, ws.name, ws.created_at, ws.updated_at],
+        "INSERT INTO workspaces (id, name, topic_signature, signature_updated_at, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![ws.id, ws.name, sig_json, ws.signature_updated_at, ws.created_at, ws.updated_at],
     ).map_err(|e| e.to_string())?;
     Ok(ws)
 }
@@ -17,14 +20,18 @@ pub fn create_workspace(state: State<DbState>, req: CreateWorkspaceRequest) -> R
 pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, created_at, updated_at FROM workspaces ORDER BY created_at DESC"
+        "SELECT id, name, topic_signature, signature_updated_at, created_at, updated_at FROM workspaces ORDER BY created_at DESC"
     ).map_err(|e| e.to_string())?;
     let items = stmt.query_map([], |row| {
+        let sig_json: String = row.get(2)?;
+        let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
         Ok(Workspace {
             id: row.get(0)?,
             name: row.get(1)?,
-            created_at: row.get(2)?,
-            updated_at: row.get(3)?,
+            topic_signature,
+            signature_updated_at: row.get(3)?,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
         })
     }).map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>()
@@ -36,14 +43,20 @@ pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> 
 pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspace>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, name, created_at, updated_at FROM workspaces WHERE id = ?1",
+        "SELECT id, name, topic_signature, signature_updated_at, created_at, updated_at FROM workspaces WHERE id = ?1",
         rusqlite::params![id],
-        |row| Ok(Workspace {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            created_at: row.get(2)?,
-            updated_at: row.get(3)?,
-        }),
+        |row| {
+            let sig_json: String = row.get(2)?;
+            let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
+            Ok(Workspace {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                topic_signature,
+                signature_updated_at: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        },
     );
     match result {
         Ok(ws) => Ok(Some(ws)),

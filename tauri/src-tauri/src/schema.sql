@@ -4,6 +4,8 @@
 CREATE TABLE IF NOT EXISTS workspaces (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL DEFAULT 'My Workspace',
+    topic_signature TEXT NOT NULL DEFAULT '{}',
+    signature_updated_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -283,7 +285,9 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('sidebar_width', '240'),
     ('ollama_base_url', '"http://localhost:11434"'),
     ('embedding_model', '"nomic-embed-text"'),
-    ('demo_mode', 'false');
+    ('demo_mode', 'false'),
+    ('topic_analysis_interval_minutes', '30'),
+    ('migration_suggestion_threshold', '0.3');
 
 -- Indexes for common query patterns
 CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);

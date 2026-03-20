@@ -9,6 +9,32 @@ import type { ChatSession, Message } from "../stores/chatStore";
 
 // ----- Types -----
 
+export interface TopicTag {
+  tag: string;
+  weight: number;
+  source: string;
+}
+
+export interface TopicSignature {
+  domain_tags: TopicTag[];
+  intent_patterns: string[];
+  generated_at: string | null;
+  message_count_at_gen: number | null;
+  ollama_enriched: boolean;
+}
+
+export interface WorkspaceSuggestion {
+  workspace_id: string;
+  workspace_name: string;
+  score: number;
+}
+
+export interface WorkspaceMatchResult {
+  current_score: number;
+  is_match: boolean;
+  suggestion: WorkspaceSuggestion | null;
+}
+
 export interface LearningGoal {
   id: string; workspace_id: string; title: string; goal_description: string;
   progress: number; is_completed: boolean; due_date?: string;
@@ -128,6 +154,12 @@ export interface AiModel {
 
 // ----- Workspaces -----
 export const api = {
+  topicSignature: {
+    get: (workspaceId: string) => invoke<TopicSignature>("get_topic_signature", { workspaceId }),
+    regenerate: (workspaceId: string, model?: string, ollamaUrl?: string) => invoke<TopicSignature>("regenerate_topic_signature", { workspaceId, model, ollamaUrl }),
+    checkMatch: (workspaceId: string, message: string) => invoke<WorkspaceMatchResult>("check_workspace_match", { workspaceId, message }),
+  },
+  
   workspace: {
     create: (name: string) => invoke<Workspace>("create_workspace", { req: { name } }),
     list: () => invoke<Workspace[]>("list_workspaces"),
