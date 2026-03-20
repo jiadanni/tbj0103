@@ -12,3 +12,4 @@ pub mod ai_content_generator;
 pub mod export_engine;
 pub mod backup_service;
 pub mod settings;
+pub mod topic_signature;
