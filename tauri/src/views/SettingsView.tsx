@@ -3,7 +3,7 @@
  * Mirrors SettingsView.swift.
  */
 import { useEffect, useState } from "react";
-import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe } from "lucide-react";
+import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -55,11 +55,16 @@ export default function SettingsView() {
   const [activeTab, setActiveTab] = useState<Tab>("appearance");
 
   const [dbSettings, setDbSettings] = useState<AppSettings | null>(null);
+  const [testingOllama, setTestingOllama] = useState(false);
+  const [ollamaTestResult, setOllamaTestResult] = useState<{ success: boolean; msg: string } | null>(null);
+
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
   const [showAddModel, setShowAddModel] = useState(false);
   const [newModelId, setNewModelId] = useState("");
   const [newModelName, setNewModelName] = useState("");
   const [newModelIsPaid, setNewModelIsPaid] = useState(false);
+  const [editingModelId, setEditingModelId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   // MCP state
   const [mcpServers, setMcpServers] = useState<MCPServerConfig[]>([]);
@@ -69,7 +74,15 @@ export default function SettingsView() {
   const [newMcpArgs, setNewMcpArgs] = useState("");
 
   function loadAiModels() {
-    api.aiModel.list().then(setAiModels).catch(() => {});
+    api.aiModel.list().then((models) => {
+      setAiModels(models);
+      // Sync names to modelLabels store
+      models.forEach((m) => {
+        if (m.name && zustandSettings.modelLabels[m.model_id] !== m.name) {
+          zustandSettings.setModelLabel(m.model_id, m.name);
+        }
+      });
+    }).catch(() => {});
   }
 
   useEffect(() => {
@@ -87,6 +100,10 @@ export default function SettingsView() {
     zustandSettings.setFontSize(dbSettings.font_size);
     zustandSettings.setPreferredModel(dbSettings.preferred_model);
     zustandSettings.setOllamaUrl(dbSettings.ollama_base_url);
+    zustandSettings.setDualModelEnabled(dbSettings.dual_model_enabled);
+    zustandSettings.setDraftModel(dbSettings.draft_model);
+    zustandSettings.setCompareModelA(dbSettings.compare_model_a);
+    zustandSettings.setCompareModelB(dbSettings.compare_model_b);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -222,13 +239,43 @@ export default function SettingsView() {
           {activeTab === "ai" && (
             <>
               <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Ollama URL</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-[var(--text-secondary)]">Ollama URL</label>
+                  <button
+                    onClick={async () => {
+                      setTestingOllama(true);
+                      setOllamaTestResult(null);
+                      try {
+                        const m = await api.ollama.listModels(dbSettings.ollama_base_url);
+                        setOllamaTestResult({ success: true, msg: `Success! ${m.length} models found.` });
+                        setOllamaModels(m.map(x => x.name));
+                      } catch (err: any) {
+                        setOllamaTestResult({ success: false, msg: `Connection failed. Is Ollama running?` });
+                      } finally {
+                        setTestingOllama(false);
+                      }
+                    }}
+                    disabled={testingOllama}
+                    className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
+                  >
+                    {testingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
+                    Test Connection
+                  </button>
+                </div>
                 <input
                   value={dbSettings.ollama_base_url}
-                  onChange={(e) => set("ollama_base_url", e.target.value)}
+                  onChange={(e) => {
+                    set("ollama_base_url", e.target.value);
+                    setOllamaTestResult(null);
+                  }}
                   placeholder="http://localhost:11434"
                   className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
                 />
+                {ollamaTestResult && (
+                  <p className={`text-[10px] mt-1.5 font-medium ${ollamaTestResult.success ? "text-green-400" : "text-red-400"}`}>
+                    {ollamaTestResult.msg}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -328,8 +375,33 @@ export default function SettingsView() {
 
                         {/* Model info */}
                         <div className="flex-1 min-w-0">
-                          <span className="text-sm text-[var(--text-primary)]">{m.name}</span>
-                          <span className="ml-2 text-xs text-[var(--text-muted)]">{m.model_id}</span>
+                          {editingModelId === m.id ? (
+                            <input
+                              autoFocus
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                              onBlur={async () => {
+                                await api.aiModel.update(m.id, { name: editingName });
+                                setEditingModelId(null);
+                                loadAiModels();
+                              }}
+                              onKeyDown={async (e) => {
+                                if (e.key === "Enter") {
+                                  await api.aiModel.update(m.id, { name: editingName });
+                                  setEditingModelId(null);
+                                  loadAiModels();
+                                }
+                                if (e.key === "Escape") setEditingModelId(null);
+                              }}
+                              className="w-full px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--accent-color)] text-sm text-[var(--text-primary)] outline-none"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => { setEditingModelId(m.id); setEditingName(m.name); }}>
+                              <span className="text-sm font-medium text-[var(--text-primary)]">{m.name}</span>
+                              <Pencil size={10} className="text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <span className="ml-2 text-xs text-[var(--text-muted)] truncate">{m.model_id}</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Badges */}
@@ -359,6 +431,39 @@ export default function SettingsView() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Custom Model Labels */}
+              <div className="pt-2">
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Custom Model Labels (Global)</label>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {ollamaModels.length === 0 ? (
+                    <p className="text-[10px] text-[var(--text-muted)]">No Ollama models found to label.</p>
+                  ) : (
+                    ollamaModels.map((modelId) => (
+                      <div key={modelId} className="flex items-center gap-2 group">
+                        <span className="text-[10px] text-[var(--text-muted)] w-24 truncate" title={modelId}>{modelId}</span>
+                        <input
+                          value={zustandSettings.modelLabels[modelId] || ""}
+                          onChange={(e) => zustandSettings.setModelLabel(modelId, e.target.value)}
+                          onBlur={async () => {
+                            // If this model is in the priority list, update it there too
+                            const matchingAiModel = aiModels.find(am => am.model_id === modelId);
+                            if (matchingAiModel && matchingAiModel.name !== zustandSettings.modelLabels[modelId]) {
+                              await api.aiModel.update(matchingAiModel.id, { name: zustandSettings.modelLabels[modelId] });
+                              loadAiModels();
+                            }
+                          }}
+                          placeholder="Set label…"
+                          className="flex-1 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] h-7"
+                        />
+                      </div>
+                    ))
+                  )}
+                </div>
+                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
+                  Labels set here will be used throughout the app. Priority list names sync automatically.
+                </p>
               </div>
 
               {/* Chat Title Auto-Generation */}

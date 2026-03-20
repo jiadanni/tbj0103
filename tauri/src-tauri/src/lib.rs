@@ -35,6 +35,9 @@ pub fn run() {
             app.manage(commands::chat_file::ChatCryptoState(
                 std::sync::Mutex::new(passphrase),
             ));
+            app.manage(commands::ollama::StreamAbortState(
+                std::sync::Mutex::new(std::collections::HashMap::new()),
+            ));
 
             // Initialize MCP Client Manager
             let mcp_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -163,6 +166,8 @@ pub fn run() {
             commands::ollama::generate_embedding,
             commands::ollama::send_dual_model_message,
             commands::ollama::extract_topics,
+            commands::ollama::generate_follow_ups,
+            commands::ollama::stop_stream,
             // Export commands
             commands::export::export_markdown,
             commands::export::export_json,

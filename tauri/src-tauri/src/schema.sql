@@ -24,9 +24,10 @@ CREATE TABLE IF NOT EXISTS projects (
 
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     project_id TEXT NOT NULL DEFAULT '',
     title TEXT NOT NULL DEFAULT 'New Chat',
-    model_name TEXT NOT NULL DEFAULT 'qwen2.5:7b',
+    model_name TEXT NOT NULL DEFAULT '',
     system_prompt TEXT NOT NULL DEFAULT '',
     is_pinned INTEGER NOT NULL DEFAULT 0,
     parent_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
@@ -216,7 +217,8 @@ CREATE TABLE IF NOT EXISTS web_captures (
 
 CREATE TABLE IF NOT EXISTS audio_transcriptions (
     id TEXT PRIMARY KEY NOT NULL,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
     filename TEXT NOT NULL,
     transcript TEXT NOT NULL DEFAULT '',
     duration_seconds REAL,
@@ -256,7 +258,7 @@ CREATE TABLE IF NOT EXISTS thought_queue (
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK(status IN ('pending', 'scheduled', 'processing', 'done')),
     process_at TEXT,
-    model_name TEXT NOT NULL DEFAULT 'qwen2.5:7b',
+    model_name TEXT NOT NULL DEFAULT '',
     prompt_prefix TEXT NOT NULL DEFAULT '',
     result TEXT,
     result_at TEXT,
@@ -275,7 +277,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
 -- Built-in default settings
 INSERT OR IGNORE INTO settings (key, value) VALUES
-    ('preferred_model', '"qwen2.5:7b"'),
+    ('preferred_model', '""'),
     ('backup_enabled', 'true'),
     ('touch_id_enabled', 'false'),
     ('auto_lock_minutes', '15'),
@@ -291,6 +293,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
 
 -- Indexes for common query patterns
 CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace ON chat_sessions(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_citations_message ON citations(message_id);
@@ -299,13 +302,13 @@ CREATE INDEX IF NOT EXISTS idx_concept_links_source ON concept_links(source_id);
 CREATE INDEX IF NOT EXISTS idx_concept_links_target ON concept_links(target_id);
 CREATE INDEX IF NOT EXISTS idx_concept_mentions_concept ON concept_mentions(concept_id);
 CREATE INDEX IF NOT EXISTS idx_learning_goals_workspace ON learning_goals(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_learning_cards_workspace ON learning_cards(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_learning_cards_review ON learning_cards(next_review_date);
 CREATE INDEX IF NOT EXISTS idx_daily_notes_workspace_date ON daily_notes(workspace_id, date);
-CREATE INDEX IF NOT EXISTS idx_uploaded_docs_project ON uploaded_documents(project_id);
+CREATE INDEX IF NOT EXISTS idx_uploaded_docs_workspace ON uploaded_documents(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_doc_chunks_document ON document_chunks(document_id);
-CREATE INDEX IF NOT EXISTS idx_web_captures_project ON web_captures(project_id);
-CREATE INDEX IF NOT EXISTS idx_project_notes_project ON project_notes(project_id);
+CREATE INDEX IF NOT EXISTS idx_web_captures_workspace ON web_captures(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_project_notes_workspace ON project_notes(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_audio_transcriptions_workspace ON audio_transcriptions(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_alarms_fire_date ON calendar_alarms(fire_date);
 
 -- AI memory for cross-session context
