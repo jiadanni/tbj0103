@@ -3,18 +3,21 @@
  * Mirrors WorkspaceListView.swift + workspace picker behaviour.
  */
 import { useState } from "react";
-import { Plus, Trash2, Pencil, Check, X, LayoutGrid } from "lucide-react";
+import { Plus, Trash2, Pencil, Check, X, LayoutGrid, Sparkles, Loader2 } from "lucide-react";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
 
 export default function WorkspaceSettingsView() {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces } = useWorkspaceStore();
+  const { preferredModel, ollamaUrl } = useSettingsStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
 
   async function createWorkspace() {
     if (!newName.trim()) return;
@@ -48,6 +51,20 @@ export default function WorkspaceSettingsView() {
     setWorkspaces(remaining);
     if (activeWorkspaceId === ws.id) {
       setActiveWorkspaceId(remaining[0]?.id ?? null);
+    }
+  }
+
+  async function analyzeWorkspace(id: string) {
+    if (analyzingId) return;
+    setAnalyzingId(id);
+    try {
+      const newSignature = await api.topicSignature.regenerate(id, preferredModel || undefined, ollamaUrl || undefined);
+      setWorkspaces(workspaces.map(w => w.id === id ? { ...w, topic_signature: newSignature } : w));
+    } catch (err) {
+      console.error("Failed to analyze workspace:", err);
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAnalyzingId(null);
     }
   }
 
@@ -102,7 +119,7 @@ export default function WorkspaceSettingsView() {
       )}
 
       {/* Workspace list */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         {workspaces.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">
             <LayoutGrid size={32} className="opacity-30" />
@@ -112,77 +129,141 @@ export default function WorkspaceSettingsView() {
           workspaces.map((ws) => {
             const isActive = ws.id === activeWorkspaceId;
             const isEditing = editingId === ws.id;
+            const isAnalyzing = analyzingId === ws.id;
+            const hasSignature = ws.topic_signature?.domain_tags?.length > 0 || ws.topic_signature?.intent_patterns?.length > 0;
+
             return (
               <div
                 key={ws.id}
                 className={`rounded-xl border p-4 transition-colors ${
                   isActive
-                    ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10"
+                    ? "border-[var(--accent-color)] bg-[var(--accent-color)]/5"
                     : "border-[var(--border-color)] bg-[var(--bg-elevated)] hover:border-[var(--border-color)]"
                 }`}
               >
-                <div className="flex items-start gap-3">
-                  {/* Active indicator */}
-                  <div className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${isActive ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`} />
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-start gap-3">
+                    {/* Active indicator */}
+                    <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${isActive ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`} />
 
-                  <div className="flex-1 min-w-0">
-                    {isEditing ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          autoFocus
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") renameWorkspace(ws.id);
-                            if (e.key === "Escape") setEditingId(null);
-                          }}
-                          className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
-                        />
-                        <button onClick={() => renameWorkspace(ws.id)} className="text-[var(--accent-color)]">
-                          <Check size={14} />
+                    <div className="flex-1 min-w-0">
+                      {isEditing ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            autoFocus
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") renameWorkspace(ws.id);
+                              if (e.key === "Escape") setEditingId(null);
+                            }}
+                            className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
+                          />
+                          <button onClick={() => renameWorkspace(ws.id)} className="text-[var(--accent-color)]">
+                            <Check size={14} />
+                          </button>
+                          <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="text-base font-medium text-[var(--text-primary)] truncate">{ws.name}</span>
+                          {isActive && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                        Created {formatDate(ws.created_at)}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {!isActive && (
+                        <button
+                          onClick={() => setActiveWorkspaceId(ws.id)}
+                          className="px-2 py-1 text-[11px] rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
+                        >
+                          Switch
                         </button>
-                        <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-[var(--text-primary)] truncate">{ws.name}</span>
-                        {isActive && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                      Created {formatDate(ws.created_at)}
-                    </p>
+                      )}
+                      <button
+                        onClick={() => { setEditingId(ws.id); setEditName(ws.name); }}
+                        className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
+                        title="Rename"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => deleteWorkspace(ws)}
+                        className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
+                        title="Delete workspace"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    {!isActive && (
+                  {/* Context and Topics (Topic Signature) */}
+                  <div className="pl-5 pt-2 border-t border-[var(--border-color)]">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-xs font-semibold text-[var(--text-secondary)]">Workspace Context</h3>
                       <button
-                        onClick={() => setActiveWorkspaceId(ws.id)}
-                        className="px-2 py-1 text-[11px] rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
+                        onClick={() => analyzeWorkspace(ws.id)}
+                        disabled={isAnalyzing}
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] rounded-md bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[var(--accent-color)]/10 transition-colors disabled:opacity-50"
+                        title="Analyze recent chats to discover topics and context"
                       >
-                        Switch
+                        {isAnalyzing ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                        {hasSignature ? "Refresh Context" : "Discover Context"}
                       </button>
+                    </div>
+
+                    {!hasSignature ? (
+                      <p className="text-[11px] text-[var(--text-muted)] italic">
+                        No context analyzed yet. Click 'Discover Context' to extract topics from your recent chats.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {ws.topic_signature?.domain_tags?.length > 0 && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Topics</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {ws.topic_signature.domain_tags.map((tag, idx) => (
+                                <span
+                                  key={idx}
+                                  className="px-2 py-0.5 text-[11px] rounded-full bg-[var(--bg-hover)] border border-[var(--border-color)] text-[var(--text-secondary)]"
+                                  title={`Weight: ${tag.weight}, Source: ${tag.source}`}
+                                >
+                                  {tag.tag}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {ws.topic_signature?.intent_patterns?.length > 0 && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Expected Chats</p>
+                            <ul className="list-disc list-inside space-y-1 ml-1 text-[11px] text-[var(--text-secondary)]">
+                              {ws.topic_signature.intent_patterns.map((intent, idx) => (
+                                <li key={idx}>{intent}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        
+                        <div className="text-[9px] text-[var(--text-muted)] pt-1 flex justify-between">
+                          <span>Analyzed {ws.topic_signature.message_count_at_gen ?? 0} recent messages</span>
+                          {ws.topic_signature.generated_at && (
+                            <span>Last updated {formatDate(ws.topic_signature.generated_at)}</span>
+                          )}
+                        </div>
+                      </div>
                     )}
-                    <button
-                      onClick={() => { setEditingId(ws.id); setEditName(ws.name); }}
-                      className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
-                      title="Rename"
-                    >
-                      <Pencil size={13} />
-                    </button>
-                    <button
-                      onClick={() => deleteWorkspace(ws)}
-                      className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
-                      title="Delete workspace"
-                    >
-                      <Trash2 size={13} />
-                    </button>
                   </div>
                 </div>
               </div>
@@ -194,7 +275,7 @@ export default function WorkspaceSettingsView() {
       {/* Help text */}
       <div className="px-5 py-3 border-t border-[var(--border-color)] shrink-0">
         <p className="text-[11px] text-[var(--text-muted)]">
-          Workspaces isolate projects, notes, daily entries, and knowledge graphs. You can switch between them using the tab bar at the top.
+          Workspaces isolate projects, notes, daily entries, and knowledge graphs. Context and topics are automatically inferred from your chat history to improve search and routing.
         </p>
       </div>
     </div>
