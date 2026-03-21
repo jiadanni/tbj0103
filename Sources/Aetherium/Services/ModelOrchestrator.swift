@@ -1,6 +1,6 @@
 import Foundation
-import SwiftUI
 import os
+import SwiftUI
 
 enum ModelProvider {
     case ollama

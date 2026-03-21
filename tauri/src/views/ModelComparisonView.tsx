@@ -2,13 +2,13 @@
  * ModelComparisonView — mirrors ModelComparisonView.swift.
  * Run the same prompt against two Ollama models side-by-side.
  */
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Send, RefreshCw } from "lucide-react";
 import { api, type OllamaModel } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 
 export default function ModelComparisonView() {
-  const { ollamaUrl, preferredModel } = useSettingsStore();
+  const { ollamaUrl, preferredModel, modelLabels } = useSettingsStore();
   const [models, setModels] = useState<OllamaModel[]>([]);
   const [modelA, setModelA] = useState("");
   const [modelB, setModelB] = useState("");
@@ -22,9 +22,9 @@ export default function ModelComparisonView() {
   useEffect(() => {
     api.ollama.listModels(ollamaUrl || undefined).then((list) => {
       setModels(list);
-      if (list.length > 0) setModelA(list[0].name);
-      if (list.length > 1) setModelB(list[1].name);
-      else if (list.length === 1) setModelB(list[0].name);
+      if (list.length > 0) {setModelA(list[0].name);}
+      if (list.length > 1) {setModelB(list[1].name);}
+      else if (list.length === 1) {setModelB(list[0].name);}
     }).catch(() => {
       // Fall back to preferred model if Ollama unavailable
       if (preferredModel) {
@@ -35,7 +35,7 @@ export default function ModelComparisonView() {
   }, [ollamaUrl, preferredModel]);
 
   async function run() {
-    if (!prompt.trim() || loading) return;
+    if (!prompt.trim() || loading) {return;}
     const p = prompt.trim();
     setPrompt("");
     setResponseA("");
@@ -76,7 +76,7 @@ export default function ModelComparisonView() {
         {/* Model A picker */}
         <div className="flex-1 px-4 py-3 flex flex-col gap-1 border-r border-[var(--border-color)]">
           <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Model A</label>
-          <ModelPicker value={modelA} models={models} onChange={setModelA} />
+          <ModelPicker value={modelA} models={models} onChange={setModelA} modelLabels={modelLabels} />
         </div>
 
         {/* Refresh */}
@@ -93,7 +93,7 @@ export default function ModelComparisonView() {
         {/* Model B picker */}
         <div className="flex-1 px-4 py-3 flex flex-col gap-1 border-l border-[var(--border-color)]">
           <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Model B</label>
-          <ModelPicker value={modelB} models={models} onChange={setModelB} />
+          <ModelPicker value={modelB} models={models} onChange={setModelB} modelLabels={modelLabels} />
         </div>
       </div>
 
@@ -102,12 +102,14 @@ export default function ModelComparisonView() {
         <ResponsePanel
           label="Model A"
           modelName={modelA}
+          modelLabels={modelLabels}
           text={responseA}
           loading={loading}
         />
         <ResponsePanel
           label="Model B"
           modelName={modelB}
+          modelLabels={modelLabels}
           text={responseB}
           loading={loading}
         />
@@ -148,17 +150,20 @@ function ModelPicker({
   value,
   models,
   onChange,
+  modelLabels,
 }: {
   value: string;
   models: OllamaModel[];
   onChange: (v: string) => void;
+  modelLabels: Record<string, string>;
 }) {
   if (models.length === 0) {
     return (
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="e.g. qwen2.5:7b"
+        placeholder="e.g. llama3"
+
         className="text-sm bg-transparent border-b border-[var(--border-color)] text-[var(--text-primary)] outline-none py-0.5 w-full placeholder:text-[var(--text-muted)]"
       />
     );
@@ -171,7 +176,7 @@ function ModelPicker({
     >
       {models.map((m) => (
         <option key={m.name} value={m.name}>
-          {m.name}
+          {modelLabels[m.name] || m.name}
         </option>
       ))}
     </select>
@@ -181,11 +186,13 @@ function ModelPicker({
 function ResponsePanel({
   label,
   modelName,
+  modelLabels,
   text,
   loading,
 }: {
   label: string;
   modelName: string;
+  modelLabels: Record<string, string>;
   text: string;
   loading: boolean;
 }) {
@@ -194,7 +201,7 @@ function ResponsePanel({
       <div className="px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] flex-shrink-0">
         <span className="text-xs font-medium text-[var(--text-primary)]">{label}</span>
         {modelName && (
-          <span className="ml-2 text-xs text-[var(--text-muted)]">{modelName}</span>
+          <span className="ml-2 text-xs text-[var(--text-muted)]">{modelLabels[modelName] || modelName}</span>
         )}
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-4">

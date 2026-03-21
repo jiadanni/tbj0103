@@ -29,7 +29,7 @@ final class ChatSession {
         title: String = "New Chat",
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        modelName: String = "qwen2.5:7b",
+        modelName: String = "",
         isLocal: Bool = true,
         systemPrompt: String? = nil,
         parentMessageID: UUID? = nil,

@@ -69,7 +69,7 @@ function isoToLocalInput(iso: string): string {
 
 export default function ThoughtQueueView() {
   const { activeWorkspaceId } = useWorkspaceStore();
-  const { preferredModel, ollamaUrl } = useSettingsStore();
+  const { preferredModel, ollamaUrl, modelLabels } = useSettingsStore();
 
   const [thoughts, setThoughts] = useState<ThoughtItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -96,7 +96,7 @@ export default function ThoughtQueueView() {
   // ---- load thoughts --------------------------------------------------------
 
   const loadThoughts = useCallback(async () => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     try {
       const items = await api.thoughtQueue.list(activeWorkspaceId);
       setThoughts(items);
@@ -111,13 +111,13 @@ export default function ThoughtQueueView() {
   // ---- set default model ----------------------------------------------------
 
   useEffect(() => {
-    setDraftModel(preferredModel || "qwen2.5:7b");
+    setDraftModel(preferredModel || "");
   }, [preferredModel]);
 
   // ---- passive polling: check for due items every 60 s ----------------------
 
   const processDueThought = useCallback(async (thought: ThoughtItem) => {
-    if (processingRef.current.has(thought.id)) return;
+    if (processingRef.current.has(thought.id)) {return;}
     processingRef.current.add(thought.id);
     try {
       await api.thoughtQueue.updateStatus(thought.id, "processing");
@@ -159,10 +159,10 @@ export default function ThoughtQueueView() {
   }, [ollamaUrl]);
 
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
 
     async function pollDue() {
-      if (!activeWorkspaceId) return;
+      if (!activeWorkspaceId) {return;}
       try {
         const due = await api.thoughtQueue.getDue(activeWorkspaceId);
         for (const t of due) {
@@ -179,7 +179,7 @@ export default function ThoughtQueueView() {
   // ---- actions --------------------------------------------------------------
 
   async function submitThought() {
-    if (!activeWorkspaceId || !draftContent.trim()) return;
+    if (!activeWorkspaceId || !draftContent.trim()) {return;}
     setSubmitting(true);
     try {
       const processAt = scheduleEnabled ? localInputToISO(draftSchedule) : undefined;
@@ -199,7 +199,7 @@ export default function ThoughtQueueView() {
   }
 
   async function processNow(thought: ThoughtItem) {
-    if (thought.status === "processing") return;
+    if (thought.status === "processing") {return;}
     // Temporarily treat as "scheduled" so processDueThought picks it up
     const patched: ThoughtItem = { ...thought, status: "scheduled" };
     processDueThought(patched);
@@ -208,7 +208,7 @@ export default function ThoughtQueueView() {
   async function deleteThought(id: string) {
     await api.thoughtQueue.delete(id).catch(() => {});
     setThoughts((prev) => prev.filter((t) => t.id !== id));
-    if (expandedId === id) setExpandedId(null);
+    if (expandedId === id) {setExpandedId(null);}
   }
 
   // ---- render ---------------------------------------------------------------
@@ -243,7 +243,7 @@ export default function ThoughtQueueView() {
               value={draftContent}
               onChange={(e) => setDraftContent(e.target.value)}
               onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submitThought();
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {submitThought();}
               }}
               placeholder="What's on your mind? Dump it here…"
               rows={5}
@@ -347,6 +347,7 @@ export default function ThoughtQueueView() {
               <ThoughtCard
                 key={thought.id}
                 thought={thought}
+                modelLabels={modelLabels}
                 expanded={expandedId === thought.id}
                 onToggleExpand={() =>
                   setExpandedId((prev) => (prev === thought.id ? null : thought.id))
@@ -366,13 +367,14 @@ export default function ThoughtQueueView() {
 
 interface ThoughtCardProps {
   thought: ThoughtItem;
+  modelLabels: Record<string, string>;
   expanded: boolean;
   onToggleExpand: () => void;
   onProcessNow: () => void;
   onDelete: () => void;
 }
 
-function ThoughtCard({ thought, expanded, onToggleExpand, onProcessNow, onDelete }: ThoughtCardProps) {
+function ThoughtCard({ thought, modelLabels, expanded, onToggleExpand, onProcessNow, onDelete }: ThoughtCardProps) {
   const isActive = thought.status === "processing";
   const hasResult = !!thought.result;
 
@@ -414,7 +416,7 @@ function ThoughtCard({ thought, expanded, onToggleExpand, onProcessNow, onDelete
 
           <div className="flex items-center gap-1.5 mt-2">
             <span className="text-[10px] text-[var(--text-muted)] bg-[var(--bg-primary)] px-1.5 py-0.5 rounded">
-              {thought.model_name}
+              {modelLabels[thought.model_name] || thought.model_name}
             </span>
           </div>
         </div>

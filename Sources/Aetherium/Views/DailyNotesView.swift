@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - Daily Notes View with Calendar
 
@@ -574,5 +574,3 @@ struct CreateDailyNoteView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
-
-

@@ -24,7 +24,7 @@ export default function BacklinksView() {
 
   // Load concepts across this workspace that have mentions
   const loadBacklinks = useCallback(async () => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     setLoading(true);
     try {
       // Get concept nodes for this workspace, filter by search
@@ -55,7 +55,7 @@ export default function BacklinksView() {
   }, [loadBacklinks]);
 
   const openSource = async (entry: BacklinkEntry) => {
-    if (entry.source_type !== "note") return;
+    if (entry.source_type !== "note") {return;}
     setNoteLoading(true);
     setSelectedConcept(entry.concept_name);
     try {

@@ -1,6 +1,6 @@
+import AVFoundation
 import Foundation
 import Speech
-import AVFoundation
 
 // MARK: - Voice Transcription Service
 
@@ -132,7 +132,6 @@ class VoiceTranscriptionService: NSObject, ObservableObject {
             }
         }
     }
-
 }
 
 // MARK: - Errors

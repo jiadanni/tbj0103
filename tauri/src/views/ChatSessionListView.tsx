@@ -8,18 +8,20 @@ import { MessageSquare, Pin, PinOff, Trash2, Plus, Search, ExternalLink } from "
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession } from "../stores/chatStore";
 
 export default function ChatSessionListView() {
   const navigate = useNavigate();
   const { activeProjectId, projects, activeWorkspaceId } = useWorkspaceStore();
   const { sessions, setSessions, setActiveChatId } = useChatStore();
+  const { modelLabels } = useSettingsStore();
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
 
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     api.chat.listSessions(activeWorkspaceId, activeProjectId).then(setSessions).catch(() => {});
   }, [activeWorkspaceId, activeProjectId]);
 
@@ -38,7 +40,7 @@ export default function ChatSessionListView() {
   }
 
   async function togglePin(session: ChatSession) {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     await api.chat.updateSession(activeWorkspaceId, session.id, { is_pinned: !session.is_pinned });
     setSessions(
       sessions.map((s) =>
@@ -48,7 +50,7 @@ export default function ChatSessionListView() {
   }
 
   async function deleteSession(id: string) {
-    if (!activeWorkspaceId || !confirm("Delete this chat session and all its messages?")) return;
+    if (!activeWorkspaceId || !window.confirm("Delete this chat session and all its messages?")) {return;}
     await api.chat.deleteSession(activeWorkspaceId, id);
     setSessions(sessions.filter((s) => s.id !== id));
   }
@@ -61,7 +63,7 @@ export default function ChatSessionListView() {
   }
 
   async function createSession() {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     const session = await api.chat.createSession(activeWorkspaceId, activeProjectId);
     setSessions([session, ...sessions]);
     setActiveChatId(session.id);
@@ -88,8 +90,8 @@ export default function ChatSessionListView() {
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") renameSession(session.id);
-                if (e.key === "Escape") setEditingId(null);
+                if (e.key === "Enter") {renameSession(session.id);}
+                if (e.key === "Escape") {setEditingId(null);}
               }}
               onBlur={() => renameSession(session.id)}
               className="w-full text-xs font-medium bg-[var(--bg-elevated)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
@@ -103,7 +105,7 @@ export default function ChatSessionListView() {
             </button>
           )}
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] text-[var(--text-muted)]">{session.model_name}</span>
+            <span className="text-[10px] text-[var(--text-muted)]">{modelLabels[session.model_name] || session.model_name}</span>
             <span className="text-[10px] text-[var(--text-muted)]">·</span>
             <span className="text-[10px] text-[var(--text-muted)]">{formatDate(session.updated_at)}</span>
           </div>

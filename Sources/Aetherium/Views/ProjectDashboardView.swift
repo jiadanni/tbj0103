@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import Charts
+import SwiftData
+import SwiftUI
 
 // MARK: - Project Dashboard
 
@@ -466,7 +466,7 @@ struct AIInsightsView: View {
         // Concept connections (only show if user has concepts)
         let connectedConcepts = project.concepts.filter { !$0.linkedConcepts.isEmpty }.count
         let connectionRatio = Double(connectedConcepts) / Double(max(project.concepts.count, 1))
-        if project.concepts.count > 0 && connectionRatio < 0.3 {
+        if !project.concepts.isEmpty && connectionRatio < 0.3 {
             generatedInsights.append("Only \(Int(connectionRatio * 100))% of your concepts are linked. Try connecting related concepts to strengthen understanding.")
         }
 
@@ -756,4 +756,3 @@ struct TopicCloudView: View {
         0.08 + scale * 0.15
     }
 }
-

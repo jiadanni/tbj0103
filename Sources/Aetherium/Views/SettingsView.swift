@@ -17,7 +17,7 @@ struct SettingsView: View {
         ("5 minutes", 5),
         ("15 minutes", 15),
         ("30 minutes", 30),
-        ("1 hour", 60),
+        ("1 hour", 60)
     ]
 
     var body: some View {
@@ -269,7 +269,7 @@ struct ShortcutEditorRow: View {
             TextField("", text: $shortcut)
                 .frame(width: 40)
                 .multilineTextAlignment(.center)
-                .onChange(of: shortcut) { oldValue, newValue in
+                .onChange(of: shortcut) { _, newValue in
                     if newValue.count > 1 {
                         shortcut = String(newValue.last ?? " ")
                     }

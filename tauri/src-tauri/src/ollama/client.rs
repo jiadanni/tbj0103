@@ -3,7 +3,6 @@
 ///
 /// Connects to a local Ollama instance (default: http://localhost:11434).
 /// Supports chat, streaming, embeddings, and model listing.
-
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -93,15 +92,46 @@ impl OllamaClient {
         }
     }
 
+    /// Resolves the requested model name to an available one, with fallback logic.
+    pub async fn resolve_model(&self, requested: &str) -> Result<String, String> {
+        let models = self.list_models().await?;
+        if models.is_empty() {
+            return Err("No Ollama models found. Please install a model using 'ollama pull llama3' or 'ollama pull qwen2.5' and ensure Ollama is running.".to_string());
+        }
+
+        // 1. Exact match
+        if models.iter().any(|m| m.name == requested) {
+            return Ok(requested.to_string());
+        }
+
+        // 2. Base name match (e.g. "llama3" matching "llama3:latest")
+        if let Some(m) = models.iter().find(|m| m.name.starts_with(&format!("{}:", requested))) {
+            return Ok(m.name.clone());
+        }
+
+        // 3. Fallback to first available non-embedding model
+        let chat_fallback = models.iter()
+            .find(|m| !m.name.contains("embed"))
+            .map(|m| m.name.clone());
+
+        if let Some(fb) = chat_fallback {
+            return Ok(fb);
+        }
+
+        // 4. Absolute fallback to first model
+        Ok(models[0].name.clone())
+    }
+
     /// Send a single non-streaming message and return the full response.
     pub async fn send_message(
         &self,
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
+        let resolved_model = self.resolve_model(model).await?;
         let url = format!("{}/api/chat", self.base_url);
         let body = json!({
-            "model": model,
+            "model": resolved_model,
             "messages": messages,
             "stream": false
         });
@@ -137,9 +167,10 @@ impl OllamaClient {
         messages: Vec<OllamaMessage>,
         event_prefix: &str,
     ) -> Result<String, String> {
+        let resolved_model = self.resolve_model(model).await?;
         let url = format!("{}/api/chat", self.base_url);
         let body = json!({
-            "model": model,
+            "model": resolved_model,
             "messages": messages,
             "stream": true
         });
@@ -236,6 +267,8 @@ impl OllamaClient {
 
     /// Generate an embedding vector for the given text.
     pub async fn generate_embedding(&self, model: &str, text: &str) -> Result<Vec<f32>, String> {
+        // Embeddings usually need a specific model, so we don't resolve_model here 
+        // to avoid accidentally using a chat model for embeddings.
         let url = format!("{}/api/embeddings", self.base_url);
         let body = json!({ "model": model, "prompt": text });
 
@@ -245,6 +278,12 @@ impl OllamaClient {
             .send()
             .await
             .map_err(|e| format!("Embedding request failed: {e}"))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(format!("Ollama error {status}: {text}"));
+        }
 
         let emb: EmbeddingResponse = response
             .json()

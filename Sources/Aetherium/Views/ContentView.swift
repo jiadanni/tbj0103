@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - Main Content View with Unified Navigation
 
@@ -320,12 +320,12 @@ struct DemoHelpSheet: View {
     }
 
     private let suggestions = [
-        Suggestion(view: .chat,           title: "💬 Ask a question in Chat",        subtitle: "Try 'What is attention?' or 'How does MRR work?'"),
-        Suggestion(view: .knowledgeGraph, title: "🧠 Explore the knowledge graph",   subtitle: "Tap any node to see how concepts connect to each other"),
-        Suggestion(view: .flashcards,     title: "🃏 Flip a flashcard",              subtitle: "Practise spaced repetition — hit Space to reveal answers"),
-        Suggestion(view: .learningPaths,  title: "🗺️ Review your learning path",     subtitle: "See milestones and track progress across projects"),
-        Suggestion(view: .documents,      title: "📄 Browse your documents",         subtitle: "View imported sources with their extracted text"),
-        Suggestion(view: .dailyNotes,     title: "📅 Read a daily note",             subtitle: "Seven days of study notes are already logged"),
+        Suggestion(view: .chat, title: "💬 Ask a question in Chat", subtitle: "Try 'What is attention?' or 'How does MRR work?'"),
+        Suggestion(view: .knowledgeGraph, title: "🧠 Explore the knowledge graph", subtitle: "Tap any node to see how concepts connect to each other"),
+        Suggestion(view: .flashcards, title: "🃏 Flip a flashcard", subtitle: "Practise spaced repetition — hit Space to reveal answers"),
+        Suggestion(view: .learningPaths, title: "🗺️ Review your learning path", subtitle: "See milestones and track progress across projects"),
+        Suggestion(view: .documents, title: "📄 Browse your documents", subtitle: "View imported sources with their extracted text"),
+        Suggestion(view: .dailyNotes, title: "📅 Read a daily note", subtitle: "Seven days of study notes are already logged")
     ]
 
     var body: some View {
@@ -1207,13 +1207,12 @@ struct NewChatSheet: View {
                 .lineLimit(1...3)
 
             Picker("Model", selection: $selectedModel) {
-                ForEach(ollamaService.availableModels) { model in
-                    Text(model.name).tag(model.name)
-                }
-
                 if ollamaService.availableModels.isEmpty {
-                    Text("qwen2.5:7b").tag("qwen2.5:7b")
-                    Text("llama3.2:latest").tag("llama3.2:latest")
+                    Text("No models found").tag("")
+                } else {
+                    ForEach(ollamaService.availableModels) { model in
+                        Text(model.name).tag(model.name)
+                    }
                 }
             }
             .pickerStyle(.menu)

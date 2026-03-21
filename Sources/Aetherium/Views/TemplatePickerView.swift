@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - Template Picker
 
@@ -234,10 +234,8 @@ struct TemplateCard: View {
             )
         }
         .buttonStyle(.plain)
-        .onHover { hovering in
+        .onHover { _ in
             // Could add hover effects here
         }
     }
 }
-
-

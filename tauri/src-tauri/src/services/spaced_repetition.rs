@@ -2,7 +2,6 @@
 /// Ported from Services/SpacedRepetitionEngine.swift
 ///
 /// SM-2 algorithm: https://www.supermemo.com/en/archives1990-2015/english/ol/sm2
-
 use crate::models::learning_card::LearningCard;
 
 /// Review a card with quality 0–5 and update SM-2 fields.

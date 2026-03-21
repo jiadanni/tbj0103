@@ -20,7 +20,7 @@ export default function WorkspaceSettingsView() {
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
 
   async function createWorkspace() {
-    if (!newName.trim()) return;
+    if (!newName.trim()) {return;}
     setCreating(true);
     try {
       const ws = await api.workspace.create(newName.trim());
@@ -42,10 +42,10 @@ export default function WorkspaceSettingsView() {
 
   async function deleteWorkspace(ws: Workspace) {
     if (workspaces.length === 1) {
-      alert("Cannot delete the last workspace.");
+      window.alert("Cannot delete the last workspace.");
       return;
     }
-    if (!confirm(`Delete "${ws.name}" and all its projects, notes, and data? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete "${ws.name}" and all its projects, notes, and data? This cannot be undone.`)) {return;}
     await api.workspace.delete(ws.id);
     const remaining = workspaces.filter((w) => w.id !== ws.id);
     setWorkspaces(remaining);
@@ -55,14 +55,14 @@ export default function WorkspaceSettingsView() {
   }
 
   async function analyzeWorkspace(id: string) {
-    if (analyzingId) return;
+    if (analyzingId) {return;}
     setAnalyzingId(id);
     try {
       const newSignature = await api.topicSignature.regenerate(id, preferredModel || undefined, ollamaUrl || undefined);
       setWorkspaces(workspaces.map(w => w.id === id ? { ...w, topic_signature: newSignature } : w));
     } catch (err) {
       console.error("Failed to analyze workspace:", err);
-      alert(err instanceof Error ? err.message : String(err));
+      window.alert(err instanceof Error ? err.message : String(err));
     } finally {
       setAnalyzingId(null);
     }
@@ -105,7 +105,7 @@ export default function WorkspaceSettingsView() {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") createWorkspace();
+              if (e.key === "Enter") {createWorkspace();}
               if (e.key === "Escape") { setShowNew(false); setNewName(""); }
             }}
             placeholder="Workspace name…"
@@ -165,8 +165,8 @@ export default function WorkspaceSettingsView() {
                             value={editName}
                             onChange={(e) => setEditName(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") renameWorkspace(ws.id);
-                              if (e.key === "Escape") setEditingId(null);
+                              if (e.key === "Enter") {renameWorkspace(ws.id);}
+                              if (e.key === "Escape") {setEditingId(null);}
                             }}
                             className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
                           />

@@ -1,6 +1,6 @@
+import AppKit
 import Foundation
 import SwiftData
-import AppKit
 
 // MARK: - Export Engine
 

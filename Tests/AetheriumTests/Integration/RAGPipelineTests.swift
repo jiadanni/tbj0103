@@ -1,6 +1,6 @@
-import XCTest
-import SwiftData
 @testable import Aetherium
+import SwiftData
+import XCTest
 
 final class RAGPipelineTests: XCTestCase {
     var retrievalEngine: RetrievalEngine!

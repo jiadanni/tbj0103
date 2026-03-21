@@ -16,12 +16,12 @@ export default function LearningPathView() {
   const [newDue, setNewDue] = useState("");
 
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     api.learningGoal.list(activeWorkspaceId).then(setGoals).catch(() => {});
   }, [activeWorkspaceId]);
 
   async function createGoal() {
-    if (!newTitle.trim() || !activeWorkspaceId) return;
+    if (!newTitle.trim() || !activeWorkspaceId) {return;}
     const goal = await api.learningGoal.create(activeWorkspaceId, newTitle.trim());
     setGoals((prev) => [goal, ...prev]);
     setNewTitle("");
@@ -135,7 +135,7 @@ export default function LearningPathView() {
               autoFocus
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") createGoal(); if (e.key === "Escape") setShowCreate(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") {createGoal();} if (e.key === "Escape") {setShowCreate(false);} }}
               placeholder="Goal title"
               className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />

@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct BacklinksView: View {
     @Environment(\.modelContext) private var modelContext
@@ -289,5 +289,3 @@ struct QuickStat: View {
         .frame(maxWidth: .infinity)
     }
 }
-
-

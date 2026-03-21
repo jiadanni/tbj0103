@@ -45,7 +45,7 @@ pub fn list_flashcards_due(state: State<DbState>, workspace_id: String) -> Resul
         "SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
          FROM learning_cards WHERE workspace_id = ?1 AND next_review_date <= ?2 ORDER BY next_review_date ASC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id, today], |row| row_to_card(row))
+    let items = stmt.query_map(rusqlite::params![workspace_id, today], row_to_card)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -61,7 +61,7 @@ pub fn review_flashcard(state: State<DbState>, req: ReviewRequest) -> Result<Lea
         "SELECT id, project_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
          FROM learning_cards WHERE id = ?1",
         rusqlite::params![req.card_id],
-        |row| row_to_card(row),
+        row_to_card,
     ).map_err(|e| e.to_string())?;
     // Compute new SM-2 values
     let result = spaced_repetition::review_card(&card, req.quality);

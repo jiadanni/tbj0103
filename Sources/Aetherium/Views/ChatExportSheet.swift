@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 enum ChatExportFormat: String, CaseIterable, Identifiable {
     case markdown = "Markdown"

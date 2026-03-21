@@ -2,7 +2,6 @@
 /// Ported from Services/LinkSyntaxParser.swift
 ///
 /// Detects [[concept]] links and Markdown syntax in text.
-
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
@@ -49,7 +48,7 @@ fn bold_re() -> &'static Regex {
 }
 
 fn italic_re() -> &'static Regex {
-    ITALIC_RE.get_or_init(|| Regex::new(r"(?<!\*)\*([^*]+)\*(?!\*)").unwrap())
+    ITALIC_RE.get_or_init(|| Regex::new(r"\*([^*]+)\*").unwrap())
 }
 
 fn inline_code_re() -> &'static Regex {

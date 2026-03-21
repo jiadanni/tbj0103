@@ -17,19 +17,19 @@ export default function DocumentBrowserView() {
   const [processing, setProcessing] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     api.document.list(activeWorkspaceId).then(setDocuments).catch(() => {});
   }, [activeWorkspaceId]);
 
   async function handleUpload() {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     setUploading(true);
     try {
       const paths = await open({
         multiple: true,
         filters: [{ name: "Documents", extensions: ["txt", "md", "json", "csv"] }],
       }) as string[] | null;
-      if (!paths || paths.length === 0) return;
+      if (!paths || paths.length === 0) {return;}
 
       for (const path of paths) {
         const content = await readTextFile(path);
@@ -62,12 +62,12 @@ export default function DocumentBrowserView() {
   async function deleteDocument(id: string) {
     await api.document.delete(id);
     setDocuments((prev) => prev.filter((d) => d.id !== id));
-    if (selected?.id === id) setSelected(null);
+    if (selected?.id === id) {setSelected(null);}
   }
 
   function formatBytes(n: number) {
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024) {return `${n} B`;}
+    if (n < 1024 * 1024) {return `${(n / 1024).toFixed(1)} KB`;}
     return `${(n / 1024 / 1024).toFixed(1)} MB`;
   }
 
