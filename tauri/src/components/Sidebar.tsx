@@ -439,9 +439,8 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                 }
               }}
               onClick={(e) => e.stopPropagation()}
-              onBlur={() => {
-                setCreatingFolder(false);
-                setNewFolderName("");
+              onBlur={(e) => {
+                void handleCreateFolder(e.currentTarget.value);
               }}
               placeholder="Folder name…"
               className="flex-1 text-xs bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-1 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
