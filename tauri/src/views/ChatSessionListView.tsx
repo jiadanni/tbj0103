@@ -4,7 +4,8 @@
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MessageSquare, Pin, PinOff, Trash2, Plus, Search, ExternalLink } from "lucide-react";
+import { MessageSquare, Pin, PinOff, Trash2, Plus, Search, ExternalLink, Save } from "lucide-react";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -19,6 +20,15 @@ export default function ChatSessionListView() {
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+
+  function chatExportFilename(title: string) {
+    const base = (title || "chat")
+      .trim()
+      .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+      .replace(/\s+/g, "-")
+      .slice(0, 80);
+    return `${base || "chat"}.json`;
+  }
 
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
@@ -78,14 +88,24 @@ export default function ChatSessionListView() {
     setEditingId(null);
   }
 
+  async function saveSession(session: ChatSession) {
+    try {
+      const destPath = await saveDialog({
+        defaultPath: chatExportFilename(session.title || "chat"),
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!destPath) {return;}
+      await api.chatFile.exportAsJson(session.id, destPath);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to save chat.");
+    }
+  }
+
   async function createSession() {
     if (!activeWorkspaceId) {return;}
     
     // Look for an unused session first
-    const unusedSession = findUnusedSession(sessions, messages, activeProjectId, {
-      isIncognito: false,
-      excludeFromAnalytics: false,
-    });
+    const unusedSession = findUnusedSession(sessions, messages, activeWorkspaceId);
     if (unusedSession) {
       setActiveChatId(unusedSession.id);
       navigate(`/chat/${unusedSession.id}`);
@@ -159,6 +179,13 @@ export default function ChatSessionListView() {
             title="Open"
           >
             <ExternalLink size={12} />
+          </button>
+          <button
+            onClick={() => saveSession(session)}
+            className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-color)]"
+            title="Save chat"
+          >
+            <Save size={12} />
           </button>
           <button
             onClick={() => deleteSession(session.id)}

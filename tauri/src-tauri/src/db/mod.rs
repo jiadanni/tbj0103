@@ -538,5 +538,21 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v22: add role tags for AI model task routing
+    let applied_v22: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v22_ai_model_role_tags'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v22 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE ai_models ADD COLUMN role_tags TEXT NOT NULL DEFAULT '[]';",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v22_ai_model_role_tags');",
+        )?;
+    }
+
     Ok(())
 }

@@ -151,10 +151,17 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
       excludeFromAnalytics: options?.excludeFromAnalytics ?? false,
     };
 
-    // Look for an unused session first
-    const unusedSession = findUnusedSession(sessions, messages, activeProjectId, privacy);
+    const workspaceSessions = await api.chat.listSessions(activeWorkspaceId, null);
+    const unusedSession = findUnusedSession(
+      workspaceSessions,
+      messages,
+      activeWorkspaceId,
+    );
     if (unusedSession) {
       setActiveChatId(unusedSession.id);
+      if (!sessions.some((session) => session.id === unusedSession.id)) {
+        useChatStore.getState().addSession(unusedSession);
+      }
       navigate(`/chat/${unusedSession.id}`);
       return;
     }

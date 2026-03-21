@@ -4,6 +4,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 const SETTINGS_INITIAL = {
   preferredModel: "",
   backgroundModel: "",
+  quickSearchModels: [],
   ollamaUrl: "http://localhost:11434",
   embeddingModel: "nomic-embed-text",
   theme: "system" as const,
@@ -75,6 +76,11 @@ describe("setters", () => {
   it("setBackgroundModel updates backgroundModel", () => {
     useSettingsStore.getState().setBackgroundModel("qwen2.5:1.5b");
     expect(useSettingsStore.getState().backgroundModel).toBe("qwen2.5:1.5b");
+  });
+
+  it("setQuickSearchModels updates quickSearchModels", () => {
+    useSettingsStore.getState().setQuickSearchModels(["claude-web", "gemini-web"]);
+    expect(useSettingsStore.getState().quickSearchModels).toEqual(["claude-web", "gemini-web"]);
   });
 
   it("setSidebarWidth updates sidebarWidth only", () => {

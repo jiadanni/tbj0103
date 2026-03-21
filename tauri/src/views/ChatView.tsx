@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield } from "lucide-react";
+import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save } from "lucide-react";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
@@ -27,6 +28,15 @@ function formatMessageTimestamp(value: string) {
   }).format(date);
 }
 
+function chatExportFilename(title: string) {
+  const base = (title || "chat")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+    .replace(/\s+/g, "-")
+    .slice(0, 80);
+  return `${base || "chat"}.json`;
+}
+
 export default function ChatView() {
   const { sessionId } = useParams();
 
@@ -43,7 +53,7 @@ export default function ChatView() {
   const {
     preferredModel, setPreferredModel, ollamaUrl, dualModelEnabled, draftModel,
     setDualModelEnabled, setDraftModel, compareModelA: savedCompareA, compareModelB: savedCompareB,
-    setCompareModelA: saveCompareA, setCompareModelB: saveCompareB, modelLabels,
+    setCompareModelA: saveCompareA, setCompareModelB: saveCompareB, modelLabels, quickSearchModels,
     skipLinkConfirm, setSkipLinkConfirm,
   } = useSettingsStore();
   const topSelectClassName = "h-8 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-8 text-xs font-medium text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
@@ -516,10 +526,17 @@ export default function ChatView() {
       excludeFromAnalytics: options?.excludeFromAnalytics ?? false,
     };
 
-    // Look for an unused session first
-    const unusedSession = findUnusedSession(sessions, useChatStore.getState().messages, activeProjectId, privacy);
+    const workspaceSessions = await api.chat.listSessions(activeWorkspaceId, null);
+    const unusedSession = findUnusedSession(
+      workspaceSessions,
+      useChatStore.getState().messages,
+      activeWorkspaceId,
+    );
     if (unusedSession) {
       setActiveChatId(unusedSession.id);
+      if (!sessions.some((session) => session.id === unusedSession.id)) {
+        useChatStore.getState().addSession(unusedSession);
+      }
       return;
     }
 
@@ -598,11 +615,19 @@ export default function ChatView() {
   }
 
   async function sendMessage() {
-    if (!input.trim() || isStreaming || !selectedModel || !activeWorkspaceId) {return;}
+    await sendMessageWithModel(selectedModel);
+  }
+
+  async function sendMessageWithModel(modelId: string) {
+    if (!input.trim() || isStreaming || !modelId || !activeWorkspaceId) {return;}
+
+    const modelMeta = aiModelList.find((m) => m.model_id === modelId);
+    const isOneOffWebProvider = modelMeta?.provider.startsWith("web_") ?? false;
+    const oneOffWebProviderKey = isOneOffWebProvider ? modelMeta!.provider.replace("web_", "") : "";
 
     let sid = activeChatId;
     if (!sid) {
-      const session = await api.chat.createSession(activeWorkspaceId, activeProjectId, { modelName: selectedModel });
+      const session = await api.chat.createSession(activeWorkspaceId, activeProjectId, { modelName: modelId });
       useChatStore.getState().addSession(session);
       sid = session.id;
       setActiveChatId(session.id);
@@ -615,7 +640,6 @@ export default function ChatView() {
     setLastUserMessage(userContent);
     setFollowUps([]);
 
-    // Migration check
     if (activeWorkspaceId) {
       api.topicSignature.checkMatch(activeWorkspaceId, userContent)
         .then(result => { if (!result.is_match && result.suggestion) {setMigrationSuggestion(result);} })
@@ -631,17 +655,14 @@ export default function ChatView() {
     };
     appendMessage(sid, optimisticUserMsg);
 
-    // Persist user message
     const userMsg = await api.chat.addMessage(activeWorkspaceId, sid, "user", userContent);
     updateMessage(sid, persistedUserMessageWithFallback(optimisticUserMsg, userMsg));
 
-    // Build context for Ollama
     const history = (messages[sid] ?? []).map((m) => ({
       role: m.role,
       content: m.content,
     }));
 
-    // If grounded mode is on, retrieve document context and augment the prompt
     let finalUserContent = userContent;
     if (groundedEnabled && activeProjectId) {
       try {
@@ -654,11 +675,9 @@ export default function ChatView() {
             contextParts.join("\n\n") +
             `\n\nUsing the above context where relevant, answer: ${userContent}\n\n` +
             `Cite sources as [1], [2], etc. when referencing specific content.`;
-          // Store sources keyed by the user message ID so we can show them
           setMessageSources((prev) => ({ ...prev, [optimisticUserMsg.id]: chunkResults }));
         }
       } catch {
-        // If search fails, just send without grounding
       }
     }
 
@@ -674,40 +693,37 @@ export default function ChatView() {
 
     history.push({ role: "user", content: finalUserContent });
 
-    if (isWebProvider && webProviderKey) {
-      // ── Web AI (Playwright) path ───────────────────────────────────────────
+    if (isOneOffWebProvider && oneOffWebProviderKey) {
       try {
         const unlisten = await api.listenStream(sid, (chunk, done) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
-            finalizeStream(sid!, selectedModel);
+            finalizeStream(sid!, modelId);
             setIsStreaming(false);
             unlisten();
-            api.chat.addMessage(activeWorkspaceId, sid!, "assistant", assembled, selectedModel)
+            api.chat.addMessage(activeWorkspaceId, sid!, "assistant", assembled, modelId)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
           } else {
             appendStreamChunk(sid!, chunk);
           }
         });
-        await api.webAI.sendMessage(sid, webProviderKey, finalUserContent, preserveWebSession);
+        await api.webAI.sendMessage(sid, oneOffWebProviderKey, finalUserContent, preserveWebSession);
       } catch (err) {
         setIsStreaming(false);
         const errMsg = err instanceof Error ? err.message : String(err);
         appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
-        finalizeStream(sid, selectedModel);
+        finalizeStream(sid, modelId);
       }
-    } else if (dualModelEnabled && draftModel && draftModel !== selectedModel) {
-      // ── Dual-model path: draft first (small model), then refine (large model) ──
+    } else if (dualModelEnabled && draftModel && draftModel !== modelId) {
       setIsRefiningPhase(false);
       try {
         let draftUnlisten: (() => void) | null = null;
         draftUnlisten = await api.listenStream(sid!, (chunk, done) => {
           if (done) {
-            // Snapshot the draft BEFORE clearing the streaming state
             const draftText = useChatStore.getState().streamingContent;
             setDraftSnapshot(draftText);
-            setStreamingSession(null); // clear streaming bubble without finalizing
+            setStreamingSession(null);
             setIsRefiningPhase(true);
             draftUnlisten?.();
           } else {
@@ -719,62 +735,60 @@ export default function ChatView() {
         refineUnlisten = await api.listenRefineStream(sid!, (chunk, done, tokensUsed, durationMs) => {
           if (done) {
             const refineText = useChatStore.getState().streamingContent;
-            finalizeStream(sid!, selectedModel);
+            finalizeStream(sid!, modelId);
             setIsRefiningPhase(false);
             setDraftSnapshot("");
             setIsStreaming(false);
             refineUnlisten?.();
-            api.chat.addMessage(activeWorkspaceId, sid!, "assistant", refineText, selectedModel, tokensUsed, durationMs)
+            api.chat.addMessage(activeWorkspaceId, sid!, "assistant", refineText, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
             if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
+              api.aiModel.recordTokenUsage(modelId, tokensUsed).catch(() => {});
             }
           } else {
             appendStreamChunk(sid!, chunk);
           }
         });
 
-        await api.ollama.sendDualModelMessage(sid!, draftModel, selectedModel, history, ollamaUrl);
+        await api.ollama.sendDualModelMessage(sid!, draftModel, modelId, history, ollamaUrl);
       } catch (err) {
         setIsStreaming(false);
         setIsRefiningPhase(false);
         setDraftSnapshot("");
         const errMsg = err instanceof Error ? err.message : String(err);
         appendStreamChunk(sid!, `\n\n⚠️ Error: ${errMsg}`);
-        finalizeStream(sid!, selectedModel);
+        finalizeStream(sid!, modelId);
       }
     } else {
-      // ── Normal single-model path ──
       try {
         const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
-            finalizeStream(sid!, selectedModel);
+            finalizeStream(sid!, modelId);
             setIsStreaming(false);
             unlisten();
-            api.chat.addMessage(activeWorkspaceId, sid!, "assistant", assembled, selectedModel, tokensUsed, durationMs)
+            api.chat.addMessage(activeWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
             if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
+              api.aiModel.recordTokenUsage(modelId, tokensUsed).catch(() => {});
             }
           } else {
             appendStreamChunk(sid!, chunk);
           }
         });
 
-        await api.context.assembleAndSend(sid, activeWorkspaceId, selectedModel, { ollama_url: ollamaUrl || undefined });
+        await api.context.assembleAndSend(sid, activeWorkspaceId, modelId, { ollama_url: ollamaUrl || undefined });
       } catch (err) {
         setIsStreaming(false);
         const errMsg = err instanceof Error ? err.message : String(err);
         appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
-        finalizeStream(sid, selectedModel);
+        finalizeStream(sid, modelId);
       }
     }
 
-    // Auto-generate title based on settings
-    await generateSessionTitleIfNeeded(sid, selectedModel, userContent);
+    await generateSessionTitleIfNeeded(sid, modelId, userContent);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -818,6 +832,19 @@ export default function ChatView() {
     await api.chat.updateSession(activeWorkspaceId, id, { title: renameTitle });
     setSessions(sessions.map((s) => s.id === id ? { ...s, title: renameTitle } : s));
     setRenamingId(null);
+  }
+
+  async function saveSession(session: ChatSession) {
+    try {
+      const destPath = await saveDialog({
+        defaultPath: chatExportFilename(session.title || "chat"),
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!destPath) {return;}
+      await api.chatFile.exportAsJson(session.id, destPath);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to save chat.");
+    }
   }
 
   function copyMessage(msgId: string, content: string) {
@@ -978,7 +1005,7 @@ export default function ChatView() {
   // ── Session sidebar (always visible) ─────────────────────────────────────
   function SessionSidebar() {
     return (
-      <div className="w-56 border-r border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)] overflow-hidden shrink-0">
+      <div className="relative z-10 w-56 border-r border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)] overflow-hidden shrink-0">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)]">
           <span className="text-xs font-medium text-[var(--text-secondary)] truncate">
@@ -1177,6 +1204,13 @@ export default function ChatView() {
             {session.is_pinned ? <PinOff size={10} /> : <Pin size={10} />}
           </button>
           <button
+            onClick={(e) => { e.stopPropagation(); saveSession(session); }}
+            className="p-0.5 rounded hover:text-[var(--accent-color)] transition-colors"
+            title="Save chat"
+          >
+            <Save size={10} />
+          </button>
+          <button
             onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
             className="p-0.5 rounded hover:text-red-400 transition-colors"
           >
@@ -1189,12 +1223,12 @@ export default function ChatView() {
 
   // ── Main render ──────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full min-w-0 overflow-hidden">
       <SessionSidebar />
 
       {/* Compare mode */}
       {chatMode === "compare" ? (
-        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0">
           <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
             <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
               <SplitSquareHorizontal size={14} className="text-[var(--text-muted)]" />
@@ -1283,9 +1317,9 @@ export default function ChatView() {
           </div>
 
           {/* Side-by-side responses */}
-          <div className="flex flex-1 overflow-hidden divide-x divide-[var(--border-color)]">
+          <div className="flex flex-1 min-w-0 overflow-hidden divide-x divide-[var(--border-color)]">
             {[{ label: "Model A", model: compareModelA, text: compareResponseA }, { label: "Model B", model: compareModelB, text: compareResponseB }].map((panel) => (
-              <div key={panel.label} className="flex-1 flex flex-col overflow-hidden">
+              <div key={panel.label} className="flex-1 min-w-0 flex flex-col overflow-hidden">
                 <div className="px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] flex-shrink-0">
                   <span className="text-xs font-medium text-[var(--text-primary)]">{panel.label}</span>
                   {panel.model && <span className="ml-2 text-xs text-[var(--text-muted)]">{modelDisplayName(panel.model)}</span>}
@@ -1328,7 +1362,7 @@ export default function ChatView() {
           </div>
         </div>
       ) : !activeChatId ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
+        <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center">
           <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
           <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
           <div className="flex gap-2">
@@ -1354,7 +1388,7 @@ export default function ChatView() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {/* Slim title bar */}
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
             <span className="text-sm font-medium text-[var(--text-primary)] flex-1 truncate flex items-center gap-2">
@@ -1665,6 +1699,20 @@ export default function ChatView() {
 
               {/* ── Composer tool row ─────────────────────────────────────── */}
               <div className="flex items-center gap-1.5 mt-1 px-2 pb-1 flex-wrap">
+              {quickSearchModels
+                .filter((modelId) => aiModelList.some((model) => model.model_id === modelId && model.enabled))
+                .map((modelId) => (
+                  <button
+                    key={modelId}
+                    onClick={() => sendMessageWithModel(modelId)}
+                    disabled={!input.trim() || isStreaming}
+                    title={`Send with ${modelDisplayName(modelId)}`}
+                    className={`${composerToggleBaseClass} ${composerToggleInactiveClass} disabled:opacity-40`}
+                  >
+                    <Globe size={13} />
+                    <span>{modelDisplayName(modelId)}</span>
+                  </button>
+                ))}
               {/* Model picker */}
               <div className="relative max-w-[190px]">
                 <select
