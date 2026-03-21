@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder } from "lucide-react";
+import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus } from "lucide-react";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
@@ -85,6 +85,29 @@ export default function ChatView() {
   const [sessionQuery, setSessionQuery] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleCreateFolder() {
+    if (!newFolderName.trim() || !activeWorkspaceId) {
+      setCreatingFolder(false);
+      setNewFolderName("");
+      return;
+    }
+    try {
+      const p = await api.project.create(activeWorkspaceId, newFolderName.trim());
+      useWorkspaceStore.getState().addProject(p);
+    } catch (e) {
+      console.error(e);
+    }
+    setCreatingFolder(false);
+    setNewFolderName("");
+  }
+
+  useEffect(() => {
+    if (creatingFolder && folderInputRef.current) folderInputRef.current.focus();
+  }, [creatingFolder]);
 
   // Model comparison state
   const [compareModelA, setCompareModelA] = useState(savedCompareA || "");
@@ -790,17 +813,11 @@ export default function ChatView() {
           </span>
           <div className="flex items-center gap-0.5">
             <button
-              onClick={async () => {
-                if (!activeWorkspaceId) return;
-                const name = prompt("Folder name:");
-                if (!name?.trim()) return;
-                const p = await api.project.create(activeWorkspaceId, name.trim());
-                useWorkspaceStore.getState().addProject(p);
-              }}
+              onClick={() => { setCreatingFolder(true); setNewFolderName(""); }}
               className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               title="New folder"
             >
-              <Folder size={14} />
+              <FolderPlus size={14} />
             </button>
             <button
               onClick={createNewSession}
@@ -833,6 +850,25 @@ export default function ChatView() {
             />
           </div>
         </div>
+
+        {/* Inline folder creation */}
+        {creatingFolder && (
+          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[var(--border-color)]">
+            <Folder size={12} className="text-[var(--text-muted)] flex-shrink-0" />
+            <input
+              ref={folderInputRef}
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateFolder();
+                if (e.key === "Escape") { setCreatingFolder(false); setNewFolderName(""); }
+              }}
+              onBlur={handleCreateFolder}
+              placeholder="Folder name…"
+              className="flex-1 text-[11px] bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+            />
+          </div>
+        )}
 
         {/* Session list */}
         <div className="flex-1 overflow-y-auto">
