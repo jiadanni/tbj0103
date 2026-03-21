@@ -35,10 +35,36 @@ pub struct SuggestGoalsRequest {
     pub ollama_url: Option<String>,
 }
 
+struct WorkspaceContentSnapshot {
+    text: String,
+    source_items: usize,
+}
+
+const GENERIC_CONCEPTS: &[&str] = &[
+    "algorithm", "artifact", "attribute", "bug", "code", "condition", "constraint",
+    "data", "details", "error", "evaluation", "example", "function", "functions",
+    "implementation", "input", "method", "methods", "output", "phase", "process",
+    "programming", "question", "questions", "result", "results", "step", "steps",
+    "system", "task", "tasks", "test", "tests", "topic", "topics", "variable",
+    "variables",
+];
+
+fn is_specific_concept(name: &str) -> bool {
+    let lower = name.trim().to_lowercase();
+    if lower.len() < 4 {
+        return false;
+    }
+    if GENERIC_CONCEPTS.contains(&lower.as_str()) {
+        return false;
+    }
+    true
+}
+
 /// Collect recent workspace content (notes, daily notes, chat messages, docs, web) capped at ~16 000 chars.
-fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> String {
+fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> WorkspaceContentSnapshot {
     let mut parts: Vec<String> = Vec::new();
     let mut total_len = 0usize;
+    let mut source_items = 0usize;
     const CAP: usize = 16_000;
 
     fn safe_truncate(s: &str, max_chars: usize) -> &str {
@@ -64,6 +90,7 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
                 let entry = format!("Note: {}\n{}\n", item.0, snippet);
                 total_len += entry.len();
                 parts.push(entry);
+                source_items += 1;
             }
         });
     }
@@ -85,6 +112,7 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
                     let entry = format!("Daily note ({}): {}\n", item.0, snippet);
                     total_len += entry.len();
                     parts.push(entry);
+                    source_items += 1;
                 }
             });
         }
@@ -108,6 +136,7 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
                     let entry = format!("Message: {}\n", snippet);
                     total_len += entry.len();
                     parts.push(entry);
+                    source_items += 1;
                 }
             });
         }
@@ -132,6 +161,7 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
                     let entry = format!("Document ({}): {}\n", name, snippet);
                     total_len += entry.len();
                     parts.push(entry);
+                    source_items += 1;
                 }
             });
         }
@@ -156,12 +186,16 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
                     let entry = format!("Web Capture ({}): {}\n", title, snippet);
                     total_len += entry.len();
                     parts.push(entry);
+                    source_items += 1;
                 }
             });
         }
     }
 
-    parts.join("")
+    WorkspaceContentSnapshot {
+        text: parts.join(""),
+        source_items,
+    }
 }
 
 #[tauri::command]
@@ -170,9 +204,9 @@ pub async fn analyze_workspace(
     req: AnalyzeWorkspaceRequest,
 ) -> Result<AnalysisResult, String> {
     // 1. Gather content — acquire + release lock before async call
-    let (content, existing_names) = {
+    let (snapshot, existing_names) = {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
-        let text = gather_workspace_content(&conn, &req.workspace_id);
+        let snapshot = gather_workspace_content(&conn, &req.workspace_id);
 
         // Load existing concept names (lowercase) for dedup
         let mut names: Vec<String> = Vec::new();
@@ -186,11 +220,14 @@ pub async fn analyze_workspace(
                 names = rows.flatten().collect();
             });
         }
-        (text, names)
+        (snapshot, names)
     };
 
-    if content.trim().is_empty() {
+    if snapshot.text.trim().is_empty() {
         return Err("No content found in this workspace to analyze. Please add some notes, documents, or chat messages first.".to_string());
+    }
+    if snapshot.source_items < 6 || snapshot.text.len() < 1200 {
+        return Err("Not enough workspace material yet to build a useful graph. Add a bit more chat, notes, or documents, then analyze again.".to_string());
     }
 
     // 2. Build prompt
@@ -205,11 +242,13 @@ pub async fn analyze_workspace(
         Content:\n{content}\n\n\
         Respond with ONLY valid JSON (no markdown, no explanation):\n\
         {{\"concepts\":[\"concept1\",\"concept2\",...],\"relationships\":[{{\"source\":\"concept1\",\"target\":\"concept2\",\"type\":\"related\"}},...]}}\n\
-        - List 5-20 important concepts as strings.\n\
+        - List 5-15 important concepts as strings.\n\
+        - Prefer specific domain concepts, named techniques, libraries, APIs, protocols, tools, or concrete topics.\n\
+        - Do NOT include generic words like code, method, process, result, question, variable, bug, test, artifact, input, output, condition, or programming.\n\
         - List relationships between concepts. Type must be one of: related, part_of, prerequisite, contradicts, supports, example.\n\
         - Only output the raw JSON object.",
         focus = focus_clause,
-        content = if content.len() > 15_000 { &content[..15_000] } else { &content },
+        content = if snapshot.text.len() > 15_000 { &snapshot.text[..15_000] } else { &snapshot.text },
     );
 
     // 3. Call Ollama (no DB lock held)
@@ -266,6 +305,10 @@ pub async fn analyze_workspace(
     for raw_name in &output.concepts {
         let name = raw_name.trim().to_string();
         if name.is_empty() { continue; }
+        if !is_specific_concept(&name) {
+            concepts_skipped += 1;
+            continue;
+        }
         let lower = name.to_lowercase();
 
         if existing_names.contains(&lower) || name_to_id.contains_key(&lower) {

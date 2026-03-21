@@ -11,7 +11,7 @@ import type { Workspace } from "../stores/workspaceStore";
 
 export default function WorkspaceSettingsView() {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces } = useWorkspaceStore();
-  const { preferredModel, ollamaUrl } = useSettingsStore();
+  const { preferredModel, backgroundModel, ollamaUrl } = useSettingsStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [newName, setNewName] = useState("");
@@ -58,7 +58,8 @@ export default function WorkspaceSettingsView() {
     if (analyzingId) {return;}
     setAnalyzingId(id);
     try {
-      const newSignature = await api.topicSignature.regenerate(id, preferredModel || undefined, ollamaUrl || undefined);
+      const analysisModel = backgroundModel || preferredModel;
+      const newSignature = await api.topicSignature.regenerate(id, analysisModel || undefined, ollamaUrl || undefined);
       setWorkspaces(workspaces.map(w => w.id === id ? { ...w, topic_signature: newSignature } : w));
     } catch (err) {
       console.error("Failed to analyze workspace:", err);

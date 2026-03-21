@@ -42,7 +42,7 @@ import ThoughtQueueView from "../views/ThoughtQueueView";
 import RecycleBinView from "../views/RecycleBinView";
 
 function WorkspaceTabBar() {
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces, setProjects, setActiveTopicSignature } = useWorkspaceStore();
+  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces, setProjects, setWorkspaceTopicSignature } = useWorkspaceStore();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [dragOverWsId, setDragOverWsId] = useState<string | null>(null);
@@ -76,7 +76,7 @@ function WorkspaceTabBar() {
           api.topicSignature.get(activeWorkspaceId),
         ]);
         setProjects(refreshedProjects);
-        setActiveTopicSignature(refreshedSignature);
+        setWorkspaceTopicSignature(activeWorkspaceId, refreshedSignature);
       }
     } catch (err) {
       console.error("Failed to move sessions:", err);

@@ -16,6 +16,17 @@ import ContextIndicator from "../components/ContextIndicator";
 
 type ChatMode = "chat" | "compare";
 
+function formatMessageTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {return value;}
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export default function ChatView() {
   const { sessionId } = useParams();
 
@@ -27,7 +38,7 @@ export default function ChatView() {
 
   const { 
     activeProjectId, projects, setActiveProjectId, activeWorkspaceId, 
-    activeTopicSignature, setActiveTopicSignature, setMigrationSuggestion 
+    activeTopicSignature, setActiveTopicSignature, setWorkspaceTopicSignature, setMigrationSuggestion, workspaces
   } = useWorkspaceStore();
   const {
     preferredModel, setPreferredModel, ollamaUrl, dualModelEnabled, draftModel,
@@ -124,8 +135,11 @@ export default function ChatView() {
   }
 
   useEffect(() => {
-    if (creatingFolder && folderInputRef.current) {folderInputRef.current.focus();}
-  }, [creatingFolder]);
+    if (!creatingFolder || !folderInputRef.current) {return;}
+    if (document.activeElement !== folderInputRef.current) {
+      folderInputRef.current.focus();
+    }
+  }, [creatingFolder, newFolderName]);
 
   // Model comparison state
   const [compareModelA, setCompareModelA] = useState(savedCompareA || "");
@@ -359,13 +373,48 @@ export default function ChatView() {
   // Load active topic signature when workspace changes
   useEffect(() => {
     if (activeWorkspaceId) {
+      const cachedWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
+      if (cachedWorkspace?.topic_signature) {
+        setActiveTopicSignature(cachedWorkspace.topic_signature);
+      } else {
+        setActiveTopicSignature(null);
+      }
+
       api.topicSignature.get(activeWorkspaceId)
-        .then(sig => setActiveTopicSignature(sig))
-        .catch(() => setActiveTopicSignature(null));
+        .then(sig => setWorkspaceTopicSignature(activeWorkspaceId, sig))
+        .catch(() => {});
     } else {
       setActiveTopicSignature(null);
     }
-  }, [activeWorkspaceId, setActiveTopicSignature]);
+  }, [activeWorkspaceId, setActiveTopicSignature, setWorkspaceTopicSignature, workspaces]);
+
+  useEffect(() => {
+    if (!activeWorkspaceId) {return;}
+
+    let cancelled = false;
+
+    const refreshSignature = () => {
+      if (document.visibilityState === "hidden") {return;}
+      api.topicSignature.get(activeWorkspaceId)
+        .then((sig) => {
+          if (!cancelled) {
+            setWorkspaceTopicSignature(activeWorkspaceId, sig);
+          }
+        })
+        .catch(() => {});
+    };
+
+    const intervalId = window.setInterval(refreshSignature, 60_000);
+    document.addEventListener("visibilitychange", refreshSignature);
+    window.addEventListener("focus", refreshSignature);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshSignature);
+      window.removeEventListener("focus", refreshSignature);
+    };
+  }, [activeWorkspaceId, setWorkspaceTopicSignature]);
 
   // Activate session from URL
   useEffect(() => {
@@ -1012,10 +1061,6 @@ export default function ChatView() {
                 }
               }}
               onClick={(e) => e.stopPropagation()}
-              onBlur={() => {
-                setCreatingFolder(false);
-                setNewFolderName("");
-              }}
               placeholder="Folder name…"
               className="flex-1 text-[11px] bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />
@@ -1149,7 +1194,7 @@ export default function ChatView() {
 
       {/* Compare mode */}
       {chatMode === "compare" ? (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
             <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
               <SplitSquareHorizontal size={14} className="text-[var(--text-muted)]" />
@@ -1360,7 +1405,7 @@ export default function ChatView() {
           )}
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
             {activeMessages.map((msg, i) => (
               <div
                 key={msg.id}
@@ -1397,14 +1442,14 @@ export default function ChatView() {
                 ) : (
                   <>
                     <div
-                      className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
+                      className={`max-w-[75%] break-words rounded-2xl px-4 py-2.5 text-sm ${
                         msg.role === "user"
                           ? "message-user"
                           : "message-assistant"
                       }`}
                     >
                       {msg.role === "assistant" ? (
-                        <div className="prose prose-sm prose-invert max-w-none">
+                        <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
                           {i === activeMessages.length - 1 && activeContextSources[sessionId!] && (
                             <ContextIndicator sources={activeContextSources[sessionId!]} />
                           )}
@@ -1441,26 +1486,24 @@ export default function ChatView() {
                         </button>
                       )}
                     </div>
-                    {/* Token count + duration + tok/s */}
-                    {msg.role === "assistant" && (msg.tokens_used || msg.duration_ms) && (
-                      <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)] tabular-nums">
-                        {msg.tokens_used && (
-                          <span>{msg.tokens_used.toLocaleString()} tok</span>
-                        )}
-                        {msg.duration_ms && (
-                          <span>
-                            {msg.duration_ms >= 1000
-                              ? `${(msg.duration_ms / 1000).toFixed(1)}s`
-                              : `${msg.duration_ms}ms`}
-                          </span>
-                        )}
-                        {msg.tokens_used && msg.duration_ms && msg.duration_ms > 0 && (
-                          <span className="text-[var(--accent-color)] font-medium">
-                            {(msg.tokens_used / (msg.duration_ms / 1000)).toFixed(1)} tok/s
-                          </span>
-                        )}
-                      </div>
-                    )}
+                    <div className={`flex items-center gap-2 text-[10px] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
+                      <span>{formatMessageTimestamp(msg.created_at)}</span>
+                      {msg.role === "assistant" && msg.tokens_used ? (
+                        <span>{msg.tokens_used.toLocaleString()} tok</span>
+                      ) : null}
+                      {msg.role === "assistant" && msg.duration_ms ? (
+                        <span>
+                          {msg.duration_ms >= 1000
+                            ? `${(msg.duration_ms / 1000).toFixed(1)}s`
+                            : `${msg.duration_ms}ms`}
+                        </span>
+                      ) : null}
+                      {msg.role === "assistant" && msg.tokens_used && msg.duration_ms && msg.duration_ms > 0 ? (
+                        <span className="text-[var(--accent-color)] font-medium">
+                          {(msg.tokens_used / (msg.duration_ms / 1000)).toFixed(1)} tok/s
+                        </span>
+                      ) : null}
+                    </div>
                     {/* Grounded sources for this message */}
                     {messageSources[msg.id] && messageSources[msg.id].length > 0 && (
                       <div className={`max-w-[75%] ${msg.role === "user" ? "self-end" : ""}`}>
@@ -1506,11 +1549,11 @@ export default function ChatView() {
             {/* Draft snapshot bubble — shown during refine phase */}
             {isRefiningPhase && draftSnapshot && (
               <div className="flex flex-col gap-1 items-start">
-                <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm message-assistant opacity-60 border border-amber-500/20">
+                <div className="max-w-[75%] break-words rounded-2xl px-4 py-2.5 text-sm message-assistant opacity-60 border border-amber-500/20">
                   <div className="flex items-center gap-1 mb-1 text-[10px] text-amber-400">
                     <Zap size={9} /> Draft ({draftModel})
                   </div>
-                  <div className="prose prose-sm prose-invert max-w-none">
+                  <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{draftSnapshot}</ReactMarkdown>
                   </div>
                 </div>
@@ -1550,7 +1593,7 @@ export default function ChatView() {
             {/* Streaming bubble (draft phase or refine phase) */}
             {isCurrentlyStreaming && streamingContent && (
               <div className="flex flex-col gap-1 items-start">
-                <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm message-assistant">
+                <div className="max-w-[75%] break-words rounded-2xl px-4 py-2.5 text-sm message-assistant">
                   {dualModelEnabled && draftModel && !isRefiningPhase && (
                     <div className="flex items-center gap-1 mb-1 text-[10px] text-amber-400">
                       <Zap size={9} /> Drafting with {modelDisplayName(draftModel)}…
@@ -1561,7 +1604,7 @@ export default function ChatView() {
                       <Zap size={9} /> Refining with {modelDisplayName(selectedModel)}…
                     </div>
                   )}
-                  <div className="prose prose-sm prose-invert max-w-none">
+                  <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{streamingContent}</ReactMarkdown>
                   </div>
                   <span className="streaming-cursor" />
@@ -1574,7 +1617,7 @@ export default function ChatView() {
 
           {/* Input / composer area */}
           <div className="px-4 pb-6 pt-2 bg-transparent flex flex-col items-center flex-shrink-0">
-            <div className="w-full max-w-4xl flex flex-col bg-[var(--bg-elevated)]/80 border border-[var(--border-color)] rounded-2xl p-2.5 shadow-lg backdrop-blur-md">
+            <div className="w-full max-w-4xl min-w-0 flex flex-col bg-[var(--bg-elevated)]/80 border border-[var(--border-color)] rounded-2xl p-2.5 shadow-lg backdrop-blur-md">
               {activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
                 <div className="px-2 pt-1 pb-2">
                   <TopicChips

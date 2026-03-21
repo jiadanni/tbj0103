@@ -168,6 +168,7 @@ export interface AppSettings {
   preferred_model: string; backup_enabled: boolean; touch_id_enabled: boolean; pin_lock_enabled: boolean;
   auto_lock_minutes: number; theme: string; accent_color: string;
   font_size: number; sidebar_width: number; ollama_base_url: string;
+  background_model: string;
   embedding_model: string;
   chat_title_auto_refresh: "disabled" | "initial_only" | "periodic";
   chat_title_refresh_interval: number;

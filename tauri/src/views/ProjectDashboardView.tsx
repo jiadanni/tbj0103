@@ -276,7 +276,7 @@ function InsightCard({ text }: { text: string }) {
 export default function ProjectDashboardView() {
   const { activeWorkspaceId, activeProjectId, projects, workspaces } = useWorkspaceStore();
   const { sessions } = useChatStore();
-  const { preferredModel, ollamaUrl, modelLabels } = useSettingsStore();
+  const { preferredModel, backgroundModel, ollamaUrl, modelLabels } = useSettingsStore();
   const navigate = useNavigate();
 
   const project = projects.find((p) => p.id === activeProjectId);
@@ -386,13 +386,13 @@ export default function ProjectDashboardView() {
 
   // Fetch AI topics whenever sessions or notes change (debounced by dependency)
   const fetchAiTopics = async () => {
-    const model = preferredModel;
+    const model = backgroundModel || preferredModel;
     const texts = [
       ...sessions.map((s) => s.title).filter(Boolean),
       ...recentNotes.map((n) => n.title).filter(Boolean),
       ...concepts.map((c) => c.name).filter(Boolean),
     ];
-    if (texts.length === 0) {return;}
+    if (texts.length === 0 || !model) {return;}
     setTopicsLoading(true);
     setTopicsError(null);
     try {
