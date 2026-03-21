@@ -6,8 +6,10 @@ import {
   SquarePen, LayoutGrid, BarChart2, Folder, Settings,
   MessageSquare, ChevronRight, ChevronDown, FileEdit,
   FileText, Globe, Network, CreditCard, Inbox,
-  FolderPlus, Check, X, MoveRight, Ghost
+  Plus, Check, MoreVertical, Pin, Trash2, Ghost,
+  MoveRight, X, FolderPlus
 } from "lucide-react";
+
 import { api } from "../lib/api";
 import { MOD_KEY } from "../lib/platform";
 
@@ -247,6 +249,17 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
         >
           <FileText size={14} className="text-[var(--text-muted)]" />
           Documents
+        </button>
+
+        <button
+          onClick={() => navigate("/recycle-bin")}
+          title={`Recycle Bin (${MOD_KEY}⇧R)`}
+          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+            activeSegment === "/recycle-bin" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <Trash2 size={14} className="text-[var(--text-muted)]" />
+          Recycle Bin
         </button>
 
         <button

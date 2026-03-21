@@ -20,6 +20,8 @@ export interface ChatSession {
   system_prompt: string;
   is_pinned: boolean;
   is_incognito: boolean;
+  is_deleted: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
   title_generated_at?: string;

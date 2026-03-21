@@ -14,7 +14,7 @@ import type { ChatSession } from "../stores/chatStore";
 export default function ChatSessionListView() {
   const navigate = useNavigate();
   const { activeProjectId, projects, activeWorkspaceId } = useWorkspaceStore();
-  const { sessions, setSessions, setActiveChatId, messages } = useChatStore();
+  const { sessions, setSessions, setActiveChatId, messages, removeSession } = useChatStore();
   const { modelLabels } = useSettingsStore();
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -50,9 +50,20 @@ export default function ChatSessionListView() {
   }
 
   async function deleteSession(id: string) {
-    if (!activeWorkspaceId || !window.confirm("Delete this chat session and all its messages?")) {return;}
+    if (!activeWorkspaceId) {return;}
+    const isImmediate = useSettingsStore.getState().immediateDelete;
+    const confirmMsg = isImmediate 
+      ? "Permanently delete this chat session and all its messages? This cannot be undone."
+      : "Move this chat to the recycle bin?";
+
+    if (!window.confirm(confirmMsg)) {return;}
+
     await api.chat.deleteSession(activeWorkspaceId, id);
-    setSessions(sessions.filter((s) => s.id !== id));
+    removeSession(id);
+    if (setActiveChatId) {
+      const currentActive = useChatStore.getState().activeChatId;
+      if (currentActive === id) {setActiveChatId(null);}
+    }
   }
 
   async function renameSession(id: string) {

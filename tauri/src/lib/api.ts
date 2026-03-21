@@ -95,6 +95,70 @@ export interface SearchResult {
 
 export interface OllamaModel { name: string; size?: number; modified_at?: string; }
 
+export interface Artifact {
+  id: string;
+  workspace_id: string;
+  session_id: string | null;
+  message_id: string | null;
+  title: string;
+  artifact_type: string;
+  language: string;
+  content: string;
+  description: string;
+  tags: string; // JSON string
+  is_pinned: boolean;
+  version: number;
+  parent_artifact_id: string | null;
+  token_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ArtifactSummary {
+  id: string;
+  title: string;
+  artifact_type: string;
+  language: string;
+  description: string;
+  tags: string[];
+  is_pinned: boolean;
+  version: number;
+  updated_at: string;
+}
+
+export interface ConversationSummary {
+  id: string;
+  session_id: string;
+  workspace_id: string;
+  summary_type: string;
+  content: string;
+  key_topics: string;
+  message_range_start: number;
+  message_range_end: number;
+  token_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateArtifactRequest {
+  workspace_id: string;
+  session_id?: string | null;
+  message_id?: string | null;
+  title: string;
+  artifact_type: string;
+  language: string;
+  content: string;
+  description: string;
+  tags?: string[];
+  parent_artifact_id?: string | null;
+}
+
+export interface BackgroundTaskEvent {
+  task_type: string;
+  status: 'started' | 'processing' | 'completed' | 'failed';
+  message: string;
+}
+
 export interface GraphStatistics {
   id: string; workspace_id?: string; total_concepts: number;
   total_links: number; avg_degree: number; density: number; updated_at: string;
@@ -116,6 +180,7 @@ export interface AppSettings {
   compare_model_b: string;
   start_at_login: boolean;
   open_in_background: boolean;
+  immediate_delete: boolean;
 }
 
 export interface BacklinkEntry {
@@ -198,6 +263,10 @@ export const api = {
       invoke<void>("update_chat_session", { workspaceId, id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt }),
     moveSessions: (sessionIds: string[], targetWorkspaceId: string, targetProjectId?: string) =>
       invoke<void>("move_chat_sessions", { sessionIds, targetWorkspaceId, targetProjectId }),
+    listDeletedSessions: (workspaceId: string) => invoke<ChatSession[]>("list_deleted_chat_sessions", { workspaceId }),
+    restoreSession: (workspaceId: string, id: string) => invoke<void>("restore_chat_session", { workspaceId, id }),
+    hardDeleteSession: (workspaceId: string, id: string) => invoke<void>("hard_delete_chat_session", { workspaceId, id }),
+    emptyRecycleBin: (workspaceId: string) => invoke<void>("empty_recycle_bin", { workspaceId }),
     addMessage: (workspaceId: string, sessionId: string, role: "user" | "assistant", content: string, modelName?: string, tokensUsed?: number, durationMs?: number) =>
       invoke<Message>("add_message", { req: { workspace_id: workspaceId, session_id: sessionId, role, content, model_name: modelName, tokens_used: tokensUsed, duration_ms: durationMs } }),
     getMessages: (workspaceId: string, sessionId: string) => invoke<Message[]>("get_messages", { workspaceId, sessionId }),
@@ -298,6 +367,21 @@ export const api = {
       invoke<string>("assemble_and_send", { req: { session_id: sessionId, workspace_id: workspaceId, model_name: modelName, options: options || {} } }),
     listenContextSources: (sessionId: string, onSources: (sources: any) => void): Promise<UnlistenFn> =>
       listen<any>(`context-sources-${sessionId}`, (event) => onSources(event.payload)),
+  },
+
+  artifact: {
+    create: (req: CreateArtifactRequest) => invoke<Artifact>("create_artifact", { req }),
+    list: (workspaceId: string) => invoke<ArtifactSummary[]>("list_artifacts", { workspaceId }),
+    get: (id: string) => invoke<Artifact>("get_artifact", { id }),
+    update: (id: string, updates: Partial<CreateArtifactRequest & { is_pinned: boolean }>) => invoke<void>("update_artifact", { id, updates }),
+    delete: (id: string) => invoke<void>("delete_artifact", { id }),
+    versions: (id: string) => invoke<ArtifactSummary[]>("get_artifact_versions", { id }),
+    search: (workspaceId: string, query: string) => invoke<ArtifactSummary[]>("search_artifacts", { workspaceId, query }),
+  },
+
+  summary: {
+    generate: (sessionId: string, workspaceId: string, type: string) => invoke<void>("generate_summary", { sessionId, workspaceId, summaryType: type }),
+    list: (sessionId: string) => invoke<ConversationSummary[]>("list_summaries", { sessionId }),
   },
 
   ollama: {
@@ -432,6 +516,11 @@ export const api = {
   listenRefineStream: (sessionId: string, onChunk: (chunk: string, done: boolean, tokensUsed?: number, durationMs?: number) => void): Promise<UnlistenFn> =>
     listen<StreamEvent>(`ollama-refine-${sessionId}`, (event) => {
       onChunk(event.payload.chunk, event.payload.done, event.payload.tokens_used, event.payload.duration_ms);
+    }),
+
+  listenBackgroundTask: (onEvent: (event: BackgroundTaskEvent) => void): Promise<UnlistenFn> =>
+    listen<BackgroundTaskEvent>("background-task", (event) => {
+      onEvent(event.payload);
     }),
 
   mcp: {
