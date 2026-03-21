@@ -35,6 +35,7 @@ function makeSession(overrides: Partial<ChatSession> = {}): ChatSession {
     system_prompt: "",
     is_pinned: false,
     is_incognito: false,
+    exclude_from_analytics: false,
     is_deleted: false,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",

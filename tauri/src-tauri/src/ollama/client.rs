@@ -7,7 +7,8 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
+use crate::commands::ollama::StreamAbortState;
 
 const DEFAULT_BASE_URL: &str = "http://localhost:11434";
 
@@ -81,6 +82,29 @@ pub struct OllamaClient {
 }
 
 impl OllamaClient {
+    fn clear_abort_flag(app: &AppHandle, session_id: &str) -> Result<(), String> {
+        let abort_state = app.state::<StreamAbortState>();
+        let mut abort_map = abort_state
+            .0
+            .lock()
+            .map_err(|e: std::sync::PoisonError<std::sync::MutexGuard<'_, std::collections::HashMap<String, bool>>>| e.to_string())?;
+        abort_map.remove(session_id);
+        Ok(())
+    }
+
+    fn should_abort(app: &AppHandle, session_id: &str) -> Result<bool, String> {
+        let abort_state = app.state::<StreamAbortState>();
+        let abort_map = abort_state
+            .0
+            .lock()
+            .map_err(|e: std::sync::PoisonError<std::sync::MutexGuard<'_, std::collections::HashMap<String, bool>>>| e.to_string())?;
+        let should_abort = abort_map
+            .get(session_id)
+            .copied()
+            .unwrap_or(false);
+        Ok(should_abort)
+    }
+
     pub fn new(base_url: Option<String>) -> Self {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(300))
@@ -167,6 +191,7 @@ impl OllamaClient {
         messages: Vec<OllamaMessage>,
         event_prefix: &str,
     ) -> Result<String, String> {
+        Self::clear_abort_flag(app, session_id)?;
         let resolved_model = self.resolve_model(model).await?;
         let url = format!("{}/api/chat", self.base_url);
         let body = json!({
@@ -192,7 +217,22 @@ impl OllamaClient {
         let mut stream = response.bytes_stream();
         let mut stream_done = false;
 
-        while let Some(chunk_result) = stream.next().await {
+        loop {
+            if Self::should_abort(app, session_id)? {
+                stream_done = true;
+                break;
+            }
+
+            let chunk_result = tokio::select! {
+                next_chunk = stream.next() => next_chunk,
+                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                    continue;
+                }
+            };
+
+            let Some(chunk_result) = chunk_result else {
+                break;
+            };
             let chunk = chunk_result.map_err(|e| format!("Stream error: {e}"))?;
             let text = std::str::from_utf8(&chunk).map_err(|e| format!("UTF-8 error: {e}"))?;
 
@@ -237,6 +277,7 @@ impl OllamaClient {
                 duration_ms: None,
             });
         }
+        Self::clear_abort_flag(app, session_id)?;
 
         Ok(full_response)
     }

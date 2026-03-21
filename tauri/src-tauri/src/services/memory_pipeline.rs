@@ -7,11 +7,12 @@ use crate::ollama::client::{OllamaClient, OllamaMessage};
 pub async fn process_auto_memory_extraction(state: &DbState, ollama_url: Option<String>) -> Result<(), String> {
     let sessions = {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
-        // Only process sessions updated in the last 5 minutes that are not incognito
+        // Only process sessions updated in the last 5 minutes that are not private.
         let mut stmt = conn.prepare(
             "SELECT id, workspace_id, project_id FROM chat_sessions 
              WHERE updated_at > datetime('now', '-5 minutes') 
-             AND is_incognito = 0"
+             AND is_incognito = 0
+             AND exclude_from_analytics = 0"
         ).unwrap();
         stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))

@@ -12,6 +12,7 @@ pub mod ollama;
 pub mod export;
 pub mod backup;
 pub mod settings;
+pub mod security;
 pub mod graph;
 pub mod demo;
 pub mod alarm;

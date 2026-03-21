@@ -40,9 +40,9 @@ export default function App() {
         const workspaces = await api.workspace.list();
         setWorkspaces(workspaces);
         if (workspaces.length > 0) {setActiveWorkspaceId(workspaces[0].id);}
-        // Auto-authenticate if no touch ID required (settings check)
+        // Auto-authenticate only when no app lock is configured.
         const settings = await api.settings.get();
-        if (!settings.touch_id_enabled) {setIsAuthenticated(true);}
+        if (!settings.touch_id_enabled && !settings.pin_lock_enabled) {setIsAuthenticated(true);}
       } catch {
         // First run or Ollama not available — still OK
         setIsAuthenticated(true);

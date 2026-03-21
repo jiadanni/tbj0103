@@ -42,7 +42,7 @@ import ThoughtQueueView from "../views/ThoughtQueueView";
 import RecycleBinView from "../views/RecycleBinView";
 
 function WorkspaceTabBar() {
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace } = useWorkspaceStore();
+  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces, setProjects, setActiveTopicSignature } = useWorkspaceStore();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [dragOverWsId, setDragOverWsId] = useState<string | null>(null);
@@ -68,13 +68,23 @@ function WorkspaceTabBar() {
       // Remove moved sessions from current store
       const { useChatStore } = await import("../stores/chatStore");
       sessionIds.forEach((id) => useChatStore.getState().removeSession(id));
+      const refreshedWorkspaces = await api.workspace.list();
+      setWorkspaces(refreshedWorkspaces);
+      if (activeWorkspaceId) {
+        const [refreshedProjects, refreshedSignature] = await Promise.all([
+          api.project.list(activeWorkspaceId),
+          api.topicSignature.get(activeWorkspaceId),
+        ]);
+        setProjects(refreshedProjects);
+        setActiveTopicSignature(refreshedSignature);
+      }
     } catch (err) {
       console.error("Failed to move sessions:", err);
     }
   }
 
   return (
-    <div data-tauri-drag-region className={`flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] pr-2 shrink-0 overflow-x-auto ${isMac ? "pl-[78px]" : "pl-2"}`}>
+    <div data-tauri-drag-region className={`flex items-center h-11 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] pr-2 shrink-0 overflow-x-auto ${isMac ? "pl-[78px]" : "pl-2"}`}>
       {workspaces.map((ws, idx) => (
         <button
           key={ws.id}
@@ -89,7 +99,7 @@ function WorkspaceTabBar() {
           }}
           onDragLeave={() => setDragOverWsId(null)}
           onDrop={(e) => handleDrop(e, ws.id)}
-          className={`flex items-center gap-1.5 px-3 h-7 text-xs whitespace-nowrap transition-colors ${
+          className={`flex items-center gap-1.5 px-3.5 h-8 text-sm whitespace-nowrap transition-colors ${
             dragOverWsId === ws.id
               ? "rounded-md bg-[var(--accent-color)]/15 text-[var(--accent-color)] font-medium ring-1 ring-[var(--accent-color)]"
               : activeWorkspaceId === ws.id
@@ -111,9 +121,9 @@ function WorkspaceTabBar() {
               if (e.key === "Escape") {setCreating(false);}
             }}
             placeholder="Workspace name"
-            className="text-xs px-2 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none w-36"
+            className="text-sm px-2.5 py-1 rounded bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none w-40"
           />
-          <button onClick={createWorkspace} className="text-xs px-2 py-0.5 bg-[var(--accent-color)] text-white rounded">
+          <button onClick={createWorkspace} className="text-sm px-2.5 py-1 bg-[var(--accent-color)] text-white rounded">
             Add
           </button>
         </div>
@@ -142,13 +152,13 @@ function NavigationTabBar() {
           key={path}
           onClick={() => navigate(path)}
           title={key ? `${label} (${MOD_KEY}${key === "," ? "" : "⇧"}${key})` : label}
-          className={`flex items-center gap-2 px-3.5 py-1.5 h-fit text-sm whitespace-nowrap rounded-md transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2 h-fit text-[15px] whitespace-nowrap rounded-md transition-colors ${
             activeSegment === path
               ? "bg-[var(--accent-color)] text-white font-medium"
               : "text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]"
           }`}
         >
-          <Icon size={16} />
+          <Icon size={17} />
           {label}
         </button>
       ))}

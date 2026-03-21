@@ -2,14 +2,14 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost } from "lucide-react";
+import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield } from "lucide-react";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Project } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
-import type { ChatSession } from "../stores/chatStore";
+import type { ChatSession, Message } from "../stores/chatStore";
 import { TopicChips } from "../components/TopicChips";
 import { WorkspaceMigrationBanner } from "../components/WorkspaceMigrationBanner";
 import ContextIndicator from "../components/ContextIndicator";
@@ -35,6 +35,9 @@ export default function ChatView() {
     setCompareModelA: saveCompareA, setCompareModelB: saveCompareB, modelLabels,
     skipLinkConfirm, setSkipLinkConfirm,
   } = useSettingsStore();
+  const topSelectClassName = "h-8 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-8 text-xs font-medium text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
+  const composerToggleBaseClass = "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium shadow-sm transition-colors";
+  const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]";
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -102,15 +105,17 @@ export default function ChatView() {
   const [newFolderName, setNewFolderName] = useState("");
   const folderInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleCreateFolder() {
-    if (!newFolderName.trim() || !activeWorkspaceId) {
+  async function handleCreateFolder(nameOverride?: string) {
+    const folderName = (nameOverride ?? newFolderName).trim();
+    if (!folderName || !activeWorkspaceId) {
       setCreatingFolder(false);
       setNewFolderName("");
       return;
     }
     try {
-      const p = await api.project.create(activeWorkspaceId, newFolderName.trim());
+      const p = await api.project.create(activeWorkspaceId, folderName);
       useWorkspaceStore.getState().addProject(p);
+      setActiveProjectId(p.id);
     } catch (e) {
       console.error(e);
     }
@@ -313,9 +318,12 @@ export default function ChatView() {
   const [draftSnapshot, setDraftSnapshot] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const incognitoSessionIdsRef = useRef<Set<string>>(new Set());
 
   const activeMessages = activeChatId ? (messages[activeChatId] ?? []) : [];
+  const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
+  const activeSession = activeChatId ? sessions.find((s) => s.id === activeChatId) ?? null : null;
 
   // Web AI provider detection
   const selectedModelMeta = aiModelList.find((m) => m.model_id === selectedModel);
@@ -363,6 +371,34 @@ export default function ChatView() {
   useEffect(() => {
     if (sessionId) {setActiveChatId(sessionId);}
   }, [sessionId, setActiveChatId]);
+
+  useEffect(() => {
+    incognitoSessionIdsRef.current = new Set(
+      sessions.filter((session) => session.is_incognito).map((session) => session.id)
+    );
+  }, [sessions]);
+
+  const cleanupIncognitoSession = useCallback(async (sessionToDelete: string) => {
+    if (!activeWorkspaceId) {return;}
+    try {
+      await api.chat.deleteSession(activeWorkspaceId, sessionToDelete);
+    } catch {
+      // Ignore cleanup failures during navigation away.
+    }
+    const store = useChatStore.getState();
+    store.removeSession(sessionToDelete);
+    if (store.activeChatId === sessionToDelete) {
+      store.setActiveChatId(null);
+    }
+  }, [activeWorkspaceId]);
+
+  useEffect(() => {
+    const previousSessionId = activeChatId;
+    return () => {
+      if (!previousSessionId || !incognitoSessionIdsRef.current.has(previousSessionId)) {return;}
+      void cleanupIncognitoSession(previousSessionId);
+    };
+  }, [activeChatId, cleanupIncognitoSession]);
 
   // Sync selectedModel with active session's model
   useEffect(() => {
@@ -424,11 +460,15 @@ export default function ChatView() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeMessages.length, streamingContent]);
 
-  async function createNewSession(isIncognito = false) {
+  async function createNewSession(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
     if (!activeWorkspaceId) {return;}
+    const privacy = {
+      isIncognito: options?.isIncognito ?? false,
+      excludeFromAnalytics: options?.excludeFromAnalytics ?? false,
+    };
 
     // Look for an unused session first
-    const unusedSession = findUnusedSession(sessions, useChatStore.getState().messages, activeProjectId, isIncognito);
+    const unusedSession = findUnusedSession(sessions, useChatStore.getState().messages, activeProjectId, privacy);
     if (unusedSession) {
       setActiveChatId(unusedSession.id);
       return;
@@ -436,7 +476,8 @@ export default function ChatView() {
 
     const session = await api.chat.createSession(activeWorkspaceId, activeProjectId, {
       modelName: selectedModel,
-      is_incognito: isIncognito
+      is_incognito: privacy.isIncognito,
+      exclude_from_analytics: privacy.excludeFromAnalytics,
     });
     useChatStore.getState().addSession(session);
     setActiveChatId(session.id);
@@ -532,9 +573,18 @@ export default function ChatView() {
         .catch(() => {});
     }
 
+    const optimisticUserMsg: Message = {
+      id: window.crypto.randomUUID(),
+      session_id: sid,
+      role: "user",
+      content: userContent,
+      created_at: new Date().toISOString(),
+    };
+    appendMessage(sid, optimisticUserMsg);
+
     // Persist user message
     const userMsg = await api.chat.addMessage(activeWorkspaceId, sid, "user", userContent);
-    appendMessage(sid, userMsg);
+    updateMessage(sid, persistedUserMessageWithFallback(optimisticUserMsg, userMsg));
 
     // Build context for Ollama
     const history = (messages[sid] ?? []).map((m) => ({
@@ -556,11 +606,21 @@ export default function ChatView() {
             `\n\nUsing the above context where relevant, answer: ${userContent}\n\n` +
             `Cite sources as [1], [2], etc. when referencing specific content.`;
           // Store sources keyed by the user message ID so we can show them
-          setMessageSources((prev) => ({ ...prev, [userMsg.id]: chunkResults }));
+          setMessageSources((prev) => ({ ...prev, [optimisticUserMsg.id]: chunkResults }));
         }
       } catch {
         // If search fails, just send without grounding
       }
+    }
+
+    if (optimisticUserMsg.id !== userMsg.id) {
+      setMessageSources((prev) => {
+        const pending = prev[optimisticUserMsg.id];
+        if (!pending) {return prev;}
+        const next = { ...prev, [userMsg.id]: pending };
+        delete next[optimisticUserMsg.id];
+        return next;
+      });
     }
 
     history.push({ role: "user", content: finalUserContent });
@@ -675,9 +735,6 @@ export default function ChatView() {
     }
   }
 
-  const currentTokenEstimate = (messages[activeChatId || ""] ?? []).reduce((acc, m) => acc + (m.content.length / 4), 0) + (input.length / 4);
-  const budgetPercentage = Math.min((currentTokenEstimate / 8192) * 100, 100);
-
   async function deleteSession(id: string) {
     if (!activeWorkspaceId) {return;}
     const settings = useSettingsStore.getState();
@@ -736,8 +793,17 @@ export default function ChatView() {
     setIsStreaming(true);
     setLastUserMessage(editContent.trim());
 
+    const optimisticUserMsg: Message = {
+      id: window.crypto.randomUUID(),
+      session_id: activeChatId,
+      role: "user",
+      content: editContent.trim(),
+      created_at: new Date().toISOString(),
+    };
+    appendMessage(activeChatId, optimisticUserMsg);
+
     const userMsg = await api.chat.addMessage(activeWorkspaceId, activeChatId, "user", editContent.trim());
-    appendMessage(activeChatId, userMsg);
+    updateMessage(activeChatId, persistedUserMessageWithFallback(optimisticUserMsg, userMsg));
 
     const history = trimmedMessages.map((m) => ({ role: m.role, content: m.content }));
     history.push({ role: "user", content: editContent.trim() });
@@ -854,34 +920,16 @@ export default function ChatView() {
     return found ? found.name : modelId;
   };
 
+  const persistedUserMessageWithFallback = (optimistic: Message, persisted: Message): Message => ({
+    ...optimistic,
+    ...persisted,
+    id: optimistic.id,
+  });
+
   // ── Session sidebar (always visible) ─────────────────────────────────────
   function SessionSidebar() {
     return (
       <div className="w-56 border-r border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)] overflow-hidden shrink-0">
-        {/* Mode toggle */}
-        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[var(--border-color)]">
-          <button
-            onClick={() => setChatMode("chat")}
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[11px] rounded transition-colors ${
-              chatMode === "chat"
-                ? "bg-[var(--accent-color)] text-white font-medium"
-                : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
-            }`}
-          >
-            <MessageSquare size={11} /> Chat
-          </button>
-          <button
-            onClick={() => setChatMode("compare")}
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[11px] rounded transition-colors ${
-              chatMode === "compare"
-                ? "bg-[var(--accent-color)] text-white font-medium"
-                : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
-            }`}
-          >
-            <SplitSquareHorizontal size={11} /> Compare
-          </button>
-        </div>
-
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)]">
           <span className="text-xs font-medium text-[var(--text-secondary)] truncate">
@@ -896,30 +944,37 @@ export default function ChatView() {
               <FolderPlus size={14} />
             </button>
             <button
-              onClick={() => createNewSession(false)}
+              onClick={() => createNewSession()}
               className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               title="New chat"
             >
               <Plus size={14} />
             </button>
+            <button
+              onClick={() => createNewSession({ isIncognito: true })}
+              className="p-1 rounded hover:bg-purple-500/10 text-[var(--text-muted)] hover:text-purple-400 transition-colors"
+              title="New incognito chat (deleted when you leave it)"
+            >
+              <Ghost size={14} />
+            </button>
+            <button
+              onClick={() => createNewSession({ excludeFromAnalytics: true })}
+              className="p-1 rounded hover:bg-sky-500/10 text-[var(--text-muted)] hover:text-sky-400 transition-colors"
+              title="New private chat (saved, but excluded from analytics)"
+            >
+              <Shield size={14} />
+            </button>
           </div>
         </div>
 
         {/* New Chat button */}
-        <div className="mx-2 mt-2 mb-1 flex gap-1">
+        <div className="mx-2 mt-2 mb-1">
           <button
-            onClick={() => createNewSession(false)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--accent-color)] text-white text-xs font-medium hover:opacity-90 transition-opacity"
+            onClick={() => createNewSession()}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] text-xs font-medium hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
           >
             <Plus size={14} />
             New Chat
-          </button>
-          <button
-            onClick={() => createNewSession(true)}
-            className="px-2 py-2 rounded-lg text-[var(--text-muted)] hover:bg-purple-500/10 hover:text-purple-400 transition-colors"
-            title="New incognito chat"
-          >
-            <Ghost size={14} />
           </button>
         </div>
 
@@ -945,10 +1000,22 @@ export default function ChatView() {
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {handleCreateFolder();}
-                if (e.key === "Escape") { setCreatingFolder(false); setNewFolderName(""); }
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleCreateFolder(e.currentTarget.value);
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setCreatingFolder(false);
+                  setNewFolderName("");
+                }
               }}
-              onBlur={handleCreateFolder}
+              onClick={(e) => e.stopPropagation()}
+              onBlur={() => {
+                setCreatingFolder(false);
+                setNewFolderName("");
+              }}
               placeholder="Folder name…"
               className="flex-1 text-[11px] bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />
@@ -1034,6 +1101,8 @@ export default function ChatView() {
         ) : (
           <span className="flex-1 text-xs truncate">{session.title || "New Chat"}</span>
         )}
+        {session.is_incognito && <Ghost size={11} className="text-purple-400 shrink-0" />}
+        {!session.is_incognito && session.exclude_from_analytics && <Shield size={11} className="text-sky-400 shrink-0" />}
         <span className="text-[10px] text-[var(--text-muted)] shrink-0 mr-1">
           {(() => {
             const diff = Date.now() - new Date(session.updated_at).getTime();
@@ -1081,6 +1150,21 @@ export default function ChatView() {
       {/* Compare mode */}
       {chatMode === "compare" ? (
         <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
+            <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
+              <SplitSquareHorizontal size={14} className="text-[var(--text-muted)]" />
+              Compare Models
+            </div>
+            <button
+              onClick={() => setChatMode("chat")}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
+              title="Return to chat"
+            >
+              <MessageSquare size={12} />
+              Chat
+            </button>
+          </div>
+
           {/* Model selectors header */}
           <div className="flex items-stretch border-b border-[var(--border-color)] flex-shrink-0 bg-[var(--bg-elevated)]">
             <div className="flex-1 px-4 py-3 flex flex-col gap-1 border-r border-[var(--border-color)]">
@@ -1098,17 +1182,20 @@ export default function ChatView() {
                   className="text-sm bg-transparent border-b border-[var(--border-color)] text-[var(--text-primary)] outline-none py-0.5 w-full placeholder:text-[var(--text-muted)]"
                 />
               ) : (
-                <select
-                  value={compareModelA}
-                  onChange={(e) => {
-                    setCompareModelA(e.target.value);
-                    saveCompareA(e.target.value);
-                    persistSetting("compare_model_a", e.target.value);
-                  }}
-                  className="text-sm bg-transparent text-[var(--text-primary)] outline-none py-0.5 w-full cursor-pointer"
-                >
-                  {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
-                </select>
+                <div className="relative">
+                  <select
+                    value={compareModelA}
+                    onChange={(e) => {
+                      setCompareModelA(e.target.value);
+                      saveCompareA(e.target.value);
+                      persistSetting("compare_model_a", e.target.value);
+                    }}
+                    className={topSelectClassName}
+                  >
+                    {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                </div>
 
               )}
             </div>
@@ -1131,17 +1218,20 @@ export default function ChatView() {
                   className="text-sm bg-transparent border-b border-[var(--border-color)] text-[var(--text-primary)] outline-none py-0.5 w-full placeholder:text-[var(--text-muted)]"
                 />
               ) : (
-                <select
-                  value={compareModelB}
-                  onChange={(e) => {
-                    setCompareModelB(e.target.value);
-                    saveCompareB(e.target.value);
-                    persistSetting("compare_model_b", e.target.value);
-                  }}
-                  className="text-sm bg-transparent text-[var(--text-primary)] outline-none py-0.5 w-full cursor-pointer"
-                >
-                  {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
-                </select>
+                <div className="relative">
+                  <select
+                    value={compareModelB}
+                    onChange={(e) => {
+                      setCompareModelB(e.target.value);
+                      saveCompareB(e.target.value);
+                      persistSetting("compare_model_b", e.target.value);
+                    }}
+                    className={topSelectClassName}
+                  >
+                    {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                </div>
 
               )}
             </div>
@@ -1198,17 +1288,23 @@ export default function ChatView() {
           <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
           <div className="flex gap-2">
             <button
-              onClick={() => createNewSession(false)}
+              onClick={() => createNewSession()}
               className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
             >
               Start a new chat
             </button>
 
             <button
-              onClick={() => createNewSession(true)}
+              onClick={() => createNewSession({ isIncognito: true })}
               className="px-4 py-2 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-lg text-sm hover:bg-purple-500/20"
             >
               Start incognito
+            </button>
+            <button
+              onClick={() => createNewSession({ excludeFromAnalytics: true })}
+              className="px-4 py-2 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-lg text-sm hover:bg-sky-500/20"
+            >
+              Exclude analytics
             </button>
           </div>
         </div>
@@ -1217,15 +1313,32 @@ export default function ChatView() {
           {/* Slim title bar */}
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
             <span className="text-sm font-medium text-[var(--text-primary)] flex-1 truncate flex items-center gap-2">
-              {sessions.find((s) => s.id === activeChatId)?.title || "New Chat"}
-              {sessions.find((s) => s.id === activeChatId)?.is_incognito && (
+              {activeSession?.title || "New Chat"}
+              {activeSession?.is_incognito && (
                 <span title="Incognito thread"><Ghost size={14} className="text-purple-400" /></span>
+              )}
+              {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
+                <span title="Excluded from analytics"><Shield size={14} className="text-sky-400" /></span>
               )}
             </span>
             {availableModels.length === 0 && (
               <span className="text-xs text-amber-400">No Ollama models found</span>
             )}
           </div>
+
+          {activeSession?.is_incognito && (
+            <div className="mx-4 mt-2 px-3 py-2 rounded bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-300 flex items-start gap-2">
+              <Ghost size={12} className="mt-0.5 flex-shrink-0" />
+              <span>This incognito chat is excluded from analytics, memory, and topic discovery. Leaving this chat deletes it.</span>
+            </div>
+          )}
+
+          {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
+            <div className="mx-4 mt-2 px-3 py-2 rounded bg-sky-500/10 border border-sky-500/20 text-[11px] text-sky-300 flex items-start gap-2">
+              <Shield size={12} className="mt-0.5 flex-shrink-0" />
+              <span>This chat stays saved, but it is excluded from analytics, memory extraction, and topic discovery.</span>
+            </div>
+          )}
 
           {/* Web AI provider notice */}
           {isWebProvider && webProviderKey && (
@@ -1471,18 +1584,6 @@ export default function ChatView() {
                 </div>
               )}
 
-              <div className="px-3 mb-1 flex items-center justify-between">
-                <div className="h-1 flex-1 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden mr-4">
-                  <div 
-                    className={`h-full transition-all duration-500 ${budgetPercentage > 90 ? 'bg-red-500' : budgetPercentage > 70 ? 'bg-amber-500' : 'bg-blue-500'}`} 
-                    style={{ width: `${budgetPercentage}%` }} 
-                  />
-                </div>
-                <span className="text-[10px] text-zinc-400 font-mono">
-                  {Math.round(currentTokenEstimate).toLocaleString()} / 8,192
-                </span>
-              </div>
-
               {/* Textarea + send button */}              <div className="flex items-end gap-2 px-1">
                 <textarea
                   ref={inputRef}
@@ -1522,20 +1623,23 @@ export default function ChatView() {
               {/* ── Composer tool row ─────────────────────────────────────── */}
               <div className="flex items-center gap-1.5 mt-1 px-2 pb-1 flex-wrap">
               {/* Model picker */}
-              <select
-                value={selectedModel}
-                onChange={(e) => {
-                  setSelectedModel(e.target.value);
-                  persistModelChoice(e.target.value);
-                }}
-                className="text-[11px] px-3 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none max-w-[160px] truncate appearance-none"
-                title="Active model"
-              >
-                {availableModels.length > 0
-                  ? availableModels.map((m) => <option key={m} value={m}>{modelDisplayName(m)}</option>)
-                  : <option value={selectedModel}>{modelDisplayName(selectedModel)}</option>
-                }
-              </select>
+              <div className="relative max-w-[190px]">
+                <select
+                  value={selectedModel}
+                  onChange={(e) => {
+                    setSelectedModel(e.target.value);
+                    persistModelChoice(e.target.value);
+                  }}
+                  className={`${topSelectClassName} max-w-[190px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
+                  title="Active model"
+                >
+                  {availableModels.length > 0
+                    ? availableModels.map((m) => <option key={m} value={m}>{modelDisplayName(m)}</option>)
+                    : <option value={selectedModel}>{modelDisplayName(selectedModel)}</option>
+                  }
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+              </div>
 
               {/* Try better model */}
               {nextModel && !isStreaming && activeMessages.length > 0 && (
@@ -1546,7 +1650,7 @@ export default function ChatView() {
                     if (lastUserMessage) {setInput(lastUserMessage);}
                   }}
                   title={`Try ${modelDisplayName(nextModel.model_id)}`}
-                  className="flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors text-[11px]"
+                  className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
                 >
                   <ArrowUpCircle size={13} />
                   <span>Try better</span>
@@ -1561,42 +1665,54 @@ export default function ChatView() {
                   persistSetting("dual_model_enabled", newValue);
                 }}
                 title={dualModelEnabled ? `Dual model ON — draft: ${draftModel || "(none)"} → refine: ${selectedModel}` : "Dual-model mode (draft + refine)"}
-                className={`flex items-center gap-1 px-2 py-1 rounded-full border text-[11px] transition-colors ${
+                className={`${composerToggleBaseClass} ${
                   dualModelEnabled
-                    ? "bg-amber-500/15 border-amber-500/50 text-amber-400"
-                    : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                    ? "border-amber-400/60 bg-amber-500/20 text-amber-200"
+                    : composerToggleInactiveClass
                 }`}
               >
                 <Zap size={13} />
                 <span>Dual</span>
               </button>
 
+              <button
+                onClick={() => setChatMode("compare")}
+                title="Compare two models side by side"
+                className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
+              >
+                <SplitSquareHorizontal size={13} />
+                <span>Compare</span>
+              </button>
+
               {/* Draft model picker (only when dual is on) */}
               {dualModelEnabled && (
-                <select
-                  value={draftModel}
-                  onChange={(e) => {
-                    setDraftModel(e.target.value);
-                    persistSetting("draft_model", e.target.value);
-                  }}
-                  title="Draft model (small/fast)"
-                  className="text-[11px] px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 outline-none max-w-[120px] appearance-none"
-                >
-                  <option value="">Draft…</option>
-                  {availableModels.map((m) => (
-                    <option key={m} value={m}>{modelDisplayName(m)}</option>
-                  ))}
-                </select>
+                <div className="relative max-w-[148px]">
+                  <select
+                    value={draftModel}
+                    onChange={(e) => {
+                      setDraftModel(e.target.value);
+                      persistSetting("draft_model", e.target.value);
+                    }}
+                    title="Draft model (small/fast)"
+                    className="h-8 w-full appearance-none rounded-full border border-amber-500/30 bg-amber-500/10 pl-3 pr-8 text-xs font-medium text-amber-300 outline-none transition-colors hover:border-amber-400/60 focus:border-amber-400/60"
+                  >
+                    <option value="">Draft…</option>
+                    {availableModels.map((m) => (
+                      <option key={m} value={m}>{modelDisplayName(m)}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-amber-300/80" />
+                </div>
               )}
 
               {/* Grounded (RAG) toggle */}
               <button
                 onClick={() => setGroundedEnabled((v) => !v)}
                 title={groundedEnabled ? `Grounded ON (${processedDocCount} docs)` : "Grounded mode — use your documents as context (RAG)"}
-                className={`relative flex items-center gap-1 px-2 py-1 rounded-full border text-[11px] transition-colors ${
+                className={`relative ${composerToggleBaseClass} ${
                   groundedEnabled
-                    ? "bg-[var(--accent-color)]/15 border-[var(--accent-color)] text-[var(--accent-color)]"
-                    : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                    ? "border-[var(--accent-color)] bg-[var(--accent-color)]/18 text-[var(--accent-color)]"
+                    : composerToggleInactiveClass
                 }`}
               >
                 <BookOpen size={13} />
@@ -1610,24 +1726,27 @@ export default function ChatView() {
 
               {/* Top-K picker (only when grounded is on) */}
               {groundedEnabled && (
-                <select
-                  value={groundedTopK}
-                  onChange={(e) => setGroundedTopK(Number(e.target.value))}
-                  className="text-[11px] px-1.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none"
-                  title="Document chunks to retrieve"
-                >
-                  {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
-                </select>
+                <div className="relative">
+                  <select
+                    value={groundedTopK}
+                    onChange={(e) => setGroundedTopK(Number(e.target.value))}
+                    className="h-8 appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-8 text-xs font-medium text-[var(--text-secondary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
+                    title="Document chunks to retrieve"
+                  >
+                    {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                </div>
               )}
 
               {/* Thought queue toggle */}
               <button
                 onClick={() => setThoughtPanelOpen((v) => !v)}
                 title="Thought Queue — schedule follow-up questions to process in background"
-                className={`relative flex items-center gap-1 px-2 py-1 rounded-full border text-[11px] transition-colors ${
+                className={`relative ${composerToggleBaseClass} ${
                   thoughtPanelOpen
-                    ? "bg-[var(--accent-color)]/15 border-[var(--accent-color)] text-[var(--accent-color)]"
-                    : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                    ? "border-[var(--accent-color)] bg-[var(--accent-color)]/18 text-[var(--accent-color)]"
+                    : composerToggleInactiveClass
                 }`}
               >
                 <Inbox size={13} />
@@ -1642,57 +1761,15 @@ export default function ChatView() {
                 })()}
               </button>
 
-              {/* ── Context window indicator (right-aligned) ─────────── */}
-              {(() => {
-                const sessionTokensUsed = activeMessages.reduce(
-                  (sum, m) => sum + (m.tokens_used ?? 0), 0
-                );
-                if (sessionTokensUsed === 0) {return null;}
+              {sessionTokensUsed > 0 && (
+                <div className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[11px] text-[var(--text-secondary)]">
+                  <span className="text-[var(--text-muted)]">Tokens</span>
+                  <span className="font-mono text-[var(--text-primary)]">
+                    {sessionTokensUsed >= 1000 ? `${(sessionTokensUsed / 1000).toFixed(1)}k` : sessionTokensUsed}
+                  </span>
+                </div>
+              )}
 
-                // Approximate context window size from model name
-                const modelLower = selectedModel.toLowerCase();
-                let ctxSize = 4096;
-                if (modelLower.includes("llama3") || modelLower.includes("llama-3")) {ctxSize = 8192;}
-                else if (modelLower.includes("gemma")) {ctxSize = 8192;}
-                else if (modelLower.includes("mistral")) {ctxSize = 32768;}
-                else if (modelLower.includes("mixtral")) {ctxSize = 32768;}
-                else if (modelLower.includes("qwen2") || modelLower.includes("qwen-2")) {ctxSize = 32768;}
-                else if (modelLower.includes("phi")) {ctxSize = 4096;}
-                else if (modelLower.includes("deepseek")) {ctxSize = 32768;}
-                else if (modelLower.includes("command")) {ctxSize = 4096;}
-
-                const pct = Math.min(sessionTokensUsed / ctxSize, 1);
-                const pctText = Math.round(pct * 100);
-                const pillColor = pct > 0.85 ? "text-red-400 border-red-500/30 bg-red-500/10"
-                  : pct > 0.6 ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
-                  : "text-[var(--text-muted)] border-[var(--border-color)] bg-[var(--bg-elevated)]";
-                const barColor = pct > 0.85 ? "bg-red-400" : pct > 0.6 ? "bg-amber-400" : "bg-[var(--accent-color)]";
-
-                return (
-                  <div className="ml-auto group/ctx relative">
-                    {/* Collapsed pill */}
-                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] cursor-default transition-colors ${pillColor}`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${barColor}`} />
-                      <span className="font-mono">
-                        {sessionTokensUsed >= 1000 ? `${(sessionTokensUsed / 1000).toFixed(1)}k` : sessionTokensUsed}
-                        {" / "}
-                        {ctxSize >= 1000 ? `${(ctxSize / 1000).toFixed(0)}k` : ctxSize}
-                      </span>
-                    </div>
-                    {/* Hover tooltip */}
-                    <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover/ctx:flex flex-col gap-1 p-2.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] shadow-lg z-20 min-w-[160px]">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] text-[var(--text-muted)]">Context used</span>
-                        <span className={`text-[10px] font-medium ${pct > 0.85 ? "text-red-400" : pct > 0.6 ? "text-amber-400" : "text-[var(--text-secondary)]"}`}>{pctText}%</span>
-                      </div>
-                      <div className="h-1 rounded-full bg-[var(--bg-primary)] overflow-hidden">
-                        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pctText}%` }} />
-                      </div>
-                      <span className="text-[10px] text-[var(--text-muted)] truncate">{modelDisplayName(selectedModel)}</span>
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
             </div>
             <div className="w-full max-w-4xl mt-3">

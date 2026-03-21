@@ -506,5 +506,37 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v20: PIN lock settings
+    let applied_v20: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v20_pin_lock_settings'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v20 == 0 {
+        conn.execute_batch(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES
+                ('pin_lock_enabled', 'false'),
+                ('pin_passcode_hash', '');
+             INSERT INTO _migrations(name) VALUES('v20_pin_lock_settings');",
+        )?;
+    }
+
+    // v21: allow chats to opt out of analytics without being ephemeral
+    let applied_v21: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v21_chat_sessions_exclude_from_analytics'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v21 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE chat_sessions ADD COLUMN exclude_from_analytics INTEGER NOT NULL DEFAULT 0;",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v21_chat_sessions_exclude_from_analytics');",
+        )?;
+    }
+
     Ok(())
 }
