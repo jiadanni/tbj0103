@@ -15,3 +15,6 @@ pub mod settings;
 pub mod topic_signature;
 pub mod context_assembler;
 pub mod memory_pipeline;
+pub mod artifact_service;
+pub mod summarization_service;
+pub mod background_scheduler;

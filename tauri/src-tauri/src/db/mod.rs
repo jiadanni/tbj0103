@@ -452,5 +452,24 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v17: Chat recycle bin
+    let applied_v17: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v17_chat_recycle_bin'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v17 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE chat_sessions ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;",
+        );
+        let _ = conn.execute_batch(
+            "ALTER TABLE chat_sessions ADD COLUMN deleted_at TEXT;",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v17_chat_recycle_bin');",
+        )?;
+    }
+
     Ok(())
 }
