@@ -51,12 +51,17 @@ export default function ChatSessionListView() {
 
   async function deleteSession(id: string) {
     if (!activeWorkspaceId) {return;}
-    const isImmediate = useSettingsStore.getState().immediateDelete;
-    const confirmMsg = isImmediate 
-      ? "Permanently delete this chat session and all its messages? This cannot be undone."
-      : "Move this chat to the recycle bin?";
+    const settings = useSettingsStore.getState();
+    const isImmediate = settings.immediateDelete;
+    const skipConfirm = !isImmediate && !settings.confirmMoveToTrash;
 
-    if (!window.confirm(confirmMsg)) {return;}
+    if (!skipConfirm) {
+      const confirmMsg = isImmediate 
+        ? "Permanently delete this chat session and all its messages? This cannot be undone."
+        : "Move this chat to the recycle bin?";
+
+      if (!window.confirm(confirmMsg)) {return;}
+    }
 
     await api.chat.deleteSession(activeWorkspaceId, id);
     removeSession(id);

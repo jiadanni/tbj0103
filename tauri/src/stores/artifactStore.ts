@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import { api } from '../lib/api';
-import type { ArtifactSummary, Artifact } from '../models/artifact';
+import { api, type ArtifactSummary, type Artifact } from '../lib/api';
 
 interface ArtifactState {
   artifacts: ArtifactSummary[];

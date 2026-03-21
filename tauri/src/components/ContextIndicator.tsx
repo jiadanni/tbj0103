@@ -22,7 +22,7 @@ export default function ContextIndicator({ sources }: ContextIndicatorProps) {
     sources.summaries_used.length + 
     sources.documents_used.length;
 
-  if (totalSources === 0) return null;
+  if (totalSources === 0) { return null; }
 
   return (
     <div className="mt-2 mb-4">

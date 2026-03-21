@@ -16,21 +16,20 @@ export default function RecycleBinView() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    async function loadDeletedSessions() {
+      if (!activeWorkspaceId) {return;}
+      setLoading(true);
+      try {
+        const sessions = await api.chat.listDeletedSessions(activeWorkspaceId);
+        setDeletedSessions(sessions);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
     loadDeletedSessions();
   }, [activeWorkspaceId]);
-
-  async function loadDeletedSessions() {
-    if (!activeWorkspaceId) {return;}
-    setLoading(true);
-    try {
-      const sessions = await api.chat.listDeletedSessions(activeWorkspaceId);
-      setDeletedSessions(sessions);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function restoreSession(id: string) {
     if (!activeWorkspaceId) {return;}

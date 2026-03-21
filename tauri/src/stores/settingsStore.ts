@@ -18,6 +18,7 @@ interface AppSettings {
   modelLabels: Record<string, string>;
   skipLinkConfirm: boolean;
   immediateDelete: boolean;
+  confirmMoveToTrash: boolean;
 }
 
 interface SettingsStore extends AppSettings {
@@ -34,6 +35,7 @@ interface SettingsStore extends AppSettings {
   setModelLabel: (id: string, label: string) => void;
   setSkipLinkConfirm: (v: boolean) => void;
   setImmediateDelete: (v: boolean) => void;
+  setConfirmMoveToTrash: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -53,6 +55,7 @@ export const useSettingsStore = create<SettingsStore>()(
       modelLabels: {},
       skipLinkConfirm: false,
       immediateDelete: false,
+      confirmMoveToTrash: true,
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
       setTheme: (theme) => set({ theme }),
@@ -66,6 +69,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setModelLabel: (id, label) => set((state) => ({ modelLabels: { ...state.modelLabels, [id]: label } })),
       setSkipLinkConfirm: (skipLinkConfirm) => set({ skipLinkConfirm }),
       setImmediateDelete: (immediateDelete) => set({ immediateDelete }),
+      setConfirmMoveToTrash: (confirmMoveToTrash) => set({ confirmMoveToTrash }),
     }),
     { name: "aetherium-settings" }
   )

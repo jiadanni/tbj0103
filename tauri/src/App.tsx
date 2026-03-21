@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useWorkspaceStore } from "./stores/workspaceStore";
 import { api } from "./lib/api";
@@ -11,6 +12,14 @@ export default function App() {
   const { setWorkspaces, setProjects, setActiveWorkspaceId, activeWorkspaceId, isDemoMode, setDemo } = useWorkspaceStore();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Show window after a delay to avoid focus stealing during build/restart
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      getCurrentWindow().show().catch(console.error);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Apply theme class to <html> element — also applies font-size and accent-color reactively
   useEffect(() => {
@@ -53,6 +62,7 @@ export default function App() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
+        <div data-tauri-drag-region className="fixed top-0 left-0 right-0 h-9" />
         <div className="text-sm opacity-50">Loading…</div>
       </div>
     );

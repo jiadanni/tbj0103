@@ -471,5 +471,40 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v18: Git sync settings
+    let applied_v18: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v18_git_sync_settings'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v18 == 0 {
+        conn.execute_batch(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES
+                ('git_sync_enabled', 'false'),
+                ('git_sync_remote_url', ''),
+                ('git_sync_last_synced_at', ''),
+                ('git_sync_last_error', '');
+             INSERT INTO _migrations(name) VALUES('v18_git_sync_settings');",
+        )?;
+    }
+
+    // v19: Confirm move to trash setting
+    let applied_v19: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v19_confirm_move_to_trash'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v19 == 0 {
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES ('confirm_move_to_trash', 'true')",
+            [],
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v19_confirm_move_to_trash');",
+        )?;
+    }
+
     Ok(())
 }

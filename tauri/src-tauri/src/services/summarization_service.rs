@@ -1,5 +1,4 @@
 use crate::db::DbState;
-use crate::models::summary::ConversationSummary;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 
 pub async fn generate_rolling_summary(
@@ -24,6 +23,17 @@ pub async fn generate_rolling_summary(
         return Ok(());
     }
 
+    // Check if we already have a rolling summary covering this many messages
+    {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let existing_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM conversation_summaries WHERE session_id = ?1 AND message_range_end >= ?2",
+            rusqlite::params![session_id, messages.len() as i32],
+            |row| row.get(0)
+        ).unwrap_or(0);
+        if existing_count > 0 { return Ok(()); }
+    }
+
     let mut conversation_text = String::new();
     for (_, role, content) in &messages {
         conversation_text.push_str(&format!("{}: {}\n", role, content));
@@ -38,7 +48,14 @@ pub async fn generate_rolling_summary(
 
     let msgs = vec![OllamaMessage { role: "user".to_string(), content: prompt }];
     
-    if let Ok(summary_content) = client.send_message("llama3.2", msgs).await {
+    // Get default model or fallback
+    let model = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        conn.query_row("SELECT model_id FROM ai_models WHERE enabled = 1 ORDER BY priority ASC LIMIT 1", [], |row| row.get::<_, String>(0))
+            .unwrap_or_else(|_| "llama3.2".to_string())
+    };
+
+    if let Ok(summary_content) = client.send_message(&model, msgs).await {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
