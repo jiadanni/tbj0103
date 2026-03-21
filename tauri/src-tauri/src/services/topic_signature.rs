@@ -1,6 +1,71 @@
 use rusqlite::Connection;
 use crate::models::workspace::{TopicSignature, TopicTag};
 use crate::services::ai_content_generator::generate_tags;
+use std::collections::HashMap;
+
+const GENERIC_TOPIC_TAGS: &[&str] = &[
+    "code", "coding", "function", "functions", "method", "methods", "class", "classes",
+    "object", "objects", "variable", "variables", "example", "examples", "question",
+    "questions", "answer", "answers", "help", "explain", "explaining", "understand",
+    "understanding", "learn", "learning", "guide", "tutorial", "details", "detail",
+    "issue", "issues", "problem", "problems", "error", "errors", "fix", "debug",
+    "implementation", "implement", "feature", "features", "system", "using", "used",
+    "use", "make", "build", "create", "need", "want", "trying", "works", "work",
+    "thing", "things", "stuff", "project", "projects", "app", "apps",
+];
+
+fn is_specific_topic_tag(tag: &str) -> bool {
+    if GENERIC_TOPIC_TAGS.contains(&tag) {
+        return false;
+    }
+
+    if matches!(tag, "api" | "sql" | "css" | "html" | "rust" | "java" | "swift") {
+        return true;
+    }
+
+    tag.len() >= 4
+}
+
+fn extract_specific_tags(text: &str, max: usize) -> Vec<String> {
+    let mut scores: HashMap<String, usize> = HashMap::new();
+    let mut document_frequency: HashMap<String, usize> = HashMap::new();
+
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let line_tags = generate_tags(line, 8);
+        let mut seen_in_line = std::collections::HashSet::new();
+
+        for (idx, tag) in line_tags.into_iter().enumerate() {
+            if !is_specific_topic_tag(&tag) {
+                continue;
+            }
+
+            let positional_weight = 10usize.saturating_sub(idx);
+            let specificity_bonus = tag.len().min(12);
+            *scores.entry(tag.clone()).or_default() += positional_weight + specificity_bonus;
+
+            if seen_in_line.insert(tag.clone()) {
+                *document_frequency.entry(tag).or_default() += 1;
+            }
+        }
+    }
+
+    let mut ranked: Vec<(String, usize, usize)> = scores
+        .into_iter()
+        .map(|(tag, score)| {
+            let df = document_frequency.get(&tag).copied().unwrap_or(0);
+            (tag, score, df)
+        })
+        .collect();
+
+    ranked.sort_by(|a, b| {
+        b.2.cmp(&a.2)
+            .then(b.1.cmp(&a.1))
+            .then(b.0.len().cmp(&a.0.len()))
+            .then(a.0.cmp(&b.0))
+    });
+
+    ranked.into_iter().take(max).map(|(tag, _, _)| tag).collect()
+}
 
 pub fn collect_workspace_text(conn: &Connection, workspace_id: &str) -> Result<(String, u64), String> {
     let mut stmt = conn.prepare(
@@ -60,7 +125,17 @@ pub fn recompute_workspace_signature(conn: &Connection, workspace_id: &str) -> R
 }
 
 pub fn generate_heuristic(text: &str) -> TopicSignature {
-    let tags = generate_tags(text, 20);
+    let tags = {
+        let specific = extract_specific_tags(text, 20);
+        if specific.is_empty() {
+            generate_tags(text, 20)
+                .into_iter()
+                .filter(|tag| is_specific_topic_tag(tag))
+                .collect()
+        } else {
+            specific
+        }
+    };
     let mut domain_tags = Vec::new();
     for (i, tag) in tags.into_iter().enumerate() {
         domain_tags.push(TopicTag {

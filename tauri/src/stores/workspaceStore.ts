@@ -41,6 +41,7 @@ interface WorkspaceStore {
   removeProject: (id: string) => void;
   setNavLayout: (layout: "sidebar" | "tabs") => void;
   setActiveTopicSignature: (sig: TopicSignature | null) => void;
+  setWorkspaceTopicSignature: (workspaceId: string, sig: TopicSignature | null) => void;
   setMigrationSuggestion: (suggestion: WorkspaceMatchResult | null) => void;
   dismissMigrationSuggestion: () => void;
 }
@@ -67,6 +68,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     set({ navLayout });
   },
   setActiveTopicSignature: (activeTopicSignature) => set({ activeTopicSignature }),
+  setWorkspaceTopicSignature: (workspaceId, sig) => set((state) => {
+    const workspaces = state.workspaces.map((workspace) =>
+      workspace.id === workspaceId
+        ? {
+            ...workspace,
+            topic_signature: sig ?? workspace.topic_signature,
+            signature_updated_at: sig?.generated_at ?? workspace.signature_updated_at,
+          }
+        : workspace
+    );
+
+    return {
+      workspaces,
+      activeTopicSignature: state.activeWorkspaceId === workspaceId ? sig : state.activeTopicSignature,
+    };
+  }),
   setMigrationSuggestion: (migrationSuggestion) => set({ migrationSuggestion }),
   dismissMigrationSuggestion: () => set({ migrationSuggestion: null }),
 }));

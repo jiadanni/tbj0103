@@ -485,6 +485,11 @@ export default function KnowledgeGraphView() {
             {isAnalyzing ? "Analyzing…" : "Analyze Workspace"}
           </button>
 
+          <p className="mt-2 text-[10px] leading-relaxed text-[var(--text-muted)]">
+            Works best after the workspace has a reasonable amount of material.
+            Aim for several chats, notes, or documents before analyzing, otherwise the graph may stay generic.
+          </p>
+
           {analyzeResult && (
             <p className="mt-2 text-[10px] text-[var(--text-muted)] text-center">
               +{analyzeResult.concepts_created} concepts · +{analyzeResult.links_created} links
@@ -492,7 +497,7 @@ export default function KnowledgeGraphView() {
             </p>
           )}
           {analyzeError && (
-            <p className="mt-1 text-[10px] text-red-400 break-words">{analyzeError}</p>
+            <p className="mt-2 text-[10px] text-red-400 break-words">{analyzeError}</p>
           )}
         </div>
 
@@ -973,4 +978,3 @@ export default function KnowledgeGraphView() {
     </div>
   );
 }
-
