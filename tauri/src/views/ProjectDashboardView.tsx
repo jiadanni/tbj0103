@@ -55,14 +55,14 @@ function mockRng(seed: string, scale = 10): number {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function MetricCard({
-  label, value, icon: Icon, color, sub,
+  label, value, icon: _Icon, color: _color, sub,
 }: {
   label: string; value: string | number; icon: React.ElementType; color: string; sub?: string;
 }) {
   return (
     <div className="rounded-xl p-4 flex flex-col gap-1.5 bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-      <Icon size={15} className={color} />
-      <div className="text-2xl font-bold text-[var(--text-primary)] leading-none">{value}</div>
+      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--accent-color)' }} />
+      <div className="text-3xl font-bold text-[var(--text-primary)] leading-none">{value}</div>
       <div className="text-xs text-[var(--text-muted)]">{label}</div>
       {sub && <div className="text-[10px] text-[var(--text-muted)] opacity-70">{sub}</div>}
     </div>
@@ -84,13 +84,11 @@ function ActivityHeatmap({ days, activityMap }: { days: number; activityMap: Rec
 
   const max = Math.max(1, ...cells.map((c) => c.count));
 
-  function cellColor(count: number) {
-    if (count === 0) return "bg-[var(--bg-primary)] border border-[var(--border-color)]";
+  function cellStyle(count: number): { className: string; style?: React.CSSProperties } {
+    if (count === 0) return { className: "bg-[var(--bg-primary)] border border-[var(--border-color)]" };
     const pct = count / max;
-    if (pct > 0.75) return "bg-green-500";
-    if (pct > 0.5) return "bg-green-400";
-    if (pct > 0.25) return "bg-green-300 opacity-80";
-    return "bg-green-200 opacity-60";
+    const opacity = pct > 0.75 ? 1 : pct > 0.5 ? 0.75 : pct > 0.25 ? 0.5 : 0.3;
+    return { className: "", style: { backgroundColor: 'var(--accent-color)', opacity } };
   }
 
   const cols = Math.min(days, 7);
@@ -105,17 +103,18 @@ function ActivityHeatmap({ days, activityMap }: { days: number; activityMap: Rec
           <div
             key={key}
             title={`${key}: ${count} activities`}
-            className={`aspect-square rounded-sm ${cellColor(count)}`}
+            className={`aspect-square rounded-sm ${cellStyle(count).className}`}
+            style={cellStyle(count).style}
           />
         ))}
       </div>
       <div className="flex items-center gap-1.5 mt-2">
         <span className="text-[10px] text-[var(--text-muted)]">Less</span>
-        {[0, 0.25, 0.5, 0.75, 1].map((p) => (
+        {[0, 0.3, 0.5, 0.75, 1].map((p) => (
           <div
             key={p}
             className="w-3 h-3 rounded-sm"
-            style={{ background: p === 0 ? "var(--bg-primary)" : `rgba(74,222,128,${0.2 + p * 0.8})` }}
+            style={{ background: p === 0 ? "var(--bg-primary)" : 'var(--accent-color)', opacity: p === 0 ? 1 : p }}
           />
         ))}
         <span className="text-[10px] text-[var(--text-muted)]">More</span>
@@ -506,10 +505,10 @@ export default function ProjectDashboardView() {
       <div className="max-w-3xl mx-auto px-6 py-6 space-y-5">
 
         {/* ── Header ─────────────────────────────────────────────────── */}
-        <div className="rounded-xl p-4 bg-blue-500/5 border border-blue-500/15">
+        <div>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-bold text-[var(--text-primary)]">{title}</h1>
+              <h1 className="text-2xl font-bold text-[var(--text-primary)]">{title}</h1>
               {subtitle && (
                 <p className="text-xs text-[var(--text-muted)] mt-0.5">{subtitle}</p>
               )}
@@ -678,17 +677,22 @@ export default function ProjectDashboardView() {
                   const maxTok = Math.max(1, ...cells.map((c) => c.count));
                   return cells.map(({ key, count }) => {
                     const pct = count / maxTok;
-                    const bg = count === 0
-                      ? "bg-[var(--bg-primary)] border border-[var(--border-color)]"
-                      : pct > 0.75 ? "bg-violet-500"
-                      : pct > 0.5 ? "bg-violet-400"
-                      : pct > 0.25 ? "bg-violet-300 opacity-80"
-                      : "bg-violet-200 opacity-60";
+                    if (count === 0) {
+                      return (
+                        <div
+                          key={key}
+                          title={`${key}: 0 tokens`}
+                          className="aspect-square rounded-sm bg-[var(--bg-primary)] border border-[var(--border-color)]"
+                        />
+                      );
+                    }
+                    const opacity = pct > 0.75 ? 1 : pct > 0.5 ? 0.75 : pct > 0.25 ? 0.5 : 0.3;
                     return (
                       <div
                         key={key}
                         title={`${key}: ${count.toLocaleString()} tokens`}
-                        className={`aspect-square rounded-sm ${bg}`}
+                        className="aspect-square rounded-sm"
+                        style={{ backgroundColor: 'var(--accent-color)', opacity }}
                       />
                     );
                   });
@@ -696,11 +700,11 @@ export default function ProjectDashboardView() {
               </div>
               <div className="flex items-center gap-1.5 mt-2">
                 <span className="text-[10px] text-[var(--text-muted)]">Less</span>
-                {[0, 0.25, 0.5, 0.75, 1].map((p) => (
+                {[0, 0.3, 0.5, 0.75, 1].map((p) => (
                   <div
                     key={p}
                     className="w-3 h-3 rounded-sm"
-                    style={{ background: p === 0 ? "var(--bg-primary)" : `rgba(167,139,250,${0.2 + p * 0.8})` }}
+                    style={{ background: p === 0 ? "var(--bg-primary)" : 'var(--accent-color)', opacity: p === 0 ? 1 : p }}
                   />
                 ))}
                 <span className="text-[10px] text-[var(--text-muted)]">More</span>
