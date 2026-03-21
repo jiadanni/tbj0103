@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe } from "lucide-react";
+import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder } from "lucide-react";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
@@ -788,14 +788,38 @@ export default function ChatView() {
           <span className="text-xs font-medium text-[var(--text-secondary)] truncate">
             {activeProject?.name ?? "Conversations"}
           </span>
-          <button
-            onClick={createNewSession}
-            className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-            title="New chat"
-          >
-            <Plus size={14} />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={async () => {
+                if (!activeWorkspaceId) return;
+                const name = prompt("Folder name:");
+                if (!name?.trim()) return;
+                const p = await api.project.create(activeWorkspaceId, name.trim());
+                useWorkspaceStore.getState().addProject(p);
+              }}
+              className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              title="New folder"
+            >
+              <Folder size={14} />
+            </button>
+            <button
+              onClick={createNewSession}
+              className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              title="New chat"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
         </div>
+
+        {/* New Chat button */}
+        <button
+          onClick={createNewSession}
+          className="mx-2 mt-2 mb-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--accent-color)] text-white text-xs font-medium hover:opacity-90 transition-opacity"
+        >
+          <Plus size={14} />
+          New Chat
+        </button>
 
         {/* Search */}
         <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
@@ -884,6 +908,17 @@ export default function ChatView() {
         ) : (
           <span className="flex-1 text-xs truncate">{session.title || "New Chat"}</span>
         )}
+        <span className="text-[10px] text-[var(--text-muted)] shrink-0 mr-1">
+          {(() => {
+            const diff = Date.now() - new Date(session.updated_at).getTime();
+            const m = Math.floor(diff / 60000);
+            if (m < 1) return "now";
+            if (m < 60) return `${m}m`;
+            const h = Math.floor(m / 60);
+            if (h < 24) return `${h}h`;
+            return `${Math.floor(h / 24)}d`;
+          })()}
+        </span>
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           {!isRenaming && (
             <button
@@ -1284,7 +1319,7 @@ export default function ChatView() {
 
           {/* Input / composer area */}
           <div className="px-4 pb-6 pt-2 bg-transparent flex flex-col items-center flex-shrink-0">
-            <div className="w-full max-w-4xl flex flex-col bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-2 shadow-md">
+            <div className="w-full max-w-4xl flex flex-col bg-[var(--bg-elevated)]/80 border border-[var(--border-color)] rounded-2xl p-2.5 shadow-lg backdrop-blur-md">
               {activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
                 <div className="px-2 pt-1 pb-2">
                   <TopicChips
@@ -1301,7 +1336,7 @@ export default function ChatView() {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   disabled={isStreaming}
-                  placeholder={isStreaming ? "Waiting for response…" : !selectedModel ? "No models available — install one via ollama pull" : "Message… (⏎ send, ⇧⏎ newline)"}
+                  placeholder={isStreaming ? "Waiting for response…" : !selectedModel ? "No models available — install one via ollama pull" : activeMessages.length > 0 ? "Message this Claude thread..." : "Start a new Claude thread..."}
                   rows={1}
                   className="flex-1 resize-none px-3 py-2 text-sm bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors max-h-40 overflow-y-auto"
                   style={{ minHeight: 40 }}
@@ -1314,7 +1349,7 @@ export default function ChatView() {
                 {isStreaming ? (
                   <button
                     onClick={() => { if (activeChatId) api.ollama.stopStream(activeChatId).catch(() => {}); }}
-                    className="flex-shrink-0 p-2 mb-1 mr-1 rounded-xl bg-red-500 text-white hover:opacity-90 transition-opacity"
+                    className="flex-shrink-0 rounded-full w-8 h-8 flex items-center justify-center bg-red-500 text-white hover:opacity-90 transition-opacity mb-1 mr-1"
                     title="Stop generation"
                   >
                     <X size={16} />
@@ -1323,9 +1358,9 @@ export default function ChatView() {
                   <button
                     onClick={sendMessage}
                     disabled={!input.trim() || !selectedModel}
-                    className="flex-shrink-0 p-2 mb-1 mr-1 rounded-xl bg-[var(--accent-color)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
+                    className="flex-shrink-0 rounded-full w-8 h-8 flex items-center justify-center bg-[var(--accent-color)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity mb-1 mr-1"
                   >
-                    <Send size={16} />
+                    <ArrowUpCircle size={18} />
                   </button>
                 )}
               </div>
@@ -1339,7 +1374,7 @@ export default function ChatView() {
                   setSelectedModel(e.target.value);
                   persistModelChoice(e.target.value);
                 }}
-                className="text-[11px] px-2 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none max-w-[160px] truncate"
+                className="text-[11px] px-3 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none max-w-[160px] truncate appearance-none"
                 title="Active model"
               >
                 {availableModels.length > 0
@@ -1357,9 +1392,10 @@ export default function ChatView() {
                     if (lastUserMessage) setInput(lastUserMessage);
                   }}
                   title={`Try ${nextModel.name}`}
-                  className="p-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors text-[11px]"
                 >
-                  <ArrowUpCircle size={12} />
+                  <ArrowUpCircle size={13} />
+                  <span>Try better</span>
                 </button>
               )}
 
@@ -1371,13 +1407,14 @@ export default function ChatView() {
                   persistSetting("dual_model_enabled", newValue);
                 }}
                 title={dualModelEnabled ? `Dual model ON — draft: ${draftModel || "(none)"} → refine: ${selectedModel}` : "Dual-model mode (draft + refine)"}
-                className={`p-1.5 rounded-lg border transition-colors ${
+                className={`flex items-center gap-1 px-2 py-1 rounded-full border text-[11px] transition-colors ${
                   dualModelEnabled
                     ? "bg-amber-500/15 border-amber-500/50 text-amber-400"
                     : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                 }`}
               >
-                <Zap size={12} />
+                <Zap size={13} />
+                <span>Dual</span>
               </button>
 
               {/* Draft model picker (only when dual is on) */}
@@ -1389,7 +1426,7 @@ export default function ChatView() {
                     persistSetting("draft_model", e.target.value);
                   }}
                   title="Draft model (small/fast)"
-                  className="text-[11px] px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 outline-none max-w-[120px]"
+                  className="text-[11px] px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 outline-none max-w-[120px] appearance-none"
                 >
                   <option value="">Draft…</option>
                   {availableModels.map((m) => (
@@ -1401,14 +1438,15 @@ export default function ChatView() {
               {/* Grounded (RAG) toggle */}
               <button
                 onClick={() => setGroundedEnabled((v) => !v)}
-                title={groundedEnabled ? `Grounded ON (${processedDocCount} docs)` : "Grounded mode (RAG)"}
-                className={`relative p-1.5 rounded-lg border transition-colors ${
+                title={groundedEnabled ? `Grounded ON (${processedDocCount} docs)` : "Grounded mode — use your documents as context (RAG)"}
+                className={`relative flex items-center gap-1 px-2 py-1 rounded-full border text-[11px] transition-colors ${
                   groundedEnabled
                     ? "bg-[var(--accent-color)]/15 border-[var(--accent-color)] text-[var(--accent-color)]"
                     : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                 }`}
               >
-                <BookOpen size={12} />
+                <BookOpen size={13} />
+                <span>Docs</span>
                 {groundedEnabled && processedDocCount > 0 && (
                   <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
                     {processedDocCount > 9 ? "9+" : processedDocCount}
@@ -1431,14 +1469,15 @@ export default function ChatView() {
               {/* Thought queue toggle */}
               <button
                 onClick={() => setThoughtPanelOpen((v) => !v)}
-                title="Thought Queue"
-                className={`relative p-1.5 rounded-lg border transition-colors ${
+                title="Thought Queue — schedule follow-up questions to process in background"
+                className={`relative flex items-center gap-1 px-2 py-1 rounded-full border text-[11px] transition-colors ${
                   thoughtPanelOpen
                     ? "bg-[var(--accent-color)]/15 border-[var(--accent-color)] text-[var(--accent-color)]"
                     : "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                 }`}
               >
-                <Inbox size={12} />
+                <Inbox size={13} />
+                <span>Queue</span>
                 {(() => {
                   const pending = thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length;
                   return pending > 0 ? (

@@ -19,7 +19,6 @@ import {
 const NAV_ITEMS: { path: string; icon: LucideIcon; label: string }[] = [
   { path: "/project",       icon: BarChart2,             label: "Dashboard"        },
   { path: "/chat",          icon: MessageSquare,          label: "Chat"             },
-  { path: "/thoughts",      icon: Inbox,                  label: "Thought Queue"    },
   { path: "/notes",         icon: FileEdit,               label: "Notes"            },
   { path: "/documents",     icon: FileText,               label: "Documents"        },
   { path: "/webcapture",    icon: Globe,                  label: "Web Captures"     },
