@@ -286,6 +286,16 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(var(--accent-color-rgb), 0.1);
 }
 
+select {
+  color: var(--text-primary);
+}
+
+select option,
+select optgroup {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
 /* =====================================================
    Custom Title Bar — Drag Region
    ===================================================== */
@@ -301,4 +311,3 @@ select:focus {
 [data-tauri-drag-region] [role="button"] {
   -webkit-app-region: no-drag;
 }
-

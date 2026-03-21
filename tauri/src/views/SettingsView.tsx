@@ -53,6 +53,7 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 }
 
 export default function SettingsView() {
+  const pillSelectClassName = "h-10 w-full appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-9 text-sm text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
   const zustandSettings = useSettingsStore();
   const location = useLocation();
   const { navLayout, setNavLayout } = useWorkspaceStore();
@@ -129,6 +130,7 @@ export default function SettingsView() {
     zustandSettings.setAccentColor(dbSettings.accent_color);
     zustandSettings.setFontSize(dbSettings.font_size);
     zustandSettings.setPreferredModel(dbSettings.preferred_model);
+    zustandSettings.setBackgroundModel(dbSettings.background_model);
     zustandSettings.setOllamaUrl(dbSettings.ollama_base_url);
     zustandSettings.setDualModelEnabled(dbSettings.dual_model_enabled);
     zustandSettings.setDraftModel(dbSettings.draft_model);
@@ -405,6 +407,26 @@ export default function SettingsView() {
               </div>
 
               <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Background Task Model</label>
+                <div className="relative">
+                  <select
+                    value={dbSettings.background_model}
+                    onChange={(e) => set("background_model", e.target.value)}
+                    className={pillSelectClassName}
+                  >
+                    <option value="">Use preferred chat model</option>
+                    {ollamaModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                </div>
+                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
+                  Used for lightweight background AI work like topic clouds and workspace tagging.
+                </p>
+              </div>
+
+              <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-1 block">Embedding Model</label>
                 <input
                   value={dbSettings.embedding_model}
@@ -428,14 +450,17 @@ export default function SettingsView() {
 
                 {showAddModel && (
                   <div className="mb-3 p-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] space-y-2">
-                    <select
-                      value={newModelId}
-                      onChange={(e) => { setNewModelId(e.target.value); if (!newModelName) {setNewModelName(e.target.value.split(":")[0]);} }}
-                      className="w-full px-2 py-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-xs text-[var(--text-secondary)] outline-none"
-                    >
-                      <option value="">Select Ollama model...</option>
-                      {ollamaModels.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
+                    <div className="relative">
+                      <select
+                        value={newModelId}
+                        onChange={(e) => { setNewModelId(e.target.value); if (!newModelName) {setNewModelName(e.target.value.split(":")[0]);} }}
+                        className="h-9 w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-9 text-xs text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
+                      >
+                        <option value="">Select Ollama model...</option>
+                        {ollamaModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                    </div>
                     <input
                       value={newModelName}
                       onChange={(e) => setNewModelName(e.target.value)}
