@@ -261,6 +261,33 @@ pub fn update_chat_session(
     Ok(())
 }
 
+/// Move one or more chat sessions to a different workspace (and optionally a project).
+/// Clears project_id unless a new one is specified.
+#[tauri::command]
+pub fn move_chat_sessions(
+    state: State<DbState>,
+    chats_dir: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
+    session_ids: Vec<String>,
+    target_workspace_id: String,
+    target_project_id: Option<String>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let project = target_project_id.unwrap_or_default();
+
+    for sid in &session_ids {
+        conn.execute(
+            "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2, updated_at = ?3 WHERE id = ?4",
+            rusqlite::params![target_workspace_id, project, now, sid],
+        ).map_err(|e| e.to_string())?;
+        // Sync to file (best-effort)
+        let pass = crypto.0.lock().ok().and_then(|g| g.clone());
+        let _ = chat_file_store::write_session_file(&conn, &chats_dir.0, sid, pass.as_deref());
+    }
+    Ok(())
+}
+
 /// Return daily token usage for a workspace over the last N days (default: 90).
 /// Used to drive the AI usage heatmap in ProjectDashboardView.
 #[tauri::command]

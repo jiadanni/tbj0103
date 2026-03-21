@@ -885,6 +885,11 @@ export default function ChatView() {
 
     return (
       <div
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify([session.id]));
+          e.dataTransfer.effectAllowed = "move";
+        }}
         onClick={() => setActiveChatId(session.id)}
         className={`group flex items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${
           isActive

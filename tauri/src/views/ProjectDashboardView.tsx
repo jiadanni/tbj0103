@@ -298,25 +298,89 @@ export default function ProjectDashboardView() {
   const [tokenByDate, setTokenByDate] = useState<{ day: string; total_tokens: number }[]>([]);
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
 
+  // Aggregate stats across ALL workspaces
   useEffect(() => {
-    if (!activeProjectId) return;
-    api.project.getStats(activeProjectId).then(setProjectStats).catch(() => {});
-  }, [activeProjectId]);
+    if (workspaces.length === 0) return;
+    const wsIds = workspaces.map((w) => w.id);
 
-  useEffect(() => {
-    if (!activeWorkspaceId) return;
-    api.flashcard.getStats(activeWorkspaceId).then(setReviewStats).catch(() => {});
-    api.graph.getStats(activeWorkspaceId).then(setGraphStats).catch(() => {});
-    api.graph.listConcepts(activeWorkspaceId).then(setConcepts).catch(() => {});
-    api.note.list(activeWorkspaceId).then((notes) => {
-      setRecentNotes(
-        [...notes].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-      );
-    }).catch(() => {});
-    // AI usage data
-    api.chat.getTokenUsageByDate(activeWorkspaceId, 90).then(setTokenByDate).catch(() => {});
+    // Aggregate project stats across all workspaces' projects
+    Promise.all(wsIds.map((wid) => api.project.list(wid)))
+      .then((projectLists) => {
+        const allProjects = projectLists.flat();
+        return Promise.all(allProjects.map((p) => api.project.getStats(p.id).catch(() => null)));
+      })
+      .then((statsList) => {
+        const merged: ProjectStats = { note_count: 0, document_count: 0, chat_session_count: 0, flashcard_count: 0, web_capture_count: 0 };
+        statsList.forEach((s) => {
+          if (!s) return;
+          merged.note_count += s.note_count;
+          merged.document_count += s.document_count;
+          merged.chat_session_count += s.chat_session_count;
+          merged.flashcard_count += s.flashcard_count;
+          merged.web_capture_count += s.web_capture_count;
+        });
+        setProjectStats(merged);
+      })
+      .catch(() => {});
+
+    // Aggregate review stats
+    Promise.all(wsIds.map((wid) => api.flashcard.getStats(wid).catch(() => null)))
+      .then((statsList) => {
+        const merged: ReviewStats = { total_cards: 0, learned: 0, due_today: 0, avg_ease: 0 };
+        statsList.forEach((s) => {
+          if (!s) return;
+          merged.total_cards += s.total_cards;
+          merged.learned += s.learned;
+          merged.due_today += s.due_today;
+        });
+        setReviewStats(merged);
+      })
+      .catch(() => {});
+
+    // Aggregate graph stats
+    Promise.all(wsIds.map((wid) => api.graph.getStats(wid).catch(() => null)))
+      .then((statsList) => {
+        const merged: GraphStatistics = { id: "", total_concepts: 0, total_links: 0, avg_degree: 0, density: 0, updated_at: "" };
+        let densityCount = 0;
+        statsList.forEach((s) => {
+          if (!s) return;
+          merged.total_concepts += s.total_concepts;
+          merged.total_links += s.total_links;
+          merged.density += s.density;
+          densityCount++;
+        });
+        if (densityCount > 0) merged.density /= densityCount;
+        setGraphStats(merged);
+      })
+      .catch(() => {});
+
+    // Aggregate concepts
+    Promise.all(wsIds.map((wid) => api.graph.listConcepts(wid).catch(() => [] as ConceptNode[])))
+      .then((lists) => setConcepts(lists.flat()))
+      .catch(() => {});
+
+    // Aggregate notes
+    Promise.all(wsIds.map((wid) => api.note.list(wid).catch(() => [] as ProjectNote[])))
+      .then((lists) => {
+        const all = lists.flat().sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+        setRecentNotes(all);
+      })
+      .catch(() => {});
+
+    // Aggregate token usage across all workspaces
+    Promise.all(wsIds.map((wid) => api.chat.getTokenUsageByDate(wid, 90).catch(() => [] as { day: string; total_tokens: number }[])))
+      .then((lists) => {
+        const byDay: Record<string, number> = {};
+        lists.flat().forEach(({ day, total_tokens }) => {
+          byDay[day] = (byDay[day] ?? 0) + total_tokens;
+        });
+        setTokenByDate(Object.entries(byDay).map(([day, total_tokens]) => ({ day, total_tokens })).sort((a, b) => a.day.localeCompare(b.day)));
+      })
+      .catch(() => {});
+
+    // AI models are global (not workspace-scoped)
     api.aiModel.list().then(setAiModels).catch(() => {});
-  }, [activeWorkspaceId]);
+  }, [workspaces]);
 
   // Fetch AI topics whenever sessions or notes change (debounced by dependency)
   const fetchAiTopics = async () => {
@@ -497,8 +561,10 @@ export default function ProjectDashboardView() {
 
   const maxModelTokens = modelsWithUsage[0]?.tokens_used_total ?? 1;
 
-  const title = project?.name ?? workspace?.name ?? "Dashboard";
-  const subtitle = project?.project_description ?? workspace?.name ?? "";
+  const title = "Dashboard";
+  const subtitle = workspaces.length > 1
+    ? `Across ${workspaces.length} workspaces`
+    : workspace?.name ?? "";
 
   return (
     <div className="h-full overflow-y-auto">
