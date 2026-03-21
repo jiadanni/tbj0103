@@ -127,9 +127,14 @@ pub fn run() {
             commands::artifact::create_artifact,
             commands::artifact::get_artifact,
             commands::artifact::list_artifacts,
+            commands::artifact::get_artifact_versions,
             commands::artifact::update_artifact,
             commands::artifact::delete_artifact,
             commands::artifact::search_artifacts,
+            commands::artifact::create_artifact_version,
+            // Summary commands
+            commands::summary::generate_summary,
+            commands::summary::list_summaries,
             // Context & Chat
             commands::context::assemble_and_send,
             commands::chat::create_chat_session,
@@ -282,6 +287,10 @@ pub fn run() {
             commands::topic_signature::regenerate_topic_signature,
             commands::topic_signature::update_topic_signature,
             commands::topic_signature::check_workspace_match,
+            // Git sync commands
+            commands::git_sync::get_git_sync_status,
+            commands::git_sync::configure_git_sync,
+            commands::git_sync::trigger_git_sync,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

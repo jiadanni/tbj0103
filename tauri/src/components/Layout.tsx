@@ -10,7 +10,7 @@ import ArtifactPanel from "./ArtifactPanel";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { api } from "../lib/api";
 import { useHotkeys, type HotkeyBinding } from "../hooks/useHotkeys";
-import { MOD_KEY, CTRL_KEY } from "../lib/platform";
+import { isMac, MOD_KEY, CTRL_KEY } from "../lib/platform";
 
 import {
   MessageSquare, Network, CreditCard,
@@ -74,7 +74,7 @@ function WorkspaceTabBar() {
   }
 
   return (
-    <div className="flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 overflow-x-auto">
+    <div data-tauri-drag-region className={`flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] pr-2 shrink-0 overflow-x-auto ${isMac ? "pl-[78px]" : "pl-2"}`}>
       {workspaces.map((ws, idx) => (
         <button
           key={ws.id}

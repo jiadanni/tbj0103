@@ -1,6 +1,5 @@
 use rusqlite::Connection;
 use crate::models::context::{TokenBudget, ContextSources};
-use crate::models::chat::{Message, MessageRole};
 use crate::ollama::client::OllamaMessage;
 
 pub fn budget_for_context_window(context_size: usize) -> TokenBudget {
@@ -26,8 +25,8 @@ pub fn assemble_context(
     conn: &Connection,
     workspace_id: &str,
     session_id: &str,
-    model_name: &str,
-    options: &std::collections::HashMap<String, serde_json::Value>,
+    _model_name: &str,
+    _options: &std::collections::HashMap<String, serde_json::Value>,
 ) -> Result<(Vec<OllamaMessage>, ContextSources), String> {
     // Basic budget, default to 8192 if unknown
     // Note: Querying Ollama /api/show for num_ctx can be added later
@@ -81,6 +80,49 @@ pub fn assemble_context(
     }
     if !memories_text.is_empty() {
         system_parts.push(format!("Active Context/Memories:\n{}", memories_text));
+    }
+
+    // 3. Past conversation summaries from OTHER sessions
+    let mut summaries_text = String::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT id, content FROM conversation_summaries WHERE workspace_id = ?1 AND session_id != ?2 ORDER BY created_at DESC LIMIT 3"
+        ).map_err(|e| e.to_string())?;
+        
+        let rows = stmt.query_map(rusqlite::params![workspace_id, session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        }).map_err(|e| e.to_string())?;
+
+        for row in rows.flatten() {
+            let (id, content) = row;
+            summaries_text.push_str(&format!("- {}\n", content));
+            sources.summaries_used.push(id);
+        }
+    }
+    if !summaries_text.is_empty() {
+        system_parts.push(format!("Relevant Context from Past Conversations:\n{}", summaries_text));
+    }
+
+    // 4. Referenced artifacts (pinned artifacts always included)
+    let mut artifacts_text = String::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT id, title, content FROM artifacts WHERE workspace_id = ?1 AND is_pinned = 1 LIMIT 5"
+        ).map_err(|e| e.to_string())?;
+
+        let rows = stmt.query_map(rusqlite::params![workspace_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        }).map_err(|e| e.to_string())?;
+
+        for row in rows.flatten() {
+            let (id, title, content) = row;
+            let excerpt: String = content.chars().take(500).collect();
+            artifacts_text.push_str(&format!("### {}\n{}\n\n", title, excerpt));
+            sources.artifacts_used.push(id);
+        }
+    }
+    if !artifacts_text.is_empty() {
+        system_parts.push(format!("Pinned Artifacts:\n{}", artifacts_text));
     }
 
     // Push system message

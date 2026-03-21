@@ -22,6 +22,7 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
 
   return (
     <div className="flex h-screen items-center justify-center bg-[var(--bg-primary)]">
+      <div data-tauri-drag-region className="fixed top-0 left-0 right-0 h-9 z-50" />
       <form
         onSubmit={handleSubmit}
         className="w-80 flex flex-col items-center gap-6"
@@ -36,7 +37,6 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
 
         <input
           type="password"
-          autoFocus
           value={password}
           onChange={(e) => { setPassword(e.target.value); setError(""); }}
           placeholder="Password"

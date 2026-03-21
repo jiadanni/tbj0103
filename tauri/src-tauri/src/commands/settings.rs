@@ -22,6 +22,7 @@ pub struct Settings {
     pub start_at_login: bool,
     pub open_in_background: bool,
     pub immediate_delete: bool,
+    pub confirm_move_to_trash: bool,
 }
 
 impl Default for Settings {
@@ -45,6 +46,7 @@ impl Default for Settings {
             start_at_login: false,
             open_in_background: false,
             immediate_delete: false,
+            confirm_move_to_trash: true,
         }
     }
 }
@@ -119,6 +121,9 @@ pub fn get_settings(state: State<DbState>) -> Result<Settings, String> {
         immediate_delete: get_setting(&conn, "immediate_delete")
             .map(|v| v == "true")
             .unwrap_or(def.immediate_delete),
+        confirm_move_to_trash: get_setting(&conn, "confirm_move_to_trash")
+            .map(|v| v == "true")
+            .unwrap_or(def.confirm_move_to_trash),
     })
 }
 
@@ -142,6 +147,7 @@ pub fn update_settings(state: State<DbState>, settings: Settings) -> Result<(), 
     set_setting(&conn, "start_at_login", &settings.start_at_login.to_string())?;
     set_setting(&conn, "open_in_background", &settings.open_in_background.to_string())?;
     set_setting(&conn, "immediate_delete", &settings.immediate_delete.to_string())?;
+    set_setting(&conn, "confirm_move_to_trash", &settings.confirm_move_to_trash.to_string())?;
     // chat_encryption_enabled is managed by setup_chat_encryption / disable_chat_encryption
     Ok(())
 }

@@ -285,3 +285,20 @@ select:focus {
   border-color: var(--accent-color) !important;
   box-shadow: 0 0 0 3px rgba(var(--accent-color-rgb), 0.1);
 }
+
+/* =====================================================
+   Custom Title Bar — Drag Region
+   ===================================================== */
+
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] input,
+[data-tauri-drag-region] select,
+[data-tauri-drag-region] a,
+[data-tauri-drag-region] [role="button"] {
+  -webkit-app-region: no-drag;
+}
+
