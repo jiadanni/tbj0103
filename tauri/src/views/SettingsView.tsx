@@ -129,33 +129,30 @@ export default function SettingsView() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] flex-shrink-0">
-        <h1 className="text-sm font-semibold text-[var(--text-primary)]">Settings</h1>
+      {/* Tab bar */}
+      <div className="flex items-center justify-between px-4 pt-3 pb-0 border-b border-[var(--border-color)] flex-shrink-0">
+        <div className="flex gap-1">
+          {TABS.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs rounded-t-lg border-b-2 transition-colors ${
+                activeTab === id
+                  ? "border-[var(--accent-color)] text-[var(--accent-color)]"
+                  : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+              }`}
+            >
+              <Icon size={13} />
+              {label}
+            </button>
+          ))}
+        </div>
         <button
           onClick={save}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent-color)] text-white text-xs hover:opacity-90"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent-color)] text-white text-xs hover:opacity-90 mb-1"
         >
           <Save size={12} /> {saved ? "Saved!" : "Save"}
         </button>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex gap-1 px-4 pt-3 pb-0 border-b border-[var(--border-color)] flex-shrink-0">
-        {TABS.map(({ id, label, Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-xs rounded-t-lg border-b-2 transition-colors ${
-              activeTab === id
-                ? "border-[var(--accent-color)] text-[var(--accent-color)]"
-                : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-            }`}
-          >
-            <Icon size={13} />
-            {label}
-          </button>
-        ))}
       </div>
 
       {/* Tab content — inline sections */}
