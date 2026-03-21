@@ -29,7 +29,8 @@ The Tauri port is the primary development target and receives all new features.
 - **Source-grounded responses** with automatic citations (RAG)
 - Upload documents (PDF, TXT, Markdown, HTML, RTF)
 - Capture web pages; audio transcriptions via macOS Speech framework
-- Chat session history with rename / delete
+- Chat session history with rename / soft-delete
+- **Chat Recycle Bin**: Restore deleted chats or permanently erase them
 - Model comparison view to benchmark responses side-by-side
 - AI-generated study guides and quizzes
 
@@ -277,6 +278,7 @@ Navigate to **Plugins** (Cmd+8):
 - `Cmd+6` - Flashcards
 - `Cmd+7` - Learning Paths
 - `Cmd+8` - Plugins
+- `Cmd+9` - Recycle Bin
 
 ### Editor
 - `[[` - Trigger concept autocomplete
@@ -376,17 +378,24 @@ swift test      # run tests
 ```bash
 # TypeScript type-check
 cd tauri
-~/.nvm/versions/node/v20.19.5/bin/npx tsc --noEmit
+npm run typecheck
 
 # Rust type-check
-~/.cargo/bin/cargo check --manifest-path tauri/src-tauri/Cargo.toml
+cargo check --manifest-path tauri/src-tauri/Cargo.toml
+
+# Run unit tests (Vitest)
+cd tauri
+npm test
+
+# Run Rust tests
+cargo test --manifest-path tauri/src-tauri/Cargo.toml
 
 # Development server
 cd tauri
-PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v20.19.5/bin:$PATH" npm run tauri dev
+npm run tauri dev
 ```
 
-Both `cargo check` and `tsc --noEmit` must exit 0 before committing.
+Both `cargo check` and `npm run typecheck` must exit 0 before committing.
 
 ## 🎯 Roadmap
 

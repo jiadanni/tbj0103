@@ -22,6 +22,27 @@ pub async fn assemble_and_send(
         )?
     };
 
+    // Save snapshot AFTER destructuring
+    {
+        let conn_guard = state.0.lock().map_err(|e| e.to_string())?;
+        let snapshot_id = uuid::Uuid::new_v4().to_string();
+        let assembled_text = serde_json::to_string(&messages).unwrap_or_default();
+        let sources_json = serde_json::to_string(&sources).unwrap_or_default();
+        let tokens_used = crate::services::context_assembler::estimate_tokens(&assembled_text);
+        
+        let last_msg_id: String = conn_guard.query_row(
+            "SELECT id FROM messages WHERE session_id = ?1 ORDER BY created_at DESC LIMIT 1",
+            rusqlite::params![req.session_id],
+            |row| row.get(0)
+        ).unwrap_or_else(|_| "unknown".to_string());
+
+        let _ = conn_guard.execute(
+            "INSERT INTO context_snapshots (id, session_id, message_id, assembled_context, token_budget, tokens_used, sources_json)
+             VALUES (?1, ?2, ?3, ?4, 8192, ?5, ?6)",
+            rusqlite::params![snapshot_id, req.session_id, last_msg_id, assembled_text, tokens_used as i32, sources_json],
+        );
+    }
+
     let client_url = req.options.get("ollama_url").and_then(|v: &serde_json::Value| v.as_str()).map(|s: &str| s.to_string());
     let client = OllamaClient::new(client_url);
     

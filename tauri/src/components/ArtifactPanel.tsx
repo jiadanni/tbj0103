@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useArtifactStore } from '../stores/artifactStore';
+import { api } from '../lib/api';
+import type { ArtifactSummary } from '../lib/api';
 import { 
   X, Pin, PinOff, Copy, Check, Trash2, 
   History, Code, FileText, Settings, Share,
@@ -9,10 +11,17 @@ import {
 export default function ArtifactPanel() {
   const { 
     isPanelOpen, setPanelOpen, activeArtifact, setActiveArtifact,
-    deleteArtifact, togglePin 
+    deleteArtifact, togglePin, loadArtifact
   } = useArtifactStore();
   const [copied, setCopied] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [versions, setVersions] = useState<ArtifactSummary[]>([]);
+
+  useEffect(() => {
+    if (showHistory && activeArtifact) {
+      api.artifact.versions(activeArtifact.id).then(setVersions).catch(console.error);
+    }
+  }, [showHistory, activeArtifact]);
 
   if (!isPanelOpen || !activeArtifact) {
     return null;
@@ -82,8 +91,32 @@ export default function ArtifactPanel() {
         {showHistory ? (
           <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 h-full">
             <h4 className="text-sm font-medium mb-4 text-zinc-700 dark:text-zinc-300">Version History</h4>
-            {/* History list would go here */}
-            <p className="text-sm text-zinc-500 italic">Version history coming soon...</p>
+            <div className="space-y-2">
+              {versions.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => {
+                    loadArtifact(v.id);
+                    setShowHistory(false);
+                  }}
+                  className={`w-full text-left p-3 rounded-lg border transition-all ${
+                    v.id === activeArtifact.id
+                      ? 'bg-white dark:bg-zinc-800 border-blue-500 shadow-sm'
+                      : 'bg-white/50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase">Version {v.version}</span>
+                    <span className="text-[10px] text-zinc-400">{new Date(v.updated_at).toLocaleString()}</span>
+                  </div>
+                  <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">{v.title}</p>
+                  <p className="text-xs text-zinc-500 truncate">{v.artifact_type} • {v.language}</p>
+                </button>
+              ))}
+              {versions.length === 0 && (
+                <p className="text-sm text-zinc-500 italic text-center py-8">No other versions found.</p>
+              )}
+            </div>
           </div>
         ) : (
           <pre className="p-4 font-mono text-sm whitespace-pre-wrap break-all text-zinc-800 dark:text-zinc-200 selection:bg-blue-100 dark:selection:bg-blue-900">

@@ -3,11 +3,10 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useChatStore, findUnusedSession, type ChatSession } from "../stores/chatStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  SquarePen, LayoutGrid, BarChart2, Folder, Settings,
+  SquarePen, BarChart2, Folder, Settings,
   MessageSquare, ChevronRight, ChevronDown, FileEdit,
   FileText, Globe, Network, CreditCard, Inbox,
-  Plus, Check, MoreVertical, Pin, Trash2, Ghost,
-  MoveRight, X, FolderPlus
+  Check, Trash2, Ghost, MoveRight, X, FolderPlus,
 } from "lucide-react";
 
 import { api } from "../lib/api";
@@ -31,7 +30,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId, workspaces } = useWorkspaceStore();
-  const { sessions, setSessions, messages, setActiveChatId } = useChatStore();
+  const { sessions, messages, setActiveChatId } = useChatStore();
 
   const activeSegment = "/" + location.pathname.split("/")[1];
   const activeChatId = location.pathname.startsWith("/chat/") ? location.pathname.split("/")[2] : null;
@@ -189,7 +188,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-transparent text-sm select-none pt-8">
+    <div className="flex flex-col h-full bg-transparent text-sm select-none pt-3">
       {/* Active Workspace Label */}
       {activeWs && (
         <div className="px-3 pb-2 flex items-center justify-between group/ws">

@@ -181,6 +181,14 @@ export interface AppSettings {
   start_at_login: boolean;
   open_in_background: boolean;
   immediate_delete: boolean;
+  confirm_move_to_trash: boolean;
+}
+
+export interface GitSyncStatus {
+  enabled: boolean;
+  remote_url: string;
+  last_synced_at: string;
+  last_error: string;
 }
 
 export interface BacklinkEntry {
@@ -371,17 +379,19 @@ export const api = {
 
   artifact: {
     create: (req: CreateArtifactRequest) => invoke<Artifact>("create_artifact", { req }),
-    list: (workspaceId: string) => invoke<ArtifactSummary[]>("list_artifacts", { workspaceId }),
+    list: (workspace_id: string) => invoke<ArtifactSummary[]>("list_artifacts", { workspace_id }),
     get: (id: string) => invoke<Artifact>("get_artifact", { id }),
     update: (id: string, updates: Partial<CreateArtifactRequest & { is_pinned: boolean }>) => invoke<void>("update_artifact", { id, updates }),
     delete: (id: string) => invoke<void>("delete_artifact", { id }),
     versions: (id: string) => invoke<ArtifactSummary[]>("get_artifact_versions", { id }),
-    search: (workspaceId: string, query: string) => invoke<ArtifactSummary[]>("search_artifacts", { workspaceId, query }),
+    search: (workspace_id: string, query: string) => invoke<ArtifactSummary[]>("search_artifacts", { workspace_id, query }),
+    createVersion: (parentId: string, content: string) => invoke<Artifact>("create_artifact_version", { parentId, content }),
   },
 
   summary: {
-    generate: (sessionId: string, workspaceId: string, type: string) => invoke<void>("generate_summary", { sessionId, workspaceId, summaryType: type }),
-    list: (sessionId: string) => invoke<ConversationSummary[]>("list_summaries", { sessionId }),
+    generate: (session_id: string, workspace_id: string, summary_type: string) => 
+      invoke<void>("generate_summary", { session_id, workspace_id, summary_type }),
+    list: (session_id: string) => invoke<ConversationSummary[]>("list_summaries", { session_id }),
   },
 
   ollama: {
@@ -543,6 +553,13 @@ export const api = {
       invoke<[MCPResource[], MCPResourceTemplate[]]>("mcp_list_resources", { server_name: serverName }),
     readResource: (serverName: string, uri: string) =>
       invoke<string>("mcp_read_resource", { server_name: serverName, uri }),
+  },
+
+  gitSync: {
+    getStatus: () => invoke<GitSyncStatus>("get_git_sync_status"),
+    configure: (remoteUrl: string, enabled: boolean) =>
+      invoke<void>("configure_git_sync", { remoteUrl, enabled }),
+    triggerSync: () => invoke<GitSyncStatus>("trigger_git_sync"),
   },
 };
 

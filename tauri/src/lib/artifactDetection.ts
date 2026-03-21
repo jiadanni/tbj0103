@@ -47,7 +47,7 @@ export function detectArtifacts(content: string): DetectedArtifact[] {
     const lineCount = code.split('\n').length;
     const artifactType = LANGUAGE_TO_TYPE[lang.toLowerCase()] || 'code';
     
-    if (lineCount >= 5 || artifactType === 'diagram' || artifactType === 'config') {
+    if (lineCount >= 5 || artifactType === 'diagram' || artifactType === 'config' || artifactType === 'data') {
       // Heuristic for title: Look for comments or first line
       let title = `New ${artifactType === 'code' ? (lang || 'Code') : artifactType}`;
       

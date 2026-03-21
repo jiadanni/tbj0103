@@ -17,7 +17,7 @@ export function isEditableElement(el: Element | null): boolean {
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
     return true;
   }
-  if ((el as HTMLElement).isContentEditable) {
+  if ((el as HTMLElement).isContentEditable || el.getAttribute("contenteditable") === "true") {
     return true;
   }
   return false;

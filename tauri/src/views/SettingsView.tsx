@@ -4,8 +4,8 @@
  */
 import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw } from "lucide-react";
-import { api, type AppSettings, type AiModel, type MCPServerConfig } from "../lib/api";
+import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare } from "lucide-react";
+import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
@@ -23,10 +23,12 @@ const ACCENT_COLORS = [
   { label: "Cyan",   value: "#06b6d4" },
 ];
 
-type Tab = "appearance" | "ai" | "webai" | "security" | "workspaces" | "backup" | "plugins" | "mcp";
+type Tab = "general" | "appearance" | "chat" | "ai" | "webai" | "security" | "workspaces" | "backup" | "plugins" | "mcp" | "sync";
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
+  { id: "general",     label: "General",     Icon: SettingsIcon },
   { id: "appearance",  label: "Appearance",  Icon: Palette },
+  { id: "chat",        label: "Chat",        Icon: MessageSquare },
   { id: "ai",          label: "AI",          Icon: Bot },
   { id: "webai",       label: "Web AI",      Icon: Globe },
   { id: "security",    label: "Security",    Icon: ShieldCheck },
@@ -34,6 +36,7 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: "backup",      label: "Backup",      Icon: HardDrive },
   { id: "plugins",     label: "Plugins",     Icon: PuzzleIcon },
   { id: "mcp",         label: "MCP",         Icon: Network },
+  { id: "sync",        label: "Sync",        Icon: GitBranch },
 ];
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
@@ -55,7 +58,7 @@ export default function SettingsView() {
   const { navLayout, setNavLayout } = useWorkspaceStore();
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>("appearance");
+  const [activeTab, setActiveTab] = useState<Tab>("general");
 
   // Handle external tab switching via router state
   useEffect(() => {
@@ -86,6 +89,12 @@ export default function SettingsView() {
   const [newMcpCommand, setNewMcpCommand] = useState("");
   const [newMcpArgs, setNewMcpArgs] = useState("");
 
+  // Git sync state
+  const [gitSync, setGitSync] = useState<GitSyncStatus | null>(null);
+  const [gitSyncUrl, setGitSyncUrl] = useState("");
+  const [gitSyncing, setGitSyncing] = useState(false);
+  const [gitSyncSaving, setGitSyncSaving] = useState(false);
+
   function loadAiModels() {
     api.aiModel.list().then((models) => {
       setAiModels(models);
@@ -103,6 +112,7 @@ export default function SettingsView() {
     api.ollama.listModels().then((m) => setOllamaModels(m.map((x) => x.name))).catch(() => {});
     loadAiModels();
     api.mcp.listServers().then(setMcpServers).catch(() => {});
+    api.gitSync.getStatus().then((s) => { setGitSync(s); setGitSyncUrl(s.remote_url); }).catch(() => {});
   }, []);
 
   async function save() {
@@ -118,6 +128,7 @@ export default function SettingsView() {
     zustandSettings.setCompareModelA(dbSettings.compare_model_a);
     zustandSettings.setCompareModelB(dbSettings.compare_model_b);
     zustandSettings.setImmediateDelete(dbSettings.immediate_delete);
+    zustandSettings.setConfirmMoveToTrash(dbSettings.confirm_move_to_trash);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -171,9 +182,49 @@ export default function SettingsView() {
       </div>
 
       {/* Tab content — inline sections */}
-      {(activeTab === "appearance" || activeTab === "ai" || activeTab === "security" || activeTab === "webai") && (
+      {(activeTab === "general" || activeTab === "appearance" || activeTab === "chat" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
       <div className="flex-1 overflow-y-auto px-6 py-5">
         <div className="max-w-lg space-y-5">
+
+          {/* ── General ── */}
+          {activeTab === "general" && (
+            <>
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Start at login</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically launch Aetherium when you log in</p>
+                </div>
+                <Toggle on={dbSettings.start_at_login} onToggle={() => set("start_at_login", !dbSettings.start_at_login)} />
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Open in background</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Launch without bringing window to front</p>
+                </div>
+                <Toggle on={dbSettings.open_in_background} onToggle={() => set("open_in_background", !dbSettings.open_in_background)} />
+              </div>
+
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Navigation Layout</label>
+                <div className="flex gap-2">
+                  {(["sidebar", "tabs"] as const).map((layout) => (
+                    <button
+                      key={layout}
+                      onClick={() => setNavLayout(layout)}
+                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${
+                        navLayout === layout
+                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      }`}
+                    >
+                      {layout === "sidebar" ? "Sidebar" : "Horizontal Tabs"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           {/* ── Appearance ── */}
           {activeTab === "appearance" && (
@@ -224,25 +275,6 @@ export default function SettingsView() {
                   onChange={(e) => setAppearance("font_size", Number(e.target.value))}
                   className="w-48 accent-[var(--accent-color)]"
                 />
-              </div>
-
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Navigation Layout</label>
-                <div className="flex gap-2">
-                  {(["sidebar", "tabs"] as const).map((layout) => (
-                    <button
-                      key={layout}
-                      onClick={() => setNavLayout(layout)}
-                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${
-                        navLayout === layout
-                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      }`}
-                    >
-                      {layout === "sidebar" ? "Sidebar" : "Horizontal Tabs"}
-                    </button>
-                  ))}
-                </div>
               </div>
             </>
           )}
@@ -491,7 +523,12 @@ export default function SettingsView() {
                   Labels set here will be used throughout the app. Priority list names sync automatically.
                 </p>
               </div>
+            </>
+          )}
 
+          {/* ── Chat ── */}
+          {activeTab === "chat" && (
+            <>
               {/* Chat Title Auto-Generation */}
               <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-2 block">Chat Title Auto-Generation</label>
@@ -544,6 +581,25 @@ export default function SettingsView() {
                   AI-generated titles improve chat organization. &apos;Periodic&apos; refreshes the title based on conversation progress.
                 </p>
               </div>
+
+              {/* Deletion Settings */}
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Immediate Delete</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Bypass recycle bin and delete chats immediately with confirmation</p>
+                </div>
+                <Toggle on={dbSettings.immediate_delete} onToggle={() => set("immediate_delete", !dbSettings.immediate_delete)} />
+              </div>
+
+              {!dbSettings.immediate_delete && (
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Confirm Move to Trash</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Prompt for confirmation before moving chats to the recycle bin</p>
+                  </div>
+                  <Toggle on={dbSettings.confirm_move_to_trash} onToggle={() => set("confirm_move_to_trash", !dbSettings.confirm_move_to_trash)} />
+                </div>
+              )}
             </>
           )}
 
@@ -589,34 +645,10 @@ export default function SettingsView() {
             <>
               <div className="flex items-center justify-between py-1">
                 <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Start at login</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically launch Aetherium when you log in</p>
-                </div>
-                <Toggle on={dbSettings.start_at_login} onToggle={() => set("start_at_login", !dbSettings.start_at_login)} />
-              </div>
-
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Open in background</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Launch without bringing window to front</p>
-                </div>
-                <Toggle on={dbSettings.open_in_background} onToggle={() => set("open_in_background", !dbSettings.open_in_background)} />
-              </div>
-
-              <div className="flex items-center justify-between py-1">
-                <div>
                   <p className="text-sm text-[var(--text-secondary)]">Require authentication on launch</p>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">Use Touch ID or password when opening the app</p>
                 </div>
                 <Toggle on={dbSettings.touch_id_enabled} onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)} />
-              </div>
-
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Immediate Delete</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Bypass recycle bin and delete chats immediately with confirmation</p>
-                </div>
-                <Toggle on={dbSettings.immediate_delete} onToggle={() => set("immediate_delete", !dbSettings.immediate_delete)} />
               </div>
 
               <div>
@@ -660,6 +692,108 @@ export default function SettingsView() {
                   )}
                 </div>
               </div>
+            </>
+          )}
+
+          {/* ── Sync ── */}
+          {activeTab === "sync" && (
+            <>
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Multi-device Sync</h3>
+                <p className="text-xs text-[var(--text-muted)] mb-3">
+                  Sync your chats, memories, and settings across devices using a private Git remote.
+                  Requires a private repository (GitHub, GitLab, or any SSH-accessible bare repo) and
+                  Git installed on this machine.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Enable sync</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically sync every 5 minutes in the background</p>
+                </div>
+                <Toggle
+                  on={gitSync?.enabled ?? false}
+                  onToggle={async () => {
+                    if (!gitSync) { return; }
+                    const next = !gitSync.enabled;
+                    setGitSyncSaving(true);
+                    try {
+                      await api.gitSync.configure(gitSyncUrl, next);
+                      setGitSync((s) => s ? { ...s, enabled: next } : s);
+                    } catch (e: any) {
+                      setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
+                    } finally {
+                      setGitSyncSaving(false);
+                    }
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Remote URL</label>
+                <div className="flex gap-2">
+                  <input
+                    value={gitSyncUrl}
+                    onChange={(e) => setGitSyncUrl(e.target.value)}
+                    placeholder="git@github.com:you/aetherium-sync.git"
+                    className="flex-1 px-3 py-1.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] font-mono"
+                  />
+                  <button
+                    disabled={gitSyncSaving || !gitSyncUrl}
+                    onClick={async () => {
+                      setGitSyncSaving(true);
+                      try {
+                        await api.gitSync.configure(gitSyncUrl, gitSync?.enabled ?? false);
+                        setGitSync((s) => s ? { ...s, remote_url: gitSyncUrl, last_error: "" } : s);
+                      } catch (e: any) {
+                        setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
+                      } finally {
+                        setGitSyncSaving(false);
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    {gitSyncSaving ? <RefreshCw size={12} className="animate-spin" /> : "Save"}
+                  </button>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                  SSH remotes are recommended. For SSH auth, ensure your key is loaded in ssh-agent.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-xs text-[var(--text-muted)]">Last synced</p>
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    {gitSync?.last_synced_at ? new Date(gitSync.last_synced_at).toLocaleString() : "Never"}
+                  </p>
+                </div>
+                <button
+                  disabled={gitSyncing || !gitSync?.enabled}
+                  onClick={async () => {
+                    setGitSyncing(true);
+                    try {
+                      const s = await api.gitSync.triggerSync();
+                      setGitSync(s);
+                    } catch (e: any) {
+                      setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
+                    } finally {
+                      setGitSyncing(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+                >
+                  {gitSyncing ? <RefreshCw size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                  Sync Now
+                </button>
+              </div>
+
+              {gitSync?.last_error && (
+                <div className="px-3 py-2 rounded bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                  {gitSync.last_error}
+                </div>
+              )}
             </>
           )}
 

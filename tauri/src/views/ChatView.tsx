@@ -44,7 +44,7 @@ export default function ChatView() {
   const [activeContextSources, setActiveContextSources] = useState<Record<string, any>>({});
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) { return; }
     const unlistenPromise = api.context.listenContextSources(sessionId, (sources) => {
       setActiveContextSources(prev => ({ ...prev, [sessionId]: sources }));
     });
@@ -182,7 +182,7 @@ export default function ChatView() {
             </pre>
             <button
               onClick={async () => {
-                if (!activeWorkspaceId) return;
+                if (!activeWorkspaceId) { return; }
                 try {
                   await useArtifactStore.getState().createArtifact({
                     workspace_id: activeWorkspaceId,
@@ -675,14 +675,22 @@ export default function ChatView() {
     }
   }
 
+  const currentTokenEstimate = (messages[activeChatId || ""] ?? []).reduce((acc, m) => acc + (m.content.length / 4), 0) + (input.length / 4);
+  const budgetPercentage = Math.min((currentTokenEstimate / 8192) * 100, 100);
+
   async function deleteSession(id: string) {
     if (!activeWorkspaceId) {return;}
-    const isImmediate = useSettingsStore.getState().immediateDelete;
-    const confirmMsg = isImmediate 
-      ? "Permanently delete this chat session and all its messages? This cannot be undone."
-      : "Move this chat to the recycle bin?";
+    const settings = useSettingsStore.getState();
+    const isImmediate = settings.immediateDelete;
+    const skipConfirm = !isImmediate && !settings.confirmMoveToTrash;
 
-    if (!window.confirm(confirmMsg)) {return;}
+    if (!skipConfirm) {
+      const confirmMsg = isImmediate 
+        ? "Permanently delete this chat session and all its messages? This cannot be undone."
+        : "Move this chat to the recycle bin?";
+
+      if (!window.confirm(confirmMsg)) {return;}
+    }
 
     await api.chat.deleteSession(activeWorkspaceId, id);
     useChatStore.getState().removeSession(id);
@@ -1462,8 +1470,20 @@ export default function ChatView() {
                   />
                 </div>
               )}
-              {/* Textarea + send button */}
-              <div className="flex items-end gap-2 px-1">
+
+              <div className="px-3 mb-1 flex items-center justify-between">
+                <div className="h-1 flex-1 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden mr-4">
+                  <div 
+                    className={`h-full transition-all duration-500 ${budgetPercentage > 90 ? 'bg-red-500' : budgetPercentage > 70 ? 'bg-amber-500' : 'bg-blue-500'}`} 
+                    style={{ width: `${budgetPercentage}%` }} 
+                  />
+                </div>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  {Math.round(currentTokenEstimate).toLocaleString()} / 8,192
+                </span>
+              </div>
+
+              {/* Textarea + send button */}              <div className="flex items-end gap-2 px-1">
                 <textarea
                   ref={inputRef}
                   value={input}

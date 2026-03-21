@@ -327,7 +327,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('topic_analysis_interval_minutes', '30'),
     ('migration_suggestion_threshold', '0.3'),
     ('web_session_preserve', 'false'),
-    ('immediate_delete', 'false');
+    ('immediate_delete', 'false'),
+    ('confirm_move_to_trash', 'true');
 
 -- Conversation summaries
 CREATE TABLE IF NOT EXISTS conversation_summaries (
