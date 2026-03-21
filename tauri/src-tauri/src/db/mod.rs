@@ -298,5 +298,22 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v10: add is_incognito column to chat_sessions for existing databases
+    let applied_v10: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v10_chat_sessions_is_incognito'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v10 == 0 {
+        // Ignore error if column already exists (fresh installs have it from schema.sql)
+        let _ = conn.execute_batch(
+            "ALTER TABLE chat_sessions ADD COLUMN is_incognito INTEGER NOT NULL DEFAULT 0;",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v10_chat_sessions_is_incognito');",
+        )?;
+    }
+
     Ok(())
 }
