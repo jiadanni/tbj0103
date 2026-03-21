@@ -1,0 +1,36 @@
+use tauri::{AppHandle, State, Emitter};
+use crate::models::context::AssembleAndSendRequest;
+use crate::db::DbState;
+use crate::services::context_assembler::assemble_context;
+use crate::ollama::client::OllamaClient;
+
+#[tauri::command]
+pub async fn assemble_and_send(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    req: AssembleAndSendRequest,
+) -> Result<String, String> {
+    // 1. Build context
+    let (messages, sources) = {
+        let conn_guard = state.0.lock().map_err(|e| e.to_string())?;
+        assemble_context(
+            &conn_guard,
+            &req.workspace_id,
+            &req.session_id,
+            &req.model_name,
+            &req.options
+        )?
+    };
+
+    let client_url = req.options.get("ollama_url").and_then(|v: &serde_json::Value| v.as_str()).map(|s: &str| s.to_string());
+    let client = OllamaClient::new(client_url);
+    
+    // Send event for sources so frontend knows what context was used
+    let _ = app.emit(
+        &format!("context-sources-{}", req.session_id),
+        sources
+    );
+
+    // Call stream_message
+    client.stream_message(&app, &req.session_id, &req.model_name, messages).await
+}

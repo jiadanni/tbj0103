@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost } from "lucide-react";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
-import { useChatStore } from "../stores/chatStore";
+import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useWorkspaceStore, type Project } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession } from "../stores/chatStore";
@@ -375,7 +375,15 @@ export default function ChatView() {
 
   async function createNewSession(isIncognito = false) {
     if (!activeWorkspaceId) {return;}
-    const session = await api.chat.createSession(activeWorkspaceId, activeProjectId, { 
+
+    // Look for an unused session first
+    const unusedSession = findUnusedSession(sessions, useChatStore.getState().messages, activeProjectId, isIncognito);
+    if (unusedSession) {
+      setActiveChatId(unusedSession.id);
+      return;
+    }
+
+    const session = await api.chat.createSession(activeWorkspaceId, activeProjectId, {
       modelName: selectedModel,
       is_incognito: isIncognito
     });
@@ -383,7 +391,6 @@ export default function ChatView() {
     setActiveChatId(session.id);
     setMessages(session.id, []);
   }
-
   async function generateSessionTitleIfNeeded(sessionId: string, model: string, firstMessage: string) {
     const settings = await api.settings.get().catch(() => null);
     if (!settings || settings.chat_title_auto_refresh === "disabled") {return;}
@@ -597,7 +604,7 @@ export default function ChatView() {
           }
         });
 
-        await api.ollama.sendMessage(sid, selectedModel, history, true, ollamaUrl);
+        await api.context.assembleAndSend(sid, activeWorkspaceId, selectedModel, { ollama_url: ollamaUrl || undefined });
       } catch (err) {
         setIsStreaming(false);
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -687,7 +694,7 @@ export default function ChatView() {
           appendStreamChunk(sid, chunk);
         }
       });
-      await api.ollama.sendMessage(sid, selectedModel, history, true, ollamaUrl);
+      await api.context.assembleAndSend(sid, activeWorkspaceId, selectedModel, { ollama_url: ollamaUrl || undefined });
     } catch (err) {
       setIsStreaming(false);
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -724,7 +731,7 @@ export default function ChatView() {
           appendStreamChunk(sid, chunk);
         }
       });
-      await api.ollama.sendMessage(sid, selectedModel, history, true, ollamaUrl);
+      await api.context.assembleAndSend(sid, activeWorkspaceId, selectedModel, { ollama_url: ollamaUrl || undefined });
     } catch (err) {
       setIsStreaming(false);
       const errMsg = err instanceof Error ? err.message : String(err);

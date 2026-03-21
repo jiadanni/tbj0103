@@ -13,3 +13,5 @@ pub mod export_engine;
 pub mod backup_service;
 pub mod settings;
 pub mod topic_signature;
+pub mod context_assembler;
+pub mod memory_pipeline;

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
-import { useChatStore, type ChatSession } from "../stores/chatStore";
+import { useChatStore, findUnusedSession, type ChatSession } from "../stores/chatStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   SquarePen, LayoutGrid, BarChart2, Folder, Settings,
@@ -29,7 +29,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId, workspaces } = useWorkspaceStore();
-  const { sessions, setSessions } = useChatStore();
+  const { sessions, setSessions, messages, setActiveChatId } = useChatStore();
 
   const activeSegment = "/" + location.pathname.split("/")[1];
   const activeChatId = location.pathname.startsWith("/chat/") ? location.pathname.split("/")[2] : null;
@@ -118,8 +118,18 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   }, [creatingFolder]);
 
   async function handleNewThread(isIncognito = false) {
+    if (!activeWorkspaceId) {return;}
+    
+    // Look for an unused session first
+    const unusedSession = findUnusedSession(sessions, messages, activeProjectId, isIncognito);
+    if (unusedSession) {
+      setActiveChatId(unusedSession.id);
+      navigate(`/chat/${unusedSession.id}`);
+      return;
+    }
+
     try {
-      const s = await api.chat.createSession(activeWorkspaceId || "", activeProjectId, { is_incognito: isIncognito });
+      const s = await api.chat.createSession(activeWorkspaceId, activeProjectId, { is_incognito: isIncognito });
       navigate(`/chat/${s.id}`);
     } catch (e) {
       console.error(e);

@@ -12,3 +12,6 @@ pub mod backup;
 pub mod ai_model;
 pub mod memory;
 pub mod mcp;
+pub mod context;
+pub mod artifact;
+pub mod summary;

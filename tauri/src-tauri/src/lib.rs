@@ -120,7 +120,8 @@ pub fn run() {
             commands::project::get_project,
             commands::project::update_project,
             commands::project::delete_project,
-            // Chat commands
+            // Context & Chat
+            commands::context::assemble_and_send,
             commands::chat::create_chat_session,
             commands::chat::list_chat_sessions,
             commands::chat::get_chat_session,

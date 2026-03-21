@@ -293,6 +293,13 @@ export const api = {
       invoke<SearchResult[]>("semantic_search", { req: { query, workspace_id: workspaceId }, queryEmbedding, workspaceId }),
   },
 
+  context: {
+    assembleAndSend: (sessionId: string, workspaceId: string, modelName: string, options?: Record<string, any>) =>
+      invoke<string>("assemble_and_send", { req: { session_id: sessionId, workspace_id: workspaceId, model_name: modelName, options: options || {} } }),
+    listenContextSources: (sessionId: string, onSources: (sources: any) => void): Promise<UnlistenFn> =>
+      listen<any>(`context-sources-${sessionId}`, (event) => onSources(event.payload)),
+  },
+
   ollama: {
     sendMessage: (sessionId: string, model: string, messages: { role: string; content: string }[], stream: boolean, ollamaUrl?: string) =>
       invoke<string>("send_message", { req: { session_id: sessionId, model, messages, stream, ollama_url: ollamaUrl } }),
