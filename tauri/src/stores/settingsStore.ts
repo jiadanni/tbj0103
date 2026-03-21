@@ -17,6 +17,7 @@ interface AppSettings {
   compareModelB: string;
   modelLabels: Record<string, string>;
   skipLinkConfirm: boolean;
+  immediateDelete: boolean;
 }
 
 interface SettingsStore extends AppSettings {
@@ -32,6 +33,7 @@ interface SettingsStore extends AppSettings {
   setCompareModelB: (m: string) => void;
   setModelLabel: (id: string, label: string) => void;
   setSkipLinkConfirm: (v: boolean) => void;
+  setImmediateDelete: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -50,6 +52,7 @@ export const useSettingsStore = create<SettingsStore>()(
       compareModelB: "",
       modelLabels: {},
       skipLinkConfirm: false,
+      immediateDelete: false,
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
       setTheme: (theme) => set({ theme }),
@@ -62,6 +65,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setCompareModelB: (compareModelB) => set({ compareModelB }),
       setModelLabel: (id, label) => set((state) => ({ modelLabels: { ...state.modelLabels, [id]: label } })),
       setSkipLinkConfirm: (skipLinkConfirm) => set({ skipLinkConfirm }),
+      setImmediateDelete: (immediateDelete) => set({ immediateDelete }),
     }),
     { name: "aetherium-settings" }
   )

@@ -117,6 +117,7 @@ export default function SettingsView() {
     zustandSettings.setDraftModel(dbSettings.draft_model);
     zustandSettings.setCompareModelA(dbSettings.compare_model_a);
     zustandSettings.setCompareModelB(dbSettings.compare_model_b);
+    zustandSettings.setImmediateDelete(dbSettings.immediate_delete);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -608,6 +609,14 @@ export default function SettingsView() {
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">Use Touch ID or password when opening the app</p>
                 </div>
                 <Toggle on={dbSettings.touch_id_enabled} onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)} />
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Immediate Delete</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Bypass recycle bin and delete chats immediately with confirmation</p>
+                </div>
+                <Toggle on={dbSettings.immediate_delete} onToggle={() => set("immediate_delete", !dbSettings.immediate_delete)} />
               </div>
 
               <div>

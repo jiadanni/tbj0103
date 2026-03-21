@@ -6,6 +6,7 @@ import {
 import { Plus } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
+import ArtifactPanel from "./ArtifactPanel";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { api } from "../lib/api";
 import { useHotkeys, type HotkeyBinding } from "../hooks/useHotkeys";
@@ -15,7 +16,7 @@ import {
   MessageSquare, Network, CreditCard,
   FileText, Settings,
   BarChart2, LucideIcon,
-  Globe, FileEdit,
+  Globe, FileEdit, Trash2,
 } from "lucide-react";
 
 const NAV_ITEMS: { path: string; icon: LucideIcon; label: string; key?: string }[] = [
@@ -26,6 +27,7 @@ const NAV_ITEMS: { path: string; icon: LucideIcon; label: string; key?: string }
   { path: "/webcapture",    icon: Globe,                  label: "Web Captures",    key: "W" },
   { path: "/graph",         icon: Network,                label: "Knowledge Graph", key: "G" },
   { path: "/flashcards",    icon: CreditCard,             label: "Flashcards",      key: "F" },
+  { path: "/recycle-bin",   icon: Trash2,                 label: "Recycle Bin",     key: "R" },
   { path: "/settings",      icon: Settings,               label: "Settings",        key: "," },
 ];
 import ChatView from "../views/ChatView";
@@ -37,6 +39,7 @@ import DocumentBrowserView from "../views/DocumentBrowserView";
 import NoteEditorView from "../views/NoteEditorView";
 import WebCaptureView from "../views/WebCaptureView";
 import ThoughtQueueView from "../views/ThoughtQueueView";
+import RecycleBinView from "../views/RecycleBinView";
 
 function WorkspaceTabBar() {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace } = useWorkspaceStore();
@@ -261,6 +264,7 @@ export default function Layout() {
             <Route path="/graph" element={<KnowledgeGraphView />} />
             <Route path="/flashcards" element={<FlashcardReviewView />} />
             <Route path="/settings" element={<SettingsView />} />
+            <Route path="/recycle-bin" element={<RecycleBinView />} />
           </Routes>
         </div>
       ) : (
@@ -293,10 +297,12 @@ export default function Layout() {
             <Route path="/graph" element={<KnowledgeGraphView />} />
             <Route path="/flashcards" element={<FlashcardReviewView />} />
             <Route path="/settings" element={<SettingsView />} />
+            <Route path="/recycle-bin" element={<RecycleBinView />} />
           </Routes>
         </Panel>
       </PanelGroup>
       )}
+      <ArtifactPanel />
     </div>
   );
 }

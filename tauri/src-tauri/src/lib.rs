@@ -45,6 +45,9 @@ pub fn run() {
             ));
             app.manage(mcp_manager);
             
+            // Start background scheduler
+            crate::services::background_scheduler::start_scheduler(app.handle().clone());
+            
             // Spawn background timer for topic signatures
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -120,6 +123,12 @@ pub fn run() {
             commands::project::get_project,
             commands::project::update_project,
             commands::project::delete_project,
+            // Artifact commands
+            commands::artifact::create_artifact,
+            commands::artifact::get_artifact,
+            commands::artifact::list_artifacts,
+            commands::artifact::update_artifact,
+            commands::artifact::delete_artifact,
             // Context & Chat
             commands::context::assemble_and_send,
             commands::chat::create_chat_session,
@@ -128,6 +137,10 @@ pub fn run() {
             commands::chat::delete_chat_session,
             commands::chat::add_message,
             commands::chat::get_messages,
+            commands::chat::list_deleted_chat_sessions,
+            commands::chat::restore_chat_session,
+            commands::chat::hard_delete_chat_session,
+            commands::chat::empty_recycle_bin,
             // Knowledge graph commands
             commands::knowledge_graph::create_concept,
             commands::knowledge_graph::list_concepts,

@@ -6,11 +6,13 @@ import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
+import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Project } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession } from "../stores/chatStore";
 import { TopicChips } from "../components/TopicChips";
 import { WorkspaceMigrationBanner } from "../components/WorkspaceMigrationBanner";
+import ContextIndicator from "../components/ContextIndicator";
 
 type ChatMode = "chat" | "compare";
 
@@ -39,6 +41,17 @@ export default function ChatView() {
   const [selectedModel, setSelectedModel] = useState(preferredModel || "");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
+  const [activeContextSources, setActiveContextSources] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const unlistenPromise = api.context.listenContextSources(sessionId, (sources) => {
+      setActiveContextSources(prev => ({ ...prev, [sessionId]: sources }));
+    });
+    return () => {
+      unlistenPromise.then(fn => fn());
+    };
+  }, [sessionId]);
 
   // Persist model choice to global settings
   const persistModelChoice = useCallback(async (model: string) => {
@@ -156,6 +169,44 @@ export default function ChatView() {
         {children}
       </a>
     ),
+    code: ({ node, inline, className, children, ...props }: any) => {
+      const match = /language-(\w+)/.exec(className || "");
+      const lang = match ? match[1] : "";
+      const content = String(children).replace(/\n$/, "");
+      
+      if (!inline && content.split("\n").length >= 5) {
+        return (
+          <div className="group relative">
+            <pre className={`${className} p-4 rounded-lg overflow-x-auto bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800`}>
+              <code {...props}>{children}</code>
+            </pre>
+            <button
+              onClick={async () => {
+                if (!activeWorkspaceId) return;
+                try {
+                  await useArtifactStore.getState().createArtifact({
+                    workspace_id: activeWorkspaceId,
+                    session_id: activeChatId,
+                    title: `New ${lang || 'Code'} Snippet`,
+                    artifact_type: 'code',
+                    language: lang,
+                    content: content,
+                    description: `Extracted from chat session`,
+                  });
+                } catch (e) {
+                  console.error("Failed to save artifact:", e);
+                }
+              }}
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs px-2 py-1 rounded shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300"
+            >
+              <FileText size={12} />
+              Save as Artifact
+            </button>
+          </div>
+        );
+      }
+      return <code className={className} {...props}>{children}</code>;
+    }
   };
 
   const [comparePrompt, setComparePrompt] = useState("");
@@ -626,6 +677,13 @@ export default function ChatView() {
 
   async function deleteSession(id: string) {
     if (!activeWorkspaceId) {return;}
+    const isImmediate = useSettingsStore.getState().immediateDelete;
+    const confirmMsg = isImmediate 
+      ? "Permanently delete this chat session and all its messages? This cannot be undone."
+      : "Move this chat to the recycle bin?";
+
+    if (!window.confirm(confirmMsg)) {return;}
+
     await api.chat.deleteSession(activeWorkspaceId, id);
     useChatStore.getState().removeSession(id);
     if (activeChatId === id) {setActiveChatId(null);}
@@ -1226,6 +1284,9 @@ export default function ChatView() {
                     >
                       {msg.role === "assistant" ? (
                         <div className="prose prose-sm prose-invert max-w-none">
+                          {i === activeMessages.length - 1 && activeContextSources[sessionId!] && (
+                            <ContextIndicator sources={activeContextSources[sessionId!]} />
+                          )}
                           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{msg.content}</ReactMarkdown>
                         </div>
                       ) : (
