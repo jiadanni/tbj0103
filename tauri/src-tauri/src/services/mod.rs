@@ -18,3 +18,4 @@ pub mod memory_pipeline;
 pub mod artifact_service;
 pub mod summarization_service;
 pub mod background_scheduler;
+pub mod vector_index;

@@ -1,6 +1,59 @@
 use rusqlite::Connection;
 use crate::models::artifact::{Artifact, ArtifactSummary, CreateArtifactRequest};
 use crate::services::context_assembler::estimate_tokens;
+use crate::services::vector_index::{bytes_to_f32_vec, f32_vec_to_bytes, cosine_similarity};
+
+pub fn store_artifact_embedding(conn: &Connection, artifact_id: &str, embedding: &[f32]) -> Result<(), String> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let bytes = f32_vec_to_bytes(embedding);
+    conn.execute(
+        "INSERT OR REPLACE INTO artifact_embeddings (artifact_id, embedding, model, created_at)
+         VALUES (?1, ?2, 'nomic-embed-text', ?3)",
+        rusqlite::params![artifact_id, bytes, now],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn search_artifacts_semantic(
+    conn: &Connection,
+    workspace_id: &str,
+    query_embedding: &[f32],
+    limit: usize
+) -> Result<Vec<(ArtifactSummary, f32)>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.title, a.artifact_type, a.language, a.description, a.tags, a.is_pinned, a.version, a.updated_at, ae.embedding
+         FROM artifacts a
+         JOIN artifact_embeddings ae ON a.id = ae.artifact_id
+         WHERE a.workspace_id = ?1"
+    ).map_err(|e| e.to_string())?;
+
+    let mut results: Vec<(ArtifactSummary, f32)> = stmt.query_map(rusqlite::params![workspace_id], |row| {
+        let embedding_bytes: Vec<u8> = row.get(9)?;
+        let artifact_embedding = bytes_to_f32_vec(&embedding_bytes);
+        let score = cosine_similarity(query_embedding, &artifact_embedding);
+        
+        let tags_json: String = row.get(5)?;
+        let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+        
+        Ok((ArtifactSummary {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            artifact_type: row.get(2)?,
+            language: row.get(3)?,
+            description: row.get(4)?,
+            tags,
+            is_pinned: row.get::<_, i32>(6)? != 0,
+            version: row.get(7)?,
+            updated_at: row.get(8)?,
+        }, score))
+    }).map_err(|e| e.to_string())?
+    .filter_map(Result::ok)
+    .collect();
+
+    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    results.truncate(limit);
+    Ok(results)
+}
 
 pub fn create_artifact(conn: &Connection, req: CreateArtifactRequest) -> Result<Artifact, String> {
     let id = uuid::Uuid::new_v4().to_string();
