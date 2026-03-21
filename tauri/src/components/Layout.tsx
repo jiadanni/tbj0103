@@ -40,6 +40,7 @@ function WorkspaceTabBar() {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace } = useWorkspaceStore();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const [dragOverWsId, setDragOverWsId] = useState<string | null>(null);
 
   async function createWorkspace() {
     if (!newName.trim()) return;
@@ -50,14 +51,42 @@ function WorkspaceTabBar() {
     setCreating(false);
   }
 
+  async function handleDrop(e: React.DragEvent, targetWsId: string) {
+    e.preventDefault();
+    setDragOverWsId(null);
+    const data = e.dataTransfer.getData("application/x-chat-session-ids");
+    if (!data) return;
+    try {
+      const sessionIds: string[] = JSON.parse(data);
+      if (sessionIds.length === 0) return;
+      await api.chat.moveSessions(sessionIds, targetWsId);
+      // Remove moved sessions from current store
+      const { useChatStore } = await import("../stores/chatStore");
+      sessionIds.forEach((id) => useChatStore.getState().removeSession(id));
+    } catch (err) {
+      console.error("Failed to move sessions:", err);
+    }
+  }
+
   return (
     <div className="flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 overflow-x-auto">
       {workspaces.map((ws) => (
         <button
           key={ws.id}
           onClick={() => setActiveWorkspaceId(ws.id)}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("application/x-chat-session-ids")) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDragOverWsId(ws.id);
+            }
+          }}
+          onDragLeave={() => setDragOverWsId(null)}
+          onDrop={(e) => handleDrop(e, ws.id)}
           className={`flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-b-2 transition-colors ${
-            activeWorkspaceId === ws.id
+            dragOverWsId === ws.id
+              ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)] font-medium"
+              : activeWorkspaceId === ws.id
               ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
               : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           }`}
