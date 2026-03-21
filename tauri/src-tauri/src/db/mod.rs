@@ -315,5 +315,142 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v11: Conversation summaries
+    let applied_v11: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v11_conversation_summaries'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v11 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS conversation_summaries (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                summary_type TEXT NOT NULL DEFAULT 'rolling'
+                    CHECK(summary_type IN ('rolling', 'final', 'segment')),
+                content TEXT NOT NULL,
+                key_topics TEXT NOT NULL DEFAULT '[]',
+                message_range_start INTEGER NOT NULL,
+                message_range_end INTEGER NOT NULL,
+                token_count INTEGER NOT NULL DEFAULT 0,
+                embedding BLOB,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO _migrations(name) VALUES('v11_conversation_summaries');",
+        )?;
+    }
+
+    // v12: Artifacts
+    let applied_v12: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v12_artifacts'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v12 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS artifacts (
+                id TEXT PRIMARY KEY NOT NULL,
+                workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
+                message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+                title TEXT NOT NULL,
+                artifact_type TEXT NOT NULL DEFAULT 'code'
+                    CHECK(artifact_type IN ('code','document','diagram','config','data','other')),
+                language TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                tags TEXT NOT NULL DEFAULT '[]',
+                is_pinned INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                parent_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL,
+                token_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO _migrations(name) VALUES('v12_artifacts');",
+        )?;
+    }
+
+    // v13: Artifact embeddings
+    let applied_v13: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v13_artifact_embeddings'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v13 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS artifact_embeddings (
+                artifact_id TEXT PRIMARY KEY NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+                embedding BLOB NOT NULL,
+                model TEXT NOT NULL DEFAULT 'nomic-embed-text',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO _migrations(name) VALUES('v13_artifact_embeddings');",
+        )?;
+    }
+
+    // v14: Memory embeddings
+    let applied_v14: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v14_memory_embeddings'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v14 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS memory_embeddings (
+                memory_id TEXT PRIMARY KEY NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+                embedding BLOB NOT NULL,
+                model TEXT NOT NULL DEFAULT 'nomic-embed-text',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO _migrations(name) VALUES('v14_memory_embeddings');",
+        )?;
+    }
+
+    // v15: Project-scoped memories
+    let applied_v15: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v15_project_scoped_memories'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v15 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE memories ADD COLUMN project_id TEXT NOT NULL DEFAULT '';",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v15_project_scoped_memories');",
+        )?;
+    }
+
+    // v16: Context assembly snapshots
+    let applied_v16: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v16_context_snapshots'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v16 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS context_snapshots (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                message_id TEXT NOT NULL,
+                assembled_context TEXT NOT NULL,
+                token_budget INTEGER NOT NULL,
+                tokens_used INTEGER NOT NULL,
+                sources_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO _migrations(name) VALUES('v16_context_snapshots');",
+        )?;
+    }
+
     Ok(())
 }

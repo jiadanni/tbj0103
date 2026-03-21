@@ -23,3 +23,4 @@ pub mod mcp;
 pub mod thought_queue;
 pub mod web_ai;
 pub mod topic_signature;
+pub mod context;

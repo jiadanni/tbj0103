@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     system_prompt TEXT NOT NULL DEFAULT '',
     is_pinned INTEGER NOT NULL DEFAULT 0,
     is_incognito INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT,
     parent_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
     branch_message_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -271,6 +273,7 @@ CREATE TABLE IF NOT EXISTS thought_queue (
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY NOT NULL,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL,
     memory_type TEXT NOT NULL DEFAULT 'fact'
         CHECK(memory_type IN ('fact', 'preference', 'context')),
@@ -323,4 +326,71 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('demo_mode', 'false'),
     ('topic_analysis_interval_minutes', '30'),
     ('migration_suggestion_threshold', '0.3'),
-    ('web_session_preserve', 'false');
+    ('web_session_preserve', 'false'),
+    ('immediate_delete', 'false');
+
+-- Conversation summaries
+CREATE TABLE IF NOT EXISTS conversation_summaries (
+    id TEXT PRIMARY KEY NOT NULL,
+    session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    summary_type TEXT NOT NULL DEFAULT 'rolling'
+        CHECK(summary_type IN ('rolling', 'final', 'segment')),
+    content TEXT NOT NULL,
+    key_topics TEXT NOT NULL DEFAULT '[]',
+    message_range_start INTEGER NOT NULL,
+    message_range_end INTEGER NOT NULL,
+    token_count INTEGER NOT NULL DEFAULT 0,
+    embedding BLOB,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Artifacts
+CREATE TABLE IF NOT EXISTS artifacts (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
+    message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    artifact_type TEXT NOT NULL DEFAULT 'code'
+        CHECK(artifact_type IN ('code','document','diagram','config','data','other')),
+    language TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    tags TEXT NOT NULL DEFAULT '[]',
+    is_pinned INTEGER NOT NULL DEFAULT 0,
+    version INTEGER NOT NULL DEFAULT 1,
+    parent_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL,
+    token_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Artifact embeddings
+CREATE TABLE IF NOT EXISTS artifact_embeddings (
+    artifact_id TEXT PRIMARY KEY NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+    embedding BLOB NOT NULL,
+    model TEXT NOT NULL DEFAULT 'nomic-embed-text',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Memory embeddings
+CREATE TABLE IF NOT EXISTS memory_embeddings (
+    memory_id TEXT PRIMARY KEY NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    embedding BLOB NOT NULL,
+    model TEXT NOT NULL DEFAULT 'nomic-embed-text',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Context assembly snapshots (debugging/replay)
+CREATE TABLE IF NOT EXISTS context_snapshots (
+    id TEXT PRIMARY KEY NOT NULL,
+    session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL,
+    assembled_context TEXT NOT NULL,
+    token_budget INTEGER NOT NULL,
+    tokens_used INTEGER NOT NULL,
+    sources_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

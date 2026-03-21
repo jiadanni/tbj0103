@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MessageSquare, Pin, PinOff, Trash2, Plus, Search, ExternalLink } from "lucide-react";
 import { api } from "../lib/api";
-import { useChatStore } from "../stores/chatStore";
+import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession } from "../stores/chatStore";
@@ -14,7 +14,7 @@ import type { ChatSession } from "../stores/chatStore";
 export default function ChatSessionListView() {
   const navigate = useNavigate();
   const { activeProjectId, projects, activeWorkspaceId } = useWorkspaceStore();
-  const { sessions, setSessions, setActiveChatId } = useChatStore();
+  const { sessions, setSessions, setActiveChatId, messages } = useChatStore();
   const { modelLabels } = useSettingsStore();
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -64,6 +64,15 @@ export default function ChatSessionListView() {
 
   async function createSession() {
     if (!activeWorkspaceId) {return;}
+    
+    // Look for an unused session first
+    const unusedSession = findUnusedSession(sessions, messages, activeProjectId, false);
+    if (unusedSession) {
+      setActiveChatId(unusedSession.id);
+      navigate(`/chat/${unusedSession.id}`);
+      return;
+    }
+
     const session = await api.chat.createSession(activeWorkspaceId, activeProjectId);
     setSessions([session, ...sessions]);
     setActiveChatId(session.id);
