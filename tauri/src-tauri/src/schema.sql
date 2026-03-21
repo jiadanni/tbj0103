@@ -291,6 +291,7 @@ CREATE TABLE IF NOT EXISTS ai_models (
     name TEXT NOT NULL,
     model_id TEXT NOT NULL,
     provider TEXT NOT NULL DEFAULT 'ollama',
+    role_tags TEXT NOT NULL DEFAULT '[]',
     priority INTEGER NOT NULL DEFAULT 0,
     is_paid INTEGER NOT NULL DEFAULT 0,
     enabled INTEGER NOT NULL DEFAULT 1,

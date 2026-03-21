@@ -6,6 +6,7 @@ pub struct AiModel {
     pub name: String,
     pub model_id: String,
     pub provider: String,
+    pub role_tags: Vec<String>,
     pub priority: i64,
     pub is_paid: bool,
     pub enabled: bool,
@@ -18,6 +19,7 @@ pub struct AddAiModelRequest {
     pub name: String,
     pub model_id: String,
     pub provider: Option<String>,
+    pub role_tags: Option<Vec<String>>,
     pub is_paid: Option<bool>,
     pub priority: Option<i64>,
 }
@@ -26,6 +28,7 @@ pub struct AddAiModelRequest {
 pub struct UpdateAiModelRequest {
     pub id: String,
     pub name: Option<String>,
+    pub role_tags: Option<Vec<String>>,
     pub priority: Option<i64>,
     pub is_paid: Option<bool>,
     pub enabled: Option<bool>,

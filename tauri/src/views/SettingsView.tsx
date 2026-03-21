@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus } from "../lib/api";
+import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
@@ -80,6 +81,7 @@ export default function SettingsView() {
   const [newModelId, setNewModelId] = useState("");
   const [newModelName, setNewModelName] = useState("");
   const [newModelIsPaid, setNewModelIsPaid] = useState(false);
+  const [newModelRoles, setNewModelRoles] = useState<ModelRole[]>(["chat"]);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
 
@@ -113,6 +115,20 @@ export default function SettingsView() {
     }).catch(() => {});
   }
 
+  function toggleRole(currentRoles: string[], role: ModelRole) {
+    return currentRoles.includes(role)
+      ? currentRoles.filter((value) => value !== role)
+      : [...currentRoles, role];
+  }
+
+  function toggleQuickSearchModel(modelId: string) {
+    if (!dbSettings) {return;}
+    const next = dbSettings.quick_search_models.includes(modelId)
+      ? dbSettings.quick_search_models.filter((value) => value !== modelId)
+      : [...dbSettings.quick_search_models, modelId];
+    set("quick_search_models", next);
+  }
+
   useEffect(() => {
     api.settings.get().then((s) => {
       setDbSettings(s);
@@ -131,6 +147,7 @@ export default function SettingsView() {
     zustandSettings.setFontSize(dbSettings.font_size);
     zustandSettings.setPreferredModel(dbSettings.preferred_model);
     zustandSettings.setBackgroundModel(dbSettings.background_model);
+    zustandSettings.setQuickSearchModels(dbSettings.quick_search_models);
     zustandSettings.setOllamaUrl(dbSettings.ollama_base_url);
     zustandSettings.setDualModelEnabled(dbSettings.dual_model_enabled);
     zustandSettings.setDraftModel(dbSettings.draft_model);
@@ -441,7 +458,7 @@ export default function SettingsView() {
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs text-[var(--text-secondary)]">Model Priority List</label>
                   <button
-                    onClick={() => { setShowAddModel(!showAddModel); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); }}
+                    onClick={() => { setShowAddModel(!showAddModel); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); setNewModelRoles(["chat"]); }}
                     className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
                   >
                     <Plus size={11} /> Add Model
@@ -467,6 +484,28 @@ export default function SettingsView() {
                       placeholder="Display name"
                       className="w-full px-2 py-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
                     />
+                    <div>
+                      <p className="mb-1 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Roles</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {MODEL_ROLE_OPTIONS.map((role) => {
+                          const active = newModelRoles.includes(role);
+                          return (
+                            <button
+                              key={role}
+                              type="button"
+                              onClick={() => setNewModelRoles(toggleRole(newModelRoles, role) as ModelRole[])}
+                              className={`rounded-full px-2 py-1 text-[10px] transition-colors ${
+                                active
+                                  ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                                  : "bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                              }`}
+                            >
+                              {role}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <div className="flex items-center justify-between">
                       <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
                         <input type="checkbox" checked={newModelIsPaid} onChange={(e) => setNewModelIsPaid(e.target.checked)} className="accent-[var(--accent-color)]" />
@@ -477,9 +516,9 @@ export default function SettingsView() {
                         <button
                           disabled={!newModelId || !newModelName}
                           onClick={async () => {
-                            await api.aiModel.add(newModelName, newModelId, { is_paid: newModelIsPaid });
+                            await api.aiModel.add(newModelName, newModelId, { is_paid: newModelIsPaid, role_tags: newModelRoles });
                             loadAiModels();
-                            setShowAddModel(false); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false);
+                            setShowAddModel(false); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); setNewModelRoles(["chat"]);
                           }}
                           className="px-2 py-1 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
                         >
@@ -553,6 +592,15 @@ export default function SettingsView() {
                               <span className="ml-2 text-xs text-[var(--text-muted)] truncate">{m.model_id}</span>
                             </div>
                           )}
+                          {m.role_tags.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {m.role_tags.map((role) => (
+                                <span key={role} className="rounded-full bg-[var(--accent-color)]/10 px-1.5 py-0.5 text-[10px] text-[var(--accent-color)]">
+                                  {role}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         {/* Badges */}
@@ -570,6 +618,29 @@ export default function SettingsView() {
                             loadAiModels();
                           }}
                         />
+
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          {MODEL_ROLE_OPTIONS.map((role) => {
+                            const active = m.role_tags.includes(role);
+                            return (
+                              <button
+                                key={role}
+                                onClick={async () => {
+                                  await api.aiModel.update(m.id, { role_tags: toggleRole(m.role_tags, role) });
+                                  loadAiModels();
+                                }}
+                                className={`rounded-full px-1.5 py-0.5 text-[10px] transition-colors ${
+                                  active
+                                    ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                                    : "bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                                }`}
+                                title={`Toggle ${role} role`}
+                              >
+                                {role}
+                              </button>
+                            );
+                          })}
+                        </div>
 
                         {/* Delete */}
                         <button
@@ -729,6 +800,34 @@ export default function SettingsView() {
                 <p className="text-xs text-[var(--text-muted)]">
                   Go to the <strong>AI</strong> tab → Model Priority List and enable any web AI entry (ChatGPT Web, DeepSeek Web, Claude Web, Gemini Web) to make it appear in the Chat view model dropdown.
                 </p>
+              </div>
+
+              <div className="pt-3 space-y-2">
+                <p className="text-xs text-[var(--text-secondary)] font-medium">Quick Search Buttons</p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Pin enabled models as one-tap buttons in the chat composer. They send the current prompt with that model without changing your main dropdown selection.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {aiModels.filter((model) => model.enabled).map((model) => {
+                    const active = dbSettings.quick_search_models.includes(model.model_id);
+                    return (
+                      <button
+                        key={model.id}
+                        onClick={() => toggleQuickSearchModel(model.model_id)}
+                        className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
+                          active
+                            ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                            : "bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                        }`}
+                      >
+                        {model.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                {aiModels.filter((model) => model.enabled).length === 0 && (
+                  <p className="text-[10px] text-[var(--text-muted)]">Enable models in the AI tab first to use them as quick search buttons.</p>
+                )}
               </div>
             </>
           )}
