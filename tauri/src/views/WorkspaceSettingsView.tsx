@@ -68,6 +68,15 @@ export default function WorkspaceSettingsView() {
     }
   }
 
+  async function updateSignature(id: string, manual: string[], ignored: string[]) {
+    try {
+      const newSig = await api.topicSignature.update(id, manual, ignored);
+      setWorkspaces(workspaces.map(w => w.id === id ? { ...w, topic_signature: newSig } : w));
+    } catch (err) {
+      console.error("Failed to update signature:", err);
+    }
+  }
+
   function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
@@ -130,7 +139,9 @@ export default function WorkspaceSettingsView() {
             const isActive = ws.id === activeWorkspaceId;
             const isEditing = editingId === ws.id;
             const isAnalyzing = analyzingId === ws.id;
-            const hasSignature = ws.topic_signature?.domain_tags?.length > 0 || ws.topic_signature?.intent_patterns?.length > 0;
+            const hasSignature = ws.topic_signature?.domain_tags?.length > 0 || 
+                                 ws.topic_signature?.intent_patterns?.length > 0 ||
+                                 ws.topic_signature?.manual_tags?.length > 0;
 
             return (
               <div
@@ -222,48 +233,117 @@ export default function WorkspaceSettingsView() {
                       </button>
                     </div>
 
-                    {!hasSignature ? (
-                      <p className="text-[11px] text-[var(--text-muted)] italic">
-                        No context analyzed yet. Click 'Discover Context' to extract topics from your recent chats.
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {ws.topic_signature?.domain_tags?.length > 0 && (
-                          <div>
-                            <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Topics</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {ws.topic_signature.domain_tags.map((tag, idx) => (
-                                <span
-                                  key={idx}
-                                  className="px-2 py-0.5 text-[11px] rounded-full bg-[var(--bg-hover)] border border-[var(--border-color)] text-[var(--text-secondary)]"
-                                  title={`Weight: ${tag.weight}, Source: ${tag.source}`}
+                    <div className="space-y-4">
+                      {/* AI Topics */}
+                      {ws.topic_signature?.domain_tags?.length > 0 && (
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Inferred Topics</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {ws.topic_signature.domain_tags.map((tag, idx) => (
+                              <div
+                                key={idx}
+                                className="group flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-[var(--bg-hover)] border border-[var(--border-color)] text-[var(--text-secondary)]"
+                              >
+                                <span>{tag.tag}</span>
+                                <button
+                                  onClick={() => {
+                                    const ignored = [...(ws.topic_signature.ignored_tags || []), tag.tag];
+                                    updateSignature(ws.id, ws.topic_signature.manual_tags || [], ignored);
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
+                                  title="Ignore topic"
                                 >
-                                  {tag.tag}
-                                </span>
-                              ))}
-                            </div>
+                                  <X size={10} />
+                                </button>
+                              </div>
+                            ))}
                           </div>
-                        )}
+                        </div>
+                      )}
 
-                        {ws.topic_signature?.intent_patterns?.length > 0 && (
-                          <div>
-                            <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Expected Chats</p>
-                            <ul className="list-disc list-inside space-y-1 ml-1 text-[11px] text-[var(--text-secondary)]">
-                              {ws.topic_signature.intent_patterns.map((intent, idx) => (
-                                <li key={idx}>{intent}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        
-                        <div className="text-[9px] text-[var(--text-muted)] pt-1 flex justify-between">
-                          <span>Analyzed {ws.topic_signature.message_count_at_gen ?? 0} recent messages</span>
-                          {ws.topic_signature.generated_at && (
-                            <span>Last updated {formatDate(ws.topic_signature.generated_at)}</span>
-                          )}
+                      {/* Manual Tags */}
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Manual Tags</p>
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {(ws.topic_signature.manual_tags || []).map((tag, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 text-[var(--accent-color)]"
+                            >
+                              <span>{tag}</span>
+                              <button
+                                onClick={() => {
+                                  const manual = ws.topic_signature.manual_tags.filter(t => t !== tag);
+                                  updateSignature(ws.id, manual, ws.topic_signature.ignored_tags || []);
+                                }}
+                                className="hover:text-red-400"
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))}
+                          <input
+                            type="text"
+                            placeholder="+ Tag"
+                            className="bg-transparent border-none outline-none text-[11px] text-[var(--text-primary)] w-16"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const val = e.currentTarget.value.trim();
+                                if (val) {
+                                  const manual = [...(ws.topic_signature.manual_tags || []), val];
+                                  updateSignature(ws.id, manual, ws.topic_signature.ignored_tags || []);
+                                  e.currentTarget.value = "";
+                                }
+                              }
+                            }}
+                          />
                         </div>
                       </div>
-                    )}
+
+                      {/* Blacklist (Ignored Tags) */}
+                      {(ws.topic_signature.ignored_tags || []).length > 0 && (
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Ignored Topics</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {ws.topic_signature.ignored_tags.map((tag, idx) => (
+                              <div
+                                key={idx}
+                                className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-[var(--bg-hover)] border border-dashed border-[var(--border-color)] text-[var(--text-muted)] line-through"
+                              >
+                                <span>{tag}</span>
+                                <button
+                                  onClick={() => {
+                                    const ignored = ws.topic_signature.ignored_tags.filter(t => t !== tag);
+                                    updateSignature(ws.id, ws.topic_signature.manual_tags || [], ignored);
+                                  }}
+                                  className="hover:text-[var(--text-primary)] line-none"
+                                >
+                                  <X size={10} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {ws.topic_signature?.intent_patterns?.length > 0 && (
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Expected Chats</p>
+                          <ul className="list-disc list-inside space-y-1 ml-1 text-[11px] text-[var(--text-secondary)]">
+                            {ws.topic_signature.intent_patterns.map((intent, idx) => (
+                              <li key={idx}>{intent}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      <div className="text-[9px] text-[var(--text-muted)] pt-1 flex justify-between">
+                        <span>Analyzed {ws.topic_signature.message_count_at_gen ?? 0} recent messages</span>
+                        {ws.topic_signature.generated_at && (
+                          <span>Last updated {formatDate(ws.topic_signature.generated_at)}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

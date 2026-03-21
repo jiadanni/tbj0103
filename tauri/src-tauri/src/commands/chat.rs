@@ -23,13 +23,14 @@ pub fn create_chat_session(
     if let Some(t) = req.title { s.title = t; }
     if let Some(m) = req.model_name { s.model_name = m; }
     if let Some(sp) = req.system_prompt { s.system_prompt = sp; }
+    if let Some(inc) = req.is_incognito { s.is_incognito = inc; }
     s.parent_session_id = req.parent_session_id;
     s.branch_message_id = req.branch_message_id;
     conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, parent_session_id, branch_message_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         rusqlite::params![s.id, s.workspace_id, s.project_id, s.title, s.model_name, s.system_prompt, s.is_pinned as i32,
-                          s.parent_session_id, s.branch_message_id, s.created_at, s.updated_at],
+                          s.is_incognito as i32, s.parent_session_id, s.branch_message_id, s.created_at, s.updated_at],
     ).map_err(|e| e.to_string())?;
     // Sync to file (best-effort)
     let pass = crypto.0.lock().ok().and_then(|g| g.clone());
@@ -42,11 +43,11 @@ pub fn list_chat_sessions(state: State<DbState>, workspace_id: String, project_i
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     
     let (sql, params) = if project_id.is_empty() {
-        ("SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at
+        ("SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, parent_session_id, branch_message_id, created_at, updated_at
           FROM chat_sessions WHERE workspace_id = ?1 ORDER BY is_pinned DESC, updated_at DESC", 
          rusqlite::params![workspace_id])
     } else {
-        ("SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at
+        ("SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, parent_session_id, branch_message_id, created_at, updated_at
           FROM chat_sessions WHERE workspace_id = ?1 AND project_id = ?2 ORDER BY is_pinned DESC, updated_at DESC",
          rusqlite::params![workspace_id, project_id])
     };
@@ -61,10 +62,11 @@ pub fn list_chat_sessions(state: State<DbState>, workspace_id: String, project_i
             model_name: row.get(4)?,
             system_prompt: row.get(5)?,
             is_pinned: row.get::<_, i32>(6)? != 0,
-            parent_session_id: row.get(7)?,
-            branch_message_id: row.get(8)?,
-            created_at: row.get(9)?,
-            updated_at: row.get(10)?,
+            is_incognito: row.get::<_, i32>(7)? != 0,
+            parent_session_id: row.get(8)?,
+            branch_message_id: row.get(9)?,
+            created_at: row.get(10)?,
+            updated_at: row.get(11)?,
         })
     }).map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>()
@@ -76,7 +78,7 @@ pub fn list_chat_sessions(state: State<DbState>, workspace_id: String, project_i
 pub fn get_chat_session(state: State<DbState>, workspace_id: String, id: String) -> Result<Option<ChatSession>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, parent_session_id, branch_message_id, created_at, updated_at
+        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, parent_session_id, branch_message_id, created_at, updated_at
          FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2",
         rusqlite::params![id, workspace_id],
         |row| Ok(ChatSession {
@@ -87,10 +89,11 @@ pub fn get_chat_session(state: State<DbState>, workspace_id: String, id: String)
             model_name: row.get(4)?,
             system_prompt: row.get(5)?,
             is_pinned: row.get::<_, i32>(6)? != 0,
-            parent_session_id: row.get(7)?,
-            branch_message_id: row.get(8)?,
-            created_at: row.get(9)?,
-            updated_at: row.get(10)?,
+            is_incognito: row.get::<_, i32>(7)? != 0,
+            parent_session_id: row.get(8)?,
+            branch_message_id: row.get(9)?,
+            created_at: row.get(10)?,
+            updated_at: row.get(11)?,
         }),
     );
     match result {

@@ -19,6 +19,7 @@ export interface ChatSession {
   model_name: string;
   system_prompt: string;
   is_pinned: boolean;
+  is_incognito: boolean;
   created_at: string;
   updated_at: string;
   title_generated_at?: string;
