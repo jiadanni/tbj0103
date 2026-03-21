@@ -1,6 +1,7 @@
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 struct DocumentBrowserView: View {
     @Environment(\.modelContext) private var modelContext
@@ -523,8 +524,19 @@ struct WebCaptureSheet: View {
             Text("Capture Webpage")
                 .font(.headline)
 
-            TextField("https://example.com", text: $urlString)
-                .textFieldStyle(.roundedBorder)
+            HStack {
+                TextField("https://example.com", text: $urlString)
+                    .textFieldStyle(.roundedBorder)
+
+                Button(action: {
+                    if let string = NSPasteboard.general.string(forType: .string) {
+                        urlString = string
+                    }
+                }) {
+                    Image(systemName: "doc.on.clipboard")
+                }
+                .help("Paste from clipboard")
+            }
 
             if let error = errorMessage {
                 Text(error)
