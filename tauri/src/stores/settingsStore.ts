@@ -6,6 +6,7 @@ export type Theme = "system" | "light" | "dark" | "oled" | "sepia" | "hacker" | 
 interface AppSettings {
   preferredModel: string;
   backgroundModel: string;
+  quickSearchModels: string[];
   ollamaUrl: string;
   embeddingModel: string;
   theme: Theme;
@@ -25,6 +26,7 @@ interface AppSettings {
 interface SettingsStore extends AppSettings {
   setPreferredModel: (m: string) => void;
   setBackgroundModel: (m: string) => void;
+  setQuickSearchModels: (models: string[]) => void;
   setOllamaUrl: (url: string) => void;
   setTheme: (t: Theme) => void;
   setAccentColor: (c: string) => void;
@@ -45,6 +47,7 @@ export const useSettingsStore = create<SettingsStore>()(
     (set) => ({
       preferredModel: "",
       backgroundModel: "",
+      quickSearchModels: [],
       ollamaUrl: "http://localhost:11434",
       embeddingModel: "nomic-embed-text",
       theme: "system",
@@ -61,6 +64,7 @@ export const useSettingsStore = create<SettingsStore>()(
       confirmMoveToTrash: true,
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
+      setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
       setTheme: (theme) => set({ theme }),
       setAccentColor: (accentColor) => set({ accentColor }),

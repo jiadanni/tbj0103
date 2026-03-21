@@ -6,6 +6,7 @@ use crate::db::DbState;
 pub struct Settings {
     pub preferred_model: String,
     pub background_model: String,
+    pub quick_search_models: Vec<String>,
     pub backup_enabled: bool,
     pub touch_id_enabled: bool,
     pub pin_lock_enabled: bool,
@@ -32,6 +33,7 @@ impl Default for Settings {
         Self {
             preferred_model: "".to_string(),
             background_model: "".to_string(),
+            quick_search_models: Vec::new(),
             backup_enabled: true,
             touch_id_enabled: false,
             pin_lock_enabled: false,
@@ -78,6 +80,9 @@ pub fn get_settings(state: State<DbState>) -> Result<Settings, String> {
         background_model: get_setting(&conn, "background_model")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.background_model),
+        quick_search_models: get_setting(&conn, "quick_search_models")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.quick_search_models),
         backup_enabled: get_setting(&conn, "backup_enabled")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.backup_enabled),
@@ -142,6 +147,7 @@ pub fn update_settings(state: State<DbState>, settings: Settings) -> Result<(), 
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     set_setting(&conn, "preferred_model", &serde_json::to_string(&settings.preferred_model).unwrap())?;
     set_setting(&conn, "background_model", &serde_json::to_string(&settings.background_model).unwrap())?;
+    set_setting(&conn, "quick_search_models", &serde_json::to_string(&settings.quick_search_models).unwrap())?;
     set_setting(&conn, "backup_enabled", &settings.backup_enabled.to_string())?;
     set_setting(&conn, "touch_id_enabled", &settings.touch_id_enabled.to_string())?;
     set_setting(&conn, "auto_lock_minutes", &settings.auto_lock_minutes.to_string())?;

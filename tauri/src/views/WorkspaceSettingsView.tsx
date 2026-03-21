@@ -2,9 +2,10 @@
  * WorkspaceSettingsView — manage workspaces: rename, reorder, delete, and switch.
  * Mirrors WorkspaceListView.swift + workspace picker behaviour.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, Pencil, Check, X, LayoutGrid, Sparkles, Loader2 } from "lucide-react";
-import { api } from "../lib/api";
+import { api, type AiModel } from "../lib/api";
+import { resolveModelForRole } from "../lib/modelRoles";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
@@ -18,6 +19,11 @@ export default function WorkspaceSettingsView() {
   const [creating, setCreating] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [aiModels, setAiModels] = useState<AiModel[]>([]);
+
+  useEffect(() => {
+    api.aiModel.list().then(setAiModels).catch(() => {});
+  }, []);
 
   async function createWorkspace() {
     if (!newName.trim()) {return;}
@@ -58,7 +64,7 @@ export default function WorkspaceSettingsView() {
     if (analyzingId) {return;}
     setAnalyzingId(id);
     try {
-      const analysisModel = backgroundModel || preferredModel;
+      const analysisModel = resolveModelForRole(aiModels, "background", backgroundModel, preferredModel);
       const newSignature = await api.topicSignature.regenerate(id, analysisModel || undefined, ollamaUrl || undefined);
       setWorkspaces(workspaces.map(w => w.id === id ? { ...w, topic_signature: newSignature } : w));
     } catch (err) {

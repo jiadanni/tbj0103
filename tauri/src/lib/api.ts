@@ -169,6 +169,7 @@ export interface AppSettings {
   auto_lock_minutes: number; theme: string; accent_color: string;
   font_size: number; sidebar_width: number; ollama_base_url: string;
   background_model: string;
+  quick_search_models: string[];
   embedding_model: string;
   chat_title_auto_refresh: "disabled" | "initial_only" | "periodic";
   chat_title_refresh_interval: number;
@@ -235,6 +236,7 @@ export interface SuggestedGoal {
 
 export interface AiModel {
   id: string; name: string; model_id: string; provider: string;
+  role_tags: string[];
   priority: number; is_paid: boolean; enabled: boolean;
   tokens_used_total: number; created_at: string;
 }
@@ -487,9 +489,9 @@ export const api = {
 
   aiModel: {
     list: () => invoke<AiModel[]>("list_ai_models"),
-    add: (name: string, modelId: string, opts?: { provider?: string; is_paid?: boolean; priority?: number }) =>
+    add: (name: string, modelId: string, opts?: { provider?: string; role_tags?: string[]; is_paid?: boolean; priority?: number }) =>
       invoke<AiModel>("add_ai_model", { req: { name, model_id: modelId, ...opts } }),
-    update: (id: string, fields: { name?: string; priority?: number; is_paid?: boolean; enabled?: boolean }) =>
+    update: (id: string, fields: { name?: string; role_tags?: string[]; priority?: number; is_paid?: boolean; enabled?: boolean }) =>
       invoke<AiModel>("update_ai_model", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_ai_model", { id }),
     getDefault: () => invoke<AiModel>("get_default_model"),
