@@ -40,6 +40,7 @@ pub struct ChatSession {
     pub system_prompt: String,
     pub is_pinned: bool,
     pub is_incognito: bool,
+    pub exclude_from_analytics: bool,
     pub is_deleted: bool,
     pub deleted_at: Option<String>,
     pub parent_session_id: Option<String>,
@@ -79,6 +80,7 @@ pub struct CreateChatSessionRequest {
     pub model_name: Option<String>,
     pub system_prompt: Option<String>,
     pub is_incognito: Option<bool>,
+    pub exclude_from_analytics: Option<bool>,
     pub parent_session_id: Option<String>,
     pub branch_message_id: Option<String>,
 }
@@ -115,6 +117,7 @@ impl ChatSession {
             system_prompt: String::new(),
             is_pinned: false,
             is_incognito: false,
+            exclude_from_analytics: false,
             is_deleted: false,
             deleted_at: None,
             parent_session_id: None,

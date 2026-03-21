@@ -94,6 +94,11 @@ export default function SettingsView() {
   const [gitSyncUrl, setGitSyncUrl] = useState("");
   const [gitSyncing, setGitSyncing] = useState(false);
   const [gitSyncSaving, setGitSyncSaving] = useState(false);
+  const [currentPin, setCurrentPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pinSaving, setPinSaving] = useState(false);
+  const [pinMessage, setPinMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   function loadAiModels() {
     api.aiModel.list().then((models) => {
@@ -108,8 +113,10 @@ export default function SettingsView() {
   }
 
   useEffect(() => {
-    api.settings.get().then(setDbSettings).catch(() => {});
-    api.ollama.listModels().then((m) => setOllamaModels(m.map((x) => x.name))).catch(() => {});
+    api.settings.get().then((s) => {
+      setDbSettings(s);
+      api.ollama.listModels(s.ollama_base_url).then((m) => setOllamaModels(m.map((x) => x.name))).catch(() => {});
+    }).catch(() => {});
     loadAiModels();
     api.mcp.listServers().then(setMcpServers).catch(() => {});
     api.gitSync.getStatus().then((s) => { setGitSync(s); setGitSyncUrl(s.remote_url); }).catch(() => {});
@@ -144,6 +151,67 @@ export default function SettingsView() {
     if (key === "font_size") {zustandSettings.setFontSize(value as number);}
   }
 
+  function resetPinForm() {
+    setCurrentPin("");
+    setNewPin("");
+    setConfirmPin("");
+  }
+
+  async function handleSetPin() {
+    if (!dbSettings) {return;}
+
+    setPinMessage(null);
+
+    if (!/^\d{4,8}$/.test(newPin)) {
+      setPinMessage({ type: "error", text: "PIN must be 4 to 8 digits." });
+      return;
+    }
+
+    if (newPin !== confirmPin) {
+      setPinMessage({ type: "error", text: "New PIN and confirmation do not match." });
+      return;
+    }
+
+    if (dbSettings.pin_lock_enabled && !/^\d{4,8}$/.test(currentPin)) {
+      setPinMessage({ type: "error", text: "Enter your current PIN to change it." });
+      return;
+    }
+
+    setPinSaving(true);
+    try {
+      await api.security.setPin(newPin, dbSettings.pin_lock_enabled ? currentPin : undefined);
+      setDbSettings((prev) => prev ? { ...prev, pin_lock_enabled: true } : prev);
+      resetPinForm();
+      setPinMessage({ type: "success", text: dbSettings.pin_lock_enabled ? "PIN updated." : "PIN enabled." });
+    } catch (err) {
+      setPinMessage({ type: "error", text: err instanceof Error ? err.message : "Unable to save PIN." });
+    } finally {
+      setPinSaving(false);
+    }
+  }
+
+  async function handleRemovePin() {
+    if (!dbSettings) {return;}
+
+    setPinMessage(null);
+    if (!/^\d{4,8}$/.test(currentPin)) {
+      setPinMessage({ type: "error", text: "Enter your current PIN to remove it." });
+      return;
+    }
+
+    setPinSaving(true);
+    try {
+      await api.security.removePin(currentPin);
+      setDbSettings((prev) => prev ? { ...prev, pin_lock_enabled: false } : prev);
+      resetPinForm();
+      setPinMessage({ type: "success", text: "PIN removed." });
+    } catch (err) {
+      setPinMessage({ type: "error", text: err instanceof Error ? err.message : "Unable to remove PIN." });
+    } finally {
+      setPinSaving(false);
+    }
+  }
+
   if (!dbSettings) {
     return (
       <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
@@ -156,28 +224,28 @@ export default function SettingsView() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Tab bar */}
       <div className="flex items-center justify-between px-4 pt-3 pb-0 border-b border-[var(--border-color)] flex-shrink-0">
-        <div className="flex gap-1">
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
           {TABS.map(({ id, label, Icon }, idx) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
               title={`${label} (${MOD_KEY}⇧${idx + 1})`}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs rounded-t-lg border-b-2 transition-colors ${
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-sm whitespace-nowrap rounded-t-lg border-b-2 transition-colors ${
                 activeTab === id
-                  ? "border-[var(--accent-color)] text-[var(--accent-color)]"
+                  ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
                   : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
               }`}
             >
-              <Icon size={13} />
+              <Icon size={15} />
               {label}
             </button>
           ))}
         </div>
         <button
           onClick={save}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent-color)] text-white text-xs hover:opacity-90 mb-1"
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 mb-1"
         >
-          <Save size={12} /> {saved ? "Saved!" : "Save"}
+          <Save size={14} /> {saved ? "Saved!" : "Save"}
         </button>
       </div>
 
@@ -645,10 +713,99 @@ export default function SettingsView() {
             <>
               <div className="flex items-center justify-between py-1">
                 <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Require authentication on launch</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Use Touch ID or password when opening the app</p>
+                  <p className="text-sm text-[var(--text-secondary)]">Touch ID authentication</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Require Touch ID or the system biometric prompt before opening the app.
+                  </p>
                 </div>
                 <Toggle on={dbSettings.touch_id_enabled} onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)} />
+              </div>
+
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">PIN passcode</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-sm">
+                      Use a 4 to 8 digit PIN to lock Aetherium on launch. The PIN is stored as a hash, not plaintext.
+                    </p>
+                  </div>
+                  <span className={`text-[11px] px-2 py-1 rounded-full border ${
+                    dbSettings.pin_lock_enabled
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                      : "border-[var(--border-color)] text-[var(--text-muted)]"
+                  }`}>
+                    {dbSettings.pin_lock_enabled ? "Enabled" : "Not set"}
+                  </span>
+                </div>
+
+                {dbSettings.pin_lock_enabled && (
+                  <div>
+                    <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Current PIN</label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={currentPin}
+                      onChange={(e) => { setCurrentPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
+                      placeholder="Current PIN"
+                      className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">{dbSettings.pin_lock_enabled ? "New PIN" : "PIN"}</label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={newPin}
+                      onChange={(e) => { setNewPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
+                      placeholder="4 to 8 digits"
+                      className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Confirm PIN</label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={confirmPin}
+                      onChange={(e) => { setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
+                      placeholder="Repeat PIN"
+                      className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+                </div>
+
+                {pinMessage && (
+                  <p className={`text-xs ${
+                    pinMessage.type === "success" ? "text-emerald-400" : "text-red-400"
+                  }`}>
+                    {pinMessage.text}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleSetPin}
+                    disabled={pinSaving}
+                    className="px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-60"
+                  >
+                    {pinSaving ? "Saving..." : dbSettings.pin_lock_enabled ? "Update PIN" : "Set PIN"}
+                  </button>
+                  {dbSettings.pin_lock_enabled && (
+                    <button
+                      onClick={handleRemovePin}
+                      disabled={pinSaving}
+                      className="px-3.5 py-2 rounded-lg border border-[var(--border-color)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-60"
+                    >
+                      Remove PIN
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div>

@@ -282,6 +282,8 @@ export default function ProjectDashboardView() {
   const project = projects.find((p) => p.id === activeProjectId);
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId);
 
+  type Scope = "current" | "all";
+  const [scope, setScope] = useState<Scope>("current");
   const [timeRange, setTimeRange] = useState<TimeRange>("Week");
   const [projectStats, setProjectStats] = useState<ProjectStats | null>(null);
   const [reviewStats, setReviewStats] = useState<ReviewStats | null>(null);
@@ -560,10 +562,10 @@ export default function ProjectDashboardView() {
 
   const maxModelTokens = modelsWithUsage[0]?.tokens_used_total ?? 1;
 
-  const title = "Dashboard";
+  const title = workspace?.name ?? "Dashboard";
   const subtitle = workspaces.length > 1
     ? `Across ${workspaces.length} workspaces`
-    : workspace?.name ?? "";
+    : "";
 
   return (
     <div className="h-full overflow-y-auto">

@@ -6,7 +6,7 @@ import {
   SquarePen, BarChart2, Folder, Settings,
   MessageSquare, ChevronRight, ChevronDown, FileEdit,
   FileText, Globe, Network, CreditCard, Inbox,
-  Check, Trash2, Ghost, MoveRight, X, FolderPlus,
+  Check, Trash2, Ghost, MoveRight, X, FolderPlus, Search, Shield,
 } from "lucide-react";
 
 import { api } from "../lib/api";
@@ -29,7 +29,7 @@ interface SidebarProps {
 export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId, workspaces } = useWorkspaceStore();
+  const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId, workspaces, setWorkspaces, setProjects, setActiveTopicSignature } = useWorkspaceStore();
   const { sessions, messages, setActiveChatId } = useChatStore();
 
   const activeSegment = "/" + location.pathname.split("/")[1];
@@ -39,10 +39,25 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
 
   // Load ALL workspace sessions for sidebar (unfiltered by project)
   const [allSessions, setAllSessions] = useState<ChatSession[]>([]);
+  const [chatSearch, setChatSearch] = useState("");
+
   useEffect(() => {
-    if (!activeWorkspaceId) {return;}
-    api.chat.listSessions(activeWorkspaceId, null).then(setAllSessions).catch(() => {});
-  }, [activeWorkspaceId, sessions]); // re-fetch when sessions change (new chat, rename, etc.)
+    if (!activeWorkspaceId) {
+      setAllSessions([]);
+      return;
+    }
+
+    const trimmedQuery = chatSearch.trim();
+    const timeoutId = window.setTimeout(() => {
+      const request = trimmedQuery
+        ? api.chat.searchSessions(activeWorkspaceId, trimmedQuery, null)
+        : api.chat.listSessions(activeWorkspaceId, null);
+
+      request.then(setAllSessions).catch(() => {});
+    }, trimmedQuery ? 150 : 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeWorkspaceId, chatSearch, sessions]);
 
   // Build project groups from all sessions
   const byProject: Record<string, ChatSession[]> = {};
@@ -88,23 +103,33 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
     try {
       await api.chat.moveSessions(Array.from(selectedIds), activeWorkspaceId, projectId ?? undefined);
       // Trigger refresh by touching sessions
-      const refreshed = await api.chat.listSessions(activeWorkspaceId, null);
-      setAllSessions(refreshed);
+      const [refreshedSessions, refreshedProjects, refreshedSignature, refreshedWorkspaces] = await Promise.all([
+        api.chat.listSessions(activeWorkspaceId, null),
+        api.project.list(activeWorkspaceId),
+        api.topicSignature.get(activeWorkspaceId),
+        api.workspace.list(),
+      ]);
+      setAllSessions(refreshedSessions);
+      setProjects(refreshedProjects);
+      setActiveTopicSignature(refreshedSignature);
+      setWorkspaces(refreshedWorkspaces);
       exitSelectMode();
     } catch (e) {
       console.error("Failed to move sessions:", e);
     }
   }
 
-  async function handleCreateFolder() {
-    if (!newFolderName.trim() || !activeWorkspaceId) {
+  async function handleCreateFolder(nameOverride?: string) {
+    const folderName = (nameOverride ?? newFolderName).trim();
+    if (!folderName || !activeWorkspaceId) {
       setCreatingFolder(false);
       setNewFolderName("");
       return;
     }
     try {
-      const p = await api.project.create(activeWorkspaceId, newFolderName.trim());
+      const p = await api.project.create(activeWorkspaceId, folderName);
       useWorkspaceStore.getState().addProject(p);
+      setActiveProjectId(p.id);
     } catch (e) {
       console.error(e);
     }
@@ -118,11 +143,15 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
     }
   }, [creatingFolder]);
 
-  async function handleNewThread(isIncognito = false) {
+  async function handleNewThread(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
     if (!activeWorkspaceId) {return;}
-    
+    const privacy = {
+      isIncognito: options?.isIncognito ?? false,
+      excludeFromAnalytics: options?.excludeFromAnalytics ?? false,
+    };
+
     // Look for an unused session first
-    const unusedSession = findUnusedSession(sessions, messages, activeProjectId, isIncognito);
+    const unusedSession = findUnusedSession(sessions, messages, activeProjectId, privacy);
     if (unusedSession) {
       setActiveChatId(unusedSession.id);
       navigate(`/chat/${unusedSession.id}`);
@@ -130,7 +159,10 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
     }
 
     try {
-      const s = await api.chat.createSession(activeWorkspaceId, activeProjectId, { is_incognito: isIncognito });
+      const s = await api.chat.createSession(activeWorkspaceId, activeProjectId, {
+        is_incognito: privacy.isIncognito,
+        exclude_from_analytics: privacy.excludeFromAnalytics,
+      });
       navigate(`/chat/${s.id}`);
     } catch (e) {
       console.error(e);
@@ -176,7 +208,11 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                 : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           }`}
         >
-          <span className="truncate pr-2 flex-1 text-left">{s.title || "New Chat"}</span>
+          <span className="truncate pr-2 flex-1 text-left flex items-center gap-1.5">
+            <span className="truncate">{s.title || "New Chat"}</span>
+            {s.is_incognito && <Ghost size={11} className="text-purple-400 flex-shrink-0" />}
+            {!s.is_incognito && s.exclude_from_analytics && <Shield size={11} className="text-sky-400 flex-shrink-0" />}
+          </span>
           <span className="flex items-center gap-1.5 flex-shrink-0 text-[10px] text-[var(--text-muted)]">
             {msgCount > 0 && <span>{msgCount}</span>}
             <ChevronRight size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -202,18 +238,25 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
       <div className="px-3 pb-4 space-y-0.5">
         <div className="flex gap-0.5 mb-1">
           <button
-            onClick={() => handleNewThread(false)}
+            onClick={() => handleNewThread()}
             className="flex-1 flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
           >
             <SquarePen size={14} className="text-[var(--text-muted)]" />
             New thread
           </button>
           <button
-            onClick={() => handleNewThread(true)}
+            onClick={() => handleNewThread({ isIncognito: true })}
             className="px-2 py-1.5 rounded-lg text-[var(--text-muted)] hover:bg-purple-500/10 hover:text-purple-400 transition-colors"
-            title="New incognito thread (not saved to history or context)"
+            title="New incognito thread (excluded from analytics and deleted when you leave it)"
           >
             <Ghost size={14} />
+          </button>
+          <button
+            onClick={() => handleNewThread({ excludeFromAnalytics: true })}
+            className="px-2 py-1.5 rounded-lg text-[var(--text-muted)] hover:bg-sky-500/10 hover:text-sky-400 transition-colors"
+            title="New private thread (saved, but excluded from analytics and memory)"
+          >
+            <Shield size={14} />
           </button>
         </div>
 
@@ -384,13 +427,50 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {handleCreateFolder();}
-                if (e.key === "Escape") { setCreatingFolder(false); setNewFolderName(""); }
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleCreateFolder(e.currentTarget.value);
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setCreatingFolder(false);
+                  setNewFolderName("");
+                }
               }}
-              onBlur={handleCreateFolder}
+              onClick={(e) => e.stopPropagation()}
+              onBlur={() => {
+                setCreatingFolder(false);
+                setNewFolderName("");
+              }}
               placeholder="Folder name…"
               className="flex-1 text-xs bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-1 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />
+          </div>
+        )}
+
+        <div className="relative px-2 mb-2">
+          <Search size={12} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
+          <input
+            value={chatSearch}
+            onChange={(e) => setChatSearch(e.target.value)}
+            placeholder={activeProjectId ? "Search threads in workspace..." : "Search threads..."}
+            className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1.5 pl-7 pr-7 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors focus:border-[var(--accent-color)]"
+          />
+          {chatSearch && (
+            <button
+              onClick={() => setChatSearch("")}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              title="Clear chat search"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+
+        {chatSearch.trim() && (
+          <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+            Searching all chats in this workspace
           </div>
         )}
 
@@ -438,8 +518,16 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                   try {
                     const ids: string[] = JSON.parse(data);
                     await api.chat.moveSessions(ids, activeWorkspaceId, p.id);
-                    const refreshed = await api.chat.listSessions(activeWorkspaceId, null);
-                    setAllSessions(refreshed);
+                    const [refreshedSessions, refreshedProjects, refreshedSignature, refreshedWorkspaces] = await Promise.all([
+                      api.chat.listSessions(activeWorkspaceId, null),
+                      api.project.list(activeWorkspaceId),
+                      api.topicSignature.get(activeWorkspaceId),
+                      api.workspace.list(),
+                    ]);
+                    setAllSessions(refreshedSessions);
+                    setProjects(refreshedProjects);
+                    setActiveTopicSignature(refreshedSignature);
+                    setWorkspaces(refreshedWorkspaces);
                   } catch (err) {
                     console.error("Failed to move sessions:", err);
                   }
@@ -506,8 +594,16 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                   try {
                     const ids: string[] = JSON.parse(data);
                     await api.chat.moveSessions(ids, activeWorkspaceId);
-                    const refreshed = await api.chat.listSessions(activeWorkspaceId, null);
-                    setAllSessions(refreshed);
+                    const [refreshedSessions, refreshedProjects, refreshedSignature, refreshedWorkspaces] = await Promise.all([
+                      api.chat.listSessions(activeWorkspaceId, null),
+                      api.project.list(activeWorkspaceId),
+                      api.topicSignature.get(activeWorkspaceId),
+                      api.workspace.list(),
+                    ]);
+                    setAllSessions(refreshedSessions);
+                    setProjects(refreshedProjects);
+                    setActiveTopicSignature(refreshedSignature);
+                    setWorkspaces(refreshedWorkspaces);
                   } catch (err) {
                     console.error("Failed to move sessions:", err);
                   }
@@ -534,6 +630,12 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                 Show less
               </button>
             )}
+          </div>
+        )}
+
+        {chatSearch.trim() && allSessions.length === 0 && (
+          <div className="px-2 py-4 text-xs text-[var(--text-muted)]">
+            No chats matched this workspace search.
           </div>
         )}
       </div>

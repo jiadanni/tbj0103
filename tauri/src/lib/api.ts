@@ -165,7 +165,7 @@ export interface GraphStatistics {
 }
 
 export interface AppSettings {
-  preferred_model: string; backup_enabled: boolean; touch_id_enabled: boolean;
+  preferred_model: string; backup_enabled: boolean; touch_id_enabled: boolean; pin_lock_enabled: boolean;
   auto_lock_minutes: number; theme: string; accent_color: string;
   font_size: number; sidebar_width: number; ollama_base_url: string;
   embedding_model: string;
@@ -189,6 +189,11 @@ export interface GitSyncStatus {
   remote_url: string;
   last_synced_at: string;
   last_error: string;
+}
+
+export interface SecurityStatus {
+  pin_enabled: boolean;
+  touch_id_enabled: boolean;
 }
 
 export interface BacklinkEntry {
@@ -262,9 +267,11 @@ export const api = {
   },
 
   chat: {
-    createSession: (workspaceId: string, projectId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string; is_incognito?: boolean }) =>
-      invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, project_id: projectId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt, is_incognito: opts?.is_incognito } }),
+    createSession: (workspaceId: string, projectId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string; is_incognito?: boolean; exclude_from_analytics?: boolean }) =>
+      invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, project_id: projectId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt, is_incognito: opts?.is_incognito, exclude_from_analytics: opts?.exclude_from_analytics } }),
     listSessions: (workspaceId: string, projectId?: string | null) => invoke<ChatSession[]>("list_chat_sessions", { workspaceId, projectId: projectId ?? '' }),
+    searchSessions: (workspaceId: string, query: string, projectId?: string | null) =>
+      invoke<ChatSession[]>("search_chat_sessions", { req: { workspace_id: workspaceId, query, project_id: projectId ?? null } }),
     getSession: (workspaceId: string, id: string) => invoke<ChatSession | null>("get_chat_session", { workspaceId, id }),
     deleteSession: (workspaceId: string, id: string) => invoke<void>("delete_chat_session", { workspaceId, id }),
     updateSession: (workspaceId: string, id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string }) =>
@@ -291,6 +298,13 @@ export const api = {
     importFromJson: (path: string, passphrase?: string) =>
       invoke<string>("import_chat_from_json", { path, passphrase }),
     syncAll: () => invoke<number>("sync_all_chats_to_files"),
+  },
+
+  security: {
+    getStatus: () => invoke<SecurityStatus>("get_security_status"),
+    setPin: (newPin: string, currentPin?: string) => invoke<void>("set_pin_passcode", { newPin, currentPin }),
+    verifyPin: (pin: string) => invoke<boolean>("verify_pin_passcode", { pin }),
+    removePin: (currentPin: string) => invoke<void>("remove_pin_passcode", { currentPin }),
   },
 
   graph: {
