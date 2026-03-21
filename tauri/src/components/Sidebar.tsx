@@ -6,7 +6,7 @@ import {
   SquarePen, LayoutGrid, BarChart2, Folder, Settings,
   MessageSquare, ChevronRight, ChevronDown, FileEdit,
   FileText, Globe, Network, CreditCard, Inbox,
-  FolderPlus, Check, X, MoveRight
+  FolderPlus, Check, X, MoveRight, Ghost
 } from "lucide-react";
 import { api } from "../lib/api";
 
@@ -114,9 +114,9 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
     }
   }, [creatingFolder]);
 
-  async function handleNewThread() {
+  async function handleNewThread(isIncognito = false) {
     try {
-      const s = await api.chat.createSession(activeWorkspaceId || "", activeProjectId);
+      const s = await api.chat.createSession(activeWorkspaceId || "", activeProjectId, { is_incognito: isIncognito });
       navigate(`/chat/${s.id}`);
     } catch (e) {
       console.error(e);
@@ -177,13 +177,22 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
     <div className="flex flex-col h-full bg-transparent text-sm select-none pt-8">
       {/* Top Primary Actions */}
       <div className="px-3 pb-4 space-y-0.5">
-        <button
-          onClick={handleNewThread}
-          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors mb-1"
-        >
-          <SquarePen size={14} className="text-[var(--text-muted)]" />
-          New thread
-        </button>
+        <div className="flex gap-0.5 mb-1">
+          <button
+            onClick={() => handleNewThread(false)}
+            className="flex-1 flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            <SquarePen size={14} className="text-[var(--text-muted)]" />
+            New thread
+          </button>
+          <button
+            onClick={() => handleNewThread(true)}
+            className="px-2 py-1.5 rounded-lg text-[var(--text-muted)] hover:bg-purple-500/10 hover:text-purple-400 transition-colors"
+            title="New incognito thread (not saved to history or context)"
+          >
+            <Ghost size={14} />
+          </button>
+        </div>
 
         <button
           onClick={() => navigate("/project")}

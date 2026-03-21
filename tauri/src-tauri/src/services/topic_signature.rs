@@ -7,7 +7,7 @@ pub fn collect_workspace_text(conn: &Connection, workspace_id: &str) -> Result<(
         "SELECT m.content 
          FROM messages m
          JOIN chat_sessions s ON m.session_id = s.id
-         WHERE s.workspace_id = ?1 AND m.role = 'user'
+         WHERE s.workspace_id = ?1 AND m.role = 'user' AND s.is_incognito = 0
          ORDER BY m.created_at DESC
          LIMIT 500"
     ).map_err(|e| e.to_string())?;
@@ -57,6 +57,8 @@ pub fn generate_heuristic(text: &str) -> TopicSignature {
     
     TopicSignature {
         domain_tags,
+        manual_tags: Vec::new(),
+        ignored_tags: Vec::new(),
         intent_patterns,
         generated_at: Some(chrono::Utc::now().to_rfc3339()),
         message_count_at_gen: None, 
@@ -70,13 +72,19 @@ pub async fn enrich_with_ollama(heuristic: TopicSignature, _text: &str, _model: 
 
 pub fn compute_match_score(message: &str, signature: &TopicSignature) -> f64 {
     let msg_tags = generate_tags(message, 10);
-    if msg_tags.is_empty() || signature.domain_tags.is_empty() {
+    if msg_tags.is_empty() {
         return 0.0;
     }
     
     let mut match_count = 0;
     for tag in &msg_tags {
-        if signature.domain_tags.iter().any(|t| &t.tag == tag) {
+        // Skip if this tag is in the ignored list
+        if signature.ignored_tags.contains(tag) {
+            continue;
+        }
+
+        // Check heuristic or manual tags
+        if signature.domain_tags.iter().any(|t| &t.tag == tag) || signature.manual_tags.contains(tag) {
             match_count += 1;
         }
     }

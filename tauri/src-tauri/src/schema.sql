@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     model_name TEXT NOT NULL DEFAULT '',
     system_prompt TEXT NOT NULL DEFAULT '',
     is_pinned INTEGER NOT NULL DEFAULT 0,
+    is_incognito INTEGER NOT NULL DEFAULT 0,
     parent_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
     branch_message_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),

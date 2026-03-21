@@ -95,7 +95,7 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
         if let Ok(mut stmt) = conn.prepare(
             "SELECT m.content FROM messages m \
              JOIN chat_sessions cs ON m.session_id = cs.id \
-             WHERE cs.workspace_id = ?1 AND m.role = 'user' \
+             WHERE cs.workspace_id = ?1 AND m.role = 'user' AND cs.is_incognito = 0 \
              ORDER BY m.created_at DESC LIMIT 40",
         ) {
             let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {

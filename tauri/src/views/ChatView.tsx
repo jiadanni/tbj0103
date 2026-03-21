@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus } from "lucide-react";
+import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost } from "lucide-react";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
@@ -373,9 +373,12 @@ export default function ChatView() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeMessages.length, streamingContent]);
 
-  async function createNewSession() {
+  async function createNewSession(isIncognito = false) {
     if (!activeWorkspaceId) return;
-    const session = await api.chat.createSession(activeWorkspaceId, activeProjectId, { modelName: selectedModel });
+    const session = await api.chat.createSession(activeWorkspaceId, activeProjectId, { 
+      modelName: selectedModel,
+      is_incognito: isIncognito
+    });
     useChatStore.getState().addSession(session);
     setActiveChatId(session.id);
     setMessages(session.id, []);
@@ -820,7 +823,7 @@ export default function ChatView() {
               <FolderPlus size={14} />
             </button>
             <button
-              onClick={createNewSession}
+              onClick={() => createNewSession(false)}
               className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               title="New chat"
             >
@@ -830,13 +833,22 @@ export default function ChatView() {
         </div>
 
         {/* New Chat button */}
-        <button
-          onClick={createNewSession}
-          className="mx-2 mt-2 mb-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--accent-color)] text-white text-xs font-medium hover:opacity-90 transition-opacity"
-        >
-          <Plus size={14} />
-          New Chat
-        </button>
+        <div className="mx-2 mt-2 mb-1 flex gap-1">
+          <button
+            onClick={() => createNewSession(false)}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--accent-color)] text-white text-xs font-medium hover:opacity-90 transition-opacity"
+          >
+            <Plus size={14} />
+            New Chat
+          </button>
+          <button
+            onClick={() => createNewSession(true)}
+            className="px-2 py-2 rounded-lg text-[var(--text-muted)] hover:bg-purple-500/10 hover:text-purple-400 transition-colors"
+            title="New incognito chat"
+          >
+            <Ghost size={14} />
+          </button>
+        </div>
 
         {/* Search */}
         <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
@@ -1008,7 +1020,8 @@ export default function ChatView() {
                     saveCompareA(e.target.value);
                     persistSetting("compare_model_a", e.target.value);
                   }}
-                  placeholder="e.g. qwen2.5:7b"
+                  placeholder="e.g. llama3"
+
                   className="text-sm bg-transparent border-b border-[var(--border-color)] text-[var(--text-primary)] outline-none py-0.5 w-full placeholder:text-[var(--text-muted)]"
                 />
               ) : (
@@ -1110,19 +1123,31 @@ export default function ChatView() {
         <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
           <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
           <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
-          <button
-            onClick={createNewSession}
-            className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
-          >
-            Start a new chat
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => createNewSession(false)}
+              className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
+            >
+              Start a new chat
+            </button>
+
+            <button
+              onClick={() => createNewSession(true)}
+              className="px-4 py-2 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-lg text-sm hover:bg-purple-500/20"
+            >
+              Start incognito
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Slim title bar */}
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
-            <span className="text-sm font-medium text-[var(--text-primary)] flex-1 truncate">
+            <span className="text-sm font-medium text-[var(--text-primary)] flex-1 truncate flex items-center gap-2">
               {sessions.find((s) => s.id === activeChatId)?.title || "New Chat"}
+              {sessions.find((s) => s.id === activeChatId)?.is_incognito && (
+                <span title="Incognito thread"><Ghost size={14} className="text-purple-400" /></span>
+              )}
             </span>
             {availableModels.length === 0 && (
               <span className="text-xs text-amber-400">No Ollama models found</span>
@@ -1307,7 +1332,7 @@ export default function ChatView() {
             {isRefiningPhase && !isCurrentlyStreaming && (
               <div className="flex items-center gap-2 text-xs text-amber-400 px-1">
                 <Zap size={11} className="animate-pulse" />
-                <span className="animate-pulse">Refining with {selectedModel}…</span>
+                <span className="animate-pulse">Refining with {modelDisplayName(selectedModel)}…</span>
               </div>
             )}
 
@@ -1339,12 +1364,12 @@ export default function ChatView() {
                 <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm message-assistant">
                   {dualModelEnabled && draftModel && !isRefiningPhase && (
                     <div className="flex items-center gap-1 mb-1 text-[10px] text-amber-400">
-                      <Zap size={9} /> Drafting with {draftModel}…
+                      <Zap size={9} /> Drafting with {modelDisplayName(draftModel)}…
                     </div>
                   )}
                   {isRefiningPhase && (
                     <div className="flex items-center gap-1 mb-1 text-[10px] text-[var(--accent-color)]">
-                      <Zap size={9} /> Refining with {selectedModel}…
+                      <Zap size={9} /> Refining with {modelDisplayName(selectedModel)}…
                     </div>
                   )}
                   <div className="prose prose-sm prose-invert max-w-none">
@@ -1432,7 +1457,7 @@ export default function ChatView() {
                     persistModelChoice(nextModel.model_id);
                     if (lastUserMessage) setInput(lastUserMessage);
                   }}
-                  title={`Try ${nextModel.name}`}
+                  title={`Try ${modelDisplayName(nextModel.model_id)}`}
                   className="flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors text-[11px]"
                 >
                   <ArrowUpCircle size={13} />
