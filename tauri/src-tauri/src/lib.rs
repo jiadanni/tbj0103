@@ -129,6 +129,7 @@ pub fn run() {
             commands::artifact::list_artifacts,
             commands::artifact::update_artifact,
             commands::artifact::delete_artifact,
+            commands::artifact::search_artifacts,
             // Context & Chat
             commands::context::assemble_and_send,
             commands::chat::create_chat_session,
