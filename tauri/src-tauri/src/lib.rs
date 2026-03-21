@@ -77,8 +77,19 @@ pub fn run() {
                         for id in workspace_ids {
                             if let Ok((text, count)) = crate::services::topic_signature::collect_workspace_text(&conn, &id) {
                                 if count > 0 {
+                                    // Get existing to preserve manual/ignored
+                                    let existing_json: String = conn.query_row(
+                                        "SELECT topic_signature FROM workspaces WHERE id = ?1",
+                                        rusqlite::params![id],
+                                        |row| row.get(0),
+                                    ).unwrap_or_else(|_| "{}".to_string());
+                                    let existing: crate::models::workspace::TopicSignature = serde_json::from_str(&existing_json).unwrap_or_default();
+
                                     let mut sig = crate::services::topic_signature::generate_heuristic(&text);
                                     sig.message_count_at_gen = Some(count);
+                                    sig.manual_tags = existing.manual_tags;
+                                    sig.ignored_tags = existing.ignored_tags;
+
                                     if let Ok(sig_json) = serde_json::to_string(&sig) {
                                         let now = chrono::Utc::now().to_rfc3339();
                                         let _ = conn.execute(
@@ -254,6 +265,7 @@ pub fn run() {
             // Topic signatures
             commands::topic_signature::get_topic_signature,
             commands::topic_signature::regenerate_topic_signature,
+            commands::topic_signature::update_topic_signature,
             commands::topic_signature::check_workspace_match,
         ])
         .run(tauri::generate_context!())

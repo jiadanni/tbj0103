@@ -39,6 +39,7 @@ pub struct ChatSession {
     pub model_name: String,
     pub system_prompt: String,
     pub is_pinned: bool,
+    pub is_incognito: bool,
     pub parent_session_id: Option<String>,
     pub branch_message_id: Option<String>,
     pub created_at: String,
@@ -75,6 +76,7 @@ pub struct CreateChatSessionRequest {
     pub title: Option<String>,
     pub model_name: Option<String>,
     pub system_prompt: Option<String>,
+    pub is_incognito: Option<bool>,
     pub parent_session_id: Option<String>,
     pub branch_message_id: Option<String>,
 }
@@ -110,6 +112,7 @@ impl ChatSession {
             model_name: String::new(),
             system_prompt: String::new(),
             is_pinned: false,
+            is_incognito: false,
             parent_session_id: None,
             branch_message_id: None,
             created_at: now.clone(),

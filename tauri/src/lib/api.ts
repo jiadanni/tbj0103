@@ -17,6 +17,8 @@ export interface TopicTag {
 
 export interface TopicSignature {
   domain_tags: TopicTag[];
+  manual_tags: string[];
+  ignored_tags: string[];
   intent_patterns: string[];
   generated_at: string | null;
   message_count_at_gen: number | null;
@@ -161,6 +163,8 @@ export const api = {
   topicSignature: {
     get: (workspaceId: string) => invoke<TopicSignature>("get_topic_signature", { workspaceId }),
     regenerate: (workspaceId: string, model?: string, ollamaUrl?: string) => invoke<TopicSignature>("regenerate_topic_signature", { workspaceId, model, ollamaUrl }),
+    update: (workspaceId: string, manual_tags: string[], ignored_tags: string[]) => 
+      invoke<TopicSignature>("update_topic_signature", { workspaceId, manual_tags, ignored_tags }),
     checkMatch: (workspaceId: string, message: string) => invoke<WorkspaceMatchResult>("check_workspace_match", { workspaceId, message }),
   },
   
@@ -183,8 +187,8 @@ export const api = {
   },
 
   chat: {
-    createSession: (workspaceId: string, projectId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string }) =>
-      invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, project_id: projectId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt } }),
+    createSession: (workspaceId: string, projectId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string; is_incognito?: boolean }) =>
+      invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, project_id: projectId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt, is_incognito: opts?.is_incognito } }),
     listSessions: (workspaceId: string, projectId?: string | null) => invoke<ChatSession[]>("list_chat_sessions", { workspaceId, projectId: projectId ?? '' }),
     getSession: (workspaceId: string, id: string) => invoke<ChatSession | null>("get_chat_session", { workspaceId, id }),
     deleteSession: (workspaceId: string, id: string) => invoke<void>("delete_chat_session", { workspaceId, id }),
