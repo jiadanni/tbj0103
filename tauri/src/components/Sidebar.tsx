@@ -4,7 +4,8 @@ import { useChatStore, type ChatSession } from "../stores/chatStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   SquarePen, LayoutGrid, BarChart2, Folder, Settings,
-  MessageSquare, ChevronRight, ChevronDown
+  MessageSquare, ChevronRight, ChevronDown, FileEdit,
+  FileText, Globe, Network, CreditCard, Inbox
 } from "lucide-react";
 import { api } from "../lib/api";
 
@@ -25,7 +26,7 @@ interface SidebarProps {
 export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { activeProjectId, activeWorkspaceId, projects } = useWorkspaceStore();
+  const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId } = useWorkspaceStore();
   const { sessions, setSessions } = useChatStore();
 
   const activeSegment = "/" + location.pathname.split("/")[1];
@@ -53,7 +54,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
 
   async function handleNewThread() {
     try {
-      const s = await api.chat.createSession(activeProjectId || "");
+      const s = await api.chat.createSession(activeWorkspaceId || "", activeProjectId);
       navigate(`/chat/${s.id}`);
     } catch (e) {
       console.error(e);
@@ -89,47 +90,120 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   return (
     <div className="flex flex-col h-full bg-transparent text-sm select-none pt-8">
       {/* Top Primary Actions */}
-      <div className="px-3 pb-4 space-y-1">
+      <div className="px-3 pb-4 space-y-0.5">
         <button
           onClick={handleNewThread}
-          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors mb-1"
         >
           <SquarePen size={14} className="text-[var(--text-muted)]" />
           New thread
         </button>
 
         <button
-          onClick={() => navigate("/settings")}
-          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-            activeSegment === "/settings" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <LayoutGrid size={14} className="text-[var(--text-muted)]" />
-          Skills
-        </button>
-
-        <button
           onClick={() => navigate("/project")}
-          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-colors ${
+          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
             activeSegment === "/project" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           }`}
         >
-          <div className="flex items-center gap-2.5">
-            <BarChart2 size={14} className="text-[var(--text-muted)]" />
-            Usage
-          </div>
-          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-            2x Tokens Live
-          </span>
+          <BarChart2 size={14} className="text-[var(--text-muted)]" />
+          Dashboard
+        </button>
+
+        <button
+          onClick={() => navigate("/notes")}
+          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+            activeSegment === "/notes" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <FileEdit size={14} className="text-[var(--text-muted)]" />
+          Notes
+        </button>
+
+        <button
+          onClick={() => navigate("/documents")}
+          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+            activeSegment === "/documents" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <FileText size={14} className="text-[var(--text-muted)]" />
+          Documents
+        </button>
+
+        <button
+          onClick={() => navigate("/webcapture")}
+          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+            activeSegment === "/webcapture" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <Globe size={14} className="text-[var(--text-muted)]" />
+          Web Captures
+        </button>
+
+        <button
+          onClick={() => navigate("/graph")}
+          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+            activeSegment === "/graph" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <Network size={14} className="text-[var(--text-muted)]" />
+          Knowledge Graph
+        </button>
+
+        <button
+          onClick={() => navigate("/flashcards")}
+          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+            activeSegment === "/flashcards" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <CreditCard size={14} className="text-[var(--text-muted)]" />
+          Flashcards
+        </button>
+
+        <button
+          onClick={() => navigate("/thoughts")}
+          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+            activeSegment === "/thoughts" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <Inbox size={14} className="text-[var(--text-muted)]" />
+          Thought Queue
         </button>
       </div>
 
       {/* Threads Section */}
-      <div className="flex-1 overflow-y-auto px-3 space-y-0.5">
+      <div className="flex-1 overflow-y-auto px-3 space-y-0.5 mt-2">
         <div className="flex items-center justify-between text-[10px] font-semibold tracking-wider text-[var(--text-muted)] px-2 mb-2 uppercase">
           <span>Threads</span>
-          <Folder size={12} className="opacity-50" />
+          <div className="flex items-center gap-1">
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                if (!activeWorkspaceId) return;
+                const name = prompt("Folder name:");
+                if (!name?.trim()) return;
+                const p = await api.project.create(activeWorkspaceId, name.trim());
+                useWorkspaceStore.getState().addProject(p);
+              }}
+              className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              title="New folder"
+            >
+              <Folder size={12} />
+            </button>
+          </div>
         </div>
+
+        {/* Unfiltered Conversations */}
+        <button
+          onClick={() => setActiveProjectId(null)}
+          className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
+            activeProjectId === null
+              ? "text-[var(--text-primary)] bg-[var(--bg-hover)]"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <MessageSquare size={14} className="text-[var(--text-muted)] flex-shrink-0" />
+          <span className="truncate">All Conversations</span>
+        </button>
 
         {/* Project folders */}
         {projects.map((p) => {
@@ -142,15 +216,19 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
             <div key={p.id} className="mb-1">
               {/* Project folder header */}
               <button
-                onClick={() => toggleExpand(p.id)}
+                onClick={() => {
+                  setActiveProjectId(p.id);
+                  if (activeProjectId === p.id) toggleExpand(p.id);
+                }}
                 className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
                   activeProjectId === p.id
-                    ? "text-[var(--text-primary)]"
+                    ? "text-[var(--text-primary)] bg-[var(--bg-hover)]"
                     : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 }`}
               >
                 <Folder size={14} className="text-[var(--text-muted)] flex-shrink-0" />
-                <span className="truncate">{p.name}</span>
+                <span className="truncate flex-1 text-left">{p.name}</span>
+                <ChevronDown size={12} className={`text-[var(--text-muted)] transition-transform ${isOpen ? "" : "-rotate-90"}`} />
               </button>
 
               {/* Threads under this project */}
