@@ -7,18 +7,18 @@ export const WorkspaceMigrationBanner: React.FC = () => {
 
   useEffect(() => {
     if (migrationSuggestion && !migrationSuggestion.is_match && migrationSuggestion.suggestion) {
-      setVisible(true);
+      Promise.resolve().then(() => setVisible(true));
       const timer = setTimeout(() => {
         setVisible(false);
         dismissMigrationSuggestion();
       }, 10000);
       return () => clearTimeout(timer);
     } else {
-      setVisible(false);
+      Promise.resolve().then(() => setVisible(false));
     }
   }, [migrationSuggestion, dismissMigrationSuggestion]);
 
-  if (!visible || !migrationSuggestion?.suggestion) return null;
+  if (!visible || !migrationSuggestion?.suggestion) {return null;}
 
   const handleSwitch = () => {
     setActiveWorkspaceId(migrationSuggestion.suggestion!.workspace_id);

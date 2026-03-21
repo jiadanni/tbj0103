@@ -1,5 +1,5 @@
-import XCTest
 @testable import Aetherium
+import XCTest
 
 @MainActor
 final class LinkSyntaxParserTests: XCTestCase {

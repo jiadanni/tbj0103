@@ -1,6 +1,6 @@
-import XCTest
-import SwiftData
 @testable import Aetherium
+import SwiftData
+import XCTest
 
 // MARK: - UI Logic / ViewModels (Stubbed)
 
@@ -68,7 +68,6 @@ class MockChatViewModel: ObservableObject {
         }
     }
 }
-
 
 final class CriticalWorkflowsTests: XCTestCase {
     var modelContainer: ModelContainer!

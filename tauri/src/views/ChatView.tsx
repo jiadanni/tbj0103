@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -42,7 +42,7 @@ export default function ChatView() {
 
   // Persist model choice to global settings
   const persistModelChoice = useCallback(async (model: string) => {
-    if (!model) return;
+    if (!model) {return;}
     setPreferredModel(model);
     try {
       const current = await api.settings.get();
@@ -106,7 +106,7 @@ export default function ChatView() {
   }
 
   useEffect(() => {
-    if (creatingFolder && folderInputRef.current) folderInputRef.current.focus();
+    if (creatingFolder && folderInputRef.current) {folderInputRef.current.focus();}
   }, [creatingFolder]);
 
   // Model comparison state
@@ -115,8 +115,8 @@ export default function ChatView() {
 
   // Sync comparison models when store hydrates
   useEffect(() => {
-    if (savedCompareA && !compareModelA) setCompareModelA(savedCompareA);
-    if (savedCompareB && !compareModelB) setCompareModelB(savedCompareB);
+    if (savedCompareA && !compareModelA) {setCompareModelA(savedCompareA);}
+    if (savedCompareB && !compareModelB) {setCompareModelB(savedCompareB);}
   }, [savedCompareA, savedCompareB]);
 
   // External link confirmation dialog
@@ -133,8 +133,8 @@ export default function ChatView() {
   }, [skipLinkConfirm]);
 
   const confirmOpenLink = useCallback(() => {
-    if (pendingLink) open(pendingLink);
-    if (linkDontAsk) setSkipLinkConfirm(true);
+    if (pendingLink) {open(pendingLink);}
+    if (linkDontAsk) {setSkipLinkConfirm(true);}
     setPendingLink(null);
   }, [pendingLink, linkDontAsk, setSkipLinkConfirm]);
 
@@ -149,7 +149,7 @@ export default function ChatView() {
         href={href}
         onClick={(e) => {
           e.preventDefault();
-          if (href) handleLinkClick(href);
+          if (href) {handleLinkClick(href);}
         }}
         style={{ cursor: "pointer" }}
       >
@@ -187,7 +187,7 @@ export default function ChatView() {
   const thoughtProcessingRef = useRef<Set<string>>(new Set());
 
   const loadThoughts = useCallback(async () => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     try {
       const items = await api.thoughtQueue.list(activeWorkspaceId);
       setThoughts(items);
@@ -195,12 +195,12 @@ export default function ChatView() {
   }, [activeWorkspaceId]);
 
   useEffect(() => {
-    if (!thoughtPanelOpen) return;
+    if (!thoughtPanelOpen) {return;}
     loadThoughts();
   }, [thoughtPanelOpen, loadThoughts]);
 
   const processDueThought = useCallback(async (thought: ThoughtItem) => {
-    if (thoughtProcessingRef.current.has(thought.id)) return;
+    if (thoughtProcessingRef.current.has(thought.id)) {return;}
     thoughtProcessingRef.current.add(thought.id);
     try {
       await api.thoughtQueue.updateStatus(thought.id, "processing");
@@ -221,12 +221,12 @@ export default function ChatView() {
   }, [ollamaUrl]);
 
   useEffect(() => {
-    if (!activeWorkspaceId || !thoughtPanelOpen) return;
+    if (!activeWorkspaceId || !thoughtPanelOpen) {return;}
     async function pollDue() {
-      if (!activeWorkspaceId) return;
+      if (!activeWorkspaceId) {return;}
       try {
         const due = await api.thoughtQueue.getDue(activeWorkspaceId);
-        for (const t of due) processDueThought(t);
+        for (const t of due) {processDueThought(t);}
       } catch { /* ignore */ }
     }
     pollDue();
@@ -235,7 +235,7 @@ export default function ChatView() {
   }, [activeWorkspaceId, thoughtPanelOpen, processDueThought]);
 
   async function submitThought() {
-    if (!activeWorkspaceId || !thoughtDraft.trim()) return;
+    if (!activeWorkspaceId || !thoughtDraft.trim()) {return;}
     setThoughtSubmitting(true);
     try {
       const processAt = thoughtScheduleEnabled && thoughtSchedule ? new Date(thoughtSchedule).toISOString() : undefined;
@@ -293,7 +293,7 @@ export default function ChatView() {
 
   // Load sessions (scoped to active project, or unscoped when none selected)
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     api.chat.listSessions(activeWorkspaceId, activeProjectId).then(setSessions).catch(() => {});
   }, [activeWorkspaceId, activeProjectId, setSessions]);
 
@@ -310,7 +310,7 @@ export default function ChatView() {
 
   // Activate session from URL
   useEffect(() => {
-    if (sessionId) setActiveChatId(sessionId);
+    if (sessionId) {setActiveChatId(sessionId);}
   }, [sessionId, setActiveChatId]);
 
   // Sync selectedModel with active session's model
@@ -325,7 +325,7 @@ export default function ChatView() {
 
   // Load messages when session changes
   useEffect(() => {
-    if (!activeChatId || messages[activeChatId] || !activeWorkspaceId) return;
+    if (!activeChatId || messages[activeChatId] || !activeWorkspaceId) {return;}
     api.chat.getMessages(activeWorkspaceId, activeChatId)
       .then((msgs) => setMessages(activeChatId, msgs))
       .catch(() => {});
@@ -374,7 +374,7 @@ export default function ChatView() {
   }, [activeMessages.length, streamingContent]);
 
   async function createNewSession(isIncognito = false) {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     const session = await api.chat.createSession(activeWorkspaceId, activeProjectId, { 
       modelName: selectedModel,
       is_incognito: isIncognito
@@ -386,10 +386,10 @@ export default function ChatView() {
 
   async function generateSessionTitleIfNeeded(sessionId: string, model: string, firstMessage: string) {
     const settings = await api.settings.get().catch(() => null);
-    if (!settings || settings.chat_title_auto_refresh === "disabled") return;
+    if (!settings || settings.chat_title_auto_refresh === "disabled") {return;}
 
     const session = useChatStore.getState().sessions.find(s => s.id === sessionId);
-    if (!session) return;
+    if (!session) {return;}
 
     const sessionMessages = useChatStore.getState().messages[sessionId] ?? [];
     const userMessageCount = sessionMessages.filter(m => m.role === "user").length;
@@ -443,14 +443,14 @@ export default function ChatView() {
   function triggerFollowUps(sessionId: string) {
     const history = (useChatStore.getState().messages[sessionId] ?? []).map(m => ({ role: m.role, content: m.content }));
     const model = selectedModel || useChatStore.getState().sessions.find(s => s.id === sessionId)?.model_name || "";
-    if (!model) return;
+    if (!model) {return;}
     api.ollama.generateFollowUps(model, history, ollamaUrl)
       .then(suggestions => setFollowUps(suggestions))
       .catch(() => {});
   }
 
   async function sendMessage() {
-    if (!input.trim() || isStreaming || !selectedModel || !activeWorkspaceId) return;
+    if (!input.trim() || isStreaming || !selectedModel || !activeWorkspaceId) {return;}
 
     let sid = activeChatId;
     if (!sid) {
@@ -470,7 +470,7 @@ export default function ChatView() {
     // Migration check
     if (activeWorkspaceId) {
       api.topicSignature.checkMatch(activeWorkspaceId, userContent)
-        .then(result => { if (!result.is_match && result.suggestion) setMigrationSuggestion(result); })
+        .then(result => { if (!result.is_match && result.suggestion) {setMigrationSuggestion(result);} })
         .catch(() => {});
     }
 
@@ -618,14 +618,14 @@ export default function ChatView() {
   }
 
   async function deleteSession(id: string) {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     await api.chat.deleteSession(activeWorkspaceId, id);
     useChatStore.getState().removeSession(id);
-    if (activeChatId === id) setActiveChatId(null);
+    if (activeChatId === id) {setActiveChatId(null);}
   }
 
   async function togglePin(session: ChatSession) {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     await api.chat.updateSession(activeWorkspaceId, session.id, { is_pinned: !session.is_pinned });
     setSessions(
       sessions.map((s) =>
@@ -642,7 +642,7 @@ export default function ChatView() {
   }
 
   function copyMessage(msgId: string, content: string) {
-    navigator.clipboard.writeText(content);
+    window.navigator.clipboard.writeText(content);
     setCopiedMessageId(msgId);
     setTimeout(() => setCopiedMessageId(null), 1500);
   }
@@ -653,10 +653,10 @@ export default function ChatView() {
   }
 
   async function submitEdit(msgId: string) {
-    if (!activeChatId || !editContent.trim() || !activeWorkspaceId) return;
+    if (!activeChatId || !editContent.trim() || !activeWorkspaceId) {return;}
     setEditingMessageId(null);
     const idx = activeMessages.findIndex((m) => m.id === msgId);
-    if (idx < 0) return;
+    if (idx < 0) {return;}
     const trimmedMessages = activeMessages.slice(0, idx);
     setMessages(activeChatId, trimmedMessages);
     setInput("");
@@ -697,9 +697,9 @@ export default function ChatView() {
   }
 
   async function redoMessage(msgId: string) {
-    if (!activeChatId || isStreaming || !activeWorkspaceId) return;
+    if (!activeChatId || isStreaming || !activeWorkspaceId) {return;}
     const idx = activeMessages.findIndex((m) => m.id === msgId);
-    if (idx < 0) return;
+    if (idx < 0) {return;}
     const trimmedMessages = activeMessages.slice(0, idx);
     setMessages(activeChatId, trimmedMessages);
 
@@ -735,17 +735,17 @@ export default function ChatView() {
 
   // Load models for comparison mode
   useEffect(() => {
-    if (chatMode !== "compare") return;
+    if (chatMode !== "compare") {return;}
     api.ollama.listModels(ollamaUrl || undefined).then((list) => {
       setCompareModels(list);
-      if (list.length > 0 && !compareModelA) setCompareModelA(list[0].name);
-      if (list.length > 1 && !compareModelB) setCompareModelB(list[1].name);
-      else if (list.length === 1 && !compareModelB) setCompareModelB(list[0].name);
+      if (list.length > 0 && !compareModelA) {setCompareModelA(list[0].name);}
+      if (list.length > 1 && !compareModelB) {setCompareModelB(list[1].name);}
+      else if (list.length === 1 && !compareModelB) {setCompareModelB(list[0].name);}
     }).catch(() => {});
   }, [chatMode, ollamaUrl]);
 
   async function runComparison() {
-    if (!comparePrompt.trim() || compareLoading) return;
+    if (!comparePrompt.trim() || compareLoading) {return;}
     const p = comparePrompt.trim();
     setComparePrompt("");
     setCompareResponseA("");
@@ -776,7 +776,7 @@ export default function ChatView() {
 
   // Map model_id to display name from global labels or priority list
   const modelDisplayName = (modelId: string) => {
-    if (modelLabels[modelId]) return modelLabels[modelId];
+    if (modelLabels[modelId]) {return modelLabels[modelId];}
     const found = aiModelList.find((m) => m.model_id === modelId);
     return found ? found.name : modelId;
   };
@@ -872,7 +872,7 @@ export default function ChatView() {
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreateFolder();
+                if (e.key === "Enter") {handleCreateFolder();}
                 if (e.key === "Escape") { setCreatingFolder(false); setNewFolderName(""); }
               }}
               onBlur={handleCreateFolder}
@@ -951,8 +951,8 @@ export default function ChatView() {
             value={renameTitle}
             onChange={(e) => setRenameTitle(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") renameSession(session.id);
-              if (e.key === "Escape") setRenamingId(null);
+              if (e.key === "Enter") {renameSession(session.id);}
+              if (e.key === "Escape") {setRenamingId(null);}
             }}
             onBlur={() => renameSession(session.id)}
             onClick={(e) => e.stopPropagation()}
@@ -965,10 +965,10 @@ export default function ChatView() {
           {(() => {
             const diff = Date.now() - new Date(session.updated_at).getTime();
             const m = Math.floor(diff / 60000);
-            if (m < 1) return "now";
-            if (m < 60) return `${m}m`;
+            if (m < 1) {return "now";}
+            if (m < 60) {return `${m}m`;}
             const h = Math.floor(m / 60);
-            if (h < 24) return `${h}h`;
+            if (h < 24) {return `${h}h`;}
             return `${Math.floor(h / 24)}d`;
           })()}
         </span>
@@ -1190,7 +1190,7 @@ export default function ChatView() {
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitEdit(msg.id); }
-                        if (e.key === "Escape") setEditingMessageId(null);
+                        if (e.key === "Escape") {setEditingMessageId(null);}
                       }}
                     />
                     <div className="flex gap-1.5 justify-end">
@@ -1414,7 +1414,7 @@ export default function ChatView() {
                 />
                 {isStreaming ? (
                   <button
-                    onClick={() => { if (activeChatId) api.ollama.stopStream(activeChatId).catch(() => {}); }}
+                    onClick={() => { if (activeChatId) {api.ollama.stopStream(activeChatId).catch(() => {});} }}
                     className="flex-shrink-0 rounded-full w-8 h-8 flex items-center justify-center bg-red-500 text-white hover:opacity-90 transition-opacity mb-1 mr-1"
                     title="Stop generation"
                   >
@@ -1455,7 +1455,7 @@ export default function ChatView() {
                   onClick={() => {
                     setSelectedModel(nextModel.model_id);
                     persistModelChoice(nextModel.model_id);
-                    if (lastUserMessage) setInput(lastUserMessage);
+                    if (lastUserMessage) {setInput(lastUserMessage);}
                   }}
                   title={`Try ${modelDisplayName(nextModel.model_id)}`}
                   className="flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors text-[11px]"
@@ -1559,19 +1559,19 @@ export default function ChatView() {
                 const sessionTokensUsed = activeMessages.reduce(
                   (sum, m) => sum + (m.tokens_used ?? 0), 0
                 );
-                if (sessionTokensUsed === 0) return null;
+                if (sessionTokensUsed === 0) {return null;}
 
                 // Approximate context window size from model name
                 const modelLower = selectedModel.toLowerCase();
                 let ctxSize = 4096;
-                if (modelLower.includes("llama3") || modelLower.includes("llama-3")) ctxSize = 8192;
-                else if (modelLower.includes("gemma")) ctxSize = 8192;
-                else if (modelLower.includes("mistral")) ctxSize = 32768;
-                else if (modelLower.includes("mixtral")) ctxSize = 32768;
-                else if (modelLower.includes("qwen2") || modelLower.includes("qwen-2")) ctxSize = 32768;
-                else if (modelLower.includes("phi")) ctxSize = 4096;
-                else if (modelLower.includes("deepseek")) ctxSize = 32768;
-                else if (modelLower.includes("command")) ctxSize = 4096;
+                if (modelLower.includes("llama3") || modelLower.includes("llama-3")) {ctxSize = 8192;}
+                else if (modelLower.includes("gemma")) {ctxSize = 8192;}
+                else if (modelLower.includes("mistral")) {ctxSize = 32768;}
+                else if (modelLower.includes("mixtral")) {ctxSize = 32768;}
+                else if (modelLower.includes("qwen2") || modelLower.includes("qwen-2")) {ctxSize = 32768;}
+                else if (modelLower.includes("phi")) {ctxSize = 4096;}
+                else if (modelLower.includes("deepseek")) {ctxSize = 32768;}
+                else if (modelLower.includes("command")) {ctxSize = 4096;}
 
                 const pct = Math.min(sessionTokensUsed / ctxSize, 1);
                 const pctText = Math.round(pct * 100);
@@ -1632,7 +1632,7 @@ export default function ChatView() {
             <textarea
               value={thoughtDraft}
               onChange={(e) => setThoughtDraft(e.target.value)}
-              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submitThought(); }}
+              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {submitThought();} }}
               placeholder="Dump a thought… (⌘↵ to add)"
               rows={3}
               className="w-full text-xs px-2.5 py-1.5 rounded-md bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none resize-none focus:border-[var(--accent-color)]"
@@ -1723,7 +1723,7 @@ export default function ChatView() {
                 onChange={(e) => setLinkDontAsk(e.target.checked)}
                 className="rounded border-[var(--border-color)] accent-[var(--accent-color)]"
               />
-              <span className="text-xs text-[var(--text-secondary)]">Don't ask again</span>
+              <span className="text-xs text-[var(--text-secondary)]">Don&apos;t ask again</span>
             </label>
             <div className="flex justify-end gap-2">
               <button

@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct ChatSessionListView: View {
     @Environment(\.modelContext) private var modelContext

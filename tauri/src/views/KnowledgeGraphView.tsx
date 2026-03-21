@@ -68,10 +68,10 @@ interface DupPair { a: ConceptNode; b: ConceptNode; score: number; dismissed: bo
 function nameSimilarity(a: string, b: string): number {
   const na = a.toLowerCase().trim();
   const nb = b.toLowerCase().trim();
-  if (na === nb) return 1;
-  if (na.includes(nb) || nb.includes(na)) return 0.85;
+  if (na === nb) {return 1;}
+  if (na.includes(nb) || nb.includes(na)) {return 0.85;}
   let common = 0;
-  for (const c of na) { if (nb.includes(c)) common++; }
+  for (const c of na) { if (nb.includes(c)) {common++;} }
   return common / Math.max(na.length, nb.length, 1);
 }
 
@@ -80,7 +80,7 @@ function buildDupPairs(concepts: ConceptNode[], threshold: number): DupPair[] {
   for (let i = 0; i < concepts.length; i++) {
     for (let j = i + 1; j < concepts.length; j++) {
       const score = nameSimilarity(concepts[i].name, concepts[j].name);
-      if (score >= threshold) found.push({ a: concepts[i], b: concepts[j], score, dismissed: false });
+      if (score >= threshold) {found.push({ a: concepts[i], b: concepts[j], score, dismissed: false });}
     }
   }
   return found.sort((a, b) => b.score - a.score);
@@ -155,23 +155,23 @@ export default function KnowledgeGraphView() {
         if (enabled.length > 0) {
           const ids = enabled.map((m) => m.model_id);
           setAvailableModels(ids);
-          if (!ids.includes(selectedModel)) setSelectedModel(ids[0]);
+          if (!ids.includes(selectedModel)) {setSelectedModel(ids[0]);}
           return;
         }
         return api.ollama.listModels(ollamaUrl);
       })
       .then((models) => {
-        if (!models) return;
+        if (!models) {return;}
         const names = (models as { name: string }[]).map((x) => x.name);
         setAvailableModels(names);
-        if (!names.includes(selectedModel)) setSelectedModel(names[0] || "");
+        if (!names.includes(selectedModel)) {setSelectedModel(names[0] || "");}
       })
       .catch(() => {});
   }, [ollamaUrl]);
 
   // ── Load graph data ───────────────────────────────────────────────────────
   const loadGraph = useCallback(async () => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     const [ns, ls] = await Promise.all([
       api.graph.listConcepts(activeWorkspaceId),
       api.graph.listLinks(activeWorkspaceId),
@@ -184,7 +184,7 @@ export default function KnowledgeGraphView() {
 
   // ── Load existing goals when Insights tab opens ───────────────────────────
   useEffect(() => {
-    if (tab !== "insights" || !activeWorkspaceId) return;
+    if (tab !== "insights" || !activeWorkspaceId) {return;}
     api.learningGoal.list(activeWorkspaceId).then(setExistingGoals).catch(() => {});
   }, [tab, activeWorkspaceId]);
 
@@ -194,7 +194,7 @@ export default function KnowledgeGraphView() {
     : nodes;
 
   useEffect(() => {
-    if (!svgRef.current || !containerRef.current) return;
+    if (!svgRef.current || !containerRef.current) {return;}
     const { width, height } = containerRef.current.getBoundingClientRect();
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
@@ -240,9 +240,9 @@ export default function KnowledgeGraphView() {
       .on("click", (_, d) => setSelectedConcept(nodes.find((n) => n.id === d.id) ?? null))
       .call(
         d3.drag<SVGGElement, D3Node>()
-          .on("start", (event, d) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+          .on("start", (event, d) => { if (!event.active) {sim.alphaTarget(0.3).restart();} d.fx = d.x; d.fy = d.y; })
           .on("drag",  (event, d) => { d.fx = event.x; d.fy = event.y; })
-          .on("end",   (event, d) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+          .on("end",   (event, d) => { if (!event.active) {sim.alphaTarget(0);} d.fx = null; d.fy = null; })
       );
 
     node.append("circle")
@@ -274,7 +274,7 @@ export default function KnowledgeGraphView() {
 
   // ── AI: analyze workspace ─────────────────────────────────────────────────
   async function handleAnalyze() {
-    if (!activeWorkspaceId || !selectedModel || isAnalyzing) return;
+    if (!activeWorkspaceId || !selectedModel || isAnalyzing) {return;}
     setIsAnalyzing(true);
     setAnalyzeError("");
     setAnalyzeResult(null);
@@ -294,7 +294,7 @@ export default function KnowledgeGraphView() {
 
   // ── Create / delete concept ────────────────────────────────────────────────
   async function createConcept() {
-    if (!newConceptName.trim() || !activeWorkspaceId) return;
+    if (!newConceptName.trim() || !activeWorkspaceId) {return;}
     const concept = await api.graph.createConcept(activeWorkspaceId, newConceptName.trim(), {
       concept_type: newConceptType,
     } as any);
@@ -311,12 +311,12 @@ export default function KnowledgeGraphView() {
   }
 
   // ── Zoom ──────────────────────────────────────────────────────────────────
-  function zoomIn()  { if (svgRef.current && zoomRef.current) d3.select(svgRef.current).transition().call(zoomRef.current.scaleBy, 1.4); }
-  function zoomOut() { if (svgRef.current && zoomRef.current) d3.select(svgRef.current).transition().call(zoomRef.current.scaleBy, 1 / 1.4); }
+  function zoomIn()  { if (svgRef.current && zoomRef.current) {d3.select(svgRef.current).transition().call(zoomRef.current.scaleBy, 1.4);} }
+  function zoomOut() { if (svgRef.current && zoomRef.current) {d3.select(svgRef.current).transition().call(zoomRef.current.scaleBy, 1 / 1.4);} }
 
   // ── Dedup ─────────────────────────────────────────────────────────────────
   async function runDedup() {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     setDupLoading(true);
     try {
       const all = await api.graph.listConcepts(activeWorkspaceId);
@@ -344,7 +344,7 @@ export default function KnowledgeGraphView() {
 
   // ── Backlinks ─────────────────────────────────────────────────────────────
   const loadBacklinks = useCallback(async () => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     setBlLoading(true);
     try {
       const concepts = await api.graph.listConcepts(activeWorkspaceId);
@@ -354,7 +354,7 @@ export default function KnowledgeGraphView() {
       const results: { conceptName: string; entries: BacklinkEntry[] }[] = [];
       for (const c of filtered.slice(0, 50)) {
         const entries = await api.note.getBacklinks(activeWorkspaceId, c.name);
-        if (entries.length > 0) results.push({ conceptName: c.name, entries });
+        if (entries.length > 0) {results.push({ conceptName: c.name, entries });}
       }
       setBlGroups(results);
     } catch (err) {
@@ -365,11 +365,11 @@ export default function KnowledgeGraphView() {
   }, [activeWorkspaceId, blSearch]);
 
   useEffect(() => {
-    if (tab === "backlinks") loadBacklinks();
+    if (tab === "backlinks") {loadBacklinks();}
   }, [tab, loadBacklinks]);
 
   async function openBlSource(entry: BacklinkEntry) {
-    if (entry.source_type !== "note") return;
+    if (entry.source_type !== "note") {return;}
     setBlNoteLoading(true);
     setBlSelected(entry.concept_name);
     try {
@@ -381,7 +381,7 @@ export default function KnowledgeGraphView() {
 
   // ── Insights: suggest goals ───────────────────────────────────────────────
   async function handleSuggestGoals() {
-    if (!activeWorkspaceId || !selectedModel || isSuggestingGoals) return;
+    if (!activeWorkspaceId || !selectedModel || isSuggestingGoals) {return;}
     setIsSuggestingGoals(true);
     try {
       const goals = await api.knowledge.suggestGoals(activeWorkspaceId, selectedModel, ollamaUrl);
@@ -395,7 +395,7 @@ export default function KnowledgeGraphView() {
   }
 
   async function acceptGoal(goal: SuggestedGoal, idx: number) {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     setAcceptingGoal(idx);
     try {
       const created = await api.learningGoal.create(activeWorkspaceId, goal.title);
@@ -408,7 +408,7 @@ export default function KnowledgeGraphView() {
 
   // ── PageRank & communities ─────────────────────────────────────────────────
   async function runPagerank() {
-    if (nodes.length === 0) return;
+    if (nodes.length === 0) {return;}
     try {
       const result = await api.graphAlgo.pagerank(
         nodes.map((n) => ({ id: n.id, name: n.name })),
@@ -424,7 +424,7 @@ export default function KnowledgeGraphView() {
   }
 
   async function runCommunities() {
-    if (nodes.length === 0) return;
+    if (nodes.length === 0) {return;}
     try {
       const result = await api.graphAlgo.communities(
         nodes.map((n) => ({ id: n.id })),
@@ -702,7 +702,7 @@ export default function KnowledgeGraphView() {
                     autoFocus
                     value={newConceptName}
                     onChange={(e) => setNewConceptName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") createConcept(); if (e.key === "Escape") setShowCreateForm(false); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") {createConcept();} if (e.key === "Escape") {setShowCreateForm(false);} }}
                     placeholder="Concept name"
                     className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
                   />
@@ -843,7 +843,7 @@ export default function KnowledgeGraphView() {
               )}
               <div className="space-y-2">
                 {suggestedGoals.map((goal, idx) => {
-                  if (dismissedGoals.has(idx)) return null;
+                  if (dismissedGoals.has(idx)) {return null;}
                   return (
                     <div key={idx} className="p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-color)]">
                       <div className="flex items-start justify-between gap-2">

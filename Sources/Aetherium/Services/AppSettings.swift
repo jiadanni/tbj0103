@@ -10,7 +10,7 @@ enum ProjectTabPosition: String, CaseIterable {
 class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
-    @AppStorage("preferredModel") var preferredModel: String = "qwen2.5:7b"
+    @AppStorage("preferredModel") var preferredModel: String = ""
     @AppStorage("preferredEmbeddingModel") var preferredEmbeddingModel: String = "nomic-embed-text"
     @AppStorage("projectTabPosition") var projectTabPosition: String = ProjectTabPosition.top.rawValue
     @AppStorage("touchIDEnabled") var touchIDEnabled: Bool = true

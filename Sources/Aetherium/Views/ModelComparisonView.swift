@@ -1,12 +1,12 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct ModelComparisonView: View {
     let project: Workspace
     @EnvironmentObject var ollamaService: OllamaService
 
-    @State private var modelA = "qwen2.5:7b"
-    @State private var modelB = "llama3.2:latest"
+    @State private var modelA = ""
+    @State private var modelB = ""
     @State private var prompt = ""
     @State private var responseA = ""
     @State private var responseB = ""

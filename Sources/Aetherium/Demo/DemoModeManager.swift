@@ -41,7 +41,7 @@ final class DemoModeManager: ObservableObject {
                 DailyNote.self,
                 LearningCard.self,
                 LearningPath.self,
-                PathMilestone.self,
+                PathMilestone.self
             ])
             let container = try ModelContainer(
                 for: schema,
@@ -89,7 +89,7 @@ final class DemoModeManager: ObservableObject {
                 DailyNote.self,
                 LearningCard.self,
                 LearningPath.self,
-                PathMilestone.self,
+                PathMilestone.self
             ])
             let container = try ModelContainer(
                 for: schema,

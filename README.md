@@ -25,7 +25,7 @@ The Tauri port is the primary development target and receives all new features.
 ## ✨ Features
 
 ### 🤖 AI Chat with Source Grounding
-- Converse with local Ollama models (qwen2.5:7b, llama3, etc.)
+- Converse with local Ollama models (llama3, qwen2.5, etc.)
 - **Source-grounded responses** with automatic citations (RAG)
 - Upload documents (PDF, TXT, Markdown, HTML, RTF)
 - Capture web pages; audio transcriptions via macOS Speech framework
@@ -135,7 +135,7 @@ brew install ollama
 ollama serve
 
 # Pull required models
-ollama pull qwen2.5:7b
+ollama pull qwen2.5
 ollama pull nomic-embed-text
 ```
 

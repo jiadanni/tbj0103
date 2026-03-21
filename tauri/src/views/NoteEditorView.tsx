@@ -29,7 +29,7 @@ const MOOD_OPTIONS = [
 ] as const;
 
 function moodToEmoji(mood: number | undefined): string {
-  if (mood === undefined) return "";
+  if (mood === undefined) {return "";}
   const match = MOOD_OPTIONS.reduce((prev, curr) =>
     Math.abs(curr.value - mood) < Math.abs(prev.value - mood) ? curr : prev
   );
@@ -100,12 +100,12 @@ function ProjectNotesPane({ workspaceId }: { workspaceId: string | null }) {
   );
 
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId) {return;}
     api.note.list(workspaceId).then(setNotes).catch(() => {});
   }, [workspaceId]);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {return;}
     setTitle(selected.title);
     setContent(selected.content);
     setTags(selected.tags ?? []);
@@ -113,7 +113,7 @@ function ProjectNotesPane({ workspaceId }: { workspaceId: string | null }) {
 
   // Auto-save with 1.5s debounce
   const autoSave = useCallback(() => {
-    if (!selected) return;
+    if (!selected) {return;}
     setSaving(true);
     api.note
       .update(selected.id, { title, content, tags })
@@ -128,13 +128,13 @@ function ProjectNotesPane({ workspaceId }: { workspaceId: string | null }) {
   }, [selected, title, content, tags]);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {return;}
     const t = setTimeout(autoSave, 1500);
     return () => clearTimeout(t);
   }, [title, content, tags]);
 
   async function createNote() {
-    if (!workspaceId || creating) return;
+    if (!workspaceId || creating) {return;}
     setCreating(true);
     try {
       const note = await api.note.create(workspaceId, "Untitled Note");
@@ -146,15 +146,15 @@ function ProjectNotesPane({ workspaceId }: { workspaceId: string | null }) {
   }
 
   async function deleteNote(id: string) {
-    if (!confirm("Delete this note?")) return;
+    if (!window.confirm("Delete this note?")) {return;}
     await api.note.delete(id);
     setNotes((prev) => prev.filter((n) => n.id !== id));
-    if (selected?.id === id) setSelected(null);
+    if (selected?.id === id) {setSelected(null);}
   }
 
   function addTag() {
     const t = tagInput.trim();
-    if (!t || tags.includes(t)) return;
+    if (!t || tags.includes(t)) {return;}
     setTags((prev) => [...prev, t]);
     setTagInput("");
   }
@@ -355,7 +355,7 @@ function DailyNotesPane({ workspaceId }: { workspaceId: string | null }) {
 
   // Load month notes
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId) {return;}
     const start = format(startOfMonth(currentMonth), "yyyy-MM-dd");
     const end = format(endOfMonth(currentMonth), "yyyy-MM-dd");
     api.note.listDailyNotesInRange(workspaceId, start, end)
@@ -365,7 +365,7 @@ function DailyNotesPane({ workspaceId }: { workspaceId: string | null }) {
 
   // Load selected date note
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId) {return;}
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     api.note.getDailyNote(workspaceId, dateStr)
       .then((n) => {
@@ -379,19 +379,19 @@ function DailyNotesPane({ workspaceId }: { workspaceId: string | null }) {
 
   // Load templates
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId) {return;}
     api.note.listTemplates(workspaceId).then(setTemplates).catch(() => {});
   }, [workspaceId]);
 
   // Auto-save debounce
   useEffect(() => {
-    if (!note) return;
+    if (!note) {return;}
     const t = setTimeout(() => saveNote(), 2000);
     return () => clearTimeout(t);
   }, [content, mood, productivity]);
 
   const saveNote = useCallback(async () => {
-    if (!note) return;
+    if (!note) {return;}
     setSaving(true);
     try {
       await api.note.updateDailyNote(note.id, content, mood, productivity);
@@ -600,7 +600,7 @@ function DailyNotesPane({ workspaceId }: { workspaceId: string | null }) {
               </div>
               <button
                 onClick={() => {
-                  if (!workspaceId) return;
+                  if (!workspaceId) {return;}
                   const dateStr = format(selectedDate, "yyyy-MM-dd");
                   api.note.getDailyNote(workspaceId, dateStr).then((n) => {
                     setNote(n);

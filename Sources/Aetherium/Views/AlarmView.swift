@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - Alarm Panel (embedded in Calendar Sidebar)
 
@@ -119,7 +119,7 @@ struct CreateAlarmSheet: View {
         ("25 min", 25 * 60),
         ("45 min", 45 * 60),
         ("1 hour", 60 * 60),
-        ("2 hours", 120 * 60),
+        ("2 hours", 120 * 60)
     ]
 
     var body: some View {

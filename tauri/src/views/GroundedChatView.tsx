@@ -2,7 +2,7 @@
  * GroundedChatView — RAG-powered chat that injects relevant document chunks
  * as context before sending messages to Ollama.
  */
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   BookOpen,
   Send,
@@ -26,7 +26,7 @@ interface GroundedMessage {
 
 export default function GroundedChatView() {
   const { activeWorkspaceId } = useWorkspaceStore();
-  const { preferredModel, ollamaUrl } = useSettingsStore();
+  const { preferredModel, ollamaUrl, modelLabels } = useSettingsStore();
 
   const [messages, setMessages] = useState<GroundedMessage[]>([]);
   const [input, setInput] = useState("");
@@ -40,7 +40,7 @@ export default function GroundedChatView() {
 
   // Load processed document count for this workspace
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     api.document.list(activeWorkspaceId).then((docs) => {
       const processed = docs.filter((d) => d.is_processed);
       setDocuments(processed);
@@ -53,18 +53,18 @@ export default function GroundedChatView() {
   }, [messages]);
 
   const handleSend = async () => {
-    if (!input.trim() || loading || !activeWorkspaceId) return;
+    if (!input.trim() || loading || !activeWorkspaceId) {return;}
     const userText = input.trim();
     setInput("");
     setLoading(true);
 
     const userMsg: GroundedMessage = {
-      id: crypto.randomUUID(),
+      id: window.crypto.randomUUID(),
       role: "user",
       content: userText,
     };
 
-    const assistantMsgId = crypto.randomUUID();
+    const assistantMsgId = window.crypto.randomUUID();
     const assistantMsg: GroundedMessage = {
       id: assistantMsgId,
       role: "assistant",
@@ -128,7 +128,7 @@ export default function GroundedChatView() {
 
       await api.ollama.sendMessage(sessionId, preferredModel, history, true, ollamaUrl);
 
-      if (unlistenFn) unlistenFn();
+      if (unlistenFn) {unlistenFn();}
 
       setMessages((prev) =>
         prev.map((m) =>
@@ -315,7 +315,7 @@ export default function GroundedChatView() {
           </button>
         </div>
         <p className="mt-2 text-xs text-[var(--text-secondary)]">
-          Enter to send · Shift+Enter for newline · Model: {preferredModel}
+          Enter to send · Shift+Enter for newline · Model: {modelLabels[preferredModel] || preferredModel}
         </p>
       </div>
     </div>

@@ -50,7 +50,7 @@ pub fn list_memories(state: State<DbState>, workspace_id: String) -> Result<Vec<
         "SELECT id, workspace_id, content, memory_type, source_session_id, is_pinned, is_active, created_at, updated_at
          FROM memories WHERE workspace_id = ?1 ORDER BY is_pinned DESC, created_at DESC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], |row| row_to_memory(row))
+    let items = stmt.query_map(rusqlite::params![workspace_id], row_to_memory)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -83,7 +83,7 @@ pub fn update_memory(state: State<DbState>, req: UpdateMemoryRequest) -> Result<
         "SELECT id, workspace_id, content, memory_type, source_session_id, is_pinned, is_active, created_at, updated_at
          FROM memories WHERE id = ?1",
         rusqlite::params![req.id],
-        |row| row_to_memory(row),
+        row_to_memory,
     ).map_err(|e| e.to_string())?;
 
     Ok(memory)
@@ -104,7 +104,7 @@ pub fn get_active_memories(state: State<DbState>, workspace_id: String) -> Resul
         "SELECT id, workspace_id, content, memory_type, source_session_id, is_pinned, is_active, created_at, updated_at
          FROM memories WHERE workspace_id = ?1 AND is_active = 1 ORDER BY is_pinned DESC, created_at DESC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], |row| row_to_memory(row))
+    let items = stmt.query_map(rusqlite::params![workspace_id], row_to_memory)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;

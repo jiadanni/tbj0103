@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 import UniformTypeIdentifiers
 
 struct DocumentBrowserView: View {
@@ -431,7 +431,7 @@ struct OperationOverlay: View {
     let title: String
     let subtitle: String
     let icon: String
-    var progress: Double? = nil
+    var progress: Double?
 
     var body: some View {
         ZStack {
@@ -717,5 +717,3 @@ struct AudioRecordSheet: View {
         dismiss()
     }
 }
-
-

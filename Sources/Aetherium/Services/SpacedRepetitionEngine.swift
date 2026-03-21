@@ -43,7 +43,7 @@ class SpacedRepetitionEngine: ObservableObject {
 
         // Update ease factor
         let qualityFactor = Double(quality)
-        card.easeFactor = card.easeFactor + (0.1 - (5.0 - qualityFactor) * (0.08 + (5.0 - qualityFactor) * 0.02))
+        card.easeFactor += (0.1 - (5.0 - qualityFactor) * (0.08 + (5.0 - qualityFactor) * 0.02))
 
         // Minimum ease factor is 1.3
         card.easeFactor = max(1.3, card.easeFactor)

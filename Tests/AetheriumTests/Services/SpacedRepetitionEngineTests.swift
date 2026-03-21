@@ -1,6 +1,6 @@
-import XCTest
-import SwiftData
 @testable import Aetherium
+import SwiftData
+import XCTest
 
 final class SpacedRepetitionEngineTests: XCTestCase {
     var engine: SpacedRepetitionEngine!

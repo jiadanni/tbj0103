@@ -113,11 +113,14 @@ npm install
 # 2. Start Ollama (in a separate terminal)
 ollama serve
 
-# 3. Pull a model (e.g. qwen2.5:7b is the default)
-ollama pull qwen2.5:7b
+# 3. Pull a model (e.g. qwen2.5 or llama3)
+ollama pull qwen2.5
 
 # 4. Run in development mode (starts Vite + Tauri watcher)
 npm run tauri dev
+
+# Or build backend only (without UI focus-stealing)
+npm run dev:backend
 ```
 
 > **nvm users:** If `npm` is not on your `PATH`, prefix commands with the absolute path:
@@ -157,6 +160,7 @@ The schema is defined in [src-tauri/src/schema.sql](src-tauri/src/schema.sql) an
 - **Daily Notes** — date-stamped notes with templates
 - **Backups** — incremental snapshot system with timeline restore
 - **Command Palette** — `⌘K` quick-access to all actions
+- **Settings** — start at login, open in background (no focus-stealing), customizable theme/appearance
 
 ## Relationship to the Swift App
 

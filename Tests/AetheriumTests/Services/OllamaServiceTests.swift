@@ -1,5 +1,5 @@
-import XCTest
 @testable import Aetherium
+import XCTest
 
 final class OllamaServiceTests: XCTestCase {
     var ollamaService: OllamaService!

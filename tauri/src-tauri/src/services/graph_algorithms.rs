@@ -3,7 +3,6 @@
 ///
 /// Algorithms: PageRank, community detection (label propagation),
 /// centrality, degree distribution, shortest path (BFS/Dijkstra)
-
 use std::collections::{HashMap, HashSet, VecDeque};
 use serde::{Deserialize, Serialize};
 

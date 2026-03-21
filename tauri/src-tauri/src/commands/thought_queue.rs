@@ -29,7 +29,7 @@ pub fn create_thought(state: State<DbState>, req: CreateThoughtRequest) -> Resul
         content: req.content.clone(),
         status: status.to_string(),
         process_at: req.process_at.clone(),
-        model_name: req.model_name.unwrap_or_else(|| "qwen2.5:7b".to_string()),
+        model_name: req.model_name.unwrap_or_default(),
         prompt_prefix: req.prompt_prefix.unwrap_or_default(),
         result: None,
         result_at: None,
@@ -55,7 +55,7 @@ pub fn list_thoughts(state: State<DbState>, workspace_id: String) -> Result<Vec<
         "SELECT id, workspace_id, content, status, process_at, model_name, prompt_prefix, result, result_at, created_at, updated_at
          FROM thought_queue WHERE workspace_id = ?1 ORDER BY created_at DESC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], |row| row_to_thought(row))
+    let items = stmt.query_map(rusqlite::params![workspace_id], row_to_thought)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -72,7 +72,7 @@ pub fn get_due_thoughts(state: State<DbState>, workspace_id: String) -> Result<V
          WHERE workspace_id = ?1 AND status = 'scheduled' AND process_at <= ?2
          ORDER BY process_at ASC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id, now], |row| row_to_thought(row))
+    let items = stmt.query_map(rusqlite::params![workspace_id, now], row_to_thought)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;

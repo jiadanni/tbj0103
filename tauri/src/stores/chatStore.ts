@@ -90,7 +90,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   finalizeStream: (sessionId, modelName) => {
     const { streamingContent } = get();
     const assistantMsg: Message = {
-      id: crypto.randomUUID(),
+      id: window.crypto.randomUUID(),
       session_id: sessionId,
       role: "assistant",
       content: streamingContent,
@@ -115,7 +115,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const msgs = s.messages[sessionId] ?? [];
       const assistantEntries = msgs.map((m, i) => ({ m, i })).filter(({ m }) => m.role === "assistant");
       const lastAssistantIdx = assistantEntries.length > 0 ? assistantEntries[assistantEntries.length - 1].i : -1;
-      if (lastAssistantIdx === -1) return { refiningSessionId: null, refineContent: "" };
+      if (lastAssistantIdx === -1) {return { refiningSessionId: null, refineContent: "" };}
       const refined: Message = {
         ...msgs[lastAssistantIdx],
         content: refineContent,

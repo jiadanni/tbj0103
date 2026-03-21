@@ -1,7 +1,7 @@
-import Foundation
 import AppKit
-import SwiftUI
+import Foundation
 import SwiftData
+import SwiftUI
 
 // MARK: - Plugin Manager
 

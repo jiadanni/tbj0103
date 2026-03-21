@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - Concept Auto-Complete
 
@@ -170,5 +170,3 @@ struct CreateConceptSuggestion: View {
         .buttonStyle(.plain)
     }
 }
-
-

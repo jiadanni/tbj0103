@@ -1,7 +1,7 @@
+import AppKit
 import Foundation
 import SwiftData
 import UserNotifications
-import AppKit
 
 // MARK: - Alarm Manager
 
@@ -31,7 +31,7 @@ final class AlarmManager: ObservableObject {
             print("Skipping notification permission: no app bundle available")
             return
         }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, error in
             if let error = error {
                 print("Notification permission error: \(error.localizedDescription)")
             }

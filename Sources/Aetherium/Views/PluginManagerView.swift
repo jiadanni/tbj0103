@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - Plugin Manager View
 
@@ -389,5 +389,3 @@ struct PluginDetailView: View {
         }
     }
 }
-
-

@@ -4,7 +4,7 @@
  * The Tauri runtime has no dynamic plugin loader; enable/disable state is
  * persisted in component state only (same as a feature-flag toggle).
  */
-import { useState } from "react";
+import React, { useState } from "react";
 import { PuzzleIcon, RefreshCw, FileText, FolderOpen, Youtube, BookOpen, CalendarDays, ArrowDownCircle, StopCircle, PlayCircle } from "lucide-react";
 
 type PluginType = "exporter" | "importer" | "automation";
@@ -102,8 +102,8 @@ export default function PluginManagerView() {
   function toggle(id: string) {
     setLoaded((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {next.delete(id);}
+      else {next.add(id);}
       return next;
     });
   }

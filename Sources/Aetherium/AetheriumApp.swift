@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import AppKit
+import SwiftData
+import SwiftUI
 import UserNotifications
 
 @main
@@ -46,7 +46,11 @@ struct AetheriumApp: App {
             )
         } catch {
             // Present a minimal UI with an error instead of crashing
-            modelContainer = try! ModelContainer(for: Workspace.self)
+            do {
+                modelContainer = try ModelContainer(for: Workspace.self)
+            } catch {
+                fatalError("Failed to initialize model container: \(error)")
+            }
         }
 
         let ollama = OllamaService()
