@@ -13,7 +13,7 @@ export default defineConfig(async () => ({
   clearScreen: false,
   root: ".",
   optimizeDeps: {
-    entries: ["index.html"],
+    entries: [resolve(__dirname, "index.html")],
   },
   build: {
     rollupOptions: {

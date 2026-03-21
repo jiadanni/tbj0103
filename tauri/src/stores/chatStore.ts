@@ -13,6 +13,7 @@ export interface Message {
 
 export interface ChatSession {
   id: string;
+  workspace_id: string;
   project_id: string;
   title: string;
   model_name: string;

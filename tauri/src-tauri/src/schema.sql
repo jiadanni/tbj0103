@@ -266,51 +266,6 @@ CREATE TABLE IF NOT EXISTS thought_queue (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_thought_queue_workspace ON thought_queue(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_thought_queue_status ON thought_queue(status);
-
--- Settings (flat key-value store, mirrors @AppStorage)
-CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY NOT NULL,
-    value TEXT NOT NULL
-);
-
--- Built-in default settings
-INSERT OR IGNORE INTO settings (key, value) VALUES
-    ('preferred_model', '""'),
-    ('backup_enabled', 'true'),
-    ('touch_id_enabled', 'false'),
-    ('auto_lock_minutes', '15'),
-    ('theme', '"system"'),
-    ('accent_color', '"#007AFF"'),
-    ('font_size', '14'),
-    ('sidebar_width', '240'),
-    ('ollama_base_url', '"http://localhost:11434"'),
-    ('embedding_model', '"nomic-embed-text"'),
-    ('demo_mode', 'false'),
-    ('topic_analysis_interval_minutes', '30'),
-    ('migration_suggestion_threshold', '0.3');
-
--- Indexes for common query patterns
-CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace ON chat_sessions(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id);
-CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
-CREATE INDEX IF NOT EXISTS idx_citations_message ON citations(message_id);
-CREATE INDEX IF NOT EXISTS idx_concept_nodes_workspace ON concept_nodes(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_concept_links_source ON concept_links(source_id);
-CREATE INDEX IF NOT EXISTS idx_concept_links_target ON concept_links(target_id);
-CREATE INDEX IF NOT EXISTS idx_concept_mentions_concept ON concept_mentions(concept_id);
-CREATE INDEX IF NOT EXISTS idx_learning_goals_workspace ON learning_goals(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_learning_cards_review ON learning_cards(next_review_date);
-CREATE INDEX IF NOT EXISTS idx_daily_notes_workspace_date ON daily_notes(workspace_id, date);
-CREATE INDEX IF NOT EXISTS idx_uploaded_docs_workspace ON uploaded_documents(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_doc_chunks_document ON document_chunks(document_id);
-CREATE INDEX IF NOT EXISTS idx_web_captures_workspace ON web_captures(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_project_notes_workspace ON project_notes(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_audio_transcriptions_workspace ON audio_transcriptions(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_alarms_fire_date ON calendar_alarms(fire_date);
-
 -- AI memory for cross-session context
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY NOT NULL,
@@ -324,8 +279,6 @@ CREATE TABLE IF NOT EXISTS memories (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_memories_workspace ON memories(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_memories_active ON memories(workspace_id, is_active);
 
 -- AI model priority list with token tracking
 CREATE TABLE IF NOT EXISTS ai_models (
@@ -348,5 +301,25 @@ VALUES
     ('web-claude',   'Claude (Web)',   'claude-web',   'web_claude',   102, 0, 0),
     ('web-gemini',   'Gemini (Web)',   'gemini-web',   'web_gemini',   103, 0, 0);
 
--- Default settings for web session preservation (false = wipe after each query)
-INSERT OR IGNORE INTO settings(key, value) VALUES ('web_session_preserve', 'false');
+-- Settings (flat key-value store, mirrors @AppStorage)
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL
+);
+
+-- Built-in default settings
+INSERT OR IGNORE INTO settings (key, value) VALUES
+    ('preferred_model', '""'),
+    ('backup_enabled', 'true'),
+    ('touch_id_enabled', 'false'),
+    ('auto_lock_minutes', '15'),
+    ('theme', '"system"'),
+    ('accent_color', '"#007AFF"'),
+    ('font_size', '14'),
+    ('sidebar_width', '240'),
+    ('ollama_base_url', '"http://localhost:11434"'),
+    ('embedding_model', '"nomic-embed-text"'),
+    ('demo_mode', 'false'),
+    ('topic_analysis_interval_minutes', '30'),
+    ('migration_suggestion_threshold', '0.3'),
+    ('web_session_preserve', 'false');
