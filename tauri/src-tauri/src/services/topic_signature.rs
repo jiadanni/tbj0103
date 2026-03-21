@@ -7,7 +7,7 @@ pub fn collect_workspace_text(conn: &Connection, workspace_id: &str) -> Result<(
         "SELECT m.content 
          FROM messages m
          JOIN chat_sessions s ON m.session_id = s.id
-         WHERE s.workspace_id = ?1 AND m.role = 'user' AND s.is_incognito = 0
+         WHERE s.workspace_id = ?1 AND m.role = 'user' AND s.is_incognito = 0 AND s.exclude_from_analytics = 0
          ORDER BY m.created_at DESC
          LIMIT 500"
     ).map_err(|e| e.to_string())?;
@@ -27,6 +27,36 @@ pub fn collect_workspace_text(conn: &Connection, workspace_id: &str) -> Result<(
     }
     
     Ok((text, count))
+}
+
+pub fn recompute_workspace_signature(conn: &Connection, workspace_id: &str) -> Result<TopicSignature, String> {
+    let existing_json: String = conn.query_row(
+        "SELECT topic_signature FROM workspaces WHERE id = ?1",
+        rusqlite::params![workspace_id],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    let existing: TopicSignature = serde_json::from_str(&existing_json).unwrap_or_default();
+
+    let (text, count) = collect_workspace_text(conn, workspace_id)?;
+    let mut sig = if count == 0 {
+        TopicSignature::default()
+    } else {
+        let mut generated = generate_heuristic(&text);
+        generated.message_count_at_gen = Some(count);
+        generated
+    };
+
+    sig.manual_tags = existing.manual_tags;
+    sig.ignored_tags = existing.ignored_tags;
+    let now = chrono::Utc::now().to_rfc3339();
+    let sig_json = serde_json::to_string(&sig).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE workspaces SET topic_signature = ?1, signature_updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![sig_json, now, workspace_id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(sig)
 }
 
 pub fn generate_heuristic(text: &str) -> TopicSignature {

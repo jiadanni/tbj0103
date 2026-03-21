@@ -20,6 +20,7 @@ export interface ChatSession {
   system_prompt: string;
   is_pinned: boolean;
   is_incognito: boolean;
+  exclude_from_analytics: boolean;
   is_deleted: boolean;
   deleted_at?: string;
   created_at: string;
@@ -138,11 +139,13 @@ export function findUnusedSession(
   sessions: ChatSession[],
   messages: Record<string, Message[]>,
   projectId: string | null,
-  isIncognito: boolean
+  privacy: { isIncognito: boolean; excludeFromAnalytics: boolean }
 ) {
   return sessions.find((s) => {
     const isProjectMatch = s.project_id === (projectId ?? "");
-    const isIncognitoMatch = s.is_incognito === isIncognito;
+    const isPrivacyMatch =
+      s.is_incognito === privacy.isIncognito &&
+      s.exclude_from_analytics === privacy.excludeFromAnalytics;
     const isNotPinned = !s.is_pinned;
     const isNewTitle = s.title === "New Chat" || s.title === "";
     // If we have messages loaded and there are none, it's unused.
@@ -153,7 +156,7 @@ export function findUnusedSession(
 
     return (
       isProjectMatch &&
-      isIncognitoMatch &&
+      isPrivacyMatch &&
       isNotPinned &&
       isNewTitle &&
       hasNoMessages

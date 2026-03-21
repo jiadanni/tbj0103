@@ -82,7 +82,10 @@ export default function ChatSessionListView() {
     if (!activeWorkspaceId) {return;}
     
     // Look for an unused session first
-    const unusedSession = findUnusedSession(sessions, messages, activeProjectId, false);
+    const unusedSession = findUnusedSession(sessions, messages, activeProjectId, {
+      isIncognito: false,
+      excludeFromAnalytics: false,
+    });
     if (unusedSession) {
       setActiveChatId(unusedSession.id);
       navigate(`/chat/${unusedSession.id}`);

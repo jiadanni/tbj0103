@@ -165,6 +165,10 @@ fn extract_json_array(s: &str) -> String {
 /// Cancel an in-progress stream for the given session.
 #[tauri::command]
 pub async fn stop_stream(session_id: String, state: tauri::State<'_, StreamAbortState>) -> Result<(), String> {
-    state.0.lock().unwrap().insert(session_id, true);
+    state
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(session_id, true);
     Ok(())
 }

@@ -20,9 +20,7 @@
         "resizable": true,
         "fullscreen": false,
         "visible": true,
-        "focus": false,
-        "titleBarStyle": "overlay",
-        "hiddenTitle": true
+        "focus": false
       }
     ],
     "security": {

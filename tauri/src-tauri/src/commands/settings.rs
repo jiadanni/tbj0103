@@ -7,6 +7,7 @@ pub struct Settings {
     pub preferred_model: String,
     pub backup_enabled: bool,
     pub touch_id_enabled: bool,
+    pub pin_lock_enabled: bool,
     pub auto_lock_minutes: i64,
     pub theme: String,
     pub accent_color: String,
@@ -31,6 +32,7 @@ impl Default for Settings {
             preferred_model: "".to_string(),
             backup_enabled: true,
             touch_id_enabled: false,
+            pin_lock_enabled: false,
             auto_lock_minutes: 15,
             theme: "system".to_string(),
             accent_color: "#007AFF".to_string(),
@@ -77,6 +79,9 @@ pub fn get_settings(state: State<DbState>) -> Result<Settings, String> {
         touch_id_enabled: get_setting(&conn, "touch_id_enabled")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.touch_id_enabled),
+        pin_lock_enabled: get_setting(&conn, "pin_passcode_hash")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(def.pin_lock_enabled),
         auto_lock_minutes: get_setting(&conn, "auto_lock_minutes")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.auto_lock_minutes),
@@ -148,6 +153,6 @@ pub fn update_settings(state: State<DbState>, settings: Settings) -> Result<(), 
     set_setting(&conn, "open_in_background", &settings.open_in_background.to_string())?;
     set_setting(&conn, "immediate_delete", &settings.immediate_delete.to_string())?;
     set_setting(&conn, "confirm_move_to_trash", &settings.confirm_move_to_trash.to_string())?;
-    // chat_encryption_enabled is managed by setup_chat_encryption / disable_chat_encryption
+    // pin_lock_enabled and chat_encryption_enabled are managed by dedicated commands.
     Ok(())
 }

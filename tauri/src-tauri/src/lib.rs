@@ -139,6 +139,7 @@ pub fn run() {
             commands::context::assemble_and_send,
             commands::chat::create_chat_session,
             commands::chat::list_chat_sessions,
+            commands::chat::search_chat_sessions,
             commands::chat::get_chat_session,
             commands::chat::delete_chat_session,
             commands::chat::add_message,
@@ -211,6 +212,10 @@ pub fn run() {
             // Settings commands
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::security::get_security_status,
+            commands::security::set_pin_passcode,
+            commands::security::verify_pin_passcode,
+            commands::security::remove_pin_passcode,
             // Graph algorithm commands
             commands::graph::compute_pagerank,
             commands::graph::find_shortest_path,
