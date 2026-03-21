@@ -3,6 +3,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 
 const SETTINGS_INITIAL = {
   preferredModel: "",
+  backgroundModel: "",
   ollamaUrl: "http://localhost:11434",
   embeddingModel: "nomic-embed-text",
   theme: "system" as const,
@@ -69,6 +70,11 @@ describe("setters", () => {
   it("setFontSize updates fontSize only", () => {
     useSettingsStore.getState().setFontSize(18);
     expect(useSettingsStore.getState().fontSize).toBe(18);
+  });
+
+  it("setBackgroundModel updates backgroundModel", () => {
+    useSettingsStore.getState().setBackgroundModel("qwen2.5:1.5b");
+    expect(useSettingsStore.getState().backgroundModel).toBe("qwen2.5:1.5b");
   });
 
   it("setSidebarWidth updates sidebarWidth only", () => {

@@ -29,7 +29,7 @@ interface SidebarProps {
 export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId, workspaces, setWorkspaces, setProjects, setActiveTopicSignature } = useWorkspaceStore();
+  const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId, workspaces, setWorkspaces, setProjects, setWorkspaceTopicSignature } = useWorkspaceStore();
   const { sessions, messages, setActiveChatId } = useChatStore();
 
   const activeSegment = "/" + location.pathname.split("/")[1];
@@ -111,7 +111,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
       ]);
       setAllSessions(refreshedSessions);
       setProjects(refreshedProjects);
-      setActiveTopicSignature(refreshedSignature);
+      setWorkspaceTopicSignature(activeWorkspaceId, refreshedSignature);
       setWorkspaces(refreshedWorkspaces);
       exitSelectMode();
     } catch (e) {
@@ -138,10 +138,11 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   }
 
   useEffect(() => {
-    if (creatingFolder && folderInputRef.current) {
+    if (!creatingFolder || !folderInputRef.current) {return;}
+    if (document.activeElement !== folderInputRef.current) {
       folderInputRef.current.focus();
     }
-  }, [creatingFolder]);
+  }, [creatingFolder, newFolderName]);
 
   async function handleNewThread(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
     if (!activeWorkspaceId) {return;}
@@ -439,9 +440,6 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                 }
               }}
               onClick={(e) => e.stopPropagation()}
-              onBlur={(e) => {
-                void handleCreateFolder(e.currentTarget.value);
-              }}
               placeholder="Folder name…"
               className="flex-1 text-xs bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-1 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />
@@ -525,7 +523,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                     ]);
                     setAllSessions(refreshedSessions);
                     setProjects(refreshedProjects);
-                    setActiveTopicSignature(refreshedSignature);
+                    setWorkspaceTopicSignature(activeWorkspaceId, refreshedSignature);
                     setWorkspaces(refreshedWorkspaces);
                   } catch (err) {
                     console.error("Failed to move sessions:", err);
@@ -601,7 +599,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                     ]);
                     setAllSessions(refreshedSessions);
                     setProjects(refreshedProjects);
-                    setActiveTopicSignature(refreshedSignature);
+                    setWorkspaceTopicSignature(activeWorkspaceId, refreshedSignature);
                     setWorkspaces(refreshedWorkspaces);
                   } catch (err) {
                     console.error("Failed to move sessions:", err);
