@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   Panel, PanelGroup, PanelResizeHandle,
@@ -8,23 +8,25 @@ import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { api } from "../lib/api";
+import { useHotkeys, type HotkeyBinding } from "../hooks/useHotkeys";
+import { MOD_KEY, CTRL_KEY } from "../lib/platform";
 
 import {
   MessageSquare, Network, CreditCard,
   FileText, Settings,
   BarChart2, LucideIcon,
-  Globe, FileEdit, Inbox,
+  Globe, FileEdit,
 } from "lucide-react";
 
-const NAV_ITEMS: { path: string; icon: LucideIcon; label: string }[] = [
-  { path: "/project",       icon: BarChart2,             label: "Dashboard"        },
-  { path: "/chat",          icon: MessageSquare,          label: "Chat"             },
-  { path: "/notes",         icon: FileEdit,               label: "Notes"            },
-  { path: "/documents",     icon: FileText,               label: "Documents"        },
-  { path: "/webcapture",    icon: Globe,                  label: "Web Captures"     },
-  { path: "/graph",         icon: Network,                label: "Knowledge Graph"  },
-  { path: "/flashcards",    icon: CreditCard,             label: "Flashcards"       },
-  { path: "/settings",      icon: Settings,               label: "Settings"         },
+const NAV_ITEMS: { path: string; icon: LucideIcon; label: string; key?: string }[] = [
+  { path: "/project",       icon: BarChart2,             label: "Dashboard",       key: "D" },
+  { path: "/chat",          icon: MessageSquare,          label: "Chat",            key: "C" },
+  { path: "/notes",         icon: FileEdit,               label: "Notes",           key: "N" },
+  { path: "/documents",     icon: FileText,               label: "Documents",       key: "O" },
+  { path: "/webcapture",    icon: Globe,                  label: "Web Captures",    key: "W" },
+  { path: "/graph",         icon: Network,                label: "Knowledge Graph", key: "G" },
+  { path: "/flashcards",    icon: CreditCard,             label: "Flashcards",      key: "F" },
+  { path: "/settings",      icon: Settings,               label: "Settings",        key: "," },
 ];
 import ChatView from "../views/ChatView";
 import KnowledgeGraphView from "../views/KnowledgeGraphView";
@@ -43,7 +45,7 @@ function WorkspaceTabBar() {
   const [dragOverWsId, setDragOverWsId] = useState<string | null>(null);
 
   async function createWorkspace() {
-    if (!newName.trim()) return;
+    if (!newName.trim()) {return;}
     const ws = await api.workspace.create(newName.trim());
     addWorkspace(ws);
     setActiveWorkspaceId(ws.id);
@@ -55,10 +57,10 @@ function WorkspaceTabBar() {
     e.preventDefault();
     setDragOverWsId(null);
     const data = e.dataTransfer.getData("application/x-chat-session-ids");
-    if (!data) return;
+    if (!data) {return;}
     try {
       const sessionIds: string[] = JSON.parse(data);
-      if (sessionIds.length === 0) return;
+      if (sessionIds.length === 0) {return;}
       await api.chat.moveSessions(sessionIds, targetWsId);
       // Remove moved sessions from current store
       const { useChatStore } = await import("../stores/chatStore");
@@ -70,10 +72,11 @@ function WorkspaceTabBar() {
 
   return (
     <div className="flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 overflow-x-auto">
-      {workspaces.map((ws) => (
+      {workspaces.map((ws, idx) => (
         <button
           key={ws.id}
           onClick={() => setActiveWorkspaceId(ws.id)}
+          title={idx < 9 ? `${ws.name} (${CTRL_KEY}+${idx + 1})` : ws.name}
           onDragOver={(e) => {
             if (e.dataTransfer.types.includes("application/x-chat-session-ids")) {
               e.preventDefault();
@@ -83,12 +86,12 @@ function WorkspaceTabBar() {
           }}
           onDragLeave={() => setDragOverWsId(null)}
           onDrop={(e) => handleDrop(e, ws.id)}
-          className={`flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-b-2 transition-colors ${
+          className={`flex items-center gap-1.5 px-3 h-7 text-xs whitespace-nowrap transition-colors ${
             dragOverWsId === ws.id
-              ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)] font-medium"
+              ? "rounded-md bg-[var(--accent-color)]/15 text-[var(--accent-color)] font-medium ring-1 ring-[var(--accent-color)]"
               : activeWorkspaceId === ws.id
-              ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
-              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              ? "rounded-md bg-[var(--accent-color)] text-white font-medium"
+              : "rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
           }`}
         >
           {ws.name}
@@ -101,8 +104,8 @@ function WorkspaceTabBar() {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") createWorkspace();
-              if (e.key === "Escape") setCreating(false);
+              if (e.key === "Enter") {createWorkspace();}
+              if (e.key === "Escape") {setCreating(false);}
             }}
             placeholder="Workspace name"
             className="text-xs px-2 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none w-36"
@@ -131,10 +134,11 @@ function NavigationTabBar() {
 
   return (
     <div className="flex items-center h-11 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-3 shrink-0 overflow-x-auto gap-1">
-      {NAV_ITEMS.map(({ path, icon: Icon, label }) => (
+      {NAV_ITEMS.map(({ path, icon: Icon, label, key }) => (
         <button
           key={path}
           onClick={() => navigate(path)}
+          title={key ? `${label} (${MOD_KEY}${key === "," ? "" : "⇧"}${key})` : label}
           className={`flex items-center gap-2 px-3.5 py-1.5 h-fit text-sm whitespace-nowrap rounded-md transition-colors ${
             activeSegment === path
               ? "bg-[var(--accent-color)] text-white font-medium"
@@ -155,17 +159,80 @@ export default function Layout() {
   const location = useLocation();
   const { navLayout } = useWorkspaceStore();
 
-  // Global Cmd+K shortcut
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setCommandPaletteOpen((v) => !v);
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  const hotkeys = useMemo<HotkeyBinding[]>(() => {
+    const bindings: HotkeyBinding[] = [
+      // Command Palette
+      { key: "k", mod: "mod", action: () => setCommandPaletteOpen(v => !v), label: "Command Palette", category: "General", allowInInput: true },
+
+      // View Navigation
+      ...NAV_ITEMS.map(item => ({
+        key: item.key || "",
+        mod: item.key === "," ? "mod" as const : "mod" as const,
+        shift: item.key !== ",",
+        action: () => navigate(item.path),
+        label: `Go to ${item.label}`,
+        category: "Navigation"
+      })),
+
+      // Workspace Switching
+      {
+        key: "Tab",
+        mod: "ctrl",
+        action: () => {
+          const { workspaces, activeWorkspaceId, setActiveWorkspaceId } = useWorkspaceStore.getState();
+          const idx = workspaces.findIndex(w => w.id === activeWorkspaceId);
+          const next = (idx + 1) % workspaces.length;
+          setActiveWorkspaceId(workspaces[next].id);
+        },
+        label: "Next Workspace",
+        category: "Workspaces"
+      },
+      {
+        key: "Tab",
+        mod: "ctrl",
+        shift: true,
+        action: () => {
+          const { workspaces, activeWorkspaceId, setActiveWorkspaceId } = useWorkspaceStore.getState();
+          const idx = workspaces.findIndex(w => w.id === activeWorkspaceId);
+          const prev = (idx - 1 + workspaces.length) % workspaces.length;
+          setActiveWorkspaceId(workspaces[prev].id);
+        },
+        label: "Previous Workspace",
+        category: "Workspaces"
+      },
+
+      // Workspace by number
+      ...Array.from({ length: 9 }).map((_, i) => ({
+        key: (i + 1).toString(),
+        mod: "ctrl" as const,
+        action: () => {
+          const { workspaces, setActiveWorkspaceId } = useWorkspaceStore.getState();
+          if (workspaces[i]) {
+            setActiveWorkspaceId(workspaces[i].id);
+          }
+        },
+        label: `Jump to Workspace ${i + 1}`,
+        category: "Workspaces"
+      })),
+
+      // Settings Tabs (only when on /settings)
+      ...Array.from({ length: 8 }).map((_, i) => ({
+        key: (i + 1).toString(),
+        mod: "mod" as const,
+        shift: true,
+        when: () => location.pathname === "/settings",
+        action: () => {
+          const tabs = ["appearance", "ai", "webai", "security", "workspaces", "backup", "plugins", "mcp"];
+          navigate("/settings", { state: { settingsTab: tabs[i] } });
+        },
+        label: `Settings: Tab ${i + 1}`,
+        category: "Settings"
+      })),
+    ];
+    return bindings;
+  }, [navigate, location.pathname]);
+
+  useHotkeys(hotkeys);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">

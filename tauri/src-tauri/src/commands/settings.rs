@@ -19,12 +19,14 @@ pub struct Settings {
     pub chat_json_storage: bool,
     pub chat_encryption_enabled: bool,
     pub web_session_preserve: bool,
+    pub start_at_login: bool,
+    pub open_in_background: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            preferred_model: "qwen2.5:7b".to_string(),
+            preferred_model: "".to_string(),
             backup_enabled: true,
             touch_id_enabled: false,
             auto_lock_minutes: 15,
@@ -39,6 +41,8 @@ impl Default for Settings {
             chat_json_storage: true,
             chat_encryption_enabled: false,
             web_session_preserve: false,
+            start_at_login: false,
+            open_in_background: false,
         }
     }
 }
@@ -104,6 +108,12 @@ pub fn get_settings(state: State<DbState>) -> Result<Settings, String> {
         web_session_preserve: get_setting(&conn, "web_session_preserve")
             .map(|v| v == "true")
             .unwrap_or(def.web_session_preserve),
+        start_at_login: get_setting(&conn, "start_at_login")
+            .map(|v| v == "true")
+            .unwrap_or(def.start_at_login),
+        open_in_background: get_setting(&conn, "open_in_background")
+            .map(|v| v == "true")
+            .unwrap_or(def.open_in_background),
     })
 }
 
@@ -124,6 +134,8 @@ pub fn update_settings(state: State<DbState>, settings: Settings) -> Result<(), 
     set_setting(&conn, "chat_title_refresh_interval", &settings.chat_title_refresh_interval.to_string())?;
     set_setting(&conn, "chat_json_storage", &settings.chat_json_storage.to_string())?;
     set_setting(&conn, "web_session_preserve", &settings.web_session_preserve.to_string())?;
+    set_setting(&conn, "start_at_login", &settings.start_at_login.to_string())?;
+    set_setting(&conn, "open_in_background", &settings.open_in_background.to_string())?;
     // chat_encryption_enabled is managed by setup_chat_encryption / disable_chat_encryption
     Ok(())
 }

@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - Flashcard Review View
 
@@ -589,5 +589,3 @@ struct SessionStats {
     var totalReviewed = 0
     var correct = 0
 }
-
-

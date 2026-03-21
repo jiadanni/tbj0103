@@ -51,7 +51,7 @@ pub fn list_concepts(state: State<DbState>, workspace_id: String) -> Result<Vec<
         "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at
          FROM concept_nodes WHERE workspace_id = ?1 ORDER BY name ASC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], |row| row_to_concept(row))
+    let items = stmt.query_map(rusqlite::params![workspace_id], row_to_concept)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -65,7 +65,7 @@ pub fn get_concept(state: State<DbState>, id: String) -> Result<Option<ConceptNo
         "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at
          FROM concept_nodes WHERE id = ?1",
         rusqlite::params![id],
-        |row| row_to_concept(row),
+        row_to_concept,
     );
     match result {
         Ok(c) => Ok(Some(c)),

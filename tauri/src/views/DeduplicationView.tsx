@@ -17,8 +17,8 @@ interface DuplicatePair {
 function nameSimilarity(a: string, b: string): number {
   const na = a.toLowerCase().trim();
   const nb = b.toLowerCase().trim();
-  if (na === nb) return 1;
-  if (na.includes(nb) || nb.includes(na)) return 0.85;
+  if (na === nb) {return 1;}
+  if (na.includes(nb) || nb.includes(na)) {return 0.85;}
   // Levenshtein-inspired: count common chars
   const la = na.split("");
   let common = 0;
@@ -39,7 +39,7 @@ export default function DeduplicationView() {
   const [query, setQuery] = useState("");
 
   async function scan() {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     setLoading(true);
     try {
       const all = await api.graph.listConcepts(activeWorkspaceId);
@@ -61,7 +61,7 @@ export default function DeduplicationView() {
   }
 
   useEffect(() => {
-    if (activeWorkspaceId) scan();
+    if (activeWorkspaceId) {scan();}
   }, [activeWorkspaceId]);
 
   function dismiss(idx: number) {

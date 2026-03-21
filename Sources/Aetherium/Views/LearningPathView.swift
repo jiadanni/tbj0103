@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - Learning Path View
 
@@ -532,5 +532,3 @@ struct PathStatBadge: View {
         .cornerRadius(10)
     }
 }
-
-

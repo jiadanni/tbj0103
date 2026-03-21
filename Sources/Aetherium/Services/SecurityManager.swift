@@ -1,6 +1,6 @@
+import AppKit
 import Foundation
 import LocalAuthentication
-import AppKit
 
 enum BiometricType {
     case none

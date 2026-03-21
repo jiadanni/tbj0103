@@ -4,7 +4,7 @@
  * activity heatmap, topic cloud, concept-growth + accuracy charts,
  * recent activity, deduplication, AI insights.
  */
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FileText, MessageSquare, CreditCard, Network, Lightbulb,
   Sparkles, Clock, Copy, Brain, RefreshCw, BarChart2, Cpu,
@@ -34,10 +34,10 @@ const RANGE_DAYS: Record<TimeRange, number> = { Week: 7, Month: 30, Quarter: 90 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
+  if (m < 1) {return "just now";}
+  if (m < 60) {return `${m}m ago`;}
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) {return `${h}h ago`;}
   return `${Math.floor(h / 24)}d ago`;
 }
 
@@ -48,7 +48,7 @@ function dateKey(d: Date) {
 /** Seeded pseudo-random for mock data (deterministic per date string) */
 function mockRng(seed: string, scale = 10): number {
   let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0;
+  for (let i = 0; i < seed.length; i++) {h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0;}
   return Math.abs(h) % (scale + 1);
 }
 
@@ -85,7 +85,7 @@ function ActivityHeatmap({ days, activityMap }: { days: number; activityMap: Rec
   const max = Math.max(1, ...cells.map((c) => c.count));
 
   function cellStyle(count: number): { className: string; style?: React.CSSProperties } {
-    if (count === 0) return { className: "bg-[var(--bg-primary)] border border-[var(--border-color)]" };
+    if (count === 0) {return { className: "bg-[var(--bg-primary)] border border-[var(--border-color)]" };}
     const pct = count / max;
     const opacity = pct > 0.75 ? 1 : pct > 0.5 ? 0.75 : pct > 0.25 ? 0.5 : 0.3;
     return { className: "", style: { backgroundColor: 'var(--accent-color)', opacity } };
@@ -276,7 +276,7 @@ function InsightCard({ text }: { text: string }) {
 export default function ProjectDashboardView() {
   const { activeWorkspaceId, activeProjectId, projects, workspaces } = useWorkspaceStore();
   const { sessions } = useChatStore();
-  const { preferredModel, ollamaUrl } = useSettingsStore();
+  const { preferredModel, ollamaUrl, modelLabels } = useSettingsStore();
   const navigate = useNavigate();
 
   const project = projects.find((p) => p.id === activeProjectId);
@@ -300,7 +300,7 @@ export default function ProjectDashboardView() {
 
   // Aggregate stats across ALL workspaces
   useEffect(() => {
-    if (workspaces.length === 0) return;
+    if (workspaces.length === 0) {return;}
     const wsIds = workspaces.map((w) => w.id);
 
     // Aggregate project stats across all workspaces' projects
@@ -312,7 +312,7 @@ export default function ProjectDashboardView() {
       .then((statsList) => {
         const merged: ProjectStats = { note_count: 0, document_count: 0, chat_session_count: 0, flashcard_count: 0, web_capture_count: 0 };
         statsList.forEach((s) => {
-          if (!s) return;
+          if (!s) {return;}
           merged.note_count += s.note_count;
           merged.document_count += s.document_count;
           merged.chat_session_count += s.chat_session_count;
@@ -328,7 +328,7 @@ export default function ProjectDashboardView() {
       .then((statsList) => {
         const merged: ReviewStats = { total_cards: 0, learned: 0, due_today: 0, avg_ease: 0 };
         statsList.forEach((s) => {
-          if (!s) return;
+          if (!s) {return;}
           merged.total_cards += s.total_cards;
           merged.learned += s.learned;
           merged.due_today += s.due_today;
@@ -343,13 +343,13 @@ export default function ProjectDashboardView() {
         const merged: GraphStatistics = { id: "", total_concepts: 0, total_links: 0, avg_degree: 0, density: 0, updated_at: "" };
         let densityCount = 0;
         statsList.forEach((s) => {
-          if (!s) return;
+          if (!s) {return;}
           merged.total_concepts += s.total_concepts;
           merged.total_links += s.total_links;
           merged.density += s.density;
           densityCount++;
         });
-        if (densityCount > 0) merged.density /= densityCount;
+        if (densityCount > 0) {merged.density /= densityCount;}
         setGraphStats(merged);
       })
       .catch(() => {});
@@ -385,13 +385,12 @@ export default function ProjectDashboardView() {
   // Fetch AI topics whenever sessions or notes change (debounced by dependency)
   const fetchAiTopics = async () => {
     const model = preferredModel;
-    if (!model) { setTopicsError("No model selected"); return; }
     const texts = [
       ...sessions.map((s) => s.title).filter(Boolean),
       ...recentNotes.map((n) => n.title).filter(Boolean),
       ...concepts.map((c) => c.name).filter(Boolean),
     ];
-    if (texts.length === 0) return;
+    if (texts.length === 0) {return;}
     setTopicsLoading(true);
     setTopicsError(null);
     try {
@@ -406,8 +405,8 @@ export default function ProjectDashboardView() {
 
   // Auto-fetch topics once sessions + notes are loaded
   useEffect(() => {
-    if (sessions.length === 0 && recentNotes.length === 0) return;
-    if (aiTopics.length > 0) return; // already loaded, refresh is manual
+    if (sessions.length === 0 && recentNotes.length === 0) {return;}
+    if (aiTopics.length > 0) {return;} // already loaded, refresh is manual
     fetchAiTopics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions.length, recentNotes.length]);
@@ -513,14 +512,14 @@ export default function ProjectDashboardView() {
   }, [graphStats, reviewStats, activityMap]);
 
   const kindIcon = (kind: "Note" | "Concept" | "Chat") => {
-    if (kind === "Note") return <FileText size={13} className="text-green-400 flex-shrink-0" />;
-    if (kind === "Concept") return <Brain size={13} className="text-blue-400 flex-shrink-0" />;
+    if (kind === "Note") {return <FileText size={13} className="text-green-400 flex-shrink-0" />;}
+    if (kind === "Concept") {return <Brain size={13} className="text-blue-400 flex-shrink-0" />;}
     return <MessageSquare size={13} className="text-purple-400 flex-shrink-0" />;
   };
 
   const kindRoute = (kind: "Note" | "Concept" | "Chat", id: string) => {
-    if (kind === "Chat") return `/chat/${id}`;
-    if (kind === "Concept") return "/graph";
+    if (kind === "Chat") {return `/chat/${id}`;}
+    if (kind === "Concept") {return "/graph";}
     return "/documents";
   };
 
@@ -546,7 +545,7 @@ export default function ProjectDashboardView() {
     cutoff.setDate(cutoff.getDate() - RANGE_DAYS[timeRange]);
     let count = 0;
     sessions.forEach((s) => {
-      if (new Date(s.updated_at) >= cutoff) count++;
+      if (new Date(s.updated_at) >= cutoff) {count++;}
     });
     return count;
   }, [sessions, timeRange]);
@@ -790,7 +789,7 @@ export default function ProjectDashboardView() {
                 {modelsWithUsage.map((m) => (
                   <div key={m.id}>
                     <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-[var(--text-secondary)] truncate max-w-[160px]">{m.name}</span>
+                      <span className="text-[11px] text-[var(--text-secondary)] truncate max-w-[160px]">{modelLabels[m.model_id] || m.name}</span>
                       <span className="text-[11px] text-[var(--text-muted)]">
                         {m.tokens_used_total >= 1000
                           ? `${(m.tokens_used_total / 1000).toFixed(1)}k`

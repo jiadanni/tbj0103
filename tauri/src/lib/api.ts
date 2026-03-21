@@ -114,6 +114,8 @@ export interface AppSettings {
   draft_model: string;
   compare_model_a: string;
   compare_model_b: string;
+  start_at_login: boolean;
+  open_in_background: boolean;
 }
 
 export interface BacklinkEntry {

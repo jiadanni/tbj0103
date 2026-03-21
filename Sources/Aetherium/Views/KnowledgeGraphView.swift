@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct KnowledgeGraphView: View {
     @Environment(\.modelContext) private var modelContext
@@ -579,7 +579,7 @@ struct ForceDirectedGraphView: View {
     @State private var nodePositions: [UUID: CGPoint] = [:]
     // Pre-computed edges: built once per layout so Canvas never touches SwiftData relationships.
     @State private var edgeSnapshot: [GraphEdge] = []
-    @State private var simTask: Task<Void, Never>? = nil
+    @State private var simTask: Task<Void, Never>?
     // Zoom
     @GestureState private var magnifyDelta: CGFloat = 1.0
     @State private var zoom: CGFloat = 1.0
@@ -1190,5 +1190,3 @@ struct GraphStatisticsView: View {
         .frame(width: 500, height: 600)
     }
 }
-
-

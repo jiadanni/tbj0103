@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct WorkspaceListView: View {
     @Environment(\.modelContext) private var modelContext
@@ -187,4 +187,3 @@ struct EditWorkspaceSheet: View {
         .frame(width: 450)
     }
 }
-

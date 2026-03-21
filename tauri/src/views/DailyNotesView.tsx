@@ -38,7 +38,7 @@ const MOOD_OPTIONS = [
 ] as const;
 
 function moodToEmoji(mood: number | undefined): string {
-  if (mood === undefined) return "";
+  if (mood === undefined) {return "";}
   const match = MOOD_OPTIONS.reduce((prev, curr) =>
     Math.abs(curr.value - mood) < Math.abs(prev.value - mood) ? curr : prev
   );
@@ -96,7 +96,7 @@ export default function DailyNotesView() {
 
   // --- Load month notes for dot indicators ---
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     const start = format(startOfMonth(currentMonth), "yyyy-MM-dd");
     const end = format(endOfMonth(currentMonth), "yyyy-MM-dd");
     api.note.listDailyNotesInRange(activeWorkspaceId, start, end)
@@ -106,7 +106,7 @@ export default function DailyNotesView() {
 
   // --- Load selected date note ---
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     api.note.getDailyNote(activeWorkspaceId, dateStr)
       .then((n) => {
@@ -120,19 +120,19 @@ export default function DailyNotesView() {
 
   // --- Load templates ---
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     api.note.listTemplates(activeWorkspaceId).then(setTemplates).catch(() => {});
   }, [activeWorkspaceId]);
 
   // --- Auto-save debounce ---
   useEffect(() => {
-    if (!note) return;
+    if (!note) {return;}
     const t = setTimeout(() => saveNote(), 2000);
     return () => clearTimeout(t);
   }, [content, mood, productivity]);
 
   const saveNote = useCallback(async () => {
-    if (!note) return;
+    if (!note) {return;}
     setSaving(true);
     try {
       await api.note.updateDailyNote(note.id, content, mood, productivity);
@@ -386,7 +386,7 @@ export default function DailyNotesView() {
               </div>
               <button
                 onClick={() => {
-                  if (!activeWorkspaceId) return;
+                  if (!activeWorkspaceId) {return;}
                   const dateStr = format(selectedDate, "yyyy-MM-dd");
                   api.note.getDailyNote(activeWorkspaceId, dateStr).then((n) => {
                     setNote(n);

@@ -2,7 +2,7 @@
  * SmartTextEditor — CodeMirror 6 editor with [[wiki-link]] highlighting
  * and autocomplete for concept names.
  */
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import CodeMirror, { ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
@@ -45,7 +45,7 @@ const wikiLinkPlugin = ViewPlugin.fromClass(
     constructor(view: EditorView) { this.decorations = buildWikiDecorations(view); }
     update(update: ViewUpdate) {
       if (update.docChanged || update.viewportChanged)
-        this.decorations = buildWikiDecorations(update.view);
+        {this.decorations = buildWikiDecorations(update.view);}
     }
   },
   { decorations: (v) => v.decorations }
@@ -56,7 +56,7 @@ function makeConceptCompleter(conceptNames: string[]) {
   return (context: CompletionContext): CompletionResult | null => {
     // Match [[partial
     const match = context.matchBefore(/\[\[[^\]]*$/);
-    if (!match) return null;
+    if (!match) {return null;}
     const partial = match.text.slice(2).toLowerCase();
     const options = conceptNames
       .filter((n) => n.toLowerCase().includes(partial))
@@ -70,27 +70,27 @@ export default function SmartTextEditor({
   value, onChange, placeholder = "Write something…", minHeight = "200px", autofocus = false,
 }: Props) {
   const { activeWorkspaceId } = useWorkspaceStore();
-  const conceptNamesRef = useRef<string[]>([]);
+  const [conceptNames, setConceptNames] = useState<string[]>([]);
 
   // Load concept names for autocomplete
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     api.graph.listConcepts(activeWorkspaceId)
-      .then((concepts) => { conceptNamesRef.current = concepts.map((c) => c.name); })
+      .then((concepts) => { setConceptNames(concepts.map((c) => c.name)); })
       .catch(() => {});
   }, [activeWorkspaceId]);
 
   const completer = useCallback(
-    (ctx: CompletionContext) => makeConceptCompleter(conceptNamesRef.current)(ctx),
-    []
+    (ctx: CompletionContext) => makeConceptCompleter(conceptNames)(ctx),
+    [conceptNames]
   );
 
-  const extensions = [
+  const extensions = useMemo(() => [
     markdown({ base: markdownLanguage, codeLanguages: languages }),
     wikiLinkPlugin,
     autocompletion({ override: [completer] }),
     EditorView.lineWrapping,
-  ];
+  ], [completer]);
 
   return (
     <CodeMirror

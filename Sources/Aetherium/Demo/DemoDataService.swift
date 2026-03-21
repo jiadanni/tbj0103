@@ -259,14 +259,14 @@ struct DemoDataService {
         }
 
         let tLinks: [(ConceptNode, ConceptNode, ConceptLinkType)] = [
-            (cTransformer, cAttention,  .partOf),
-            (cMHA,         cAttention,  .partOf),
-            (cSelfAttn,    cAttention,  .partOf),
-            (cAttention,   cQKV,        .partOf),
-            (cEncoder,     cTransformer, .partOf),
-            (cDecoder,     cTransformer, .partOf),
-            (cPosEnc,      cTransformer, .partOf),
-            (cMHA,         cSelfAttn,   .related),
+            (cTransformer, cAttention, .partOf),
+            (cMHA, cAttention, .partOf),
+            (cSelfAttn, cAttention, .partOf),
+            (cAttention, cQKV, .partOf),
+            (cEncoder, cTransformer, .partOf),
+            (cDecoder, cTransformer, .partOf),
+            (cPosEnc, cTransformer, .partOf),
+            (cMHA, cSelfAttn, .related)
         ]
         for (src, tgt, type) in tLinks {
             let link = ConceptLink(source: src, target: tgt, linkType: type, strength: 0.9)
@@ -284,7 +284,7 @@ struct DemoDataService {
             ("How does a Transformer preserve word order?", "Positional encodings (sinusoidal or learned) are added to token embeddings before the first layer.", 3, 4, -2),
             ("What is multi-head attention and why use it?", "Running attention h times with different projections. Each head can specialise in different relationships.", 2, 1, 0),
             ("Role of the encoder in a Transformer?", "Processes input tokens in parallel with self-attention, building contextual representations.", 3, 3, -1),
-            ("Role of the decoder in a Transformer?", "Generates output autoregressively; uses masked self-attention + cross-attention to encoder outputs.", 4, 7, -5),
+            ("Role of the decoder in a Transformer?", "Generates output autoregressively; uses masked self-attention + cross-attention to encoder outputs.", 4, 7, -5)
         ]
         for (i, (front, back, diff, interval, nextOffset)) in tCards.enumerated() {
             let card = LearningCard(front: front, back: back, cardType: .basic, difficulty: diff)
@@ -327,7 +327,7 @@ struct DemoDataService {
             (3, "# Day 4 – Decoder & Cross-Attention\nThe decoder has an extra attention layer — cross-attention that looks at encoder outputs. This is how translation works: the decoder queries the encoded representation of the source sentence.", "focused", 7),
             (2, "# Day 5 – Positional Encodings\nSinusoidal encodings are elegant. Plotted them in a notebook — you can see the different frequencies across embedding dimensions. Learned positions are used in GPT but sinusoidal generalises better to longer sequences.", "calm", 8),
             (1, "# Day 6 – Multi-Head Attention\nFinally understand why multiple heads are useful. Each head can focus on different relationships — syntactic in one, semantic in another. Paper uses h=8 with d_model=512, so each head has d_k=64.", "happy", 9),
-            (0, "# Day 7 – Review & Consolidation\nGone through all flashcards. Still shaky on the exact forward pass dimensions. Will spend tomorrow doing a Python implementation to cement understanding. Massive week!", "productive", 10),
+            (0, "# Day 7 – Review & Consolidation\nGone through all flashcards. Still shaky on the exact forward pass dimensions. Will spend tomorrow doing a Python implementation to cement understanding. Massive week!", "productive", 10)
         ]
         for (daysAgo, content, mood, productivity) in dailyData {
             let dn = DailyNote(date: ago(daysAgo), content: content, mood: mood, productivity: productivity)
@@ -460,11 +460,11 @@ struct DemoDataService {
         }
 
         let sLinks: [(ConceptNode, ConceptNode, ConceptLinkType)] = [
-            (cLTV,  cMRR,   .related),
-            (cLTV,  cChurn, .related),
-            (cCAC,  cLTV,   .related),
-            (cPMF,  cChurn, .related),
-            (cMVP,  cPMF,   .prerequisite),
+            (cLTV, cMRR, .related),
+            (cLTV, cChurn, .related),
+            (cCAC, cLTV, .related),
+            (cPMF, cChurn, .related),
+            (cMVP, cPMF, .prerequisite)
         ]
         for (src, tgt, type) in sLinks {
             let link = ConceptLink(source: src, target: tgt, linkType: type, strength: 0.85)
@@ -479,7 +479,7 @@ struct DemoDataService {
             ("What is a healthy monthly churn rate for SMB SaaS?", "Below 2% monthly churn. Above 5% is a serious problem — inspect onboarding and value delivery.", 2, 4),
             ("What is MRR and why does it matter?", "Monthly Recurring Revenue — the predictable monthly revenue from subscriptions. It's your financial pulse.", 2, 8),
             ("Define 'Activation Rate'.", "% of signups who reach your product's 'aha moment'. High = good onboarding. Low = users don't see value fast enough.", 3, 0),
-            ("What is Product-Market Fit?", "When a product satisfies strong market demand — users love it, growth accelerates via word-of-mouth, churn drops.", 3, 5),
+            ("What is Product-Market Fit?", "When a product satisfies strong market demand — users love it, growth accelerates via word-of-mouth, churn drops.", 3, 5)
         ]
         for (i, (front, back, diff, nextOffset)) in sCards.enumerated() {
             let card = LearningCard(front: front, back: back, cardType: .basic, difficulty: diff)
@@ -623,13 +623,13 @@ struct DemoDataService {
         }
 
         let rLinks: [(ConceptNode, ConceptNode, ConceptLinkType)] = [
-            (cCaesar,    cRepublic,   .related),
-            (cAugustus,  cRepublic,   .related),
-            (cPompey,    cCaesar,     .related),
-            (cCaesar,    cSenate,     .related),
-            (cAugustus,  cPaxRomana,  .exemplifies),
-            (cLegion,    cCaesar,     .related),
-            (cRepublic,  cSenate,     .partOf),
+            (cCaesar, cRepublic, .related),
+            (cAugustus, cRepublic, .related),
+            (cPompey, cCaesar, .related),
+            (cCaesar, cSenate, .related),
+            (cAugustus, cPaxRomana, .exemplifies),
+            (cLegion, cCaesar, .related),
+            (cRepublic, cSenate, .partOf)
         ]
         for (src, tgt, type) in rLinks {
             let link = ConceptLink(source: src, target: tgt, linkType: type, strength: 0.8)
@@ -646,7 +646,7 @@ struct DemoDataService {
             ("What is the Pax Romana?", "~200 years of relative peace and stability (27 BC–180 AD) across the Roman Empire, beginning with Augustus.", 2, 0),
             ("What title did Augustus use instead of 'King'?", "Princeps ('first citizen'). Also held tribunicia potestas and imperium proconsulare — total authority without appearing to be a monarch.", 4, 5),
             ("What was the cursus honorum?", "The traditional sequence of Roman magistracies: quaestor → aedile → praetor → consul. It regulated political ambition during the Republic.", 3, 1),
-            ("When did the Western Roman Empire fall, and to whom?", "476 AD, when the Germanic leader Odoacer deposed Romulus Augustulus, the last Western Roman Emperor.", 2, 0),
+            ("When did the Western Roman Empire fall, and to whom?", "476 AD, when the Germanic leader Odoacer deposed Romulus Augustulus, the last Western Roman Emperor.", 2, 0)
         ]
         for (i, (front, back, diff, nextOffset)) in rCards.enumerated() {
             let card = LearningCard(front: front, back: back, cardType: .basic, difficulty: diff)
@@ -663,7 +663,7 @@ struct DemoDataService {
         let rDailyData: [(Int, String, String, Int)] = [
             (5, "# Roman History Day 1\nStarted with the founding myths and the early Republic. The system of two consuls elected annually — each with veto power over the other — is a fascinating design for preventing tyranny.", "curious", 7),
             (3, "# The Punic Wars\nSpent the morning on Carthage. Three wars, ~120 years. Hannibal crossing the Alps with elephants is still one of history's great military gambits. Rome's persistence despite Cannae (216 BC) is remarkable.", "focused", 8),
-            (1, "# Caesar's Civil War\nRead through the Rubicon crossing in detail. 'The die is cast' is so good. The political analysis — why he had no choice — makes it feel less like hubris and more like a calculated survival decision.", "excited", 9),
+            (1, "# Caesar's Civil War\nRead through the Rubicon crossing in detail. 'The die is cast' is so good. The political analysis — why he had no choice — makes it feel less like hubris and more like a calculated survival decision.", "excited", 9)
         ]
         for (daysAgo, content, mood, productivity) in rDailyData {
             let dn = DailyNote(date: ago(daysAgo), content: content, mood: mood, productivity: productivity)

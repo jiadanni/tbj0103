@@ -50,26 +50,26 @@ export default function FlashcardReviewView() {
       if (enabled.length > 0) {
         const ids = enabled.map((m) => m.model_id);
         setAvailableModels(ids);
-        if (!ids.includes(selectedModel)) setSelectedModel(ids[0]);
+        if (!ids.includes(selectedModel)) {setSelectedModel(ids[0]);}
         return;
       }
       api.ollama.listModels(ollamaUrl).then((m) => {
         const names = m.map((x) => x.name);
         setAvailableModels(names);
-        if (!names.includes(selectedModel)) setSelectedModel(names[0] || "");
+        if (!names.includes(selectedModel)) {setSelectedModel(names[0] || "");}
       }).catch(() => {});
     }).catch(() => {
       api.ollama.listModels(ollamaUrl).then((m) => {
         const names = m.map((x) => x.name);
         setAvailableModels(names);
-        if (!names.includes(selectedModel)) setSelectedModel(names[0] || "");
+        if (!names.includes(selectedModel)) {setSelectedModel(names[0] || "");}
       }).catch(() => {});
     });
   }, [ollamaUrl]);
 
   // Load due cards + stats
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     Promise.all([
       api.flashcard.listDue(activeWorkspaceId),
       api.flashcard.getStats(activeWorkspaceId),
@@ -82,7 +82,7 @@ export default function FlashcardReviewView() {
   }, [activeWorkspaceId]);
 
   async function review(quality: number) {
-    if (!currentCard) return;
+    if (!currentCard) {return;}
     const updated = await api.flashcard.review(currentCard.id, quality);
     setCards((prev) => {
       const next = [...prev];
@@ -94,12 +94,12 @@ export default function FlashcardReviewView() {
     if (currentIndex < cards.length - 1) {
       setCurrentIndex((i) => i + 1);
     } else {
-      if (activeWorkspaceId) api.flashcard.getStats(activeWorkspaceId).then(setStats).catch(() => {});
+      if (activeWorkspaceId) {api.flashcard.getStats(activeWorkspaceId).then(setStats).catch(() => {});}
     }
   }
 
   async function generateCards() {
-    if (!topic.trim() || !activeWorkspaceId || !selectedModel || isGenerating) return;
+    if (!topic.trim() || !activeWorkspaceId || !selectedModel || isGenerating) {return;}
     setIsGenerating(true);
     setGenerateError("");
     try {
@@ -116,7 +116,7 @@ export default function FlashcardReviewView() {
   }
 
   async function createCard() {
-    if (!newFront.trim() || !newBack.trim() || !activeWorkspaceId) return;
+    if (!newFront.trim() || !newBack.trim() || !activeWorkspaceId) {return;}
     const card = await api.flashcard.create(activeWorkspaceId, newFront.trim(), newBack.trim());
     setCards((prev) => [...prev, card]);
     setNewFront("");
@@ -151,7 +151,7 @@ export default function FlashcardReviewView() {
           <input
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") generateCards(); }}
+            onKeyDown={(e) => { if (e.key === "Enter") {generateCards();} }}
             placeholder="e.g. Rust ownership model"
             disabled={isGenerating}
             className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors"

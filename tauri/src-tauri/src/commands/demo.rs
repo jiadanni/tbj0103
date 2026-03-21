@@ -45,7 +45,7 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
     // Demo chat sessions
     let session1_id = "demo-chat-session-transformers-00001";
     conn.execute(
-        "INSERT INTO chat_sessions (id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, 'What is Self-Attention?', 'qwen2.5:7b', ?3, ?4)",
+        "INSERT INTO chat_sessions (id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, 'What is Self-Attention?', '', ?3, ?4)",
         rusqlite::params![session1_id, DEMO_PROJECT_ID_1, now, now],
     ).map_err(|e| e.to_string())?;
 

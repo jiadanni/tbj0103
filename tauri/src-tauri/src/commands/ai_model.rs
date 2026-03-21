@@ -23,7 +23,7 @@ pub fn list_ai_models(state: State<DbState>) -> Result<Vec<AiModel>, String> {
         "SELECT id, name, model_id, provider, priority, is_paid, enabled, tokens_used_total, created_at
          FROM ai_models ORDER BY priority ASC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map([], |row| row_to_model(row))
+    let items = stmt.query_map([], row_to_model)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -90,7 +90,7 @@ pub fn update_ai_model(state: State<DbState>, req: UpdateAiModelRequest) -> Resu
         "SELECT id, name, model_id, provider, priority, is_paid, enabled, tokens_used_total, created_at
          FROM ai_models WHERE id = ?1",
         rusqlite::params![req.id],
-        |row| row_to_model(row),
+        row_to_model,
     ).map_err(|e| e.to_string())?;
 
     Ok(model)
@@ -111,7 +111,7 @@ pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
         "SELECT id, name, model_id, provider, priority, is_paid, enabled, tokens_used_total, created_at
          FROM ai_models WHERE enabled = 1 ORDER BY priority ASC LIMIT 1",
         [],
-        |row| row_to_model(row),
+        row_to_model,
     );
 
     match result {
@@ -122,7 +122,7 @@ pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
                 "SELECT value FROM settings WHERE key = 'preferred_model'",
                 [],
                 |row| row.get(0),
-            ).unwrap_or_else(|_| "\"qwen2.5:7b\"".to_string());
+            ).unwrap_or_else(|_| "".to_string());
             let model_id = preferred.trim_matches('"').to_string();
             Ok(AiModel {
                 id: String::new(),

@@ -11,14 +11,14 @@ struct BackupSettingsSection: View {
         ("30 minutes", 30),
         ("1 hour", 60),
         ("4 hours", 240),
-        ("Daily", 1440),
+        ("Daily", 1440)
     ]
 
     private let retentionOptions: [(String, Int)] = [
         ("Last 10", 10),
         ("Last 25", 25),
         ("Last 50", 50),
-        ("Last 100", 100),
+        ("Last 100", 100)
     ]
 
     var body: some View {
@@ -84,7 +84,9 @@ struct BackupSettingsSection: View {
                 }
             }
 
-            Text("Periodic snapshots of your data are saved locally. You can browse and restore from any point in the Backup Timeline. Embeddings are excluded from backups and will be re-indexed after a restore.")
+            Text("Periodic snapshots of your data are saved locally. " +
+                 "You can browse and restore from any point in the Backup Timeline. " +
+                 "Embeddings are excluded from backups and will be re-indexed after a restore.")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }

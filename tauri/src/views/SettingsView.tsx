@@ -2,7 +2,8 @@
  * SettingsView — tabbed sections: Appearance, AI, Security, Backup.
  * Mirrors SettingsView.swift.
  */
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -10,6 +11,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import PluginManagerView from "./PluginManagerView";
+import { MOD_KEY } from "../lib/platform";
 
 const THEMES = ["system", "light", "dark", "oled", "sepia", "hacker", "glasscode"] as const;
 const ACCENT_COLORS = [
@@ -49,10 +51,21 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 
 export default function SettingsView() {
   const zustandSettings = useSettingsStore();
+  const location = useLocation();
   const { navLayout, setNavLayout } = useWorkspaceStore();
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("appearance");
+
+  // Handle external tab switching via router state
+  useEffect(() => {
+    const state = location.state as { settingsTab?: Tab } | null;
+    if (state?.settingsTab) {
+      setActiveTab(state.settingsTab);
+      // Clear state so it doesn't persist on manual refreshes
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const [dbSettings, setDbSettings] = useState<AppSettings | null>(null);
   const [testingOllama, setTestingOllama] = useState(false);
@@ -93,7 +106,7 @@ export default function SettingsView() {
   }, []);
 
   async function save() {
-    if (!dbSettings) return;
+    if (!dbSettings) {return;}
     await api.settings.update(dbSettings);
     zustandSettings.setTheme(dbSettings.theme as any);
     zustandSettings.setAccentColor(dbSettings.accent_color);
@@ -114,9 +127,9 @@ export default function SettingsView() {
 
   function setAppearance<K extends "theme" | "accent_color" | "font_size">(key: K, value: AppSettings[K]) {
     setDbSettings((prev) => prev ? { ...prev, [key]: value } : prev);
-    if (key === "theme") zustandSettings.setTheme(value as any);
-    if (key === "accent_color") zustandSettings.setAccentColor(value as string);
-    if (key === "font_size") zustandSettings.setFontSize(value as number);
+    if (key === "theme") {zustandSettings.setTheme(value as any);}
+    if (key === "accent_color") {zustandSettings.setAccentColor(value as string);}
+    if (key === "font_size") {zustandSettings.setFontSize(value as number);}
   }
 
   if (!dbSettings) {
@@ -132,10 +145,11 @@ export default function SettingsView() {
       {/* Tab bar */}
       <div className="flex items-center justify-between px-4 pt-3 pb-0 border-b border-[var(--border-color)] flex-shrink-0">
         <div className="flex gap-1">
-          {TABS.map(({ id, label, Icon }) => (
+          {TABS.map(({ id, label, Icon }, idx) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
+              title={`${label} (${MOD_KEY}⇧${idx + 1})`}
               className={`flex items-center gap-1.5 px-3 py-2 text-xs rounded-t-lg border-b-2 transition-colors ${
                 activeTab === id
                   ? "border-[var(--accent-color)] text-[var(--accent-color)]"
@@ -273,6 +287,20 @@ export default function SettingsView() {
                     {ollamaTestResult.msg}
                   </p>
                 )}
+                {ollamaModels.length === 0 && !testingOllama && (
+                  <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <div className="flex items-center gap-2 text-amber-500 mb-1">
+                      <Bot size={14} />
+                      <span className="text-xs font-semibold">No models found</span>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                      Ollama is connected but no models are installed. To use the AI features, please run:
+                      <code className="block mt-1.5 p-1.5 rounded bg-[var(--bg-primary)] font-mono text-[10px] text-[var(--text-secondary)]">
+                        ollama pull qwen2.5
+                      </code>
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -301,7 +329,7 @@ export default function SettingsView() {
                   <div className="mb-3 p-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] space-y-2">
                     <select
                       value={newModelId}
-                      onChange={(e) => { setNewModelId(e.target.value); if (!newModelName) setNewModelName(e.target.value.split(":")[0]); }}
+                      onChange={(e) => { setNewModelId(e.target.value); if (!newModelName) {setNewModelName(e.target.value.split(":")[0]);} }}
                       className="w-full px-2 py-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-xs text-[var(--text-secondary)] outline-none"
                     >
                       <option value="">Select Ollama model...</option>
@@ -388,7 +416,7 @@ export default function SettingsView() {
                                   setEditingModelId(null);
                                   loadAiModels();
                                 }
-                                if (e.key === "Escape") setEditingModelId(null);
+                                if (e.key === "Escape") {setEditingModelId(null);}
                               }}
                               className="w-full px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--accent-color)] text-sm text-[var(--text-primary)] outline-none"
                             />
@@ -512,7 +540,7 @@ export default function SettingsView() {
                   )}
                 </div>
                 <p className="text-xs text-[var(--text-muted)] mt-2">
-                  AI-generated titles improve chat organization. 'Periodic' refreshes the title based on conversation progress.
+                  AI-generated titles improve chat organization. &apos;Periodic&apos; refreshes the title based on conversation progress.
                 </p>
               </div>
             </>
@@ -560,6 +588,22 @@ export default function SettingsView() {
             <>
               <div className="flex items-center justify-between py-1">
                 <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Start at login</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically launch Aetherium when you log in</p>
+                </div>
+                <Toggle on={dbSettings.start_at_login} onToggle={() => set("start_at_login", !dbSettings.start_at_login)} />
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Open in background</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Launch without bringing window to front</p>
+                </div>
+                <Toggle on={dbSettings.open_in_background} onToggle={() => set("open_in_background", !dbSettings.open_in_background)} />
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
                   <p className="text-sm text-[var(--text-secondary)]">Require authentication on launch</p>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">Use Touch ID or password when opening the app</p>
                 </div>
@@ -598,7 +642,7 @@ export default function SettingsView() {
                         value={dbSettings.auto_lock_minutes}
                         onChange={(e) => {
                           const val = Number(e.target.value);
-                          if (val > 0) set("auto_lock_minutes", val);
+                          if (val > 0) {set("auto_lock_minutes", val);}
                         }}
                         className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                       />

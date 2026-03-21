@@ -26,7 +26,7 @@ export default function BackupSettingsSection() {
   }, []);
 
   async function createBackup() {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     setCreating(true);
     setError(null);
     try {
@@ -40,7 +40,7 @@ export default function BackupSettingsSection() {
   }
 
   async function restoreBackup(id: string) {
-    if (!confirm("Restore this backup? This will overwrite existing data for this workspace.")) return;
+    if (!window.confirm("Restore this backup? This will overwrite existing data for this workspace.")) {return;}
     setRestoring(id);
     setError(null);
     try {
@@ -55,7 +55,7 @@ export default function BackupSettingsSection() {
   }
 
   async function deleteBackup(id: string) {
-    if (!confirm("Delete this backup?")) return;
+    if (!window.confirm("Delete this backup?")) {return;}
     await api.backup.delete(id);
     setBackups((prev) => prev.filter((b) => b.id !== id));
   }

@@ -44,7 +44,7 @@ export default function WebCaptureView() {
   };
 
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     api.webCapture.list(activeWorkspaceId).then(setCaptures).catch(() => {});
   }, [activeWorkspaceId]);
 
@@ -56,7 +56,7 @@ export default function WebCaptureView() {
   );
 
   async function addCapture() {
-    if (!activeWorkspaceId || !newUrl.trim()) return;
+    if (!activeWorkspaceId || !newUrl.trim()) {return;}
     setSaving(true);
     setError(null);
     try {
@@ -76,10 +76,10 @@ export default function WebCaptureView() {
   }
 
   async function deleteCapture(id: string) {
-    if (!confirm("Delete this web capture?")) return;
+    if (!window.confirm("Delete this web capture?")) {return;}
     await api.webCapture.delete(id);
     setCaptures((prev) => prev.filter((c) => c.id !== id));
-    if (selected?.id === id) setSelected(null);
+    if (selected?.id === id) {setSelected(null);}
   }
 
   function formatDate(iso: string) {
@@ -125,7 +125,7 @@ export default function WebCaptureView() {
             <input
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") addCapture(); if (e.key === "Escape") setAdding(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") {addCapture();} if (e.key === "Escape") {setAdding(false);} }}
               placeholder="Title (optional)"
               className="w-full text-xs px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />
@@ -255,7 +255,7 @@ export default function WebCaptureView() {
                 onChange={(e) => setLinkDontAsk(e.target.checked)}
                 className="rounded border-[var(--border-color)] accent-[var(--accent-color)]"
               />
-              <span className="text-xs text-[var(--text-secondary)]">Don't ask again</span>
+              <span className="text-xs text-[var(--text-secondary)]">Don&apos;t ask again</span>
             </label>
             <div className="flex justify-end gap-2">
               <button
@@ -266,8 +266,8 @@ export default function WebCaptureView() {
               </button>
               <button
                 onClick={() => {
-                  if (pendingLink) open(pendingLink);
-                  if (linkDontAsk) setSkipLinkConfirm(true);
+                  if (pendingLink) {open(pendingLink);}
+                  if (linkDontAsk) {setSkipLinkConfirm(true);}
                   setPendingLink(null);
                 }}
                 className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 transition-opacity"

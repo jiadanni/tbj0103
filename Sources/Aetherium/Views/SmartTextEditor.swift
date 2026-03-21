@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - Smart Text Editor with Live Linking
 
@@ -312,5 +312,3 @@ struct QuickLinkPicker: View {
         .frame(width: 400, height: 300)
     }
 }
-
-

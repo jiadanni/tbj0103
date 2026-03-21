@@ -1,5 +1,5 @@
-import XCTest
 @testable import Aetherium
+import XCTest
 
 final class DocumentProcessorTests: XCTestCase {
     var documentProcessor: DocumentProcessor!

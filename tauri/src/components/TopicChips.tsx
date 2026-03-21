@@ -7,7 +7,7 @@ interface TopicChipsProps {
 }
 
 export const TopicChips: React.FC<TopicChipsProps> = ({ tags, onChipClick }) => {
-  if (!tags || tags.length === 0) return null;
+  if (!tags || tags.length === 0) {return null;}
 
   // Show top 8 tags
   const displayTags = tags.slice(0, 8);

@@ -106,7 +106,7 @@ final class DocumentChunk {
     var tokenCount: Int?
 
     // In-memory cache so decoding [Float] from Data only happens once per object lifetime.
-    @Transient var _cachedEmbedding: [Float]? = nil
+    @Transient var cachedEmbedding: [Float]?
 
     var document: UploadedDocument?
 
@@ -134,12 +134,12 @@ final class DocumentChunk {
 
     var embeddings: [Float]? {
         // Return cached copy if already decoded
-        if let cached = _cachedEmbedding { return cached }
+        if let cached = cachedEmbedding { return cached }
         guard let data = embeddingsData else { return nil }
         let decoded = data.withUnsafeBytes { buffer in
             Array(buffer.bindMemory(to: Float.self))
         }
-        _cachedEmbedding = decoded
+        cachedEmbedding = decoded
         return decoded
     }
 }

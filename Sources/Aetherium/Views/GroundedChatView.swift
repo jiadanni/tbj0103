@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct GroundedChatView: View {
     @Environment(\.modelContext) private var modelContext
@@ -255,7 +255,6 @@ struct GroundedChatView: View {
                 // Auto-extract concepts for the knowledge graph
                 let autoGen = AutoContentGenerator(ollamaService: ollamaService, modelContext: modelContext)
                 Task { await autoGen.processChatExchange(userMessage: userMessage, aiResponse: response, project: project) }
-
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -489,5 +488,3 @@ struct SourcesPopoverView: View {
         }
     }
 }
-
-

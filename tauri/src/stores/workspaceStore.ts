@@ -51,7 +51,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   activeProjectId: null,
   projects: [],
   isDemoMode: false,
-  navLayout: (localStorage.getItem("navLayout") as "sidebar" | "tabs") ?? "sidebar",
+  navLayout: (window.localStorage.getItem("navLayout") as "sidebar" | "tabs") ?? "sidebar",
   activeTopicSignature: null,
   migrationSuggestion: null,
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -63,7 +63,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   addProject: (p) => set((s) => ({ projects: [...s.projects, p] })),
   removeProject: (id) => set((s) => ({ projects: s.projects.filter((p) => p.id !== id) })),
   setNavLayout: (navLayout) => {
-    localStorage.setItem("navLayout", navLayout);
+    window.localStorage.setItem("navLayout", navLayout);
     set({ navLayout });
   },
   setActiveTopicSignature: (activeTopicSignature) => set({ activeTopicSignature }),

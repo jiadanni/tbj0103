@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - Note Editor with Live/Preview Modes
 
@@ -431,5 +431,3 @@ struct ConceptBacklinkCard: View {
         }
     }
 }
-
-

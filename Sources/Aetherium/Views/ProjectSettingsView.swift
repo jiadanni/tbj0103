@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct ProjectSettingsView: View {
     @Bindable var project: Workspace

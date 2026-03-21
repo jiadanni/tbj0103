@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct CommandPaletteView: View {
     @Environment(\.modelContext) private var modelContext
@@ -305,5 +305,3 @@ extension View {
         modifier(CommandPaletteModifier(onNavigate: onNavigate))
     }
 }
-
-

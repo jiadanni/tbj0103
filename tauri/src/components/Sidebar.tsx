@@ -9,14 +9,15 @@ import {
   FolderPlus, Check, X, MoveRight, Ghost
 } from "lucide-react";
 import { api } from "../lib/api";
+import { MOD_KEY } from "../lib/platform";
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "now";
-  if (m < 60) return `${m}m`;
+  if (m < 1) {return "now";}
+  if (m < 60) {return `${m}m`;}
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
+  if (h < 24) {return `${h}h`;}
   return `${Math.floor(h / 24)}d`;
 }
 
@@ -27,16 +28,18 @@ interface SidebarProps {
 export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId } = useWorkspaceStore();
+  const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId, workspaces } = useWorkspaceStore();
   const { sessions, setSessions } = useChatStore();
 
   const activeSegment = "/" + location.pathname.split("/")[1];
   const activeChatId = location.pathname.startsWith("/chat/") ? location.pathname.split("/")[2] : null;
 
+  const activeWs = workspaces.find(w => w.id === activeWorkspaceId);
+
   // Load ALL workspace sessions for sidebar (unfiltered by project)
   const [allSessions, setAllSessions] = useState<ChatSession[]>([]);
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     api.chat.listSessions(activeWorkspaceId, null).then(setAllSessions).catch(() => {});
   }, [activeWorkspaceId, sessions]); // re-fetch when sessions change (new chat, rename, etc.)
 
@@ -67,8 +70,8 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {next.delete(id);}
+      else {next.add(id);}
       return next;
     });
   }
@@ -80,7 +83,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   }
 
   async function moveSelectedToFolder(projectId: string | null) {
-    if (selectedIds.size === 0 || !activeWorkspaceId) return;
+    if (selectedIds.size === 0 || !activeWorkspaceId) {return;}
     try {
       await api.chat.moveSessions(Array.from(selectedIds), activeWorkspaceId, projectId ?? undefined);
       // Trigger refresh by touching sessions
@@ -175,6 +178,15 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
 
   return (
     <div className="flex flex-col h-full bg-transparent text-sm select-none pt-8">
+      {/* Active Workspace Label */}
+      {activeWs && (
+        <div className="px-3 pb-2 flex items-center justify-between group/ws">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] truncate">
+            {activeWs.name}
+          </span>
+        </div>
+      )}
+
       {/* Top Primary Actions */}
       <div className="px-3 pb-4 space-y-0.5">
         <div className="flex gap-0.5 mb-1">
@@ -196,6 +208,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
 
         <button
           onClick={() => navigate("/project")}
+          title={`Dashboard (${MOD_KEY}⇧D)`}
           className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
             activeSegment === "/project" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           }`}
@@ -206,6 +219,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
 
         <button
           onClick={() => navigate("/notes")}
+          title={`Notes (${MOD_KEY}⇧N)`}
           className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
             activeSegment === "/notes" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           }`}
@@ -216,6 +230,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
 
         <button
           onClick={() => navigate("/documents")}
+          title={`Documents (${MOD_KEY}⇧O)`}
           className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
             activeSegment === "/documents" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           }`}
@@ -226,6 +241,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
 
         <button
           onClick={() => navigate("/webcapture")}
+          title={`Web Captures (${MOD_KEY}⇧W)`}
           className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
             activeSegment === "/webcapture" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           }`}
@@ -236,6 +252,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
 
         <button
           onClick={() => navigate("/graph")}
+          title={`Knowledge Graph (${MOD_KEY}⇧G)`}
           className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
             activeSegment === "/graph" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           }`}
@@ -246,6 +263,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
 
         <button
           onClick={() => navigate("/flashcards")}
+          title={`Flashcards (${MOD_KEY}⇧F)`}
           className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
             activeSegment === "/flashcards" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           }`}
@@ -344,7 +362,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreateFolder();
+                if (e.key === "Enter") {handleCreateFolder();}
                 if (e.key === "Escape") { setCreatingFolder(false); setNewFolderName(""); }
               }}
               onBlur={handleCreateFolder}
@@ -380,7 +398,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
               <button
                 onClick={() => {
                   setActiveProjectId(p.id);
-                  if (activeProjectId === p.id) toggleExpand(p.id);
+                  if (activeProjectId === p.id) {toggleExpand(p.id);}
                 }}
                 onDragOver={(e) => {
                   if (e.dataTransfer.types.includes("application/x-chat-session-ids")) {
@@ -394,7 +412,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                   e.preventDefault();
                   setDragOverFolderId(null);
                   const data = e.dataTransfer.getData("application/x-chat-session-ids");
-                  if (!data || !activeWorkspaceId) return;
+                  if (!data || !activeWorkspaceId) {return;}
                   try {
                     const ids: string[] = JSON.parse(data);
                     await api.chat.moveSessions(ids, activeWorkspaceId, p.id);
@@ -462,7 +480,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                   e.preventDefault();
                   setDragOverFolderId(null);
                   const data = e.dataTransfer.getData("application/x-chat-session-ids");
-                  if (!data || !activeWorkspaceId) return;
+                  if (!data || !activeWorkspaceId) {return;}
                   try {
                     const ids: string[] = JSON.parse(data);
                     await api.chat.moveSessions(ids, activeWorkspaceId);
@@ -502,6 +520,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
       <div className="p-3">
         <button
           onClick={() => navigate("/settings")}
+          title={`Settings (${MOD_KEY},)`}
           className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-colors border border-transparent ${
             activeSegment === "/settings"
               ? "bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-primary)]"
