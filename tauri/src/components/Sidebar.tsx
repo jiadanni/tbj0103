@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useChatStore, type ChatSession } from "../stores/chatStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   SquarePen, LayoutGrid, BarChart2, Folder, Settings,
   MessageSquare, ChevronRight, ChevronDown, FileEdit,
-  FileText, Globe, Network, CreditCard, Inbox
+  FileText, Globe, Network, CreditCard, Inbox,
+  FolderPlus, Check, X, MoveRight
 } from "lucide-react";
 import { api } from "../lib/api";
 
@@ -52,6 +53,67 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
+  // Inline folder creation
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  // Multi-select
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setMoveMenuOpen(false);
+  }
+
+  async function moveSelectedToFolder(projectId: string | null) {
+    if (selectedIds.size === 0 || !activeWorkspaceId) return;
+    try {
+      await api.chat.moveSessions(Array.from(selectedIds), activeWorkspaceId, projectId ?? undefined);
+      // Trigger refresh by touching sessions
+      const refreshed = await api.chat.listSessions(activeWorkspaceId, null);
+      setAllSessions(refreshed);
+      exitSelectMode();
+    } catch (e) {
+      console.error("Failed to move sessions:", e);
+    }
+  }
+
+  async function handleCreateFolder() {
+    if (!newFolderName.trim() || !activeWorkspaceId) {
+      setCreatingFolder(false);
+      setNewFolderName("");
+      return;
+    }
+    try {
+      const p = await api.project.create(activeWorkspaceId, newFolderName.trim());
+      useWorkspaceStore.getState().addProject(p);
+    } catch (e) {
+      console.error(e);
+    }
+    setCreatingFolder(false);
+    setNewFolderName("");
+  }
+
+  useEffect(() => {
+    if (creatingFolder && folderInputRef.current) {
+      folderInputRef.current.focus();
+    }
+  }, [creatingFolder]);
+
   async function handleNewThread() {
     try {
       const s = await api.chat.createSession(activeWorkspaceId || "", activeProjectId);
@@ -67,23 +129,47 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
 
   function renderThreadItem(s: ChatSession) {
     const msgCount = s.message_count_at_title_gen ?? 0;
+    const isSelected = selectedIds.has(s.id);
     return (
-      <button
+      <div
         key={s.id}
-        onClick={() => navigate(`/chat/${s.id}`)}
-        className={`w-full flex items-center justify-between pl-7 pr-2 py-1.5 rounded-lg text-xs transition-colors group ${
-          activeChatId === s.id
-            ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
-            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-        }`}
+        className="flex items-center gap-0.5"
+        draggable={!selectMode}
+        onDragStart={(e) => {
+          e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify([s.id]));
+          e.dataTransfer.effectAllowed = "move";
+        }}
       >
-        <span className="truncate pr-2 flex-1 text-left">{s.title || "New Chat"}</span>
-        <span className="flex items-center gap-1.5 flex-shrink-0 text-[10px] text-[var(--text-muted)]">
-          {msgCount > 0 && <span>{msgCount}</span>}
-          <ChevronRight size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-          <span>{timeAgo(s.updated_at)}</span>
-        </span>
-      </button>
+        {selectMode && (
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleSelect(s.id); }}
+            className={`ml-2 w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+              isSelected
+                ? "bg-[var(--accent-color)] border-[var(--accent-color)]"
+                : "border-[var(--text-muted)] hover:border-[var(--text-primary)]"
+            }`}
+          >
+            {isSelected && <Check size={8} className="text-white" />}
+          </button>
+        )}
+        <button
+          onClick={() => selectMode ? toggleSelect(s.id) : navigate(`/chat/${s.id}`)}
+          className={`w-full flex items-center justify-between ${selectMode ? "pl-1" : "pl-7"} pr-2 py-1.5 rounded-lg text-xs transition-colors group ${
+            isSelected
+              ? "bg-[var(--accent-color)]/10 text-[var(--accent-color)]"
+              : activeChatId === s.id
+                ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <span className="truncate pr-2 flex-1 text-left">{s.title || "New Chat"}</span>
+          <span className="flex items-center gap-1.5 flex-shrink-0 text-[10px] text-[var(--text-muted)]">
+            {msgCount > 0 && <span>{msgCount}</span>}
+            <ChevronRight size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            <span>{timeAgo(s.updated_at)}</span>
+          </span>
+        </button>
+      </div>
     );
   }
 
@@ -175,22 +261,89 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
         <div className="flex items-center justify-between text-[10px] font-semibold tracking-wider text-[var(--text-muted)] px-2 mb-2 uppercase">
           <span>Threads</span>
           <div className="flex items-center gap-1">
-            <button
-              onClick={async (e) => {
-                e.stopPropagation();
-                if (!activeWorkspaceId) return;
-                const name = prompt("Folder name:");
-                if (!name?.trim()) return;
-                const p = await api.project.create(activeWorkspaceId, name.trim());
-                useWorkspaceStore.getState().addProject(p);
-              }}
-              className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-              title="New folder"
-            >
-              <Folder size={12} />
-            </button>
+            {selectMode ? (
+              <>
+                <div className="relative">
+                  <button
+                    onClick={() => setMoveMenuOpen((v) => !v)}
+                    disabled={selectedIds.size === 0}
+                    className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-30"
+                    title="Move to folder"
+                  >
+                    <MoveRight size={12} />
+                  </button>
+                  {moveMenuOpen && (
+                    <div className="absolute right-0 top-full mt-1 z-50 w-40 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-lg shadow-lg py-1 text-[11px] text-[var(--text-primary)]">
+                      <button
+                        onClick={() => moveSelectedToFolder(null)}
+                        className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2"
+                      >
+                        <MessageSquare size={11} className="text-[var(--text-muted)]" />
+                        Ungrouped
+                      </button>
+                      {projects.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => moveSelectedToFolder(p.id)}
+                          className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2"
+                        >
+                          <Folder size={11} className="text-[var(--text-muted)]" />
+                          <span className="truncate">{p.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <span className="text-[9px] normal-case tracking-normal text-[var(--text-secondary)]">
+                  {selectedIds.size} sel
+                </span>
+                <button
+                  onClick={exitSelectMode}
+                  className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  title="Cancel selection"
+                >
+                  <X size={12} />
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setSelectMode(true)}
+                  className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  title="Select & move threads"
+                >
+                  <Check size={12} />
+                </button>
+                <button
+                  onClick={() => { setCreatingFolder(true); setNewFolderName(""); }}
+                  className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  title="New folder"
+                >
+                  <FolderPlus size={12} />
+                </button>
+              </>
+            )}
           </div>
         </div>
+
+        {/* Inline folder creation */}
+        {creatingFolder && (
+          <div className="flex items-center gap-1 px-2 mb-2">
+            <Folder size={12} className="text-[var(--text-muted)] flex-shrink-0" />
+            <input
+              ref={folderInputRef}
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateFolder();
+                if (e.key === "Escape") { setCreatingFolder(false); setNewFolderName(""); }
+              }}
+              onBlur={handleCreateFolder}
+              placeholder="Folder name…"
+              className="flex-1 text-xs bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-1 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+            />
+          </div>
+        )}
 
         {/* Unfiltered Conversations */}
         <button
@@ -220,10 +373,34 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                   setActiveProjectId(p.id);
                   if (activeProjectId === p.id) toggleExpand(p.id);
                 }}
+                onDragOver={(e) => {
+                  if (e.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setDragOverFolderId(p.id);
+                  }
+                }}
+                onDragLeave={() => setDragOverFolderId(null)}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  setDragOverFolderId(null);
+                  const data = e.dataTransfer.getData("application/x-chat-session-ids");
+                  if (!data || !activeWorkspaceId) return;
+                  try {
+                    const ids: string[] = JSON.parse(data);
+                    await api.chat.moveSessions(ids, activeWorkspaceId, p.id);
+                    const refreshed = await api.chat.listSessions(activeWorkspaceId, null);
+                    setAllSessions(refreshed);
+                  } catch (err) {
+                    console.error("Failed to move sessions:", err);
+                  }
+                }}
                 className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
-                  activeProjectId === p.id
-                    ? "text-[var(--text-primary)] bg-[var(--bg-hover)]"
-                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  dragOverFolderId === p.id
+                    ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-[var(--accent-color)]"
+                    : activeProjectId === p.id
+                      ? "text-[var(--text-primary)] bg-[var(--bg-hover)]"
+                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 }`}
               >
                 <Folder size={14} className="text-[var(--text-muted)] flex-shrink-0" />
@@ -255,10 +432,38 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
         })}
 
         {/* Ungrouped threads (no project) */}
-        {ungrouped.length > 0 && (
+        {(ungrouped.length > 0 || projects.length > 0) && (
           <div className="mb-1">
             {projects.length > 0 && (
-              <div className="px-2 py-1.5 text-[13px] font-medium text-[var(--text-secondary)] flex items-center gap-1.5">
+              <div
+                className={`px-2 py-1.5 text-[13px] font-medium flex items-center gap-1.5 rounded-lg transition-colors ${
+                  dragOverFolderId === "__ungrouped"
+                    ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-[var(--accent-color)]"
+                    : "text-[var(--text-secondary)]"
+                }`}
+                onDragOver={(e) => {
+                  if (e.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setDragOverFolderId("__ungrouped");
+                  }
+                }}
+                onDragLeave={() => setDragOverFolderId(null)}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  setDragOverFolderId(null);
+                  const data = e.dataTransfer.getData("application/x-chat-session-ids");
+                  if (!data || !activeWorkspaceId) return;
+                  try {
+                    const ids: string[] = JSON.parse(data);
+                    await api.chat.moveSessions(ids, activeWorkspaceId);
+                    const refreshed = await api.chat.listSessions(activeWorkspaceId, null);
+                    setAllSessions(refreshed);
+                  } catch (err) {
+                    console.error("Failed to move sessions:", err);
+                  }
+                }}
+              >
                 <Folder size={14} className="text-[var(--text-muted)] flex-shrink-0" />
                 <span>Ungrouped</span>
               </div>
