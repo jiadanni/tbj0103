@@ -1,11 +1,19 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(async () => ({
   plugins: [react()],
   clearScreen: false,
+  build: {
+    rollupOptions: {
+      input: resolve(__dirname, "index.html"),
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,
