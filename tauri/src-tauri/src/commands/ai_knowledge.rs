@@ -35,11 +35,18 @@ pub struct SuggestGoalsRequest {
     pub ollama_url: Option<String>,
 }
 
-/// Collect recent workspace content (notes, daily notes, chat messages) capped at ~16 000 chars.
+/// Collect recent workspace content (notes, daily notes, chat messages, docs, web) capped at ~16 000 chars.
 fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> String {
     let mut parts: Vec<String> = Vec::new();
     let mut total_len = 0usize;
     const CAP: usize = 16_000;
+
+    fn safe_truncate(s: &str, max_chars: usize) -> &str {
+        match s.char_indices().nth(max_chars) {
+            Some((idx, _)) => &s[..idx],
+            None => s,
+        }
+    }
 
     // --- project_notes ---
     if let Ok(mut stmt) = conn.prepare(
@@ -53,7 +60,7 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
         }).map(|rows| {
             for item in rows.flatten() {
                 if total_len >= CAP { return; }
-                let snippet = if item.1.len() > 300 { &item.1[..300] } else { &item.1 };
+                let snippet = safe_truncate(&item.1, 400);
                 let entry = format!("Note: {}\n{}\n", item.0, snippet);
                 total_len += entry.len();
                 parts.push(entry);
@@ -74,7 +81,7 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
             }).map(|rows| {
                 for item in rows.flatten() {
                     if total_len >= CAP { return; }
-                    let snippet = if item.1.len() > 200 { &item.1[..200] } else { &item.1 };
+                    let snippet = safe_truncate(&item.1, 300);
                     let entry = format!("Daily note ({}): {}\n", item.0, snippet);
                     total_len += entry.len();
                     parts.push(entry);
@@ -83,14 +90,13 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
         }
     }
 
-    // --- chat messages (linked through projects in this workspace) ---
+    // --- chat messages (any session in this workspace) ---
     if total_len < CAP {
         if let Ok(mut stmt) = conn.prepare(
             "SELECT m.content FROM messages m \
              JOIN chat_sessions cs ON m.session_id = cs.id \
-             JOIN projects p ON cs.project_id = p.id \
-             WHERE p.workspace_id = ?1 AND m.role = 'user' \
-             ORDER BY m.created_at DESC LIMIT 30",
+             WHERE cs.workspace_id = ?1 AND m.role = 'user' \
+             ORDER BY m.created_at DESC LIMIT 40",
         ) {
             let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
                 let content: String = row.get(0)?;
@@ -98,8 +104,56 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
             }).map(|rows| {
                 for content in rows.flatten() {
                     if total_len >= CAP { return; }
-                    let snippet = if content.len() > 150 { &content[..150] } else { &content };
+                    let snippet = safe_truncate(&content, 200);
                     let entry = format!("Message: {}\n", snippet);
+                    total_len += entry.len();
+                    parts.push(entry);
+                }
+            });
+        }
+    }
+
+    // --- uploaded_documents ---
+    if total_len < CAP {
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT filename, content, summary FROM uploaded_documents WHERE workspace_id = ?1 \
+             ORDER BY updated_at DESC LIMIT 15",
+        ) {
+            let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
+                let filename: String = row.get(0)?;
+                let content: String = row.get(1)?;
+                let summary: Option<String> = row.get(2)?;
+                Ok((filename, content, summary))
+            }).map(|rows| {
+                for (name, content, summary) in rows.flatten() {
+                    if total_len >= CAP { return; }
+                    let text = summary.unwrap_or(content);
+                    let snippet = safe_truncate(&text, 500);
+                    let entry = format!("Document ({}): {}\n", name, snippet);
+                    total_len += entry.len();
+                    parts.push(entry);
+                }
+            });
+        }
+    }
+
+    // --- web_captures ---
+    if total_len < CAP {
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT title, content, summary FROM web_captures WHERE workspace_id = ?1 \
+             ORDER BY created_at DESC LIMIT 15",
+        ) {
+            let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
+                let title: String = row.get(0)?;
+                let content: String = row.get(1)?;
+                let summary: Option<String> = row.get(2)?;
+                Ok((title, content, summary))
+            }).map(|rows| {
+                for (title, content, summary) in rows.flatten() {
+                    if total_len >= CAP { return; }
+                    let text = summary.unwrap_or(content);
+                    let snippet = safe_truncate(&text, 500);
+                    let entry = format!("Web Capture ({}): {}\n", title, snippet);
                     total_len += entry.len();
                     parts.push(entry);
                 }
@@ -136,7 +190,7 @@ pub async fn analyze_workspace(
     };
 
     if content.trim().is_empty() {
-        return Ok(AnalysisResult { concepts_created: 0, links_created: 0, concepts_skipped: 0 });
+        return Err("No content found in this workspace to analyze. Please add some notes, documents, or chat messages first.".to_string());
     }
 
     // 2. Build prompt

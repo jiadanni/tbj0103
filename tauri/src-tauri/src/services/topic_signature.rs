@@ -7,8 +7,7 @@ pub fn collect_workspace_text(conn: &Connection, workspace_id: &str) -> Result<(
         "SELECT m.content 
          FROM messages m
          JOIN chat_sessions s ON m.session_id = s.id
-         JOIN projects p ON s.project_id = p.id
-         WHERE p.workspace_id = ?1 AND m.role = 'user'
+         WHERE s.workspace_id = ?1 AND m.role = 'user'
          ORDER BY m.created_at DESC
          LIMIT 500"
     ).map_err(|e| e.to_string())?;
@@ -21,12 +20,10 @@ pub fn collect_workspace_text(conn: &Connection, workspace_id: &str) -> Result<(
         Ok(content)
     }).map_err(|e| e.to_string())?;
     
-    for row in rows {
-        if let Ok(content) = row {
-            text.push_str(&content);
-            text.push('\n');
-            count += 1;
-        }
+    for content in rows.flatten() {
+        text.push_str(&content);
+        text.push('\n');
+        count += 1;
     }
     
     Ok((text, count))
