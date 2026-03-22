@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
 import ArtifactPanel from "./ArtifactPanel";
+import WindowControls from "./WindowControls";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { api } from "../lib/api";
 import { useHotkeys, type HotkeyBinding } from "../hooks/useHotkeys";
@@ -136,6 +137,7 @@ function WorkspaceTabBar() {
           <Plus size={14} />
         </button>
       )}
+      <WindowControls />
     </div>
   );
 }
@@ -294,7 +296,7 @@ export default function Layout() {
         <PanelResizeHandle className="w-[1px] bg-[var(--border-color)] hover:bg-[var(--accent-color)] transition-colors cursor-col-resize" />
 
         {/* Main content area */}
-        <Panel id="main" order={1} className="overflow-hidden flex flex-col min-w-0">
+        <Panel id="main" order={1} className="overflow-hidden flex flex-col min-w-0 min-h-0">
           <Routes>
             <Route path="/" element={<Navigate to="/project" replace />} />
             <Route path="/project" element={<ProjectDashboardView />} />

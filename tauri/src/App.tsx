@@ -6,6 +6,7 @@ import { useWorkspaceStore } from "./stores/workspaceStore";
 import { api } from "./lib/api";
 import Layout from "./components/Layout";
 import AuthenticationView from "./views/AuthenticationView";
+import WindowControls from "./components/WindowControls";
 
 export default function App() {
   const { theme, accentColor, fontSize } = useSettingsStore();
@@ -62,7 +63,9 @@ export default function App() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
-        <div data-tauri-drag-region className="fixed top-0 left-0 right-0 h-9" />
+        <div data-tauri-drag-region className="fixed top-0 left-0 right-0 h-9 flex items-center justify-end pr-2">
+          <WindowControls />
+        </div>
         <div className="text-sm opacity-50">Loading…</div>
       </div>
     );
