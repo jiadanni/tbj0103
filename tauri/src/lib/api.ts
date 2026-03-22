@@ -225,9 +225,10 @@ export interface ThoughtItem {
 
 export interface Memory {
   id: string;
-  workspace_id: string;
+  workspace_id?: string | null;
   content: string;
   memory_type: "fact" | "preference" | "context" | string;
+  scope: "global" | "workspace";
   source_session_id?: string | null;
   is_pinned: boolean;
   is_active: boolean;
@@ -557,16 +558,18 @@ export const api = {
   },
 
   memory: {
-    create: (workspaceId: string, content: string, memoryType?: Memory["memory_type"], sourceSessionId?: string) =>
+    create: (content: string, scope: Memory["scope"], memoryType?: Memory["memory_type"], workspaceId?: string, sourceSessionId?: string) =>
       invoke<Memory>("create_memory", {
         req: {
-          workspace_id: workspaceId,
+          workspace_id: scope === "global" ? null : workspaceId,
           content,
           memory_type: memoryType,
+          scope,
           source_session_id: sourceSessionId,
         },
       }),
     list: (workspaceId: string) => invoke<Memory[]>("list_memories", { workspace_id: workspaceId }),
+    listGlobal: () => invoke<Memory[]>("list_global_memories"),
     listActive: (workspaceId: string) => invoke<Memory[]>("get_active_memories", { workspace_id: workspaceId }),
     update: (id: string, fields: { content?: string; memory_type?: Memory["memory_type"]; is_pinned?: boolean; is_active?: boolean }) =>
       invoke<Memory>("update_memory", { req: { id, ...fields } }),

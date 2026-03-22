@@ -129,8 +129,8 @@ pub async fn extract_and_store_memories(
                         let now = chrono::Utc::now().to_rfc3339();
                         
                         let _ = conn.execute(
-                            "INSERT INTO memories (id, workspace_id, project_id, content, memory_type, source_session_id, is_pinned, is_active, created_at, updated_at)
-                             VALUES (?1, ?2, ?3, ?4, 'fact', ?5, 0, 1, ?6, ?7)",
+                            "INSERT INTO memories (id, workspace_id, project_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
+                             VALUES (?1, ?2, ?3, ?4, 'fact', 'workspace', ?5, 0, 1, ?6, ?7)",
                             rusqlite::params![id, workspace_id, project_id, fact, session_id, now, now],
                         );
                         
