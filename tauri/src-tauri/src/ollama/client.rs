@@ -152,7 +152,7 @@ impl OllamaClient {
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
-        let resolved_model = self.resolve_model(model).await?;
+        let resolved_model = model.to_string();
         let url = format!("{}/api/chat", self.base_url);
         let body = json!({
             "model": resolved_model,
@@ -192,7 +192,7 @@ impl OllamaClient {
         event_prefix: &str,
     ) -> Result<String, String> {
         Self::clear_abort_flag(app, session_id)?;
-        let resolved_model = self.resolve_model(model).await?;
+        let resolved_model = model.to_string();
         let url = format!("{}/api/chat", self.base_url);
         let body = json!({
             "model": resolved_model,

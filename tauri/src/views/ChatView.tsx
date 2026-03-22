@@ -815,10 +815,13 @@ export default function ChatView() {
     });
   }, [ollamaUrl]);
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom on new messages — use instant scroll during streaming
+  // so rapid content updates don't cause smooth-scroll to fall behind
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeMessages.length, streamingContent]);
+    messagesEndRef.current?.scrollIntoView({
+      behavior: isCurrentlyStreaming ? "instant" : "smooth",
+    });
+  }, [activeMessages.length, streamingContent, isCurrentlyStreaming]);
 
   async function createNewSession(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
     if (!activeWorkspaceId) {return;}
@@ -1495,7 +1498,7 @@ export default function ChatView() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {/* Slim title bar */}
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
             <span className="text-sm font-medium text-[var(--text-primary)] flex-1 truncate flex items-center gap-2">
