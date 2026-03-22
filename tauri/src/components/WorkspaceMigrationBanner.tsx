@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useScopedWorkspace } from "../lib/workspacePane";
 
 export const WorkspaceMigrationBanner: React.FC = () => {
-  const { migrationSuggestion, dismissMigrationSuggestion, setActiveWorkspaceId } = useWorkspaceStore();
+  const { migrationSuggestion, dismissMigrationSuggestion } = useWorkspaceStore();
+  const { setActiveWorkspaceId } = useScopedWorkspace();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {

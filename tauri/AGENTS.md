@@ -58,6 +58,7 @@ tbj0103/
 - Routes and navigation are defined in `tauri/src/App.tsx`. Every view file in `src/views/` must have a corresponding route.
 - State management uses **Zustand** (`src/stores/`). Prefer store actions over local component state for anything that persists across navigation.
 - Styling is **Tailwind CSS v3** with `@tailwindcss/typography`. No custom CSS files except `src/styles/`.
+- **Flex overflow pattern:** Any flex-column container whose children need to scroll must have `min-h-0` on every flex item in the height chain. Without it, flex items default to `min-height: auto` and `overflow-y-auto` on a child will never activate. The main content Panel in `Layout.tsx` and the active-chat container in `ChatView.tsx` both rely on this.
 - TypeScript strict mode is on. Run `npx tsc --noEmit` to verify — it must exit 0 before committing.
 
 ### Backend (Rust / Tauri)
@@ -69,10 +70,17 @@ tbj0103/
 - All command return types must be `Result<T, String>` where the error string is a human-readable message.
 - Run `cargo check` to verify — it must exit 0 before committing.
 
+### Window Management (Linux)
+
+- On Linux, `data-tauri-drag-region` alone is unreliable for window dragging. Every drag-region element must **also** attach the `onDragRegionMouseDown` handler exported from `src/components/WindowControls.tsx`, which calls `getCurrentWindow().startDragging()` programmatically.
+- The `WindowControls` component renders minimize / maximize / close buttons **only on Linux** (macOS uses native traffic lights). It uses an explicit `isMaximized()` check to toggle maximize/unmaximize — do **not** use `toggleMaximize()`.
+- Any new top-level view or screen that renders a drag region (e.g., a loading/splash screen) must import and apply `onDragRegionMouseDown`.
+
 ### Capabilities / Permissions
 
 - File-system permissions are declared in `src-tauri/capabilities/default.json`.
 - Use Tauri v2 permission identifiers: `fs:allow-read-file`, `fs:allow-write-file`, `fs:allow-mkdir`, `fs:allow-remove`, etc. The old v1 names (`fs:allow-create-dir`, `fs:allow-remove-file`) are invalid and will cause build errors.
+- Window-management permissions (`core:window:allow-minimize`, `allow-maximize`, `allow-unmaximize`, `allow-is-maximized`, `allow-close`, `allow-start-dragging`) are already declared. If you add new window API calls, add the corresponding permission to `default.json`.
 
 ---
 
@@ -101,17 +109,17 @@ swift test                      # run all tests
 ```bash
 # TypeScript check
 cd tauri
-~/.nvm/versions/node/v20.19.5/bin/npx tsc --noEmit
+~/.nvm/versions/node/v20.19.0/bin/npx tsc --noEmit
 
 # Rust check
 ~/.cargo/bin/cargo check --manifest-path tauri/src-tauri/Cargo.toml
 
 # Run dev server (requires Ollama running on :11434 for AI features)
 cd tauri
-PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v20.19.5/bin:$PATH" npm run tauri dev
+PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v20.19.0/bin:$PATH" npm run tauri dev
 ```
 
-> **Note:** `node` and `npm` may not be in `$PATH` in some shell environments. Use absolute paths via `~/.nvm/versions/node/v20.19.5/bin/` when needed.
+> **Note:** `node` and `npm` may not be in `$PATH` in some shell environments. Use absolute paths via `~/.nvm/versions/node/v20.19.0/bin/` when needed.
 
 ---
 

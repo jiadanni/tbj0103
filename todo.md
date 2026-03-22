@@ -1,4 +1,6 @@
-# Aetherium — Project Roadmap & To-Do
+# Aetherium — Tauri Roadmap & To-Do
+
+Scope: `todo.md` tracks the Tauri app only. Swift/macOS work may differ and is not reflected here unless explicitly noted.
 
 Legend: ✅ Complete · 🔄 Partial · ⬜ Not started
 

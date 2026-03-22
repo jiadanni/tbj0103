@@ -66,6 +66,13 @@ describe("mod: 'mod' on non-Mac", () => {
     fire("k", { metaKey: true });
     expect(action).not.toHaveBeenCalled();
   });
+
+  it("matches punctuation hotkeys like mod+\\", () => {
+    const action = vi.fn();
+    renderBinding({ key: "\\", mod: "mod", action });
+    fire("\\", { ctrlKey: true });
+    expect(action).toHaveBeenCalledOnce();
+  });
 });
 
 describe("mod: 'mod' on Mac", () => {

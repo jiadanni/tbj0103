@@ -42,7 +42,13 @@ struct AetheriumApp: App {
                 LearningCard.self,
                 LearningPath.self,
                 PathMilestone.self,
-                CalendarAlarm.self
+                CalendarAlarm.self,
+                Artifact.self,
+                Memory.self,
+                ThoughtQueueItem.self,
+                ConversationSummary.self,
+                ContextSnapshot.self,
+                AIModelEntity.self
             )
         } catch {
             // Present a minimal UI with an error instead of crashing

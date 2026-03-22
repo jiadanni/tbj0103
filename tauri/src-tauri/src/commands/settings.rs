@@ -22,6 +22,11 @@ pub struct Settings {
     pub chat_json_storage: bool,
     pub chat_encryption_enabled: bool,
     pub web_session_preserve: bool,
+    pub dual_model_enabled: bool,
+    pub draft_model: String,
+    pub dual_model_execution_mode: String,
+    pub compare_model_a: String,
+    pub compare_model_b: String,
     pub start_at_login: bool,
     pub open_in_background: bool,
     pub immediate_delete: bool,
@@ -49,6 +54,11 @@ impl Default for Settings {
             chat_json_storage: true,
             chat_encryption_enabled: false,
             web_session_preserve: false,
+            dual_model_enabled: false,
+            draft_model: "".to_string(),
+            dual_model_execution_mode: "serial".to_string(),
+            compare_model_a: "".to_string(),
+            compare_model_b: "".to_string(),
             start_at_login: false,
             open_in_background: false,
             immediate_delete: false,
@@ -127,6 +137,21 @@ pub fn get_settings(state: State<DbState>) -> Result<Settings, String> {
         web_session_preserve: get_setting(&conn, "web_session_preserve")
             .map(|v| v == "true")
             .unwrap_or(def.web_session_preserve),
+        dual_model_enabled: get_setting(&conn, "dual_model_enabled")
+            .map(|v| v == "true")
+            .unwrap_or(def.dual_model_enabled),
+        draft_model: get_setting(&conn, "draft_model")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.draft_model),
+        dual_model_execution_mode: get_setting(&conn, "dual_model_execution_mode")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.dual_model_execution_mode),
+        compare_model_a: get_setting(&conn, "compare_model_a")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.compare_model_a),
+        compare_model_b: get_setting(&conn, "compare_model_b")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.compare_model_b),
         start_at_login: get_setting(&conn, "start_at_login")
             .map(|v| v == "true")
             .unwrap_or(def.start_at_login),
@@ -161,6 +186,11 @@ pub fn update_settings(state: State<DbState>, settings: Settings) -> Result<(), 
     set_setting(&conn, "chat_title_refresh_interval", &settings.chat_title_refresh_interval.to_string())?;
     set_setting(&conn, "chat_json_storage", &settings.chat_json_storage.to_string())?;
     set_setting(&conn, "web_session_preserve", &settings.web_session_preserve.to_string())?;
+    set_setting(&conn, "dual_model_enabled", &settings.dual_model_enabled.to_string())?;
+    set_setting(&conn, "draft_model", &serde_json::to_string(&settings.draft_model).unwrap())?;
+    set_setting(&conn, "dual_model_execution_mode", &serde_json::to_string(&settings.dual_model_execution_mode).unwrap())?;
+    set_setting(&conn, "compare_model_a", &serde_json::to_string(&settings.compare_model_a).unwrap())?;
+    set_setting(&conn, "compare_model_b", &serde_json::to_string(&settings.compare_model_b).unwrap())?;
     set_setting(&conn, "start_at_login", &settings.start_at_login.to_string())?;
     set_setting(&conn, "open_in_background", &settings.open_in_background.to_string())?;
     set_setting(&conn, "immediate_delete", &settings.immediate_delete.to_string())?;

@@ -178,6 +178,7 @@ export interface AppSettings {
   web_session_preserve: boolean;
   dual_model_enabled: boolean;
   draft_model: string;
+  dual_model_execution_mode: "serial" | "parallel";
   compare_model_a: string;
   compare_model_b: string;
   start_at_login: boolean;
@@ -414,8 +415,24 @@ export const api = {
   ollama: {
     sendMessage: (sessionId: string, model: string, messages: { role: string; content: string }[], stream: boolean, ollamaUrl?: string) =>
       invoke<string>("send_message", { req: { session_id: sessionId, model, messages, stream, ollama_url: ollamaUrl } }),
-    sendDualModelMessage: (sessionId: string, draftModel: string, refineModel: string, messages: { role: string; content: string }[], ollamaUrl?: string) =>
-      invoke<string>("send_dual_model_message", { req: { session_id: sessionId, draft_model: draftModel, refine_model: refineModel, messages, ollama_url: ollamaUrl } }),
+    sendDualModelMessage: (
+      sessionId: string,
+      draftModel: string,
+      refineModel: string,
+      messages: { role: string; content: string }[],
+      executionMode: "serial" | "parallel",
+      ollamaUrl?: string
+    ) =>
+      invoke<string>("send_dual_model_message", {
+        req: {
+          session_id: sessionId,
+          draft_model: draftModel,
+          refine_model: refineModel,
+          messages,
+          execution_mode: executionMode,
+          ollama_url: ollamaUrl,
+        },
+      }),
     listModels: (ollamaUrl?: string) => invoke<OllamaModel[]>("list_models", { ollamaUrl }),
     generateTitle: (model: string, firstMessage: string, ollamaUrl?: string) =>
       invoke<string>("generate_title", { model, firstMessage, ollamaUrl }),

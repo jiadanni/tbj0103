@@ -6,5 +6,7 @@
       "Bash(source:*)",
       "Bash(npx tsc:*)"
     ]
-  }
+  },
+  "outputStyle": "Learning",
+  "prefersReducedMotion": true
 }
