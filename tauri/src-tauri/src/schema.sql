@@ -273,11 +273,13 @@ CREATE TABLE IF NOT EXISTS thought_queue (
 -- AI memory for cross-session context
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY NOT NULL,
-    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
     project_id TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL,
     memory_type TEXT NOT NULL DEFAULT 'fact'
         CHECK(memory_type IN ('fact', 'preference', 'context')),
+    scope TEXT NOT NULL DEFAULT 'workspace'
+        CHECK(scope IN ('global', 'workspace')),
     source_session_id TEXT,
     is_pinned INTEGER NOT NULL DEFAULT 0,
     is_active INTEGER NOT NULL DEFAULT 1,
