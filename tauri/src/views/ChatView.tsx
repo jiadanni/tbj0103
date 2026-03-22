@@ -17,6 +17,307 @@ import ContextIndicator from "../components/ContextIndicator";
 
 type ChatMode = "chat" | "compare";
 
+// ── Session sidebar types ─────────────────────────────────────────────────────
+interface SessionItemProps {
+  session: ChatSession;
+  activeChatId: string | null;
+  renamingId: string | null;
+  renameTitle: string;
+  setRenamingId: (id: string | null) => void;
+  setRenameTitle: (title: string) => void;
+  setActiveChatId: (id: string) => void;
+  renameSession: (id: string) => void;
+  togglePin: (session: ChatSession) => void;
+  saveSession: (session: ChatSession) => void;
+  deleteSession: (id: string) => void;
+}
+
+interface SessionSidebarProps {
+  sessions: ChatSession[];
+  pinnedSessions: ChatSession[];
+  unpinnedSessions: ChatSession[];
+  filteredSessions: ChatSession[];
+  activeProject: Project | null;
+  sessionQuery: string;
+  setSessionQuery: (q: string) => void;
+  creatingFolder: boolean;
+  setCreatingFolder: (v: boolean) => void;
+  newFolderName: string;
+  setNewFolderName: (v: string) => void;
+  folderInputRef: React.RefObject<HTMLInputElement>;
+  handleCreateFolder: (nameOverride?: string) => void;
+  createNewSession: (opts?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) => void;
+  activeChatId: string | null;
+  renamingId: string | null;
+  renameTitle: string;
+  setRenamingId: (id: string | null) => void;
+  setRenameTitle: (title: string) => void;
+  setActiveChatId: (id: string) => void;
+  renameSession: (id: string) => void;
+  togglePin: (session: ChatSession) => void;
+  saveSession: (session: ChatSession) => void;
+  deleteSession: (id: string) => void;
+}
+
+function SessionItem({
+  session, activeChatId, renamingId, renameTitle,
+  setRenamingId, setRenameTitle, setActiveChatId,
+  renameSession, togglePin, saveSession, deleteSession,
+}: SessionItemProps) {
+  const isActive = activeChatId === session.id;
+  const isRenaming = renamingId === session.id;
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify([session.id]));
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onClick={() => setActiveChatId(session.id)}
+      className={`group flex items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${
+        isActive
+          ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+      }`}
+    >
+      {isRenaming ? (
+        <input
+          autoFocus
+          value={renameTitle}
+          onChange={(e) => setRenameTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {renameSession(session.id);}
+            if (e.key === "Escape") {setRenamingId(null);}
+          }}
+          onBlur={() => renameSession(session.id)}
+          onClick={(e) => e.stopPropagation()}
+          className="flex-1 text-[11px] bg-[var(--bg-elevated)] border border-[var(--accent-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] outline-none"
+        />
+      ) : (
+        <span className="flex-1 text-xs truncate">{session.title || "New Chat"}</span>
+      )}
+      {session.is_incognito && <Ghost size={11} className="text-purple-400 shrink-0" />}
+      {!session.is_incognito && session.exclude_from_analytics && <Shield size={11} className="text-sky-400 shrink-0" />}
+      <span className="text-[10px] text-[var(--text-muted)] shrink-0 mr-1">
+        {(() => {
+          const diff = Date.now() - new Date(session.updated_at).getTime();
+          const m = Math.floor(diff / 60000);
+          if (m < 1) {return "now";}
+          if (m < 60) {return `${m}m`;}
+          const h = Math.floor(m / 60);
+          if (h < 24) {return `${h}h`;}
+          return `${Math.floor(h / 24)}d`;
+        })()}
+      </span>
+      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+        {!isRenaming && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setRenamingId(session.id); setRenameTitle(session.title); }}
+            className="p-0.5 rounded hover:text-[var(--accent-color)] transition-colors text-[10px]"
+            title="Rename"
+          >
+            <Pencil size={10} />
+          </button>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); togglePin(session); }}
+          className="p-0.5 rounded hover:text-[var(--accent-color)] transition-colors"
+          title={session.is_pinned ? "Unpin" : "Pin"}
+        >
+          {session.is_pinned ? <PinOff size={10} /> : <Pin size={10} />}
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); saveSession(session); }}
+          className="p-0.5 rounded hover:text-[var(--accent-color)] transition-colors"
+          title="Save chat"
+        >
+          <Save size={10} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
+          className="p-0.5 rounded hover:text-red-400 transition-colors"
+        >
+          <Trash2 size={10} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SessionSidebar({
+  sessions, pinnedSessions, unpinnedSessions, filteredSessions,
+  activeProject, sessionQuery, setSessionQuery,
+  creatingFolder, setCreatingFolder, newFolderName, setNewFolderName,
+  folderInputRef, handleCreateFolder, createNewSession,
+  activeChatId, renamingId, renameTitle, setRenamingId, setRenameTitle,
+  setActiveChatId, renameSession, togglePin, saveSession, deleteSession,
+}: SessionSidebarProps) {
+  return (
+    <div className="relative z-10 w-56 border-r border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)] overflow-hidden shrink-0">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)]">
+        <span className="text-xs font-medium text-[var(--text-secondary)] truncate">
+          {activeProject?.name ?? "Conversations"}
+        </span>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => { setCreatingFolder(true); setNewFolderName(""); }}
+            className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            title="New folder"
+          >
+            <FolderPlus size={14} />
+          </button>
+          <button
+            onClick={() => createNewSession()}
+            className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            title="New chat"
+          >
+            <Plus size={14} />
+          </button>
+          <button
+            onClick={() => createNewSession({ isIncognito: true })}
+            className="p-1 rounded hover:bg-purple-500/10 text-[var(--text-muted)] hover:text-purple-400 transition-colors"
+            title="New incognito chat (deleted when you leave it)"
+          >
+            <Ghost size={14} />
+          </button>
+          <button
+            onClick={() => createNewSession({ excludeFromAnalytics: true })}
+            className="p-1 rounded hover:bg-sky-500/10 text-[var(--text-muted)] hover:text-sky-400 transition-colors"
+            title="New private chat (saved, but excluded from analytics)"
+          >
+            <Shield size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* New Chat button */}
+      <div className="mx-2 mt-2 mb-1">
+        <button
+          onClick={() => createNewSession()}
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] text-xs font-medium hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
+        >
+          <Plus size={14} />
+          New Chat
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
+        <div className="flex items-center gap-1.5 bg-[var(--bg-elevated)] rounded-lg px-2 py-1">
+          <Search size={11} className="text-[var(--text-muted)]" />
+          <input
+            value={sessionQuery}
+            onChange={(e) => setSessionQuery(e.target.value)}
+            placeholder="Search…"
+            className="flex-1 text-[11px] bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+          />
+        </div>
+      </div>
+
+      {/* Inline folder creation */}
+      {creatingFolder && (
+        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[var(--border-color)]">
+          <Folder size={12} className="text-[var(--text-muted)] flex-shrink-0" />
+          <input
+            ref={folderInputRef}
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleCreateFolder(e.currentTarget.value);
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setCreatingFolder(false);
+                setNewFolderName("");
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Folder name…"
+            className="flex-1 text-[11px] bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+          />
+        </div>
+      )}
+
+      {/* Session list */}
+      <div className="flex-1 overflow-y-auto">
+        {filteredSessions.length === 0 && sessions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-3">
+            <MessageSquare size={20} className="text-[var(--text-muted)] opacity-30" />
+            <p className="text-[11px] text-[var(--text-muted)]">No conversations yet</p>
+          </div>
+        ) : filteredSessions.length === 0 ? (
+          <p className="px-3 py-4 text-[11px] text-[var(--text-muted)] text-center">No matches</p>
+        ) : (
+          <>
+            {pinnedSessions.length > 0 && (
+              <>
+                <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-sidebar)]">
+                  Pinned
+                </div>
+                {pinnedSessions.map((s) => (
+                  <SessionItem
+                    key={s.id}
+                    session={s}
+                    activeChatId={activeChatId}
+                    renamingId={renamingId}
+                    renameTitle={renameTitle}
+                    setRenamingId={setRenamingId}
+                    setRenameTitle={setRenameTitle}
+                    setActiveChatId={setActiveChatId}
+                    renameSession={renameSession}
+                    togglePin={togglePin}
+                    saveSession={saveSession}
+                    deleteSession={deleteSession}
+                  />
+                ))}
+              </>
+            )}
+            {unpinnedSessions.length > 0 && (
+              <>
+                {pinnedSessions.length > 0 && (
+                  <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-sidebar)]">
+                    All
+                  </div>
+                )}
+                {unpinnedSessions.map((s) => (
+                  <SessionItem
+                    key={s.id}
+                    session={s}
+                    activeChatId={activeChatId}
+                    renamingId={renamingId}
+                    renameTitle={renameTitle}
+                    setRenamingId={setRenamingId}
+                    setRenameTitle={setRenameTitle}
+                    setActiveChatId={setActiveChatId}
+                    renameSession={renameSession}
+                    togglePin={togglePin}
+                    saveSession={saveSession}
+                    deleteSession={deleteSession}
+                  />
+                ))}
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Footer stats */}
+      {sessions.length > 0 && (
+        <div className="px-3 py-1.5 border-t border-[var(--border-color)] shrink-0">
+          <p className="text-[10px] text-[var(--text-muted)]">
+            {sessions.length} session{sessions.length !== 1 ? "s" : ""}{pinnedSessions.length > 0 ? ` · ${pinnedSessions.length} pinned` : ""}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function formatMessageTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {return value;}
@@ -982,7 +1283,7 @@ export default function ChatView() {
     }
   }
 
-  const activeProject = projects.find((p) => p.id === activeProjectId);
+  const activeProject = projects.find((p) => p.id === activeProjectId) ?? null;
 
   // Compute next-priority enabled model for "Try better model" button
   const enabledModels = aiModelList.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
@@ -1002,229 +1303,35 @@ export default function ChatView() {
     id: optimistic.id,
   });
 
-  // ── Session sidebar (always visible) ─────────────────────────────────────
-  function SessionSidebar() {
-    return (
-      <div className="relative z-10 w-56 border-r border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)] overflow-hidden shrink-0">
-        {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)]">
-          <span className="text-xs font-medium text-[var(--text-secondary)] truncate">
-            {activeProject?.name ?? "Conversations"}
-          </span>
-          <div className="flex items-center gap-0.5">
-            <button
-              onClick={() => { setCreatingFolder(true); setNewFolderName(""); }}
-              className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-              title="New folder"
-            >
-              <FolderPlus size={14} />
-            </button>
-            <button
-              onClick={() => createNewSession()}
-              className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-              title="New chat"
-            >
-              <Plus size={14} />
-            </button>
-            <button
-              onClick={() => createNewSession({ isIncognito: true })}
-              className="p-1 rounded hover:bg-purple-500/10 text-[var(--text-muted)] hover:text-purple-400 transition-colors"
-              title="New incognito chat (deleted when you leave it)"
-            >
-              <Ghost size={14} />
-            </button>
-            <button
-              onClick={() => createNewSession({ excludeFromAnalytics: true })}
-              className="p-1 rounded hover:bg-sky-500/10 text-[var(--text-muted)] hover:text-sky-400 transition-colors"
-              title="New private chat (saved, but excluded from analytics)"
-            >
-              <Shield size={14} />
-            </button>
-          </div>
-        </div>
-
-        {/* New Chat button */}
-        <div className="mx-2 mt-2 mb-1">
-          <button
-            onClick={() => createNewSession()}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] text-xs font-medium hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
-          >
-            <Plus size={14} />
-            New Chat
-          </button>
-        </div>
-
-        {/* Search */}
-        <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
-          <div className="flex items-center gap-1.5 bg-[var(--bg-elevated)] rounded-lg px-2 py-1">
-            <Search size={11} className="text-[var(--text-muted)]" />
-            <input
-              value={sessionQuery}
-              onChange={(e) => setSessionQuery(e.target.value)}
-              placeholder="Search…"
-              className="flex-1 text-[11px] bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
-            />
-          </div>
-        </div>
-
-        {/* Inline folder creation */}
-        {creatingFolder && (
-          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[var(--border-color)]">
-            <Folder size={12} className="text-[var(--text-muted)] flex-shrink-0" />
-            <input
-              ref={folderInputRef}
-              value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleCreateFolder(e.currentTarget.value);
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setCreatingFolder(false);
-                  setNewFolderName("");
-                }
-              }}
-              onClick={(e) => e.stopPropagation()}
-              placeholder="Folder name…"
-              className="flex-1 text-[11px] bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-            />
-          </div>
-        )}
-
-        {/* Session list */}
-        <div className="flex-1 overflow-y-auto">
-          {filteredSessions.length === 0 && sessions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-3">
-              <MessageSquare size={20} className="text-[var(--text-muted)] opacity-30" />
-              <p className="text-[11px] text-[var(--text-muted)]">No conversations yet</p>
-            </div>
-          ) : filteredSessions.length === 0 ? (
-            <p className="px-3 py-4 text-[11px] text-[var(--text-muted)] text-center">No matches</p>
-          ) : (
-            <>
-              {pinnedSessions.length > 0 && (
-                <>
-                  <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-sidebar)]">
-                    Pinned
-                  </div>
-                  {pinnedSessions.map((s) => <SessionItem key={s.id} session={s} />)}
-                </>
-              )}
-              {unpinnedSessions.length > 0 && (
-                <>
-                  {pinnedSessions.length > 0 && (
-                    <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-sidebar)]">
-                      All
-                    </div>
-                  )}
-                  {unpinnedSessions.map((s) => <SessionItem key={s.id} session={s} />)}
-                </>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Footer stats */}
-        {sessions.length > 0 && (
-          <div className="px-3 py-1.5 border-t border-[var(--border-color)] shrink-0">
-            <p className="text-[10px] text-[var(--text-muted)]">
-              {sessions.length} session{sessions.length !== 1 ? "s" : ""}{pinnedSessions.length > 0 ? ` · ${pinnedSessions.length} pinned` : ""}
-            </p>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  function SessionItem({ session }: { session: ChatSession }) {
-    const isActive = activeChatId === session.id;
-    const isRenaming = renamingId === session.id;
-
-    return (
-      <div
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify([session.id]));
-          e.dataTransfer.effectAllowed = "move";
-        }}
-        onClick={() => setActiveChatId(session.id)}
-        className={`group flex items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${
-          isActive
-            ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-        }`}
-      >
-        {isRenaming ? (
-          <input
-            autoFocus
-            value={renameTitle}
-            onChange={(e) => setRenameTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {renameSession(session.id);}
-              if (e.key === "Escape") {setRenamingId(null);}
-            }}
-            onBlur={() => renameSession(session.id)}
-            onClick={(e) => e.stopPropagation()}
-            className="flex-1 text-[11px] bg-[var(--bg-elevated)] border border-[var(--accent-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] outline-none"
-          />
-        ) : (
-          <span className="flex-1 text-xs truncate">{session.title || "New Chat"}</span>
-        )}
-        {session.is_incognito && <Ghost size={11} className="text-purple-400 shrink-0" />}
-        {!session.is_incognito && session.exclude_from_analytics && <Shield size={11} className="text-sky-400 shrink-0" />}
-        <span className="text-[10px] text-[var(--text-muted)] shrink-0 mr-1">
-          {(() => {
-            const diff = Date.now() - new Date(session.updated_at).getTime();
-            const m = Math.floor(diff / 60000);
-            if (m < 1) {return "now";}
-            if (m < 60) {return `${m}m`;}
-            const h = Math.floor(m / 60);
-            if (h < 24) {return `${h}h`;}
-            return `${Math.floor(h / 24)}d`;
-          })()}
-        </span>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          {!isRenaming && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setRenamingId(session.id); setRenameTitle(session.title); }}
-              className="p-0.5 rounded hover:text-[var(--accent-color)] transition-colors text-[10px]"
-              title="Rename"
-            >
-              <Pencil size={10} />
-            </button>
-          )}
-          <button
-            onClick={(e) => { e.stopPropagation(); togglePin(session); }}
-            className="p-0.5 rounded hover:text-[var(--accent-color)] transition-colors"
-            title={session.is_pinned ? "Unpin" : "Pin"}
-          >
-            {session.is_pinned ? <PinOff size={10} /> : <Pin size={10} />}
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); saveSession(session); }}
-            className="p-0.5 rounded hover:text-[var(--accent-color)] transition-colors"
-            title="Save chat"
-          >
-            <Save size={10} />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
-            className="p-0.5 rounded hover:text-red-400 transition-colors"
-          >
-            <Trash2 size={10} />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // ── Main render ──────────────────────────────────────────────────────────
   return (
     <div className="flex h-full min-w-0 overflow-hidden">
-      <SessionSidebar />
+      <SessionSidebar
+        sessions={sessions}
+        pinnedSessions={pinnedSessions}
+        unpinnedSessions={unpinnedSessions}
+        filteredSessions={filteredSessions}
+        activeProject={activeProject}
+        sessionQuery={sessionQuery}
+        setSessionQuery={setSessionQuery}
+        creatingFolder={creatingFolder}
+        setCreatingFolder={setCreatingFolder}
+        newFolderName={newFolderName}
+        setNewFolderName={setNewFolderName}
+        folderInputRef={folderInputRef}
+        handleCreateFolder={handleCreateFolder}
+        createNewSession={createNewSession}
+        activeChatId={activeChatId}
+        renamingId={renamingId}
+        renameTitle={renameTitle}
+        setRenamingId={setRenamingId}
+        setRenameTitle={setRenameTitle}
+        setActiveChatId={setActiveChatId}
+        renameSession={renameSession}
+        togglePin={togglePin}
+        saveSession={saveSession}
+        deleteSession={deleteSession}
+      />
 
       {/* Compare mode */}
       {chatMode === "compare" ? (
