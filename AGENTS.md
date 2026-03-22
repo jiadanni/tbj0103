@@ -58,7 +58,16 @@ tbj0103/
 - Routes and navigation are defined in `tauri/src/App.tsx`. Every view file in `src/views/` must have a corresponding route.
 - State management uses **Zustand** (`src/stores/`). Prefer store actions over local component state for anything that persists across navigation.
 - Styling is **Tailwind CSS v3** with `@tailwindcss/typography`. No custom CSS files except `src/styles/`.
+- **Flex overflow pattern:** Any flex-column container whose children need to scroll must have `min-h-0` on every flex item in the height chain. Without it, flex items default to `min-height: auto` and `overflow-y-auto` on a child will never activate. The main content Panel in `Layout.tsx` and the active-chat container in `ChatView.tsx` both rely on this.
 - TypeScript strict mode is on. Run `npx tsc --noEmit` to verify — it must exit 0 before committing.
+
+#### React / Zustand Effect Safety
+
+- Treat `useEffect` dependency arrays as a common source of render loops, especially when they include functions returned from custom hooks or store-scoped wrappers.
+- If a custom hook returns action functions such as setters, keep those function references stable across renders when possible. Avoid creating fresh arrow-function wrappers on every render unless the consumer explicitly expects that.
+- Before adding a returned setter or action to a `useEffect` dependency array, verify that its identity is stable. If it is not stable, either stabilize it in the hook or restructure the effect so it does not depend on the unstable wrapper.
+- When a bug only appears in a specific layout or mode, such as split-pane versus single-pane, treat that as a render-topology clue and inspect the full cycle: render -> effect -> store update -> re-render.
+- For React or Zustand infinite-loop bugs, document the exact repro path and check custom hooks, effect dependencies, and store updates before assuming the issue is in the view alone.
 
 ### Backend (Rust / Tauri)
 
@@ -69,10 +78,17 @@ tbj0103/
 - All command return types must be `Result<T, String>` where the error string is a human-readable message.
 - Run `cargo check` to verify — it must exit 0 before committing.
 
+### Window Management (Linux)
+
+- On Linux, `data-tauri-drag-region` alone is unreliable for window dragging. Every drag-region element must **also** attach the `onDragRegionMouseDown` handler exported from `src/components/WindowControls.tsx`, which calls `getCurrentWindow().startDragging()` programmatically.
+- The `WindowControls` component renders minimize / maximize / close buttons **only on Linux** (macOS uses native traffic lights). It uses an explicit `isMaximized()` check to toggle maximize/unmaximize — do **not** use `toggleMaximize()`.
+- Any new top-level view or screen that renders a drag region (e.g., a loading/splash screen) must import and apply `onDragRegionMouseDown`.
+
 ### Capabilities / Permissions
 
 - File-system permissions are declared in `src-tauri/capabilities/default.json`.
 - Use Tauri v2 permission identifiers: `fs:allow-read-file`, `fs:allow-write-file`, `fs:allow-mkdir`, `fs:allow-remove`, etc. The old v1 names (`fs:allow-create-dir`, `fs:allow-remove-file`) are invalid and will cause build errors.
+- Window-management permissions (`core:window:allow-minimize`, `allow-maximize`, `allow-unmaximize`, `allow-is-maximized`, `allow-close`, `allow-start-dragging`) are already declared. If you add new window API calls, add the corresponding permission to `default.json`.
 
 ---
 
@@ -176,6 +192,11 @@ PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v20.19.5/bin:$PATH" npm run taur
 - **Always list explicit column names in `INSERT` and `SELECT` statements.** Never use `SELECT *` or positional inserts without column names. This prevents migrations from failing when `schema.sql` evolves (e.g., adding a column to the base schema will cause `SELECT *` in an old migration to return an unexpected number of columns).
 - **Keep migrations idempotent.** Ensure they can run safely even if the target state (e.g., a new column) already exists in the table.
 - **Maintain Foreign Keys.** When restructuring tables in migrations, ensure all `REFERENCES` and `ON DELETE` constraints are preserved in the new table definition.
+
+## Debugging Runtime Bugs
+
+- When the user reports a runtime bug (blank screen, crash, unexpected behavior), **ask for the devtools console output first** before reading code. Right-click → Inspect Element → Console. The error message almost always points to the exact file and line.
+- Only start reading source files once the error location is known.
 
 ## What to Avoid
 

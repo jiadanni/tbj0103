@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import type { Workspace, Project } from "@/stores/workspaceStore";
+import { useChatStore } from "@/stores/chatStore";
 
 const INITIAL = {
   workspaces: [],
@@ -8,7 +9,10 @@ const INITIAL = {
   activeProjectId: null,
   projects: [],
   isDemoMode: false,
-  navLayout: "side-tabs" as const,
+  workspaceNavigation: "sidebar" as const,
+  sectionNavigation: "sidebar" as const,
+  splitWorkspaceNavigation: "match-main" as const,
+  splitSectionNavigation: "match-main" as const,
   activeTopicSignature: null,
   migrationSuggestion: null,
   projectsByWorkspace: {},
@@ -24,6 +28,15 @@ const INITIAL = {
 beforeEach(() => {
   // Merge mode preserves action functions on the store.
   useWorkspaceStore.setState(INITIAL);
+  useChatStore.setState({
+    activeChatId: null,
+    sessions: [],
+    messages: {},
+    streamingSessionId: null,
+    streamingContent: "",
+    refiningSessionId: null,
+    refineContent: "",
+  });
 });
 
 afterEach(() => {
@@ -67,51 +80,86 @@ function makeProject(overrides: Partial<Project> = {}): Project {
   };
 }
 
-// ─── navLayout initialisation ─────────────────────────────────────────────
+// ─── navigation initialisation ────────────────────────────────────────────
 
-describe("navLayout", () => {
-  it("defaults to 'side-tabs' when localStorage is empty", () => {
-    expect(useWorkspaceStore.getState().navLayout).toBe("side-tabs");
+describe("navigation settings", () => {
+  it("defaults to sidebar/sidebar when localStorage is empty", () => {
+    const state = useWorkspaceStore.getState();
+    expect(state.workspaceNavigation).toBe("sidebar");
+    expect(state.sectionNavigation).toBe("sidebar");
   });
 
-  it("reads navLayout from localStorage on module init", async () => {
-    localStorage.setItem("navLayout", "top-tabs");
+  it("reads independent navigation settings from localStorage on module init", async () => {
+    localStorage.setItem("workspaceNavigation", "top-dropdown");
+    localStorage.setItem("sectionNavigation", "top-tabs");
     vi.resetModules();
     const { useWorkspaceStore: freshStore } = await import("@/stores/workspaceStore");
-    expect(freshStore.getState().navLayout).toBe("top-tabs");
+    expect(freshStore.getState().workspaceNavigation).toBe("top-dropdown");
+    expect(freshStore.getState().sectionNavigation).toBe("top-tabs");
   });
 
   it("migrates legacy values from localStorage on module init", async () => {
-    localStorage.setItem("navLayout", "sidebar");
+    localStorage.setItem("navLayout", "top-dropdown");
     vi.resetModules();
     const { useWorkspaceStore: freshStore } = await import("@/stores/workspaceStore");
-    expect(freshStore.getState().navLayout).toBe("side-tabs");
+    expect(freshStore.getState().workspaceNavigation).toBe("top-dropdown");
+    expect(freshStore.getState().sectionNavigation).toBe("top-tabs");
   });
 });
 
-// ─── setNavLayout ─────────────────────────────────────────────────────────
+// ─── navigation setters ───────────────────────────────────────────────────
 
-describe("setNavLayout", () => {
-  it("updates state to 'top-tabs'", () => {
-    useWorkspaceStore.getState().setNavLayout("top-tabs");
-    expect(useWorkspaceStore.getState().navLayout).toBe("top-tabs");
+describe("navigation setters", () => {
+  it("updates workspace navigation independently", () => {
+    useWorkspaceStore.getState().setWorkspaceNavigation("top-tabs");
+    const state = useWorkspaceStore.getState();
+    expect(state.workspaceNavigation).toBe("top-tabs");
+    expect(state.sectionNavigation).toBe("sidebar");
   });
 
-  it("writes to localStorage", () => {
+  it("updates section navigation and writes to localStorage", () => {
     const spy = vi.spyOn(localStorage, "setItem");
-    useWorkspaceStore.getState().setNavLayout("top-dropdown");
-    expect(spy).toHaveBeenCalledWith("navLayout", "top-dropdown");
+    useWorkspaceStore.getState().setSectionNavigation("top-dropdown");
+    expect(useWorkspaceStore.getState().sectionNavigation).toBe("top-dropdown");
+    expect(spy).toHaveBeenCalledWith("sectionNavigation", "top-dropdown");
   });
 });
 
 // ─── addWorkspace ──────────────────────────────────────────────────────────
 
 describe("addWorkspace", () => {
-  it("prepends a new workspace to the list", () => {
-    const ws = makeWorkspace({ id: "ws-new" });
+  it("inserts a new workspace in alphabetical order", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        makeWorkspace({ id: "ws-z", name: "Zulu" }),
+        makeWorkspace({ id: "ws-c", name: "Charlie" }),
+      ],
+    });
+
+    const ws = makeWorkspace({ id: "ws-a", name: "Alpha" });
     useWorkspaceStore.getState().addWorkspace(ws);
-    expect(useWorkspaceStore.getState().workspaces).toHaveLength(1);
-    expect(useWorkspaceStore.getState().workspaces[0].id).toBe("ws-new");
+
+    expect(useWorkspaceStore.getState().workspaces.map((workspace) => workspace.name)).toEqual([
+      "Alpha",
+      "Charlie",
+      "Zulu",
+    ]);
+  });
+});
+
+describe("setWorkspaces", () => {
+  it("sorts workspaces alphabetically before storing them", () => {
+    useWorkspaceStore.getState().setWorkspaces([
+      makeWorkspace({ id: "ws-z", name: "Zulu" }),
+      makeWorkspace({ id: "ws-a", name: "Alpha" }),
+      makeWorkspace({ id: "ws-c", name: "charlie" }),
+    ]);
+
+    expect(useWorkspaceStore.getState().workspaces.map((workspace) => workspace.name)).toEqual([
+      "Alpha",
+      "charlie",
+      "Zulu",
+    ]);
   });
 });
 
@@ -163,12 +211,26 @@ describe("dismissMigrationSuggestion", () => {
 
 // ─── independent setters ───────────────────────────────────────────────────
 
-describe("setActiveWorkspaceId and setActiveProjectId are independent", () => {
-  it("setActiveWorkspaceId does not affect activeProjectId", () => {
-    useWorkspaceStore.setState({ activeProjectId: "p1" });
+describe("workspace/project selection", () => {
+  it("setActiveWorkspaceId clears activeProjectId and activeChatId when the workspace changes", () => {
+    useWorkspaceStore.setState({ activeWorkspaceId: "ws-1", activeProjectId: "p1" });
+    useChatStore.setState({ activeChatId: "chat-1" });
+
     useWorkspaceStore.getState().setActiveWorkspaceId("ws-2");
-    expect(useWorkspaceStore.getState().activeProjectId).toBe("p1");
+
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
+    expect(useWorkspaceStore.getState().activeProjectId).toBeNull();
+    expect(useChatStore.getState().activeChatId).toBeNull();
+  });
+
+  it("setActiveWorkspaceId preserves activeProjectId and activeChatId when re-selecting the same workspace", () => {
+    useWorkspaceStore.setState({ activeWorkspaceId: "ws-1", activeProjectId: "p1" });
+    useChatStore.setState({ activeChatId: "chat-1" });
+
+    useWorkspaceStore.getState().setActiveWorkspaceId("ws-1");
+
+    expect(useWorkspaceStore.getState().activeProjectId).toBe("p1");
+    expect(useChatStore.getState().activeChatId).toBe("chat-1");
   });
 
   it("setActiveProjectId does not affect activeWorkspaceId", () => {

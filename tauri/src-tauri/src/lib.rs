@@ -7,6 +7,7 @@ pub mod mcp_server;
 pub mod mcp_client;
 
 use tauri::Manager;
+use tauri_plugin_autostart::MacosLauncher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,6 +19,12 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_autostart::init(
+                MacosLauncher::LaunchAgent,
+                Some(vec!["--autostart"]),
+            ))?;
+
             // Initialize SQLite database
             let app_dir = app.path().app_data_dir()
                 .expect("Failed to get app data directory");
@@ -25,6 +32,10 @@ pub fn run() {
             let db_path = app_dir.join("aetherium.db");
             let conn = db::initialize_database(&db_path)
                 .expect("Failed to initialize database");
+
+            commands::settings::sync_autostart(&app.handle().clone(), &conn)
+                .expect("Failed to synchronize autostart setting");
+            let should_open_in_background = commands::settings::should_open_in_background(&conn);
 
             // Resolve the chats directory and try to load encryption passphrase
             let chats_dir = app_dir.join("chats");
@@ -44,6 +55,12 @@ pub fn run() {
                 mcp_client::MCPClientManager::new()
             ));
             app.manage(mcp_manager);
+
+            if should_open_in_background {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
             
             // Start background scheduler
             crate::services::background_scheduler::start_scheduler(app.handle().clone());

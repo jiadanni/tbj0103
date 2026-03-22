@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { TopicSignature, WorkspaceMatchResult } from "../lib/api";
+import { useChatStore } from "./chatStore";
 
 export interface Workspace {
   id: string;
@@ -23,17 +24,20 @@ export interface Project {
 }
 
 export type PaneId = "primary" | "secondary";
-export type NavigationLayout = "side-tabs" | "top-tabs" | "top-dropdown";
+export type NavigationPresentation = "sidebar" | "top-tabs" | "top-dropdown";
+export type SplitNavigationPresentation = "match-main" | "tabs" | "dropdown";
 
 export type PaneView =
   | "project"
   | "chat"
+  | "memory"
   | "notes"
   | "documents"
   | "webcapture"
   | "graph"
   | "flashcards"
   | "thoughts"
+  | "settings"
   | "recycle-bin";
 
 export interface NoteSelectionState {
@@ -105,6 +109,18 @@ function persistSplitLayout(state: Pick<WorkspaceStore, "splitMode" | "splitSize
   }));
 }
 
+function sortWorkspaces(workspaces: Workspace[]): Workspace[] {
+  return [...workspaces].sort((a, b) => {
+    const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+    if (byName !== 0) {return byName;}
+
+    const byCreatedAt = a.created_at.localeCompare(b.created_at);
+    if (byCreatedAt !== 0) {return byCreatedAt;}
+
+    return a.id.localeCompare(b.id);
+  });
+}
+
 interface WorkspaceStore {
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
@@ -112,7 +128,10 @@ interface WorkspaceStore {
   projects: Project[];
   projectsByWorkspace: Record<string, Project[]>;
   isDemoMode: boolean;
-  navLayout: NavigationLayout;
+  workspaceNavigation: NavigationPresentation;
+  sectionNavigation: NavigationPresentation;
+  splitWorkspaceNavigation: SplitNavigationPresentation;
+  splitSectionNavigation: SplitNavigationPresentation;
   activeTopicSignature: TopicSignature | null;
   migrationSuggestion: WorkspaceMatchResult | null;
   splitMode: boolean;
@@ -127,7 +146,10 @@ interface WorkspaceStore {
   addWorkspace: (ws: Workspace) => void;
   addProject: (p: Project) => void;
   removeProject: (id: string) => void;
-  setNavLayout: (layout: NavigationLayout) => void;
+  setWorkspaceNavigation: (layout: NavigationPresentation) => void;
+  setSectionNavigation: (layout: NavigationPresentation) => void;
+  setSplitWorkspaceNavigation: (layout: SplitNavigationPresentation) => void;
+  setSplitSectionNavigation: (layout: SplitNavigationPresentation) => void;
   setActiveTopicSignature: (sig: TopicSignature | null) => void;
   setWorkspaceTopicSignature: (workspaceId: string, sig: TopicSignature | null) => void;
   setMigrationSuggestion: (suggestion: WorkspaceMatchResult | null) => void;
@@ -146,6 +168,37 @@ interface WorkspaceStore {
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
   const storedSplitLayout = readStoredSplitLayout();
+  const readNavigationSetting = (key: "workspaceNavigation" | "sectionNavigation", fallback: NavigationPresentation) => {
+    const raw = window.localStorage.getItem(key) as NavigationPresentation | null;
+    return raw ?? fallback;
+  };
+  const readSplitNavigationSetting = (
+    key: "splitWorkspaceNavigation" | "splitSectionNavigation",
+    fallback: SplitNavigationPresentation
+  ) => {
+    const raw = window.localStorage.getItem(key) as SplitNavigationPresentation | null;
+    return raw ?? fallback;
+  };
+  const legacyNavLayout = window.localStorage.getItem("navLayout") as "side-tabs" | "top-tabs" | "top-dropdown" | "sidebar" | "tabs" | null;
+  const migratedNavigation = (() => {
+    const workspaceNavigation = readNavigationSetting(
+      "workspaceNavigation",
+      legacyNavLayout === "top-tabs"
+        ? "top-tabs"
+        : legacyNavLayout === "top-dropdown"
+        ? "top-dropdown"
+        : "sidebar"
+    );
+    const sectionNavigation = readNavigationSetting(
+      "sectionNavigation",
+      legacyNavLayout === "top-tabs"
+        ? "top-tabs"
+        : legacyNavLayout === "top-dropdown"
+        ? "top-tabs"
+        : "sidebar"
+    );
+    return { workspaceNavigation, sectionNavigation };
+  })();
 
   return {
   workspaces: [],
@@ -154,12 +207,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
   projects: [],
   projectsByWorkspace: {},
     isDemoMode: false,
-    navLayout: (() => {
-      const raw = window.localStorage.getItem("navLayout") as NavigationLayout | "sidebar" | "tabs" | null;
-      if (raw === "sidebar") {return "side-tabs";}
-      if (raw === "tabs") {return "top-tabs";}
-      return raw ?? "side-tabs";
-    })(),
+    workspaceNavigation: migratedNavigation.workspaceNavigation,
+    sectionNavigation: migratedNavigation.sectionNavigation,
+    splitWorkspaceNavigation: readSplitNavigationSetting("splitWorkspaceNavigation", "match-main"),
+    splitSectionNavigation: readSplitNavigationSetting("splitSectionNavigation", "match-main"),
     activeTopicSignature: null,
     migrationSuggestion: null,
     splitMode: storedSplitLayout.splitMode,
@@ -167,9 +218,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     activePaneId: storedSplitLayout.activePaneId,
     panes: storedSplitLayout.panes,
     setWorkspaces: (workspaces) => set((state) => {
+      const sortedWorkspaces = sortWorkspaces(workspaces);
       let activeWorkspaceId = state.activeWorkspaceId;
-      if (!activeWorkspaceId && workspaces.length > 0) {
-        activeWorkspaceId = workspaces[0].id;
+      if (!activeWorkspaceId && sortedWorkspaces.length > 0) {
+        activeWorkspaceId = sortedWorkspaces[0].id;
       }
 
       const panes = {
@@ -179,14 +231,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         },
         secondary: {
           ...state.panes.secondary,
-          workspaceId: state.panes.secondary.workspaceId ?? (workspaces.find((ws) => ws.id !== (state.panes.primary.workspaceId ?? activeWorkspaceId))?.id ?? activeWorkspaceId),
+          workspaceId: state.panes.secondary.workspaceId ?? (sortedWorkspaces.find((ws) => ws.id !== (state.panes.primary.workspaceId ?? activeWorkspaceId))?.id ?? activeWorkspaceId),
         },
       };
 
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
-      return { workspaces, activeWorkspaceId, panes };
+      return { workspaces: sortedWorkspaces, activeWorkspaceId, panes };
     }),
     setActiveWorkspaceId: (activeWorkspaceId) => set((state) => {
+      const workspaceChanged = activeWorkspaceId !== state.activeWorkspaceId;
       const panes = {
         ...state.panes,
         primary: {
@@ -197,8 +250,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           noteSelection: activeWorkspaceId === state.panes.primary.workspaceId ? state.panes.primary.noteSelection : null,
         },
       };
+      if (workspaceChanged) {
+        useChatStore.getState().setActiveChatId(null);
+      }
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
-      return { activeWorkspaceId, panes };
+      return {
+        activeWorkspaceId,
+        activeProjectId: workspaceChanged ? null : state.activeProjectId,
+        panes,
+      };
     }),
     setActiveProjectId: (activeProjectId) => set((state) => {
       const panes = {
@@ -230,7 +290,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
       return { isDemoMode, activeWorkspaceId: nextWorkspaceId, panes };
     }),
-    addWorkspace: (ws) => set((s) => ({ workspaces: [...s.workspaces, ws] })),
+    addWorkspace: (ws) => set((s) => ({ workspaces: sortWorkspaces([...s.workspaces, ws]) })),
     addProject: (p) => set((s) => ({
       projects: p.workspace_id === s.activeWorkspaceId ? [...s.projects, p] : s.projects,
       projectsByWorkspace: {
@@ -247,9 +307,21 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         ])
       ),
     })),
-    setNavLayout: (navLayout) => {
-      window.localStorage.setItem("navLayout", navLayout);
-      set({ navLayout });
+    setWorkspaceNavigation: (workspaceNavigation) => {
+      window.localStorage.setItem("workspaceNavigation", workspaceNavigation);
+      set({ workspaceNavigation });
+    },
+    setSectionNavigation: (sectionNavigation) => {
+      window.localStorage.setItem("sectionNavigation", sectionNavigation);
+      set({ sectionNavigation });
+    },
+    setSplitWorkspaceNavigation: (splitWorkspaceNavigation) => {
+      window.localStorage.setItem("splitWorkspaceNavigation", splitWorkspaceNavigation);
+      set({ splitWorkspaceNavigation });
+    },
+    setSplitSectionNavigation: (splitSectionNavigation) => {
+      window.localStorage.setItem("splitSectionNavigation", splitSectionNavigation);
+      set({ splitSectionNavigation });
     },
     setActiveTopicSignature: (activeTopicSignature) => set({ activeTopicSignature }),
     setWorkspaceTopicSignature: (workspaceId, sig) => set((state) => {
