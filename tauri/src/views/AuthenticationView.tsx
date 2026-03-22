@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Lock } from "lucide-react";
 import { api } from "../lib/api";
+import WindowControls from "../components/WindowControls";
 
 interface Props {
   onAuthenticated: () => void;
@@ -54,7 +55,9 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
 
   return (
     <div className="flex h-screen items-center justify-center bg-[var(--bg-primary)]">
-      <div data-tauri-drag-region className="fixed top-0 left-0 right-0 h-9 z-50" />
+      <div data-tauri-drag-region className="fixed top-0 left-0 right-0 h-9 z-50 flex items-center justify-end pr-2">
+        <WindowControls />
+      </div>
       <form
         onSubmit={handleSubmit}
         className="w-80 flex flex-col items-center gap-6"

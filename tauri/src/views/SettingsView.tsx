@@ -837,9 +837,9 @@ export default function SettingsView() {
             <>
               <div className="flex items-center justify-between py-1">
                 <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Touch ID authentication</p>
+                  <p className="text-sm text-[var(--text-secondary)]">Biometric authentication</p>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    Require Touch ID or the system biometric prompt before opening the app.
+                    Require biometric authentication before opening the app.
                   </p>
                 </div>
                 <Toggle on={dbSettings.touch_id_enabled} onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)} />
