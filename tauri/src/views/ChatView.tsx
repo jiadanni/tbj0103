@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -11,10 +11,17 @@ import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Project } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession, Message } from "../stores/chatStore";
+import ComposerSuggestionRows from "../components/ComposerSuggestionRows";
 import { TopicChips } from "../components/TopicChips";
 import { WorkspaceMigrationBanner } from "../components/WorkspaceMigrationBanner";
 import ContextIndicator from "../components/ContextIndicator";
 import { useScopedChat, useScopedProjects, useScopedWorkspace, useWorkspacePane } from "../lib/workspacePane";
+import {
+  buildChatSuggestionRow,
+  buildWorkspaceSuggestionRow,
+  mergeComposerInput,
+  type ComposerSuggestion,
+} from "../lib/composerSuggestions";
 
 type ChatMode = "chat" | "compare";
 
@@ -1006,8 +1013,9 @@ export default function ChatView() {
     await sendMessageWithModel(selectedModel);
   }
 
-  async function sendMessageWithModel(modelId: string) {
-    if (!input.trim() || isStreaming || !modelId || !effectiveWorkspaceId) {return;}
+  async function sendMessageWithModel(modelId: string, contentOverride?: string) {
+    const userContent = (contentOverride ?? input).trim();
+    if (!userContent || isStreaming || !modelId || !effectiveWorkspaceId) {return;}
 
     const modelMeta = aiModelList.find((m) => m.model_id === modelId);
     const isOneOffWebProvider = modelMeta?.provider.startsWith("web_") ?? false;
@@ -1022,8 +1030,9 @@ export default function ChatView() {
       setMessages(session.id, []);
     }
 
-    const userContent = input.trim();
-    setInput("");
+    if (contentOverride === undefined) {
+      setInput("");
+    }
     setIsStreaming(true);
     setLastUserMessage(userContent);
     setFollowUps([]);
@@ -1194,6 +1203,16 @@ export default function ChatView() {
       e.preventDefault();
       sendMessage();
     }
+  }
+
+  async function handleComposerSuggestion(suggestion: ComposerSuggestion) {
+    if (suggestion.action === "send_immediately") {
+      await sendMessageWithModel(selectedModel, suggestion.prompt);
+      return;
+    }
+
+    setInput((prev) => mergeComposerInput(prev, suggestion.prompt));
+    requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   async function deleteSession(id: string) {
@@ -1381,11 +1400,32 @@ export default function ChatView() {
   }
 
   const activeProject = projects.find((p) => p.id === effectiveProjectId) ?? null;
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId) ?? null;
 
   // Compute next-priority enabled model for "Try better model" button
   const enabledModels = aiModelList.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
   const currentModelIdx = enabledModels.findIndex((m) => m.model_id === selectedModel);
   const nextModel = currentModelIdx >= 0 && currentModelIdx < enabledModels.length - 1 ? enabledModels[currentModelIdx + 1] : null;
+  const composerSuggestionRows = useMemo(() => {
+    const suggestionContext = {
+      workspaceName: activeWorkspace?.name ?? null,
+      projectName: activeProject?.name ?? null,
+      topicSignature: activeTopicSignature,
+      processedDocCount,
+      activeMessages,
+      followUps,
+    };
+
+    return [buildWorkspaceSuggestionRow(suggestionContext), buildChatSuggestionRow(suggestionContext)]
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+  }, [
+    activeWorkspace,
+    activeProject,
+    activeTopicSignature,
+    processedDocCount,
+    activeMessages,
+    followUps,
+  ]);
 
   // Map model_id to display name from global labels or priority list
   const modelDisplayName = (modelId: string) => {
@@ -1882,6 +1922,13 @@ export default function ChatView() {
                   />
                 </div>
               )}
+
+              <ComposerSuggestionRows
+                rows={composerSuggestionRows}
+                disabled={isStreaming}
+                disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
+                onSuggestionClick={handleComposerSuggestion}
+              />
 
               {/* Textarea + send button */}              <div className="flex items-end gap-2 px-1">
                 <textarea
