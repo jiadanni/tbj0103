@@ -198,10 +198,10 @@ Allow resetting demo state (re-seed) without leaving demo mode. Useful for sales
 
 ## 🚀 Advanced Features
 
-### 9. ⬜ AI Enhancements
-- [ ] Multi-model support — choose a different Ollama model per project or per chat session (e.g. a fast small model for drafts, a large model for deep analysis)
-- [ ] Model comparison — send the same prompt to two models side-by-side and compare their answers; useful for evaluating which model works best for your content
-- [ ] Custom system prompts per project — each project and chat can have its own "you are an expert in X" preamble prepended to every chat
+### 9. 🔄 AI Enhancements
+- [x] Multi-model support — choose a different Ollama model per project or per chat session (e.g. a fast small model for drafts, a large model for deep analysis)
+- [x] Model comparison — send the same prompt to two models side-by-side and compare their answers; useful for evaluating which model works best for your content
+- [x] Custom system prompts per project — each project and chat can have its own "you are an expert in X" preamble prepended to every chat
 - [ ] Semantic deduplication — scan notes for ones that are semantically very similar (even if worded differently) and surface them so you can merge or consolidate
 - [ ] Auto-summarization on document upload — when a PDF or long article is imported, immediately generate a TL;DR note alongside the raw chunks
 

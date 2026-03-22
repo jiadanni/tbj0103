@@ -436,6 +436,11 @@ enum NavigationView: String, CaseIterable, Identifiable {
     case plugins = "Plugins"
     case modelComparison = "Compare Models"
     case backups = "Backups"
+    case memory = "Memory"
+    case thoughtQueue = "Thought Queue"
+    case recycleBin = "Recycle Bin"
+    case webCaptures = "Web Captures"
+    case workspaceSettings = "Workspace Settings"
 
     var id: String { rawValue }
 
@@ -451,6 +456,11 @@ enum NavigationView: String, CaseIterable, Identifiable {
         case .plugins: return "puzzlepiece.extension"
         case .modelComparison: return "scale.3d"
         case .backups: return "clock.arrow.circlepath"
+        case .memory: return "brain"
+        case .thoughtQueue: return "tray.fill"
+        case .recycleBin: return "trash"
+        case .webCaptures: return "globe"
+        case .workspaceSettings: return "gearshape.2.fill"
         }
     }
 
@@ -466,6 +476,8 @@ enum NavigationView: String, CaseIterable, Identifiable {
         case .plugins: return "8"
         case .modelComparison: return "9"
         case .backups: return "0"
+        case .memory: return nil
+        case .thoughtQueue: return nil
         }
     }
 }
@@ -725,6 +737,21 @@ struct DetailViewRouter: View {
 
             case .backups:
                 BackupTimelineView()
+
+            case .memory:
+                MemoryView(project: project)
+
+            case .thoughtQueue:
+                ThoughtQueueView(project: project)
+
+            case .recycleBin:
+                RecycleBinView(project: project)
+
+            case .webCaptures:
+                WebCaptureView(project: project)
+
+            case .workspaceSettings:
+                WorkspaceSettingsView()
             }
         }
         .navigationTitle(selectedView.rawValue)

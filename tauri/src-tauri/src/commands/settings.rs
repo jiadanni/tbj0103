@@ -1,4 +1,5 @@
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_autostart::ManagerExt;
 use serde::{Deserialize, Serialize};
 use crate::db::DbState;
 
@@ -67,6 +68,8 @@ impl Default for Settings {
     }
 }
 
+const AUTOSTART_ARG: &str = "--autostart";
+
 fn get_setting(conn: &rusqlite::Connection, key: &str) -> Option<String> {
     conn.query_row("SELECT value FROM settings WHERE key = ?1", rusqlite::params![key], |r| r.get(0)).ok()
 }
@@ -80,9 +83,14 @@ fn set_setting(conn: &rusqlite::Connection, key: &str, value: &str) -> Result<()
 }
 
 #[tauri::command]
-pub fn get_settings(state: State<DbState>) -> Result<Settings, String> {
+pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let def = Settings::default();
+    let start_at_login = app
+        .autolaunch()
+        .is_enabled()
+        .map_err(|e| e.to_string())?;
+
     Ok(Settings {
         preferred_model: get_setting(&conn, "preferred_model")
             .and_then(|v| serde_json::from_str(&v).ok())
@@ -152,9 +160,7 @@ pub fn get_settings(state: State<DbState>) -> Result<Settings, String> {
         compare_model_b: get_setting(&conn, "compare_model_b")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.compare_model_b),
-        start_at_login: get_setting(&conn, "start_at_login")
-            .map(|v| v == "true")
-            .unwrap_or(def.start_at_login),
+        start_at_login,
         open_in_background: get_setting(&conn, "open_in_background")
             .map(|v| v == "true")
             .unwrap_or(def.open_in_background),
@@ -168,7 +174,7 @@ pub fn get_settings(state: State<DbState>) -> Result<Settings, String> {
 }
 
 #[tauri::command]
-pub fn update_settings(state: State<DbState>, settings: Settings) -> Result<(), String> {
+pub fn update_settings(app: AppHandle, state: State<DbState>, settings: Settings) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     set_setting(&conn, "preferred_model", &serde_json::to_string(&settings.preferred_model).unwrap())?;
     set_setting(&conn, "background_model", &serde_json::to_string(&settings.background_model).unwrap())?;
@@ -195,6 +201,36 @@ pub fn update_settings(state: State<DbState>, settings: Settings) -> Result<(), 
     set_setting(&conn, "open_in_background", &settings.open_in_background.to_string())?;
     set_setting(&conn, "immediate_delete", &settings.immediate_delete.to_string())?;
     set_setting(&conn, "confirm_move_to_trash", &settings.confirm_move_to_trash.to_string())?;
+
+    if settings.start_at_login {
+        app.autolaunch().enable().map_err(|e| e.to_string())?;
+    } else {
+        app.autolaunch().disable().map_err(|e| e.to_string())?;
+    }
+
     // pin_lock_enabled and chat_encryption_enabled are managed by dedicated commands.
     Ok(())
+}
+
+pub fn sync_autostart(app: &AppHandle, conn: &rusqlite::Connection) -> Result<(), String> {
+    let enabled = get_setting(conn, "start_at_login")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+
+    if enabled {
+        app.autolaunch().enable().map_err(|e| e.to_string())?;
+    } else {
+        app.autolaunch().disable().map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+pub fn should_open_in_background(conn: &rusqlite::Connection) -> bool {
+    let launched_from_autostart = std::env::args().any(|arg| arg == AUTOSTART_ARG);
+    let open_in_background = get_setting(conn, "open_in_background")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+
+    launched_from_autostart && open_in_background
 }

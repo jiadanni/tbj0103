@@ -20,7 +20,9 @@ pub fn create_workspace(state: State<DbState>, req: CreateWorkspaceRequest) -> R
 pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, topic_signature, signature_updated_at, created_at, updated_at FROM workspaces ORDER BY created_at DESC"
+        "SELECT id, name, topic_signature, signature_updated_at, created_at, updated_at
+         FROM workspaces
+         ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
     ).map_err(|e| e.to_string())?;
     let items = stmt.query_map([], |row| {
         let sig_json: String = row.get(2)?;

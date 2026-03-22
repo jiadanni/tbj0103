@@ -6,7 +6,7 @@ import {
   SquarePen, BarChart2, Folder, Settings,
   MessageSquare, ChevronRight, ChevronDown, FileEdit,
   FileText, Globe, Network, CreditCard, Inbox,
-  Check, Trash2, Ghost, MoveRight, X, FolderPlus, Search, Shield,
+  Check, Trash2, Ghost, MoveRight, X, FolderPlus, Search, Shield, Brain,
 } from "lucide-react";
 
 import { api } from "../lib/api";
@@ -24,12 +24,18 @@ function timeAgo(iso: string) {
 
 interface SidebarProps {
   onOpenCommandPalette: () => void;
+  showWorkspaceNavigation?: boolean;
+  showSectionNavigation?: boolean;
 }
 
-export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
+export default function Sidebar({
+  onOpenCommandPalette,
+  showWorkspaceNavigation = true,
+  showSectionNavigation = true,
+}: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId, workspaces, setWorkspaces, setProjects, setWorkspaceTopicSignature } = useWorkspaceStore();
+  const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId, setActiveWorkspaceId, workspaces, setWorkspaces, setProjects, setWorkspaceTopicSignature } = useWorkspaceStore();
   const { sessions, messages, setActiveChatId } = useChatStore();
 
   const activeSegment = "/" + location.pathname.split("/")[1];
@@ -232,13 +238,23 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-transparent text-sm select-none pt-3">
-      {/* Active Workspace Label */}
-      {activeWs && (
-        <div className="px-3 pb-2 flex items-center justify-between group/ws">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] truncate">
-            {activeWs.name}
-          </span>
+    <div className="flex flex-col h-full bg-transparent text-sm select-none pt-1">
+      {showWorkspaceNavigation && activeWs && (
+        <div className="px-3 pb-2">
+          <div className="relative">
+            <select
+              value={activeWorkspaceId ?? ""}
+              onChange={(e) => setActiveWorkspaceId(e.target.value || null)}
+              className="h-9 w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-8 text-sm text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
+            >
+              {workspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+          </div>
         </div>
       )}
 
@@ -268,92 +284,107 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
           </button>
         </div>
 
-        <button
-          onClick={() => navigate("/project")}
-          title={`Dashboard (${MOD_KEY}⇧D)`}
-          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-            activeSegment === "/project" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <BarChart2 size={14} className="text-[var(--text-muted)]" />
-          Dashboard
-        </button>
+        {showSectionNavigation && (
+          <>
+            <button
+              onClick={() => navigate("/project")}
+              title={`Dashboard (${MOD_KEY}⇧D)`}
+              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                activeSegment === "/project" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <BarChart2 size={14} className="text-[var(--text-muted)]" />
+              Dashboard
+            </button>
 
-        <button
-          onClick={() => navigate("/notes")}
-          title={`Notes (${MOD_KEY}⇧N)`}
-          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-            activeSegment === "/notes" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <FileEdit size={14} className="text-[var(--text-muted)]" />
-          Notes
-        </button>
+            <button
+              onClick={() => navigate("/memory")}
+              title={`Memory (${MOD_KEY}⇧M)`}
+              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                activeSegment === "/memory" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <Brain size={14} className="text-[var(--text-muted)]" />
+              Memory
+            </button>
 
-        <button
-          onClick={() => navigate("/documents")}
-          title={`Documents (${MOD_KEY}⇧O)`}
-          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-            activeSegment === "/documents" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <FileText size={14} className="text-[var(--text-muted)]" />
-          Documents
-        </button>
+            <button
+              onClick={() => navigate("/notes")}
+              title={`Notes (${MOD_KEY}⇧N)`}
+              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                activeSegment === "/notes" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <FileEdit size={14} className="text-[var(--text-muted)]" />
+              Notes
+            </button>
 
-        <button
-          onClick={() => navigate("/recycle-bin")}
-          title={`Recycle Bin (${MOD_KEY}⇧R)`}
-          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-            activeSegment === "/recycle-bin" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <Trash2 size={14} className="text-[var(--text-muted)]" />
-          Recycle Bin
-        </button>
+            <button
+              onClick={() => navigate("/documents")}
+              title={`Documents (${MOD_KEY}⇧O)`}
+              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                activeSegment === "/documents" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <FileText size={14} className="text-[var(--text-muted)]" />
+              Documents
+            </button>
 
-        <button
-          onClick={() => navigate("/webcapture")}
-          title={`Web Captures (${MOD_KEY}⇧W)`}
-          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-            activeSegment === "/webcapture" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <Globe size={14} className="text-[var(--text-muted)]" />
-          Web Captures
-        </button>
+            <button
+              onClick={() => navigate("/recycle-bin")}
+              title={`Recycle Bin (${MOD_KEY}⇧R)`}
+              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                activeSegment === "/recycle-bin" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <Trash2 size={14} className="text-[var(--text-muted)]" />
+              Recycle Bin
+            </button>
 
-        <button
-          onClick={() => navigate("/graph")}
-          title={`Knowledge Graph (${MOD_KEY}⇧G)`}
-          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-            activeSegment === "/graph" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <Network size={14} className="text-[var(--text-muted)]" />
-          Knowledge Graph
-        </button>
+            <button
+              onClick={() => navigate("/webcapture")}
+              title={`Web Captures (${MOD_KEY}⇧W)`}
+              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                activeSegment === "/webcapture" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <Globe size={14} className="text-[var(--text-muted)]" />
+              Web Captures
+            </button>
 
-        <button
-          onClick={() => navigate("/flashcards")}
-          title={`Flashcards (${MOD_KEY}⇧F)`}
-          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-            activeSegment === "/flashcards" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <CreditCard size={14} className="text-[var(--text-muted)]" />
-          Flashcards
-        </button>
+            <button
+              onClick={() => navigate("/graph")}
+              title={`Knowledge Graph (${MOD_KEY}⇧G)`}
+              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                activeSegment === "/graph" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <Network size={14} className="text-[var(--text-muted)]" />
+              Knowledge Graph
+            </button>
 
-        <button
-          onClick={() => navigate("/thoughts")}
-          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-            activeSegment === "/thoughts" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <Inbox size={14} className="text-[var(--text-muted)]" />
-          Thought Queue
-        </button>
+            <button
+              onClick={() => navigate("/flashcards")}
+              title={`Flashcards (${MOD_KEY}⇧F)`}
+              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                activeSegment === "/flashcards" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <CreditCard size={14} className="text-[var(--text-muted)]" />
+              Flashcards
+            </button>
+
+            <button
+              onClick={() => navigate("/thoughts")}
+              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                activeSegment === "/thoughts" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <Inbox size={14} className="text-[var(--text-muted)]" />
+              Thought Queue
+            </button>
+          </>
+        )}
       </div>
 
       {/* Threads Section */}

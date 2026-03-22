@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo } from "react";
+import React, { createContext, useCallback, useContext, useMemo } from "react";
 import { useChatStore } from "../stores/chatStore";
 import {
   type PaneId,
@@ -25,9 +25,51 @@ export function useWorkspacePane() {
   return useContext(WorkspacePaneContext);
 }
 
+const NOOP_SET_VIEW = (_view: PaneView) => undefined;
+const NOOP_SET_NOTE = (_selection: NoteSelectionState | null) => undefined;
+const NOOP_FOCUS = () => undefined;
+
 export function useScopedWorkspace() {
   const pane = useWorkspacePane();
   const store = useWorkspaceStore();
+  const paneId = pane?.paneId ?? null;
+
+  const setActiveWorkspaceId = useCallback(
+    (workspaceId: string | null) => {
+      if (paneId) { useWorkspaceStore.getState().setPaneWorkspace(paneId, workspaceId); }
+      else { useWorkspaceStore.getState().setActiveWorkspaceId(workspaceId); }
+    },
+    [paneId],
+  );
+
+  const setActiveProjectId = useCallback(
+    (projectId: string | null) => {
+      if (paneId) { useWorkspaceStore.getState().setPaneProject(paneId, projectId); }
+      else { useWorkspaceStore.getState().setActiveProjectId(projectId); }
+    },
+    [paneId],
+  );
+
+  const setActiveView = useCallback(
+    (view: PaneView) => {
+      if (paneId) { useWorkspaceStore.getState().setPaneView(paneId, view); }
+    },
+    [paneId],
+  );
+
+  const setNoteSelection = useCallback(
+    (selection: NoteSelectionState | null) => {
+      if (paneId) { useWorkspaceStore.getState().setPaneNoteSelection(paneId, selection); }
+    },
+    [paneId],
+  );
+
+  const setPaneFocus = useCallback(
+    () => {
+      if (paneId) { useWorkspaceStore.getState().setActivePaneId(paneId); }
+    },
+    [paneId],
+  );
 
   if (!pane) {
     return {
@@ -36,11 +78,11 @@ export function useScopedWorkspace() {
       activeProjectId: store.activeProjectId,
       activeView: "chat" as PaneView,
       noteSelection: null as NoteSelectionState | null,
-      setActiveWorkspaceId: store.setActiveWorkspaceId,
-      setActiveProjectId: store.setActiveProjectId,
-      setActiveView: (_view: PaneView) => undefined,
-      setNoteSelection: (_selection: NoteSelectionState | null) => undefined,
-      setPaneFocus: () => undefined,
+      setActiveWorkspaceId,
+      setActiveProjectId,
+      setActiveView: NOOP_SET_VIEW,
+      setNoteSelection: NOOP_SET_NOTE,
+      setPaneFocus: NOOP_FOCUS,
       isSplitPane: false,
     };
   }
@@ -52,11 +94,11 @@ export function useScopedWorkspace() {
     activeProjectId: paneState.projectId,
     activeView: paneState.view,
     noteSelection: paneState.noteSelection,
-    setActiveWorkspaceId: (workspaceId: string | null) => store.setPaneWorkspace(pane.paneId, workspaceId),
-    setActiveProjectId: (projectId: string | null) => store.setPaneProject(pane.paneId, projectId),
-    setActiveView: (view: PaneView) => store.setPaneView(pane.paneId, view),
-    setNoteSelection: (selection: NoteSelectionState | null) => store.setPaneNoteSelection(pane.paneId, selection),
-    setPaneFocus: () => store.setActivePaneId(pane.paneId),
+    setActiveWorkspaceId,
+    setActiveProjectId,
+    setActiveView,
+    setNoteSelection,
+    setPaneFocus,
     isSplitPane: true,
   };
 }
@@ -65,18 +107,27 @@ export function useScopedChat() {
   const pane = useWorkspacePane();
   const chatStore = useChatStore();
   const workspaceStore = useWorkspaceStore();
+  const paneId = pane?.paneId ?? null;
+
+  const setActiveChatId = useCallback(
+    (chatSessionId: string | null) => {
+      if (paneId) { useWorkspaceStore.getState().setPaneChatSession(paneId, chatSessionId); }
+      else { useChatStore.getState().setActiveChatId(chatSessionId); }
+    },
+    [paneId],
+  );
 
   if (!pane) {
     return {
       activeChatId: chatStore.activeChatId,
-      setActiveChatId: chatStore.setActiveChatId,
+      setActiveChatId,
       isSplitPane: false,
     };
   }
 
   return {
     activeChatId: workspaceStore.panes[pane.paneId].chatSessionId,
-    setActiveChatId: (chatSessionId: string | null) => workspaceStore.setPaneChatSession(pane.paneId, chatSessionId),
+    setActiveChatId,
     isSplitPane: true,
   };
 }

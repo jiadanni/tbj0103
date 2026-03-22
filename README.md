@@ -401,38 +401,6 @@ npm run tauri dev
 
 Both `cargo check` and `npm run typecheck` must exit 0 before committing.
 
-## 🎯 Roadmap
-
-### Swift app — Phases 1–10: Complete ✅
-- ✅ Foundation (Projects, Auth, Chat)
-- ✅ Document Intelligence (RAG, Citations)
-- ✅ Knowledge Graph (Bidirectional Links)
-- ✅ Semantic Search (Ollama Embeddings)
-- ✅ Smart Editor (Live Linking)
-- ✅ Daily Notes (Templates, Calendar)
-- ✅ Learning Intelligence (Spaced Repetition)
-- ✅ Voice + Export (Speech, Multiple Formats)
-- ✅ Dashboard + Analytics (AI Insights)
-- ✅ Plugin System (7 plugin types, built-in plugins)
-
-### Tauri app — In progress
-- ✅ Core scaffold (Tauri v2, SQLite, React, Tailwind)
-- ✅ All 20 views wired (chat, notes, graph, flashcards, documents, settings…)
-- ✅ Rust service layer (linking engine, document processor, semantic search, RAG, backup…)
-- ✅ Backlinks + `[[wiki-link]]` auto-indexing
-- ✅ Workspace-scoped data model
-- [ ] Full Ollama embedding pipeline (nomic-embed-text)
-- [ ] Plugin system port
-- [ ] Voice transcription (cross-platform)
-- [ ] Multi-platform packages (Windows, Linux)
-
-### Future (both apps)
-- [ ] iCloud / cloud sync
-- [ ] iOS companion app
-- [ ] Collaboration features
-- [ ] Plugin marketplace
-- [ ] Multi-language support
-
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

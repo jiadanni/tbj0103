@@ -85,12 +85,53 @@ export default function SmartTextEditor({
     [conceptNames]
   );
 
+  const editorTheme = useMemo(() => EditorView.theme({
+    "&": {
+      backgroundColor: "var(--bg-primary)",
+      color: "var(--text-primary)",
+      height: "100%",
+    },
+    ".cm-scroller": {
+      fontFamily: "inherit",
+    },
+    ".cm-content": {
+      caretColor: "var(--accent-color)",
+    },
+    ".cm-line": {
+      color: "var(--text-primary)",
+    },
+    ".cm-placeholder": {
+      color: "var(--text-muted)",
+    },
+    ".cm-gutters": {
+      backgroundColor: "var(--bg-secondary)",
+      color: "var(--text-muted)",
+      border: "none",
+    },
+    ".cm-activeLine": {
+      backgroundColor: "transparent",
+    },
+    ".cm-activeLineGutter": {
+      backgroundColor: "transparent",
+    },
+    ".cm-cursor, .cm-dropCursor": {
+      borderLeftColor: "var(--accent-color)",
+    },
+    "&.cm-focused": {
+      outline: "none",
+    },
+    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
+      backgroundColor: "rgba(var(--accent-color-rgb), 0.22)",
+    },
+  }), []);
+
   const extensions = useMemo(() => [
     markdown({ base: markdownLanguage, codeLanguages: languages }),
     wikiLinkPlugin,
     autocompletion({ override: [completer] }),
     EditorView.lineWrapping,
-  ], [completer]);
+    editorTheme,
+  ], [completer, editorTheme]);
 
   return (
     <CodeMirror
@@ -113,7 +154,6 @@ export default function SmartTextEditor({
         searchKeymap: true,
       }}
       style={{ minHeight, fontSize: "0.875rem" }}
-      theme="dark"
     />
   );
 }

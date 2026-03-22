@@ -223,6 +223,18 @@ export interface ThoughtItem {
   result?: string; result_at?: string; created_at: string; updated_at: string;
 }
 
+export interface Memory {
+  id: string;
+  workspace_id: string;
+  content: string;
+  memory_type: "fact" | "preference" | "context" | string;
+  source_session_id?: string | null;
+  is_pinned: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AnalysisResult {
   concepts_created: number;
   links_created: number;
@@ -542,6 +554,23 @@ export const api = {
     updateStatus: (id: string, status: string) => invoke<void>("update_thought_status", { id, status }),
     updateResult: (id: string, result: string) => invoke<void>("update_thought_result", { id, result }),
     delete: (id: string) => invoke<void>("delete_thought", { id }),
+  },
+
+  memory: {
+    create: (workspaceId: string, content: string, memoryType?: Memory["memory_type"], sourceSessionId?: string) =>
+      invoke<Memory>("create_memory", {
+        req: {
+          workspace_id: workspaceId,
+          content,
+          memory_type: memoryType,
+          source_session_id: sourceSessionId,
+        },
+      }),
+    list: (workspaceId: string) => invoke<Memory[]>("list_memories", { workspace_id: workspaceId }),
+    listActive: (workspaceId: string) => invoke<Memory[]>("get_active_memories", { workspace_id: workspaceId }),
+    update: (id: string, fields: { content?: string; memory_type?: Memory["memory_type"]; is_pinned?: boolean; is_active?: boolean }) =>
+      invoke<Memory>("update_memory", { req: { id, ...fields } }),
+    delete: (id: string) => invoke<void>("delete_memory", { id }),
   },
 
   webAI: {
