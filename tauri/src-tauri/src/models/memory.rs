@@ -3,9 +3,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Memory {
     pub id: String,
-    pub workspace_id: String,
+    pub workspace_id: Option<String>,
     pub content: String,
     pub memory_type: String,
+    pub scope: String,
     pub source_session_id: Option<String>,
     pub is_pinned: bool,
     pub is_active: bool,
@@ -15,9 +16,10 @@ pub struct Memory {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateMemoryRequest {
-    pub workspace_id: String,
+    pub workspace_id: Option<String>,
     pub content: String,
     pub memory_type: Option<String>,
+    pub scope: Option<String>,
     pub source_session_id: Option<String>,
 }
 

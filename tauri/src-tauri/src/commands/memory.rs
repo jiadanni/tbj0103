@@ -9,32 +9,40 @@ fn row_to_memory(row: &rusqlite::Row) -> rusqlite::Result<Memory> {
         workspace_id: row.get(1)?,
         content: row.get(2)?,
         memory_type: row.get(3)?,
-        source_session_id: row.get(4)?,
-        is_pinned: row.get::<_, i32>(5)? != 0,
-        is_active: row.get::<_, i32>(6)? != 0,
-        created_at: row.get(7)?,
-        updated_at: row.get(8)?,
+        scope: row.get(4)?,
+        source_session_id: row.get(5)?,
+        is_pinned: row.get::<_, i32>(6)? != 0,
+        is_active: row.get::<_, i32>(7)? != 0,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
     })
 }
+
+const MEMORY_COLUMNS: &str = "id, workspace_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at";
 
 #[tauri::command]
 pub fn create_memory(state: State<DbState>, req: CreateMemoryRequest) -> Result<Memory, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
     let memory_type = req.memory_type.unwrap_or_else(|| "fact".to_string());
+    let scope = req.scope.unwrap_or_else(|| "workspace".to_string());
     let now = chrono::Utc::now().to_rfc3339();
 
+    // Global memories have no workspace_id
+    let workspace_id = if scope == "global" { None } else { req.workspace_id.clone() };
+
     conn.execute(
-        "INSERT INTO memories (id, workspace_id, content, memory_type, source_session_id, is_pinned, is_active, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 0, 1, ?6, ?6)",
-        rusqlite::params![id, req.workspace_id, req.content, memory_type, req.source_session_id, now],
+        "INSERT INTO memories (id, workspace_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 1, ?7, ?7)",
+        rusqlite::params![id, workspace_id, req.content, memory_type, scope, req.source_session_id, now],
     ).map_err(|e| e.to_string())?;
 
     Ok(Memory {
         id,
-        workspace_id: req.workspace_id,
+        workspace_id,
         content: req.content,
         memory_type,
+        scope,
         source_session_id: req.source_session_id,
         is_pinned: false,
         is_active: true,
@@ -46,11 +54,27 @@ pub fn create_memory(state: State<DbState>, req: CreateMemoryRequest) -> Result<
 #[tauri::command]
 pub fn list_memories(state: State<DbState>, workspace_id: String) -> Result<Vec<Memory>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, content, memory_type, source_session_id, is_pinned, is_active, created_at, updated_at
-         FROM memories WHERE workspace_id = ?1 ORDER BY is_pinned DESC, created_at DESC"
-    ).map_err(|e| e.to_string())?;
+    let sql = format!(
+        "SELECT {} FROM memories WHERE workspace_id = ?1 AND scope = 'workspace' ORDER BY is_pinned DESC, created_at DESC",
+        MEMORY_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt.query_map(rusqlite::params![workspace_id], row_to_memory)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn list_global_memories(state: State<DbState>) -> Result<Vec<Memory>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let sql = format!(
+        "SELECT {} FROM memories WHERE scope = 'global' ORDER BY is_pinned DESC, created_at DESC",
+        MEMORY_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let items = stmt.query_map([], row_to_memory)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -79,9 +103,9 @@ pub fn update_memory(state: State<DbState>, req: UpdateMemoryRequest) -> Result<
         ],
     ).map_err(|e| e.to_string())?;
 
+    let sql = format!("SELECT {} FROM memories WHERE id = ?1", MEMORY_COLUMNS);
     let memory = conn.query_row(
-        "SELECT id, workspace_id, content, memory_type, source_session_id, is_pinned, is_active, created_at, updated_at
-         FROM memories WHERE id = ?1",
+        &sql,
         rusqlite::params![req.id],
         row_to_memory,
     ).map_err(|e| e.to_string())?;
@@ -100,10 +124,12 @@ pub fn delete_memory(state: State<DbState>, id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn get_active_memories(state: State<DbState>, workspace_id: String) -> Result<Vec<Memory>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, content, memory_type, source_session_id, is_pinned, is_active, created_at, updated_at
-         FROM memories WHERE workspace_id = ?1 AND is_active = 1 ORDER BY is_pinned DESC, created_at DESC"
-    ).map_err(|e| e.to_string())?;
+    // Return both workspace-scoped memories for this workspace AND all global memories
+    let sql = format!(
+        "SELECT {} FROM memories WHERE is_active = 1 AND ((workspace_id = ?1 AND scope = 'workspace') OR scope = 'global') ORDER BY scope ASC, is_pinned DESC, created_at DESC",
+        MEMORY_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt.query_map(rusqlite::params![workspace_id], row_to_memory)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
@@ -194,16 +220,17 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
         };
         let id = uuid::Uuid::new_v4().to_string();
         conn.execute(
-            "INSERT INTO memories (id, workspace_id, content, memory_type, source_session_id, is_pinned, is_active, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 0, 1, ?6, ?6)",
+            "INSERT INTO memories (id, workspace_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 'workspace', ?5, 0, 1, ?6, ?6)",
             rusqlite::params![id, req.workspace_id, em.content, valid_type, req.session_id, now],
         ).map_err(|e| e.to_string())?;
 
         created.push(Memory {
             id,
-            workspace_id: req.workspace_id.clone(),
+            workspace_id: Some(req.workspace_id.clone()),
             content: em.content,
             memory_type: valid_type,
+            scope: "workspace".to_string(),
             source_session_id: Some(req.session_id.clone()),
             is_pinned: false,
             is_active: true,

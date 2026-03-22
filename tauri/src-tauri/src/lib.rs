@@ -273,6 +273,7 @@ pub fn run() {
             // Memory commands
             commands::memory::create_memory,
             commands::memory::list_memories,
+            commands::memory::list_global_memories,
             commands::memory::update_memory,
             commands::memory::delete_memory,
             commands::memory::get_active_memories,

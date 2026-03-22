@@ -66,15 +66,18 @@ pub fn assemble_context(
         }
     }
 
-    // 2. Memories (Top-K / Pinned)
+    // 2. Memories (Top-K / Pinned) — include both global and workspace-scoped
     let mut memories_text = String::new();
-    let mut stmt = conn.prepare("SELECT id, content FROM memories WHERE workspace_id = ?1 AND is_active = 1 ORDER BY is_pinned DESC, updated_at DESC LIMIT 10").unwrap();
+    let mut stmt = conn.prepare(
+        "SELECT id, content, scope FROM memories WHERE is_active = 1 AND ((workspace_id = ?1 AND scope = 'workspace') OR scope = 'global') ORDER BY scope ASC, is_pinned DESC, updated_at DESC LIMIT 10"
+    ).unwrap();
     if let Ok(iter) = stmt.query_map(rusqlite::params![workspace_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
     }) {
         for row in iter.flatten() {
-            let (id, content) = row;
-            memories_text.push_str(&format!("- {}\n", content));
+            let (id, content, scope) = row;
+            let prefix = if scope == "global" { "[global] " } else { "" };
+            memories_text.push_str(&format!("- {}{}\n", prefix, content));
             sources.memories_used.push(id);
         }
     }

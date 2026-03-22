@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { Brain, Pin, PinOff, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Brain, Globe, Layers, Pin, PinOff, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { api, type Memory } from "../lib/api";
 import { useScopedWorkspace } from "../lib/workspacePane";
 
 const MEMORY_TYPES: Memory["memory_type"][] = ["fact", "preference", "context"];
+
+type ScopeTab = "workspace" | "global";
 
 function formatTimestamp(value: string) {
   const date = new Date(value);
@@ -24,14 +26,25 @@ export default function MemoryView() {
   const [newContent, setNewContent] = useState("");
   const [newType, setNewType] = useState<Memory["memory_type"]>("fact");
   const [submitting, setSubmitting] = useState(false);
+  const [scopeTab, setScopeTab] = useState<ScopeTab>("workspace");
+
+  const loadMemories = useCallback(async () => {
+    if (scopeTab === "global") {
+      const items = await api.memory.listGlobal().catch(() => []);
+      setMemories(items);
+    } else {
+      if (!activeWorkspaceId) {
+        setMemories([]);
+        return;
+      }
+      const items = await api.memory.list(activeWorkspaceId).catch(() => []);
+      setMemories(items);
+    }
+  }, [scopeTab, activeWorkspaceId]);
 
   useEffect(() => {
-    if (!activeWorkspaceId) {
-      setMemories([]);
-      return;
-    }
-    api.memory.list(activeWorkspaceId).then(setMemories).catch(() => {});
-  }, [activeWorkspaceId]);
+    loadMemories();
+  }, [loadMemories]);
 
   const counts = useMemo(() => ({
     total: memories.length,
@@ -40,12 +53,17 @@ export default function MemoryView() {
   }), [memories]);
 
   async function createMemory() {
-    if (!activeWorkspaceId || !newContent.trim()) {
-      return;
-    }
+    if (!newContent.trim()) return;
+    if (scopeTab === "workspace" && !activeWorkspaceId) return;
+
     setSubmitting(true);
     try {
-      const created = await api.memory.create(activeWorkspaceId, newContent.trim(), newType);
+      const created = await api.memory.create(
+        newContent.trim(),
+        scopeTab,
+        newType,
+        scopeTab === "workspace" ? activeWorkspaceId ?? undefined : undefined,
+      );
       setMemories((prev) => [created, ...prev]);
       setNewContent("");
       setNewType("fact");
@@ -64,6 +82,8 @@ export default function MemoryView() {
     setMemories((prev) => prev.filter((memory) => memory.id !== id));
   }
 
+  const isWorkspaceDisabled = scopeTab === "workspace" && !activeWorkspaceId;
+
   return (
     <div className="flex h-full overflow-hidden">
       <div className="w-72 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] flex flex-col">
@@ -73,8 +93,36 @@ export default function MemoryView() {
             <h2 className="text-sm font-semibold">Memory</h2>
           </div>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
-            Workspace-wide facts, preferences, and context the assistant can carry across chats.
+            {scopeTab === "global"
+              ? "Facts and preferences shared across all workspaces."
+              : "Workspace-scoped facts, preferences, and context for this workspace."}
           </p>
+        </div>
+
+        {/* Scope tabs */}
+        <div className="flex border-b border-[var(--border-color)]">
+          <button
+            onClick={() => setScopeTab("workspace")}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors ${
+              scopeTab === "workspace"
+                ? "text-[var(--accent-color)] border-b-2 border-[var(--accent-color)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+            }`}
+          >
+            <Layers size={13} />
+            Workspace
+          </button>
+          <button
+            onClick={() => setScopeTab("global")}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors ${
+              scopeTab === "global"
+                ? "text-[var(--accent-color)] border-b-2 border-[var(--accent-color)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+            }`}
+          >
+            <Globe size={13} />
+            Global
+          </button>
         </div>
 
         <div className="grid grid-cols-3 gap-2 px-4 py-3 border-b border-[var(--border-color)] text-center">
@@ -96,7 +144,9 @@ export default function MemoryView() {
           <textarea
             value={newContent}
             onChange={(e) => setNewContent(e.target.value)}
-            placeholder="Add something worth remembering about this workspace..."
+            placeholder={scopeTab === "global"
+              ? "Add something worth remembering across all workspaces..."
+              : "Add something worth remembering about this workspace..."}
             rows={4}
             className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
           />
@@ -115,7 +165,7 @@ export default function MemoryView() {
           </div>
           <button
             onClick={createMemory}
-            disabled={submitting || !newContent.trim() || !activeWorkspaceId}
+            disabled={submitting || !newContent.trim() || isWorkspaceDisabled}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-color)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             <Plus size={14} />
@@ -124,18 +174,22 @@ export default function MemoryView() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {!activeWorkspaceId ? (
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {isWorkspaceDisabled ? (
           <div className="flex h-full items-center justify-center text-sm text-[var(--text-muted)]">
-            Select a workspace to view memory.
+            Select a workspace to view workspace memory.
           </div>
         ) : memories.length === 0 ? (
           <div className="flex h-full items-center justify-center px-6 text-center">
             <div>
-              <Brain size={28} className="mx-auto mb-3 text-[var(--text-muted)]" />
-              <p className="text-sm text-[var(--text-secondary)]">No memories yet</p>
+              {scopeTab === "global" ? <Globe size={28} className="mx-auto mb-3 text-[var(--text-muted)]" /> : <Brain size={28} className="mx-auto mb-3 text-[var(--text-muted)]" />}
+              <p className="text-sm text-[var(--text-secondary)]">
+                No {scopeTab} memories yet
+              </p>
               <p className="mt-1 text-xs text-[var(--text-muted)]">
-                Add durable facts or preferences here to make future chats more context-aware.
+                {scopeTab === "global"
+                  ? "Add global facts or preferences here — they'll be available in every workspace."
+                  : "Add durable facts or preferences here to make future chats more context-aware."}
               </p>
             </div>
           </div>
@@ -156,6 +210,11 @@ export default function MemoryView() {
                       <span className="rounded-full bg-[var(--accent-color)]/12 px-2.5 py-1 text-[11px] font-medium capitalize text-[var(--accent-color)]">
                         {memory.memory_type}
                       </span>
+                      {memory.scope === "global" && (
+                        <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-400">
+                          Global
+                        </span>
+                      )}
                       {memory.is_pinned && (
                         <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-400">
                           Pinned

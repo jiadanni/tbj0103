@@ -554,5 +554,21 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v23: add scope column to memories (global vs workspace)
+    let applied_v23: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v23_memory_scope'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v23 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE memories ADD COLUMN scope TEXT NOT NULL DEFAULT 'workspace';",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v23_memory_scope');",
+        )?;
+    }
+
     Ok(())
 }
