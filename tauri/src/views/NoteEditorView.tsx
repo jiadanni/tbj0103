@@ -15,8 +15,8 @@ import {
 } from "lucide-react";
 import { addDays, format, subDays } from "date-fns";
 import { api, type DailyNote, type NoteTemplate, type ProjectNote } from "../lib/api";
-import { useWorkspaceStore } from "../stores/workspaceStore";
 import SmartTextEditor from "../components/SmartTextEditor";
+import { useScopedWorkspace } from "../lib/workspacePane";
 
 type Selection =
   | { kind: "project"; id: string }
@@ -39,10 +39,14 @@ function moodToEmoji(mood: number | undefined): string {
 }
 
 export default function NoteEditorView() {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const { activeWorkspaceId, noteSelection, setNoteSelection } = useScopedWorkspace();
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>([]);
   const [recentDailyNotes, setRecentDailyNotes] = useState<DailyNote[]>([]);
-  const [selection, setSelection] = useState<Selection | null>(null);
+  const [selection, setSelection] = useState<Selection | null>(noteSelection
+    ? noteSelection.kind === "project"
+      ? { kind: "project", id: noteSelection.id ?? "" }
+      : { kind: "daily", date: noteSelection.date ?? format(new Date(), "yyyy-MM-dd") }
+    : null);
   const [query, setQuery] = useState("");
   const [dailyDateInput, setDailyDateInput] = useState(format(new Date(), "yyyy-MM-dd"));
   const [creating, setCreating] = useState(false);
@@ -68,6 +72,20 @@ export default function NoteEditorView() {
     setDailyDateInput(format(new Date(), "yyyy-MM-dd"));
     setSelection({ kind: "daily", date: format(new Date(), "yyyy-MM-dd") });
   }, [activeWorkspaceId, loadProjectNotes, loadRecentDailyNotes]);
+
+  useEffect(() => {
+    if (!selection) {
+      setNoteSelection(null);
+      return;
+    }
+
+    if (selection.kind === "project") {
+      setNoteSelection({ kind: "project", id: selection.id });
+      return;
+    }
+
+    setNoteSelection({ kind: "daily", date: selection.date });
+  }, [selection, setNoteSelection]);
 
   const filteredProjectNotes = useMemo(() => {
     const trimmed = query.trim().toLowerCase();

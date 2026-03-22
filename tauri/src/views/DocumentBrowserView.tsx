@@ -5,12 +5,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Upload, File, Trash2, Cpu, ChevronRight, X } from "lucide-react";
 import { api, type UploadedDocument } from "../lib/api";
-import { useWorkspaceStore } from "../stores/workspaceStore";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
+import { useScopedWorkspace } from "../lib/workspacePane";
 
 export default function DocumentBrowserView() {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const { activeWorkspaceId } = useScopedWorkspace();
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
   const [selected, setSelected] = useState<UploadedDocument | null>(null);
   const [uploading, setUploading] = useState(false);

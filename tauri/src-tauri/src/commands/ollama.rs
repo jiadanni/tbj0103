@@ -26,6 +26,7 @@ pub struct DualModelRequest {
     pub draft_model: String,
     pub refine_model: String,
     pub messages: Vec<OllamaMessage>,
+    pub execution_mode: Option<String>,
     pub ollama_url: Option<String>,
 }
 
@@ -76,12 +77,25 @@ pub async fn generate_embedding(req: EmbeddingRequest) -> Result<Vec<f32>, Strin
 #[tauri::command]
 pub async fn send_dual_model_message(app: AppHandle, req: DualModelRequest) -> Result<String, String> {
     let client = OllamaClient::new(req.ollama_url);
+    let execution_mode = req.execution_mode.as_deref().unwrap_or("serial");
 
-    // Phase 1: stream the fast/draft model
-    client.stream_message(&app, &req.session_id, &req.draft_model, req.messages.clone()).await?;
-
-    // Phase 2: stream the large/refine model (separate event channel)
-    client.stream_refine_message(&app, &req.session_id, &req.refine_model, req.messages).await
+    match execution_mode {
+        "serial" => {
+            client.stream_message(&app, &req.session_id, &req.draft_model, req.messages.clone()).await?;
+            client.stream_refine_message(&app, &req.session_id, &req.refine_model, req.messages).await
+        }
+        "parallel" => {
+            OllamaClient::clear_abort_flag(&app, &req.session_id)?;
+            let result = tokio::try_join!(
+                client.stream_message_unmanaged(&app, &req.session_id, &req.draft_model, req.messages.clone()),
+                client.stream_refine_message_unmanaged(&app, &req.session_id, &req.refine_model, req.messages)
+            );
+            OllamaClient::clear_abort_flag(&app, &req.session_id)?;
+            let (_, refine_response) = result?;
+            Ok(refine_response)
+        }
+        other => Err(format!("Unsupported dual-model execution mode: {other}")),
+    }
 }
 
 #[tauri::command]

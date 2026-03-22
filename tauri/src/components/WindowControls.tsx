@@ -1,13 +1,33 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isLinux } from "../lib/platform";
 
+/** onMouseDown handler that initiates window dragging. Use on drag region elements. */
+export function onDragRegionMouseDown(e: React.MouseEvent) {
+  if (!isLinux) return;
+  // Only drag on left-click, and only when clicking the element itself (not child buttons/inputs)
+  if (e.button !== 0) return;
+  const target = e.target as HTMLElement;
+  if (target.closest("button, input, select, textarea, a, [data-no-drag]")) return;
+  e.preventDefault();
+  getCurrentWindow().startDragging();
+}
+
 function WindowControls() {
   if (!isLinux) return null;
 
   const appWindow = getCurrentWindow();
 
+  async function handleMaximizeToggle() {
+    const maximized = await appWindow.isMaximized();
+    if (maximized) {
+      await appWindow.unmaximize();
+    } else {
+      await appWindow.maximize();
+    }
+  }
+
   return (
-    <div className="flex items-center ml-auto gap-0.5 shrink-0">
+    <div className="flex items-center ml-auto gap-0.5 shrink-0" data-no-drag>
       <button
         onClick={() => appWindow.minimize()}
         className="w-8 h-8 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
@@ -18,7 +38,7 @@ function WindowControls() {
         </svg>
       </button>
       <button
-        onClick={() => appWindow.toggleMaximize()}
+        onClick={handleMaximizeToggle}
         className="w-8 h-8 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
         title="Maximize"
       >

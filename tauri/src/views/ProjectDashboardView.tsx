@@ -18,6 +18,7 @@ import { useChatStore } from "../stores/chatStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { resolveModelForRole } from "../lib/modelRoles";
 import { useNavigate } from "react-router-dom";
+import { useScopedWorkspace } from "../lib/workspacePane";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -275,7 +276,8 @@ function InsightCard({ text }: { text: string }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ProjectDashboardView() {
-  const { activeWorkspaceId, workspaces } = useWorkspaceStore();
+  const { workspaces } = useWorkspaceStore();
+  const { activeWorkspaceId } = useScopedWorkspace();
   const { sessions } = useChatStore();
   const { preferredModel, backgroundModel, ollamaUrl, modelLabels } = useSettingsStore();
   const navigate = useNavigate();

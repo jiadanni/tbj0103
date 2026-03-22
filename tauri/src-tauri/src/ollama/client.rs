@@ -82,7 +82,7 @@ pub struct OllamaClient {
 }
 
 impl OllamaClient {
-    fn clear_abort_flag(app: &AppHandle, session_id: &str) -> Result<(), String> {
+    pub(crate) fn clear_abort_flag(app: &AppHandle, session_id: &str) -> Result<(), String> {
         let abort_state = app.state::<StreamAbortState>();
         let mut abort_map = abort_state
             .0
@@ -190,8 +190,11 @@ impl OllamaClient {
         model: &str,
         messages: Vec<OllamaMessage>,
         event_prefix: &str,
+        manage_abort_flag: bool,
     ) -> Result<String, String> {
-        Self::clear_abort_flag(app, session_id)?;
+        if manage_abort_flag {
+            Self::clear_abort_flag(app, session_id)?;
+        }
         let resolved_model = model.to_string();
         let url = format!("{}/api/chat", self.base_url);
         let body = json!({
@@ -277,7 +280,9 @@ impl OllamaClient {
                 duration_ms: None,
             });
         }
-        Self::clear_abort_flag(app, session_id)?;
+        if manage_abort_flag {
+            Self::clear_abort_flag(app, session_id)?;
+        }
 
         Ok(full_response)
     }
@@ -291,7 +296,17 @@ impl OllamaClient {
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
-        self.stream_with_prefix(app, session_id, model, messages, "ollama-stream-").await
+        self.stream_with_prefix(app, session_id, model, messages, "ollama-stream-", true).await
+    }
+
+    pub async fn stream_message_unmanaged(
+        &self,
+        app: &AppHandle,
+        session_id: &str,
+        model: &str,
+        messages: Vec<OllamaMessage>,
+    ) -> Result<String, String> {
+        self.stream_with_prefix(app, session_id, model, messages, "ollama-stream-", false).await
     }
 
     /// Stream the refined (large-model) response, emitting chunks as Tauri events.
@@ -303,7 +318,17 @@ impl OllamaClient {
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
-        self.stream_with_prefix(app, session_id, model, messages, "ollama-refine-").await
+        self.stream_with_prefix(app, session_id, model, messages, "ollama-refine-", true).await
+    }
+
+    pub async fn stream_refine_message_unmanaged(
+        &self,
+        app: &AppHandle,
+        session_id: &str,
+        model: &str,
+        messages: Vec<OllamaMessage>,
+    ) -> Result<String, String> {
+        self.stream_with_prefix(app, session_id, model, messages, "ollama-refine-", false).await
     }
 
     /// Generate an embedding vector for the given text.

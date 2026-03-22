@@ -12,7 +12,7 @@ Aetherium combines ChatGPT-style conversations, NotebookLM's source grounding, O
 
 ## Two Implementations
 
-| | Swift / macOS | Tauri (active) |
+| | Swift / macOS (On hold - May be revived in the future) | Tauri (active) |
 |---|---|---|
 | **Language** | Swift 5.9 + SwiftUI + SwiftData | Rust (Tauri v2) + React + TypeScript |
 | **Platform** | macOS 14+ only | macOS, Windows, Linux |
@@ -21,6 +21,10 @@ Aetherium combines ChatGPT-style conversations, NotebookLM's source grounding, O
 | **Status** | Feature-complete | **Active development target** |
 
 The Tauri port is the primary development target and receives all new features.
+
+## Roadmap
+
+`todo.md` tracks the Tauri app roadmap only. It should not be read as the status board for the Swift/macOS implementation.
 
 ## ✨ Features
 

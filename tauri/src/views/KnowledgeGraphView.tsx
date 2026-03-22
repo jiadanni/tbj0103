@@ -21,8 +21,8 @@ import {
   type AnalysisResult,
   type SuggestedGoal,
 } from "../lib/api";
-import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useScopedWorkspace } from "../lib/workspacePane";
 
 // ─── D3 types ──────────────────────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ function buildDupPairs(concepts: ConceptNode[], threshold: number): DupPair[] {
 type Tab = "graph" | "backlinks" | "insights";
 
 export default function KnowledgeGraphView() {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const { activeWorkspaceId } = useScopedWorkspace();
   const { preferredModel, ollamaUrl } = useSettingsStore();
 
   // Graph data

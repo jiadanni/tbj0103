@@ -12,8 +12,8 @@ import {
 } from "@codemirror/autocomplete";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
-import { useWorkspaceStore } from "../stores/workspaceStore";
 import { api } from "../lib/api";
+import { useScopedWorkspace } from "../lib/workspacePane";
 
 interface Props {
   value: string;
@@ -69,7 +69,7 @@ function makeConceptCompleter(conceptNames: string[]) {
 export default function SmartTextEditor({
   value, onChange, placeholder = "Write something…", minHeight = "200px", autofocus = false,
 }: Props) {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const { activeWorkspaceId } = useScopedWorkspace();
   const [conceptNames, setConceptNames] = useState<string[]>([]);
 
   // Load concept names for autocomplete

@@ -8,8 +8,8 @@ import {
   ChevronDown, ChevronRight, Calendar, Inbox, Zap, RefreshCw,
 } from "lucide-react";
 import { api, type ThoughtItem } from "../lib/api";
-import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useScopedWorkspace } from "../lib/workspacePane";
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -68,7 +68,7 @@ function isoToLocalInput(iso: string): string {
 // ---- component --------------------------------------------------------------
 
 export default function ThoughtQueueView() {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const { activeWorkspaceId } = useScopedWorkspace();
   const { preferredModel, ollamaUrl, modelLabels } = useSettingsStore();
 
   const [thoughts, setThoughts] = useState<ThoughtItem[]>([]);

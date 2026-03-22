@@ -11,13 +11,16 @@ const SETTINGS_INITIAL = {
   accentColor: "#007AFF",
   fontSize: 14,
   sidebarWidth: 240,
+  settingsNavLayout: "top-tabs" as const,
   dualModelEnabled: false,
   draftModel: "",
+  dualModelExecutionMode: "serial" as const,
   compareModelA: "",
   compareModelB: "",
   modelLabels: {},
   skipLinkConfirm: false,
   immediateDelete: false,
+  confirmMoveToTrash: true,
 };
 
 beforeEach(() => {
@@ -41,6 +44,10 @@ describe("default values", () => {
     expect(useSettingsStore.getState().sidebarWidth).toBe(240);
   });
 
+  it("settingsNavLayout defaults to top-tabs", () => {
+    expect(useSettingsStore.getState().settingsNavLayout).toBe("top-tabs");
+  });
+
   it("theme defaults to 'system'", () => {
     expect(useSettingsStore.getState().theme).toBe("system");
   });
@@ -55,6 +62,10 @@ describe("default values", () => {
 
   it("skipLinkConfirm defaults to false", () => {
     expect(useSettingsStore.getState().skipLinkConfirm).toBe(false);
+  });
+
+  it("dualModelExecutionMode defaults to serial", () => {
+    expect(useSettingsStore.getState().dualModelExecutionMode).toBe("serial");
   });
 });
 
@@ -88,9 +99,19 @@ describe("setters", () => {
     expect(useSettingsStore.getState().sidebarWidth).toBe(320);
   });
 
+  it("setSettingsNavLayout updates settingsNavLayout", () => {
+    useSettingsStore.getState().setSettingsNavLayout("side-tabs");
+    expect(useSettingsStore.getState().settingsNavLayout).toBe("side-tabs");
+  });
+
   it("setTheme updates theme", () => {
     useSettingsStore.getState().setTheme("dark");
     expect(useSettingsStore.getState().theme).toBe("dark");
+  });
+
+  it("setAccentColor updates accentColor", () => {
+    useSettingsStore.getState().setAccentColor("#f59e0b");
+    expect(useSettingsStore.getState().accentColor).toBe("#f59e0b");
   });
 
   it("setDualModelEnabled flips to true", () => {
@@ -101,6 +122,11 @@ describe("setters", () => {
   it("setSkipLinkConfirm flips to true", () => {
     useSettingsStore.getState().setSkipLinkConfirm(true);
     expect(useSettingsStore.getState().skipLinkConfirm).toBe(true);
+  });
+
+  it("setDualModelExecutionMode updates the strategy", () => {
+    useSettingsStore.getState().setDualModelExecutionMode("parallel");
+    expect(useSettingsStore.getState().dualModelExecutionMode).toBe("parallel");
   });
 });
 
