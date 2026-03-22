@@ -8,9 +8,17 @@ const INITIAL = {
   activeProjectId: null,
   projects: [],
   isDemoMode: false,
-  navLayout: "sidebar" as const,
+  navLayout: "side-tabs" as const,
   activeTopicSignature: null,
   migrationSuggestion: null,
+  projectsByWorkspace: {},
+  splitMode: false,
+  splitSizes: [50, 50] as [number, number],
+  activePaneId: "primary" as const,
+  panes: {
+    primary: { workspaceId: null, projectId: null, view: "project" as const, chatSessionId: null, noteSelection: null },
+    secondary: { workspaceId: null, projectId: null, view: "project" as const, chatSessionId: null, noteSelection: null },
+  },
 };
 
 beforeEach(() => {
@@ -62,30 +70,37 @@ function makeProject(overrides: Partial<Project> = {}): Project {
 // ─── navLayout initialisation ─────────────────────────────────────────────
 
 describe("navLayout", () => {
-  it("defaults to 'sidebar' when localStorage is empty", () => {
-    expect(useWorkspaceStore.getState().navLayout).toBe("sidebar");
+  it("defaults to 'side-tabs' when localStorage is empty", () => {
+    expect(useWorkspaceStore.getState().navLayout).toBe("side-tabs");
   });
 
   it("reads navLayout from localStorage on module init", async () => {
-    localStorage.setItem("navLayout", "tabs");
+    localStorage.setItem("navLayout", "top-tabs");
     vi.resetModules();
     const { useWorkspaceStore: freshStore } = await import("@/stores/workspaceStore");
-    expect(freshStore.getState().navLayout).toBe("tabs");
+    expect(freshStore.getState().navLayout).toBe("top-tabs");
+  });
+
+  it("migrates legacy values from localStorage on module init", async () => {
+    localStorage.setItem("navLayout", "sidebar");
+    vi.resetModules();
+    const { useWorkspaceStore: freshStore } = await import("@/stores/workspaceStore");
+    expect(freshStore.getState().navLayout).toBe("side-tabs");
   });
 });
 
 // ─── setNavLayout ─────────────────────────────────────────────────────────
 
 describe("setNavLayout", () => {
-  it("updates state to 'tabs'", () => {
-    useWorkspaceStore.getState().setNavLayout("tabs");
-    expect(useWorkspaceStore.getState().navLayout).toBe("tabs");
+  it("updates state to 'top-tabs'", () => {
+    useWorkspaceStore.getState().setNavLayout("top-tabs");
+    expect(useWorkspaceStore.getState().navLayout).toBe("top-tabs");
   });
 
   it("writes to localStorage", () => {
     const spy = vi.spyOn(localStorage, "setItem");
-    useWorkspaceStore.getState().setNavLayout("tabs");
-    expect(spy).toHaveBeenCalledWith("navLayout", "tabs");
+    useWorkspaceStore.getState().setNavLayout("top-dropdown");
+    expect(spy).toHaveBeenCalledWith("navLayout", "top-dropdown");
   });
 });
 
@@ -161,5 +176,70 @@ describe("setActiveWorkspaceId and setActiveProjectId are independent", () => {
     useWorkspaceStore.getState().setActiveProjectId("p-2");
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-1");
     expect(useWorkspaceStore.getState().activeProjectId).toBe("p-2");
+  });
+});
+
+describe("split layout", () => {
+  it("enterSplitMode seeds the primary pane from active state and picks a second workspace", () => {
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace({ id: "ws-1" }), makeWorkspace({ id: "ws-2" })],
+      activeWorkspaceId: "ws-1",
+      activeProjectId: "p-1",
+    });
+
+    useWorkspaceStore.getState().enterSplitMode();
+
+    const state = useWorkspaceStore.getState();
+    expect(state.splitMode).toBe(true);
+    expect(state.panes.primary.workspaceId).toBe("ws-1");
+    expect(state.panes.primary.projectId).toBe("p-1");
+    expect(state.panes.secondary.workspaceId).toBe("ws-2");
+  });
+
+  it("pane state updates independently", () => {
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace({ id: "ws-1" }), makeWorkspace({ id: "ws-2" })],
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    useWorkspaceStore.getState().setPaneView("secondary", "chat");
+    useWorkspaceStore.getState().setPaneChatSession("secondary", "chat-2");
+
+    const state = useWorkspaceStore.getState();
+    expect(state.panes.primary.view).toBe("project");
+    expect(state.panes.secondary.view).toBe("chat");
+    expect(state.panes.secondary.chatSessionId).toBe("chat-2");
+  });
+
+  it("persists split sizes and mode", () => {
+    useWorkspaceStore.getState().setSplitSizes([40, 60]);
+    useWorkspaceStore.getState().enterSplitMode();
+
+    const raw = localStorage.getItem("workspaceSplitLayout");
+    expect(raw).not.toBeNull();
+    expect(raw).toContain("\"splitMode\":true");
+    expect(raw).toContain("\"splitSizes\":[40,60]");
+  });
+
+  it("exitSplitMode restores primary pane state to single-pane state", () => {
+    useWorkspaceStore.setState({
+      splitMode: true,
+      activeWorkspaceId: "ws-old",
+      activeProjectId: "p-old",
+      panes: {
+        primary: { workspaceId: "ws-new", projectId: "p-new", view: "notes", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    useWorkspaceStore.getState().exitSplitMode();
+
+    const state = useWorkspaceStore.getState();
+    expect(state.splitMode).toBe(false);
+    expect(state.activeWorkspaceId).toBe("ws-new");
+    expect(state.activeProjectId).toBe("p-new");
   });
 });

@@ -6,8 +6,8 @@
 import { useEffect, useState } from "react";
 import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2 } from "lucide-react";
 import { api, type LearningCard, type ReviewStats, type AiModel } from "../lib/api";
-import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useScopedWorkspace } from "../lib/workspacePane";
 
 const QUALITY_LABELS = [
   { q: 0, label: "Blackout",   color: "text-red-500",    bg: "bg-red-500/10 hover:bg-red-500/20" },
@@ -19,7 +19,7 @@ const QUALITY_LABELS = [
 ];
 
 export default function FlashcardReviewView() {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const { activeWorkspaceId } = useScopedWorkspace();
   const { preferredModel, ollamaUrl } = useSettingsStore();
 
   const [cards, setCards] = useState<LearningCard[]>([]);

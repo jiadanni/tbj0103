@@ -3,12 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { MessageSquare, Trash2, RefreshCcw, Trash, Search, ChevronLeft } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore, type ChatSession } from "../stores/chatStore";
-import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useScopedWorkspace } from "../lib/workspacePane";
 
 export default function RecycleBinView() {
   const navigate = useNavigate();
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const { activeWorkspaceId, isSplitPane } = useScopedWorkspace();
   const { setSessions } = useChatStore();
   const { modelLabels } = useSettingsStore();
   const [deletedSessions, setDeletedSessions] = useState<ChatSession[]>([]);
@@ -81,7 +81,7 @@ export default function RecycleBinView() {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-color)] shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]">
+          <button onClick={() => { if (!isSplitPane) {navigate(-1);} }} className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] disabled:opacity-40" disabled={isSplitPane}>
             <ChevronLeft size={20} />
           </button>
           <div>

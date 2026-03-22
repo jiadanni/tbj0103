@@ -7,22 +7,13 @@ import { useLocation } from "react-router-dom";
 import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus } from "../lib/api";
 import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
+import { ACCENT_COLORS, THEMES } from "../lib/theme";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import PluginManagerView from "./PluginManagerView";
 import { MOD_KEY } from "../lib/platform";
-
-const THEMES = ["system", "light", "dark", "oled", "sepia", "hacker", "glasscode"] as const;
-const ACCENT_COLORS = [
-  { label: "Blue",   value: "#3b82f6" },
-  { label: "Purple", value: "#8b5cf6" },
-  { label: "Green",  value: "#10b981" },
-  { label: "Orange", value: "#f97316" },
-  { label: "Pink",   value: "#ec4899" },
-  { label: "Cyan",   value: "#06b6d4" },
-];
 
 type Tab = "general" | "appearance" | "chat" | "ai" | "webai" | "security" | "workspaces" | "backup" | "plugins" | "mcp" | "sync";
 
@@ -40,6 +31,12 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: "sync",        label: "Sync",        Icon: GitBranch },
 ];
 
+const NAV_LAYOUT_OPTIONS = [
+  { id: "side-tabs", label: "Side Tabs", description: "Navigation stays in the left rail." },
+  { id: "top-tabs", label: "Top Tabs", description: "Show the main views as tabs across the top." },
+  { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact top view picker outside split view." },
+] as const;
+
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <div
@@ -56,6 +53,7 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 export default function SettingsView() {
   const pillSelectClassName = "h-10 w-full appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-9 text-sm text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
   const zustandSettings = useSettingsStore();
+  const { settingsNavLayout, setSettingsNavLayout } = useSettingsStore();
   const location = useLocation();
   const { navLayout, setNavLayout } = useWorkspaceStore();
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
@@ -151,6 +149,7 @@ export default function SettingsView() {
     zustandSettings.setOllamaUrl(dbSettings.ollama_base_url);
     zustandSettings.setDualModelEnabled(dbSettings.dual_model_enabled);
     zustandSettings.setDraftModel(dbSettings.draft_model);
+    zustandSettings.setDualModelExecutionMode(dbSettings.dual_model_execution_mode);
     zustandSettings.setCompareModelA(dbSettings.compare_model_a);
     zustandSettings.setCompareModelB(dbSettings.compare_model_b);
     zustandSettings.setImmediateDelete(dbSettings.immediate_delete);
@@ -239,36 +238,69 @@ export default function SettingsView() {
     );
   }
 
+  const settingsTabButtons = (
+    <div className={settingsNavLayout === "top-tabs" ? "flex gap-1.5 overflow-x-auto pb-0.5" : "flex flex-col gap-1.5"}>
+      {TABS.map(({ id, label, Icon }, idx) => (
+        <button
+          key={id}
+          onClick={() => setActiveTab(id)}
+          title={`${label} (${MOD_KEY}⇧${idx + 1})`}
+          className={`flex items-center gap-2 whitespace-nowrap transition-colors ${
+            settingsNavLayout === "top-tabs"
+              ? `px-3.5 py-2.5 text-sm rounded-t-lg border-b-2 ${
+                  activeTab === id
+                    ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
+                    : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                }`
+              : `w-full rounded-xl px-3 py-2 text-left text-sm ${
+                  activeTab === id
+                    ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                    : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+                }`
+          }`}
+        >
+          <Icon size={15} />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Tab bar */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-0 border-b border-[var(--border-color)] flex-shrink-0">
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-          {TABS.map(({ id, label, Icon }, idx) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              title={`${label} (${MOD_KEY}⇧${idx + 1})`}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-sm whitespace-nowrap rounded-t-lg border-b-2 transition-colors ${
-                activeTab === id
-                  ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
-                  : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-              }`}
-            >
-              <Icon size={15} />
-              {label}
-            </button>
-          ))}
+      {settingsNavLayout === "top-tabs" ? (
+        <div className="flex items-center justify-between px-4 pt-3 pb-0 border-b border-[var(--border-color)] flex-shrink-0">
+          {settingsTabButtons}
+          <button
+            onClick={save}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 mb-1"
+          >
+            <Save size={14} /> {saved ? "Saved!" : "Save"}
+          </button>
         </div>
-        <button
-          onClick={save}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 mb-1"
-        >
-          <Save size={14} /> {saved ? "Saved!" : "Save"}
-        </button>
-      </div>
+      ) : (
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-color)] flex-shrink-0">
+          <div>
+            <h1 className="text-sm font-semibold text-[var(--text-primary)]">Settings</h1>
+            <p className="text-[11px] text-[var(--text-muted)]">App configuration and workspace preferences</p>
+          </div>
+          <button
+            onClick={save}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90"
+          >
+            <Save size={14} /> {saved ? "Saved!" : "Save"}
+          </button>
+        </div>
+      )}
 
-      {/* Tab content — inline sections */}
+      <div className={`flex-1 min-h-0 overflow-hidden ${settingsNavLayout === "side-tabs" ? "flex" : "block"}`}>
+        {settingsNavLayout === "side-tabs" && (
+          <aside className="w-60 shrink-0 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] px-3 py-4 overflow-y-auto">
+            {settingsTabButtons}
+          </aside>
+        )}
+
+        <div className="flex-1 min-h-0 overflow-hidden">
       {(activeTab === "general" || activeTab === "appearance" || activeTab === "chat" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
       <div className="flex-1 overflow-y-auto px-6 py-5">
         <div className="max-w-lg space-y-5">
@@ -294,18 +326,42 @@ export default function SettingsView() {
 
               <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-2 block">Navigation Layout</label>
-                <div className="flex gap-2">
-                  {(["sidebar", "tabs"] as const).map((layout) => (
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {NAV_LAYOUT_OPTIONS.map((layout) => (
                     <button
-                      key={layout}
-                      onClick={() => setNavLayout(layout)}
-                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${
-                        navLayout === layout
+                      key={layout.id}
+                      onClick={() => setNavLayout(layout.id)}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                        navLayout === layout.id
                           ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
                           : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                       }`}
                     >
-                      {layout === "sidebar" ? "Sidebar" : "Horizontal Tabs"}
+                      <div className="text-xs font-medium">{layout.label}</div>
+                      <div className="mt-1 text-[11px] opacity-75">{layout.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Settings Navigation</label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    { id: "top-tabs", label: "Top Tabs", description: "Keep settings sections across the top." },
+                    { id: "side-tabs", label: "Side Tabs", description: "Keep settings sections in a dedicated side rail." },
+                  ].map((layout) => (
+                    <button
+                      key={layout.id}
+                      onClick={() => setSettingsNavLayout(layout.id as "top-tabs" | "side-tabs")}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                        settingsNavLayout === layout.id
+                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      }`}
+                    >
+                      <div className="text-xs font-medium">{layout.label}</div>
+                      <div className="mt-1 text-[11px] opacity-75">{layout.description}</div>
                     </button>
                   ))}
                 </div>
@@ -337,17 +393,20 @@ export default function SettingsView() {
 
               <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-2 block">Accent Color</label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {ACCENT_COLORS.map(({ label, value }) => (
                     <button
                       key={value}
                       onClick={() => setAppearance("accent_color", value)}
                       title={label}
-                      className={`w-7 h-7 rounded-full border-2 transition-transform ${
-                        dbSettings.accent_color === value ? "border-white scale-110" : "border-transparent"
+                      aria-label={`Use ${label} accent`}
+                      className={`relative h-8 w-8 rounded-full border-2 transition-transform ${
+                        dbSettings.accent_color === value ? "border-white scale-110 shadow-sm" : "border-transparent"
                       }`}
                       style={{ backgroundColor: value }}
-                    />
+                    >
+                      <span className="sr-only">{label}</span>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -451,6 +510,29 @@ export default function SettingsView() {
                   placeholder="nomic-embed-text"
                   className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
                 />
+              </div>
+
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Dual-model execution</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Choose whether the draft and refine models run one after the other or at the same time.
+                  </p>
+                </div>
+                <div className="relative">
+                  <select
+                    value={dbSettings.dual_model_execution_mode}
+                    onChange={(e) => set("dual_model_execution_mode", e.target.value as AppSettings["dual_model_execution_mode"])}
+                    className={pillSelectClassName}
+                  >
+                    <option value="serial">Serial: draft, then refine</option>
+                    <option value="parallel">Parallel: draft and refine together</option>
+                  </select>
+                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                </div>
+                <p className="text-[10px] text-[var(--text-muted)]">
+                  Serial is steadier and uses one Ollama generation at a time. Parallel feels faster overall, but can use more compute and memory.
+                </p>
               </div>
 
               {/* Model Priority List */}
@@ -1231,6 +1313,8 @@ export default function SettingsView() {
           </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 }

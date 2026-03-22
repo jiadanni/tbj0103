@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { hexToRgbChannels } from "./lib/theme";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useWorkspaceStore } from "./stores/workspaceStore";
 import { api } from "./lib/api";
 import Layout from "./components/Layout";
 import AuthenticationView from "./views/AuthenticationView";
-import WindowControls from "./components/WindowControls";
+import WindowControls, { onDragRegionMouseDown } from "./components/WindowControls";
 
 export default function App() {
   const { theme, accentColor, fontSize } = useSettingsStore();
@@ -29,7 +30,10 @@ export default function App() {
       if (cls.startsWith("theme-")) {root.classList.remove(cls);}
     });
     root.classList.add(`theme-${theme}`);
-    if (accentColor) {root.style.setProperty("--accent-color", accentColor);}
+    if (accentColor) {
+      root.style.setProperty("--accent-color", accentColor);
+      root.style.setProperty("--accent-color-rgb", hexToRgbChannels(accentColor));
+    }
     root.style.setProperty("--font-size-base", `${fontSize}px`);
     root.style.fontSize = `${fontSize}px`;
   }, [theme, accentColor, fontSize]);
@@ -63,7 +67,7 @@ export default function App() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
-        <div data-tauri-drag-region className="fixed top-0 left-0 right-0 h-9 flex items-center justify-end pr-2">
+        <div data-tauri-drag-region onMouseDown={onDragRegionMouseDown} className="fixed top-0 left-0 right-0 h-9 flex items-center justify-end pr-2">
           <WindowControls />
         </div>
         <div className="text-sm opacity-50">Loading…</div>
@@ -78,11 +82,11 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/*" element={<Layout />} />
         <Route path="/" element={<Navigate to="/chat" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }

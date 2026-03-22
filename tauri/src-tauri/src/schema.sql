@@ -316,6 +316,8 @@ CREATE TABLE IF NOT EXISTS settings (
 -- Built-in default settings
 INSERT OR IGNORE INTO settings (key, value) VALUES
     ('preferred_model', '""'),
+    ('background_model', '""'),
+    ('quick_search_models', '[]'),
     ('backup_enabled', 'true'),
     ('touch_id_enabled', 'false'),
     ('pin_lock_enabled', 'false'),
@@ -331,6 +333,11 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('topic_analysis_interval_minutes', '30'),
     ('migration_suggestion_threshold', '0.3'),
     ('web_session_preserve', 'false'),
+    ('dual_model_enabled', 'false'),
+    ('draft_model', '""'),
+    ('dual_model_execution_mode', '"serial"'),
+    ('compare_model_a', '""'),
+    ('compare_model_b', '""'),
     ('immediate_delete', 'false'),
     ('confirm_move_to_trash', 'true');
 

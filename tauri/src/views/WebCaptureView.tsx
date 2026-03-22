@@ -6,8 +6,8 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2, Globe, Search, ExternalLink, RefreshCw } from "lucide-react";
 import { api } from "../lib/api";
 import { open } from "@tauri-apps/plugin-shell";
-import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useScopedWorkspace } from "../lib/workspacePane";
 
 interface WebCapture {
   id: string;
@@ -21,7 +21,7 @@ interface WebCapture {
 }
 
 export default function WebCaptureView() {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const { activeWorkspaceId } = useScopedWorkspace();
   const { skipLinkConfirm, setSkipLinkConfirm } = useSettingsStore();
   const [captures, setCaptures] = useState<WebCapture[]>([]);
   const [selected, setSelected] = useState<WebCapture | null>(null);
