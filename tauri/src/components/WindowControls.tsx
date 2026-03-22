@@ -30,7 +30,7 @@ function WindowControls() {
     <div className="flex items-center ml-auto gap-0.5 shrink-0" data-no-drag>
       <button
         onClick={() => appWindow.minimize()}
-        className="w-8 h-8 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+        className="w-8 h-10 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
         title="Minimize"
       >
         <svg width="10" height="1" viewBox="0 0 10 1">
@@ -39,7 +39,7 @@ function WindowControls() {
       </button>
       <button
         onClick={handleMaximizeToggle}
-        className="w-8 h-8 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+        className="w-8 h-10 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
         title="Maximize"
       >
         <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
@@ -48,7 +48,7 @@ function WindowControls() {
       </button>
       <button
         onClick={() => appWindow.close()}
-        className="w-8 h-8 flex items-center justify-center rounded hover:bg-red-500/80 hover:text-white text-[var(--text-secondary)] transition-colors"
+        className="w-8 h-10 flex items-center justify-center rounded hover:bg-red-500/80 hover:text-white text-[var(--text-secondary)] transition-colors"
         title="Close"
       >
         <svg width="10" height="10" viewBox="0 0 10 10">

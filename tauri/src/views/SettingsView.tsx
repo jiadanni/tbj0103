@@ -2,18 +2,21 @@
  * SettingsView — tabbed sections: Appearance, AI, Security, Backup.
  * Mirrors SettingsView.swift.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Save, Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus } from "../lib/api";
 import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
 import { ACCENT_COLORS, THEMES } from "../lib/theme";
 import { useSettingsStore } from "../stores/settingsStore";
-import { useWorkspaceStore } from "../stores/workspaceStore";
+import { type NavigationPresentation, type SplitNavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import PluginManagerView from "./PluginManagerView";
 import { MOD_KEY } from "../lib/platform";
+
+const MIN_FONT_SIZE = 11;
+const MAX_FONT_SIZE = 22;
 
 type Tab = "general" | "appearance" | "chat" | "ai" | "webai" | "security" | "workspaces" | "backup" | "plugins" | "mcp" | "sync";
 
@@ -31,19 +34,22 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: "sync",        label: "Sync",        Icon: GitBranch },
 ];
 
-const NAV_LAYOUT_OPTIONS = [
-  { id: "side-tabs", label: "Side Tabs", description: "Navigation stays in the left rail." },
-  { id: "top-tabs", label: "Top Tabs", description: "Show the main views as tabs across the top." },
-  { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact top view picker outside split view." },
-] as const;
+const IMMEDIATE_SAVE_EXCEPTIONS = new Set<keyof AppSettings>([]);
 
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+function Toggle({ on, onToggle, disabled = false }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
   return (
     <div
-      onClick={onToggle}
+      onClick={() => {
+        if (!disabled) {
+          onToggle();
+        }
+      }}
       role="switch"
       aria-checked={on}
-      className={`w-10 h-6 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${on ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`}
+      aria-disabled={disabled}
+      className={`w-10 h-6 rounded-full transition-colors relative flex-shrink-0 ${
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+      } ${on ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`}
     >
       <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? "translate-x-4" : "translate-x-0"}`} />
     </div>
@@ -55,9 +61,17 @@ export default function SettingsView() {
   const zustandSettings = useSettingsStore();
   const { settingsNavLayout, setSettingsNavLayout } = useSettingsStore();
   const location = useLocation();
-  const { navLayout, setNavLayout } = useWorkspaceStore();
+  const {
+    workspaceNavigation,
+    sectionNavigation,
+    splitWorkspaceNavigation,
+    splitSectionNavigation,
+    setWorkspaceNavigation,
+    setSectionNavigation,
+    setSplitWorkspaceNavigation,
+    setSplitSectionNavigation,
+  } = useWorkspaceStore();
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("general");
 
   // Handle external tab switching via router state
@@ -71,8 +85,16 @@ export default function SettingsView() {
   }, [location.state]);
 
   const [dbSettings, setDbSettings] = useState<AppSettings | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [testingOllama, setTestingOllama] = useState(false);
   const [ollamaTestResult, setOllamaTestResult] = useState<{ success: boolean; msg: string } | null>(null);
+  const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
+  const [hasLoadedOllamaModels, setHasLoadedOllamaModels] = useState(false);
+  const dbSettingsRef = useRef<AppSettings | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const saveNoticeTimeoutRef = useRef<number | null>(null);
+  const ollamaModelsRequestRef = useRef(0);
 
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
   const [showAddModel, setShowAddModel] = useState(false);
@@ -100,6 +122,73 @@ export default function SettingsView() {
   const [confirmPin, setConfirmPin] = useState("");
   const [pinSaving, setPinSaving] = useState(false);
   const [pinMessage, setPinMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  useEffect(() => {
+    dbSettingsRef.current = dbSettings;
+  }, [dbSettings]);
+
+  useEffect(() => () => {
+    if (saveNoticeTimeoutRef.current !== null) {
+      window.clearTimeout(saveNoticeTimeoutRef.current);
+    }
+  }, []);
+
+  function syncClientSettings(settings: AppSettings) {
+    zustandSettings.setTheme(settings.theme as any);
+    zustandSettings.setAccentColor(settings.accent_color);
+    zustandSettings.setFontSize(settings.font_size);
+    zustandSettings.setPreferredModel(settings.preferred_model);
+    zustandSettings.setBackgroundModel(settings.background_model);
+    zustandSettings.setQuickSearchModels(settings.quick_search_models);
+    zustandSettings.setOllamaUrl(settings.ollama_base_url);
+    zustandSettings.setDualModelEnabled(settings.dual_model_enabled);
+    zustandSettings.setDraftModel(settings.draft_model);
+    zustandSettings.setDualModelExecutionMode(settings.dual_model_execution_mode);
+    zustandSettings.setCompareModelA(settings.compare_model_a);
+    zustandSettings.setCompareModelB(settings.compare_model_b);
+    zustandSettings.setImmediateDelete(settings.immediate_delete);
+    zustandSettings.setConfirmMoveToTrash(settings.confirm_move_to_trash);
+  }
+
+  function scheduleSavedNoticeReset() {
+    if (saveNoticeTimeoutRef.current !== null) {
+      window.clearTimeout(saveNoticeTimeoutRef.current);
+    }
+    saveNoticeTimeoutRef.current = window.setTimeout(() => {
+      setSaveStatus("idle");
+      saveNoticeTimeoutRef.current = null;
+    }, 1600);
+  }
+
+  function persistSettings(nextSettings: AppSettings) {
+    setSaveStatus("saving");
+    setSaveError(null);
+    saveQueueRef.current = saveQueueRef.current
+      .catch(() => {})
+      .then(async () => {
+        await api.settings.update(nextSettings);
+        setSaveStatus("saved");
+        scheduleSavedNoticeReset();
+      })
+      .catch((err) => {
+        setSaveStatus("error");
+        setSaveError(err instanceof Error ? err.message : "Unable to save settings.");
+      });
+  }
+
+  function updateSettings(patch: Partial<AppSettings>) {
+    const current = dbSettingsRef.current;
+    if (!current) {return;}
+
+    const nextSettings = { ...current, ...patch };
+    dbSettingsRef.current = nextSettings;
+    setDbSettings(nextSettings);
+    syncClientSettings(nextSettings);
+
+    const changedKeys = Object.keys(patch) as Array<keyof AppSettings>;
+    if (changedKeys.some((key) => !IMMEDIATE_SAVE_EXCEPTIONS.has(key))) {
+      persistSettings(nextSettings);
+    }
+  }
 
   function loadAiModels() {
     api.aiModel.list().then((models) => {
@@ -127,46 +216,47 @@ export default function SettingsView() {
     set("quick_search_models", next);
   }
 
+  function refreshOllamaModels(ollamaUrl: string, options?: { clearResult?: boolean }) {
+    const requestId = ++ollamaModelsRequestRef.current;
+    setOllamaModelsLoading(true);
+    if (options?.clearResult) {
+      setOllamaTestResult(null);
+    }
+
+    api.ollama.listModels(ollamaUrl || undefined)
+      .then((models) => {
+        if (requestId !== ollamaModelsRequestRef.current) {return;}
+        setOllamaModels(models.map((model) => model.name));
+      })
+      .catch(() => {
+        if (requestId !== ollamaModelsRequestRef.current) {return;}
+        setOllamaModels([]);
+      })
+      .finally(() => {
+        if (requestId !== ollamaModelsRequestRef.current) {return;}
+        setOllamaModelsLoading(false);
+        setHasLoadedOllamaModels(true);
+      });
+  }
+
   useEffect(() => {
     api.settings.get().then((s) => {
       setDbSettings(s);
-      api.ollama.listModels(s.ollama_base_url).then((m) => setOllamaModels(m.map((x) => x.name))).catch(() => {});
+      dbSettingsRef.current = s;
+      syncClientSettings(s);
+      refreshOllamaModels(s.ollama_base_url);
     }).catch(() => {});
     loadAiModels();
     api.mcp.listServers().then(setMcpServers).catch(() => {});
     api.gitSync.getStatus().then((s) => { setGitSync(s); setGitSyncUrl(s.remote_url); }).catch(() => {});
   }, []);
 
-  async function save() {
-    if (!dbSettings) {return;}
-    await api.settings.update(dbSettings);
-    zustandSettings.setTheme(dbSettings.theme as any);
-    zustandSettings.setAccentColor(dbSettings.accent_color);
-    zustandSettings.setFontSize(dbSettings.font_size);
-    zustandSettings.setPreferredModel(dbSettings.preferred_model);
-    zustandSettings.setBackgroundModel(dbSettings.background_model);
-    zustandSettings.setQuickSearchModels(dbSettings.quick_search_models);
-    zustandSettings.setOllamaUrl(dbSettings.ollama_base_url);
-    zustandSettings.setDualModelEnabled(dbSettings.dual_model_enabled);
-    zustandSettings.setDraftModel(dbSettings.draft_model);
-    zustandSettings.setDualModelExecutionMode(dbSettings.dual_model_execution_mode);
-    zustandSettings.setCompareModelA(dbSettings.compare_model_a);
-    zustandSettings.setCompareModelB(dbSettings.compare_model_b);
-    zustandSettings.setImmediateDelete(dbSettings.immediate_delete);
-    zustandSettings.setConfirmMoveToTrash(dbSettings.confirm_move_to_trash);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }
-
   function set<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
-    setDbSettings((prev) => prev ? { ...prev, [key]: value } : prev);
+    updateSettings({ [key]: value } as Partial<AppSettings>);
   }
 
   function setAppearance<K extends "theme" | "accent_color" | "font_size">(key: K, value: AppSettings[K]) {
-    setDbSettings((prev) => prev ? { ...prev, [key]: value } : prev);
-    if (key === "theme") {zustandSettings.setTheme(value as any);}
-    if (key === "accent_color") {zustandSettings.setAccentColor(value as string);}
-    if (key === "font_size") {zustandSettings.setFontSize(value as number);}
+    updateSettings({ [key]: value } as Partial<AppSettings>);
   }
 
   function resetPinForm() {
@@ -266,17 +356,26 @@ export default function SettingsView() {
     </div>
   );
 
+  const autosaveStatus = saveStatus === "saving"
+    ? "Saving..."
+    : saveStatus === "saved"
+    ? "Saved"
+    : saveStatus === "error"
+    ? "Save failed"
+    : "Changes save automatically";
+
+  const autosaveStatusClassName = saveStatus === "error"
+    ? "text-red-400"
+    : saveStatus === "saved"
+    ? "text-emerald-400"
+    : "text-[var(--text-muted)]";
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {settingsNavLayout === "top-tabs" ? (
         <div className="flex items-center justify-between px-4 pt-3 pb-0 border-b border-[var(--border-color)] flex-shrink-0">
           {settingsTabButtons}
-          <button
-            onClick={save}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 mb-1"
-          >
-            <Save size={14} /> {saved ? "Saved!" : "Save"}
-          </button>
+          <div className={`mb-1 text-xs ${autosaveStatusClassName}`}>{autosaveStatus}</div>
         </div>
       ) : (
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-color)] flex-shrink-0">
@@ -284,12 +383,7 @@ export default function SettingsView() {
             <h1 className="text-sm font-semibold text-[var(--text-primary)]">Settings</h1>
             <p className="text-[11px] text-[var(--text-muted)]">App configuration and workspace preferences</p>
           </div>
-          <button
-            onClick={save}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90"
-          >
-            <Save size={14} /> {saved ? "Saved!" : "Save"}
-          </button>
+          <div className={`text-xs ${autosaveStatusClassName}`}>{autosaveStatus}</div>
         </div>
       )}
 
@@ -313,32 +407,125 @@ export default function SettingsView() {
                   <p className="text-sm text-[var(--text-secondary)]">Start at login</p>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically launch Aetherium when you log in</p>
                 </div>
-                <Toggle on={dbSettings.start_at_login} onToggle={() => set("start_at_login", !dbSettings.start_at_login)} />
+                <Toggle
+                  on={dbSettings.start_at_login}
+                  onToggle={() => {
+                    const nextStartAtLogin = !dbSettings.start_at_login;
+                    set("start_at_login", nextStartAtLogin);
+                    if (!nextStartAtLogin && dbSettings.open_in_background) {
+                      set("open_in_background", false);
+                    }
+                  }}
+                />
               </div>
 
               <div className="flex items-center justify-between py-1">
                 <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Open in background</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Launch without bringing window to front</p>
+                  <p className={`text-sm ${dbSettings.start_at_login ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]"}`}>Open in background</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    {dbSettings.start_at_login
+                      ? "Launch without bringing window to front"
+                      : "Available only when Start at login is enabled"}
+                  </p>
                 </div>
-                <Toggle on={dbSettings.open_in_background} onToggle={() => set("open_in_background", !dbSettings.open_in_background)} />
+                <Toggle
+                  on={dbSettings.open_in_background}
+                  disabled={!dbSettings.start_at_login}
+                  onToggle={() => set("open_in_background", !dbSettings.open_in_background)}
+                />
               </div>
 
               <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Navigation Layout</label>
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Workspace Navigation</label>
                 <div className="grid gap-2 sm:grid-cols-3">
-                  {NAV_LAYOUT_OPTIONS.map((layout) => (
+                  {[
+                    { id: "sidebar", label: "Sidebar", description: "Keep workspace switching in the left rail beside the main content." },
+                    { id: "top-tabs", label: "Top Tabs", description: "Show workspaces as visible tabs across the top." },
+                    { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact workspace picker in the top bar." },
+                  ].map((option) => (
                     <button
-                      key={layout.id}
-                      onClick={() => setNavLayout(layout.id)}
+                      key={option.id}
+                      onClick={() => setWorkspaceNavigation(option.id as NavigationPresentation)}
                       className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                        navLayout === layout.id
+                        workspaceNavigation === option.id
                           ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
                           : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                       }`}
                     >
-                      <div className="text-xs font-medium">{layout.label}</div>
-                      <div className="mt-1 text-[11px] opacity-75">{layout.description}</div>
+                      <div className="text-xs font-medium">{option.label}</div>
+                      <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Section Navigation</label>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    { id: "sidebar", label: "Sidebar", description: "Keep section navigation in the left rail." },
+                    { id: "top-tabs", label: "Top Tabs", description: "Show sections as visible tabs across the top." },
+                    { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact section picker in the top bar." },
+                  ].map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => setSectionNavigation(option.id as NavigationPresentation)}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                        sectionNavigation === option.id
+                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      }`}
+                    >
+                      <div className="text-xs font-medium">{option.label}</div>
+                      <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Split Workspace Navigation</label>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    { id: "match-main", label: "Same", description: "Follow the main workspace navigation style by default." },
+                    { id: "tabs", label: "Tabs", description: "Always show workspace switching as tabs in split view." },
+                    { id: "dropdown", label: "Dropdown", description: "Always show workspace switching as a dropdown in split view." },
+                  ].map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => setSplitWorkspaceNavigation(option.id as SplitNavigationPresentation)}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                        splitWorkspaceNavigation === option.id
+                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      }`}
+                    >
+                      <div className="text-xs font-medium">{option.label}</div>
+                      <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Split Section Navigation</label>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    { id: "match-main", label: "Same", description: "Follow the main section navigation style by default." },
+                    { id: "tabs", label: "Tabs", description: "Always show section navigation as tabs in split view." },
+                    { id: "dropdown", label: "Dropdown", description: "Always show section navigation as a dropdown in split view." },
+                  ].map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => setSplitSectionNavigation(option.id as SplitNavigationPresentation)}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                        splitSectionNavigation === option.id
+                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      }`}
+                    >
+                      <div className="text-xs font-medium">{option.label}</div>
+                      <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
                     </button>
                   ))}
                 </div>
@@ -412,15 +599,25 @@ export default function SettingsView() {
               </div>
 
               <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">
-                  Font Size: {dbSettings.font_size}px
-                </label>
-                <input
-                  type="range" min={12} max={16} step={1}
-                  value={dbSettings.font_size}
-                  onChange={(e) => setAppearance("font_size", Number(e.target.value))}
-                  className="w-48 accent-[var(--accent-color)]"
-                />
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Text Size</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAppearance("font_size", Math.max(MIN_FONT_SIZE, dbSettings.font_size - 1))}
+                    disabled={dbSettings.font_size <= MIN_FONT_SIZE}
+                    className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    A-
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAppearance("font_size", Math.min(MAX_FONT_SIZE, dbSettings.font_size + 1))}
+                    disabled={dbSettings.font_size >= MAX_FONT_SIZE}
+                    className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    A+
+                  </button>
+                </div>
               </div>
             </>
           )}
@@ -436,9 +633,9 @@ export default function SettingsView() {
                       setTestingOllama(true);
                       setOllamaTestResult(null);
                       try {
-                        const m = await api.ollama.listModels(dbSettings.ollama_base_url);
+                        const m = await api.ollama.listModels(dbSettings.ollama_base_url || undefined);
                         setOllamaTestResult({ success: true, msg: `Success! ${m.length} models found.` });
-                        setOllamaModels(m.map(x => x.name));
+                        refreshOllamaModels(dbSettings.ollama_base_url);
                       } catch (err: any) {
                         setOllamaTestResult({ success: false, msg: `Connection failed. Is Ollama running?` });
                       } finally {
@@ -456,7 +653,7 @@ export default function SettingsView() {
                   value={dbSettings.ollama_base_url}
                   onChange={(e) => {
                     set("ollama_base_url", e.target.value);
-                    setOllamaTestResult(null);
+                    refreshOllamaModels(e.target.value, { clearResult: true });
                   }}
                   placeholder="http://localhost:11434"
                   className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
@@ -466,7 +663,12 @@ export default function SettingsView() {
                     {ollamaTestResult.msg}
                   </p>
                 )}
-                {ollamaModels.length === 0 && !testingOllama && (
+                {ollamaModelsLoading && (
+                  <p className="text-[10px] mt-1.5 text-[var(--text-muted)]">
+                    Loading available models...
+                  </p>
+                )}
+                {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaModels.length === 0 && !testingOllama && (
                   <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
                     <div className="flex items-center gap-2 text-amber-500 mb-1">
                       <Bot size={14} />

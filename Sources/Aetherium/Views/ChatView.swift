@@ -22,6 +22,21 @@ struct ChatView: View {
     @FocusState private var isInputFocused: Bool
     @State private var showDemoTip = false
     @EnvironmentObject var demoModeManager: DemoModeManager
+    
+    // Phase 5: Artifacts UI
+    @State private var selectedArtifact: Artifact?
+    @Query private var workspaceArtifacts: [Artifact]
+
+    init(chatSession: ChatSession, onBranchCreated: ((ChatSession) -> Void)? = nil) {
+        self.chatSession = chatSession
+        self.onBranchCreated = onBranchCreated
+        
+        let wsId = chatSession.project?.workspace?.id ?? ""
+        self._workspaceArtifacts = Query(
+            filter: #Predicate<Artifact> { $0.workspace?.id == wsId },
+            sort: \Artifact.createdAt, order: .reverse
+        )
+    }
 
     /// Build a system prompt from the chat's project custom instructions and documents.
     private var projectSystemPrompt: String? {
@@ -38,11 +53,12 @@ struct ChatView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Chat header with context
-            ChatHeaderView(chatSession: chatSession)
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                // Chat header with context
+                ChatHeaderView(chatSession: chatSession)
 
-            Divider()
+                Divider()
 
             // Messages list
             ScrollViewReader { proxy in
@@ -141,13 +157,23 @@ struct ChatView: View {
 
             Divider()
 
-            // Input area
-            ChatInputView(
-                messageText: $messageText,
-                isStreaming: $isStreaming,
-                isInputFocused: _isInputFocused,
-                onSend: sendMessage
-            )
+                // Input area
+                ChatInputView(
+                    messageText: $messageText,
+                    isStreaming: $isStreaming,
+                    isInputFocused: _isInputFocused,
+                    onSend: sendMessage
+                )
+            }
+            // End of main Chat area
+            
+            if let artifact = selectedArtifact {
+                Divider()
+                ArtifactPanelView(artifact: artifact, isPresented: Binding(
+                    get: { selectedArtifact != nil },
+                    set: { if !$0 { selectedArtifact = nil } }
+                ))
+            }
         }
         .navigationTitle(chatSession.title)
         .navigationSubtitle(isGeneratingTitle ? "Generating title..." : "Using \(chatSession.modelName)")
@@ -184,6 +210,21 @@ struct ChatView: View {
                         if ollamaService.availableModels.isEmpty {
                             Text("No models available")
                                 .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Divider()
+                    
+                    Menu("View Artifacts (\(workspaceArtifacts.count))") {
+                        ForEach(workspaceArtifacts) { artifact in
+                            Button(action: {
+                                selectedArtifact = artifact
+                            }) {
+                                Label(artifact.title, systemImage: artifact.artifactType == "code" ? "chevron.left.forwardslash.chevron.right" : "doc.text")
+                            }
+                        }
+                        if workspaceArtifacts.isEmpty {
+                            Text("No artifacts").foregroundColor(.secondary)
                         }
                     }
                 } label: {
@@ -536,6 +577,21 @@ struct ChatHeaderView: View {
             }
         }
         .padding()
+        
+        // Context Indicator (Phase 5)
+        // Hardcoding standard metrics based on currently available context. For exact values,
+        // it requires fetching the ContextSnapshot from the ContextAssembler which runs per-message.
+        // For UI parity, we show the indicator with some defaults if we have a context payload.
+        if !chatSession.messages.isEmpty {
+            ContextIndicatorView(
+                memoriesCount: chatSession.project?.workspace?.memories.filter { $0.isActive }.count ?? 0,
+                artifactsCount: chatSession.project?.workspace?.artifacts.filter { $0.isPinned }.count ?? 0,
+                summariesCount: 0,
+                documentsCount: chatSession.project?.documents.count ?? 0
+            )
+            .padding(.horizontal)
+            .padding(.bottom, 8)
+        }
     }
 }
 
