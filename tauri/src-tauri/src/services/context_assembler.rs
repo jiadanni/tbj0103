@@ -1,6 +1,10 @@
 use rusqlite::Connection;
 use crate::models::context::{TokenBudget, ContextSources};
 use crate::ollama::client::OllamaMessage;
+use crate::services::vector_index;
+
+const MEMORY_SIMILARITY_THRESHOLD: f32 = 0.3;
+const MEMORY_RETRIEVAL_TOP_K: usize = 5;
 
 pub fn budget_for_context_window(context_size: usize) -> TokenBudget {
     let safe_total = (context_size as f64 * 0.90) as usize; // 10% safety margin
@@ -27,6 +31,7 @@ pub fn assemble_context(
     session_id: &str,
     _model_name: &str,
     _options: &std::collections::HashMap<String, serde_json::Value>,
+    query_embedding: Option<&[f32]>,
 ) -> Result<(Vec<OllamaMessage>, ContextSources), String> {
     // Basic budget, default to 8192 if unknown
     // Note: Querying Ollama /api/show for num_ctx can be added later
@@ -41,17 +46,27 @@ pub fn assemble_context(
 
     let mut final_messages: Vec<OllamaMessage> = vec![];
 
-    // 1. System Prompt
+    // 1. System Prompt (order: global → workspace → project → session)
     let mut system_parts = vec![];
-    
-    // Check if session has a custom system prompt
-    let mut stmt = conn.prepare("SELECT system_prompt FROM chat_sessions WHERE id = ?1").unwrap();
-    if let Ok(Some(sp)) = stmt.query_row(rusqlite::params![session_id], |row| {
-        let text: Option<String> = row.get(0)?;
-        Ok(text)
-    }) {
-        if !sp.is_empty() {
-            system_parts.push(sp);
+
+    // Global prompt instructions from settings
+    {
+        let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = 'prompt_instructions'").unwrap();
+        if let Ok(val) = stmt.query_row([], |row| row.get::<_, String>(0)) {
+            let text: String = serde_json::from_str(&val).unwrap_or_default();
+            if !text.is_empty() {
+                system_parts.push(text);
+            }
+        }
+    }
+
+    // Workspace-level prompt instructions
+    {
+        let mut stmt = conn.prepare("SELECT prompt_instructions FROM workspaces WHERE id = ?1").unwrap();
+        if let Ok(instr) = stmt.query_row(rusqlite::params![workspace_id], |row| row.get::<_, String>(0)) {
+            if !instr.is_empty() {
+                system_parts.push(instr);
+            }
         }
     }
 
@@ -66,21 +81,130 @@ pub fn assemble_context(
         }
     }
 
-    // 2. Memories (Top-K / Pinned) — include both global and workspace-scoped
-    let mut memories_text = String::new();
-    let mut stmt = conn.prepare(
-        "SELECT id, content, scope FROM memories WHERE is_active = 1 AND ((workspace_id = ?1 AND scope = 'workspace') OR scope = 'global') ORDER BY scope ASC, is_pinned DESC, updated_at DESC LIMIT 10"
-    ).unwrap();
-    if let Ok(iter) = stmt.query_map(rusqlite::params![workspace_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+    // Check if session has a custom system prompt
+    let mut stmt = conn.prepare("SELECT system_prompt FROM chat_sessions WHERE id = ?1").unwrap();
+    if let Ok(Some(sp)) = stmt.query_row(rusqlite::params![session_id], |row| {
+        let text: Option<String> = row.get(0)?;
+        Ok(text)
     }) {
-        for row in iter.flatten() {
-            let (id, content, scope) = row;
+        if !sp.is_empty() {
+            system_parts.push(sp);
+        }
+    }
+
+    // 2. Memories — two-tier retrieval: pinned always, non-pinned by similarity
+    let mut memories_text = String::new();
+    let mut memory_tokens = 0usize;
+
+    // Helper: append a memory line, respecting token budget. Returns true if added.
+    let append_memory = |id: String, content: &str, scope: &str, tokens: &mut usize, text: &mut String, used: &mut Vec<String>, budget_limit: usize| -> bool {
+        let prefix = if scope == "global" { "[global] " } else { "" };
+        let line = format!("- {}{}\n", prefix, content);
+        let line_tokens = estimate_tokens(&line);
+        if *tokens + line_tokens > budget_limit {
+            return false;
+        }
+        *tokens += line_tokens;
+        text.push_str(&line);
+        used.push(id);
+        true
+    };
+
+    // Tier 1: Pinned memories (always included, no budget cap)
+    {
+        let pinned: Vec<(String, String, String)> = conn.prepare(
+            "SELECT id, content, scope FROM memories \
+             WHERE is_active = 1 AND is_pinned = 1 \
+             AND ((workspace_id = ?1 AND scope = 'workspace') OR scope = 'global') \
+             ORDER BY scope ASC, updated_at DESC"
+        ).unwrap()
+        .query_map(rusqlite::params![workspace_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        }).unwrap().flatten().collect();
+
+        for (id, content, scope) in pinned {
             let prefix = if scope == "global" { "[global] " } else { "" };
-            memories_text.push_str(&format!("- {}{}\n", prefix, content));
+            let line = format!("- {}{}\n", prefix, content);
+            memory_tokens += estimate_tokens(&line);
+            memories_text.push_str(&line);
             sources.memories_used.push(id);
         }
     }
+
+    // Tier 1.5: Non-pinned memories WITHOUT embeddings (legacy/manual — include unconditionally)
+    {
+        let unembedded: Vec<(String, String, String)> = conn.prepare(
+            "SELECT m.id, m.content, m.scope FROM memories m \
+             LEFT JOIN memory_embeddings me ON m.id = me.memory_id \
+             WHERE m.is_active = 1 AND m.is_pinned = 0 \
+             AND ((m.workspace_id = ?1 AND m.scope = 'workspace') OR m.scope = 'global') \
+             AND me.memory_id IS NULL \
+             ORDER BY m.updated_at DESC"
+        ).unwrap()
+        .query_map(rusqlite::params![workspace_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        }).unwrap().flatten().collect();
+
+        for (id, content, scope) in unembedded {
+            if !append_memory(id, &content, &scope, &mut memory_tokens, &mut memories_text, &mut sources.memories_used, budget.memories) {
+                break;
+            }
+        }
+    }
+
+    // Tier 2: Non-pinned memories WITH embeddings — ranked by similarity
+    if memory_tokens < budget.memories {
+        if let Some(qe) = query_embedding {
+            // Semantic retrieval: score each embedded non-pinned memory
+            let candidates: Vec<(String, String, String, Vec<u8>)> = conn.prepare(
+                "SELECT m.id, m.content, m.scope, me.embedding FROM memories m \
+                 JOIN memory_embeddings me ON m.id = me.memory_id \
+                 WHERE m.is_active = 1 AND m.is_pinned = 0 \
+                 AND ((m.workspace_id = ?1 AND m.scope = 'workspace') OR m.scope = 'global')"
+            ).unwrap()
+            .query_map(rusqlite::params![workspace_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, Vec<u8>>(3)?))
+            }).unwrap().flatten().collect();
+
+            let mut scored: Vec<(f32, String, String, String)> = candidates.into_iter()
+                .filter_map(|(id, content, scope, emb_bytes)| {
+                    let stored_emb = vector_index::bytes_to_f32_vec(&emb_bytes);
+                    let similarity = vector_index::cosine_similarity(qe, &stored_emb);
+                    if similarity >= MEMORY_SIMILARITY_THRESHOLD {
+                        Some((similarity, id, content, scope))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+            for (_, id, content, scope) in scored.into_iter().take(MEMORY_RETRIEVAL_TOP_K) {
+                if !append_memory(id, &content, &scope, &mut memory_tokens, &mut memories_text, &mut sources.memories_used, budget.memories) {
+                    break;
+                }
+            }
+        } else {
+            // Fallback: no embedding available, use recency-based retrieval
+            let fallback: Vec<(String, String, String)> = conn.prepare(
+                "SELECT m.id, m.content, m.scope FROM memories m \
+                 JOIN memory_embeddings me ON m.id = me.memory_id \
+                 WHERE m.is_active = 1 AND m.is_pinned = 0 \
+                 AND ((m.workspace_id = ?1 AND m.scope = 'workspace') OR m.scope = 'global') \
+                 ORDER BY m.updated_at DESC LIMIT 10"
+            ).unwrap()
+            .query_map(rusqlite::params![workspace_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            }).unwrap().flatten().collect();
+
+            for (id, content, scope) in fallback {
+                if !append_memory(id, &content, &scope, &mut memory_tokens, &mut memories_text, &mut sources.memories_used, budget.memories) {
+                    break;
+                }
+            }
+        }
+    }
+
     if !memories_text.is_empty() {
         system_parts.push(format!("Active Context/Memories:\n{}", memories_text));
     }

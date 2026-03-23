@@ -32,6 +32,7 @@ pub struct Settings {
     pub open_in_background: bool,
     pub immediate_delete: bool,
     pub confirm_move_to_trash: bool,
+    pub prompt_instructions: String,
 }
 
 impl Default for Settings {
@@ -64,6 +65,7 @@ impl Default for Settings {
             open_in_background: false,
             immediate_delete: false,
             confirm_move_to_trash: true,
+            prompt_instructions: String::new(),
         }
     }
 }
@@ -170,6 +172,9 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         confirm_move_to_trash: get_setting(&conn, "confirm_move_to_trash")
             .map(|v| v == "true")
             .unwrap_or(def.confirm_move_to_trash),
+        prompt_instructions: get_setting(&conn, "prompt_instructions")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.prompt_instructions),
     })
 }
 
@@ -201,6 +206,7 @@ pub fn update_settings(app: AppHandle, state: State<DbState>, settings: Settings
     set_setting(&conn, "open_in_background", &settings.open_in_background.to_string())?;
     set_setting(&conn, "immediate_delete", &settings.immediate_delete.to_string())?;
     set_setting(&conn, "confirm_move_to_trash", &settings.confirm_move_to_trash.to_string())?;
+    set_setting(&conn, "prompt_instructions", &serde_json::to_string(&settings.prompt_instructions).unwrap())?;
 
     if settings.start_at_login {
         app.autolaunch().enable().map_err(|e| e.to_string())?;

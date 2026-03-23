@@ -147,6 +147,7 @@ export default function SettingsView() {
     zustandSettings.setCompareModelB(settings.compare_model_b);
     zustandSettings.setImmediateDelete(settings.immediate_delete);
     zustandSettings.setConfirmMoveToTrash(settings.confirm_move_to_trash);
+    zustandSettings.setPromptInstructions(settings.prompt_instructions);
   }
 
   function scheduleSavedNoticeReset() {
@@ -394,7 +395,7 @@ export default function SettingsView() {
           </aside>
         )}
 
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
       {(activeTab === "general" || activeTab === "appearance" || activeTab === "chat" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
       <div className="flex-1 overflow-y-auto px-6 py-5">
         <div className="max-w-lg space-y-5">
@@ -553,6 +554,20 @@ export default function SettingsView() {
                   ))}
                 </div>
               </div>
+
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Global Prompt Instructions</label>
+                <p className="text-[11px] text-[var(--text-muted)] mb-2">
+                  Custom instructions prepended to every chat across all workspaces.
+                </p>
+                <textarea
+                  value={dbSettings.prompt_instructions}
+                  onChange={(e) => set("prompt_instructions", e.target.value)}
+                  placeholder="e.g. Always respond in concise bullet points…"
+                  rows={4}
+                  className="w-full text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] resize-y"
+                />
+              </div>
             </>
           )}
 
@@ -705,13 +720,48 @@ export default function SettingsView() {
               </div>
 
               <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Embedding Model</label>
-                <input
-                  value={dbSettings.embedding_model}
-                  onChange={(e) => set("embedding_model", e.target.value)}
-                  placeholder="nomic-embed-text"
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                />
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Embedding Model</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="embedding_model"
+                      checked={dbSettings.embedding_model === "nomic-embed-text"}
+                      onChange={() => set("embedding_model", "nomic-embed-text")}
+                      className="accent-[var(--accent-color)]"
+                    />
+                    <span className="text-sm text-[var(--text-primary)]">nomic-embed-text</span>
+                    <span className="text-[10px] text-[var(--text-muted)]">(default)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="embedding_model"
+                      checked={dbSettings.embedding_model !== "nomic-embed-text"}
+                      onChange={() => set("embedding_model", "")}
+                      className="accent-[var(--accent-color)]"
+                    />
+                    <span className="text-sm text-[var(--text-primary)]">Custom</span>
+                  </label>
+                  {dbSettings.embedding_model !== "nomic-embed-text" && (
+                    <div className="ml-6 space-y-2">
+                      <input
+                        value={dbSettings.embedding_model}
+                        onChange={(e) => set("embedding_model", e.target.value)}
+                        placeholder="e.g. mxbai-embed-large"
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                      />
+                      <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1">
+                        <p className="text-[11px] font-medium text-amber-400">Before switching</p>
+                        <ul className="text-[10px] text-amber-400/80 list-disc ml-3 space-y-0.5">
+                          <li>Pull the model first: <code className="bg-[var(--bg-primary)] px-1 rounded">ollama pull model-name</code></li>
+                          <li>Changing models invalidates all existing embeddings (memories, documents, artifacts)</li>
+                          <li>You will need to re-index your data for search and deduplication to work correctly</li>
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
@@ -1368,19 +1418,19 @@ export default function SettingsView() {
 
       {/* ── Full-bleed tabs (workspaces, backup, plugins) ── */}
       {activeTab === "workspaces" && (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <WorkspaceSettingsView />
         </div>
       )}
 
       {activeTab === "backup" && (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <BackupSettingsSection />
         </div>
       )}
 
       {activeTab === "plugins" && (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <PluginManagerView />
         </div>
       )}

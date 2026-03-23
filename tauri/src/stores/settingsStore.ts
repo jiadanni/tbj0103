@@ -25,6 +25,7 @@ interface AppSettings {
   skipLinkConfirm: boolean;
   immediateDelete: boolean;
   confirmMoveToTrash: boolean;
+  promptInstructions: string;
 }
 
 interface SettingsStore extends AppSettings {
@@ -46,6 +47,7 @@ interface SettingsStore extends AppSettings {
   setSkipLinkConfirm: (v: boolean) => void;
   setImmediateDelete: (v: boolean) => void;
   setConfirmMoveToTrash: (v: boolean) => void;
+  setPromptInstructions: (v: string) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -70,6 +72,7 @@ export const useSettingsStore = create<SettingsStore>()(
       skipLinkConfirm: false,
       immediateDelete: false,
       confirmMoveToTrash: true,
+      promptInstructions: "",
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
@@ -88,6 +91,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setSkipLinkConfirm: (skipLinkConfirm) => set({ skipLinkConfirm }),
       setImmediateDelete: (immediateDelete) => set({ immediateDelete }),
       setConfirmMoveToTrash: (confirmMoveToTrash) => set({ confirmMoveToTrash }),
+      setPromptInstructions: (promptInstructions) => set({ promptInstructions }),
     }),
     { name: "aetherium-settings" }
   )

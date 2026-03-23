@@ -185,6 +185,7 @@ export interface AppSettings {
   open_in_background: boolean;
   immediate_delete: boolean;
   confirm_move_to_trash: boolean;
+  prompt_instructions: string;
 }
 
 export interface GitSyncStatus {
@@ -266,10 +267,10 @@ export const api = {
   },
   
   workspace: {
-    create: (name: string) => invoke<Workspace>("create_workspace", { req: { name } }),
+    create: (name: string, description?: string) => invoke<Workspace>("create_workspace", { req: { name, description } }),
     list: () => invoke<Workspace[]>("list_workspaces"),
     get: (id: string) => invoke<Workspace | null>("get_workspace", { id }),
-    update: (id: string, name: string) => invoke<void>("update_workspace", { req: { id, name } }),
+    update: (id: string, name: string, description?: string, promptInstructions?: string) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions } }),
     delete: (id: string) => invoke<void>("delete_workspace", { id }),
   },
 

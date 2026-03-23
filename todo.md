@@ -5,6 +5,21 @@ Scope: `todo.md` tracks the Tauri app only. Swift/macOS work may differ and is n
 Legend: ✅ Complete · 🔄 Partial · ⬜ Not started
 
 ---
+## 🚨 Imminent Changes (Priority 0)
+
+### 1. ⬜ UI & Navigation Refinements
+- [ ] **Project Tab Overflow** — Define UX for when project tabs exceed window width (e.g. cap at two rows or implement horizontal scroll).
+- [ ] **Chat Management** — Add ability to multi-select chats for batch actions, and introduce a "Star" / favorite toggle to pin important sessions.
+- [ ] **Project Scratchpad** — Add a dedicated, quick-access scratchpad pane for each project directly within the chat view for temporary notes.
+
+### 2. ⬜ Feature Consolidation
+- [ ] **Chat & Thought Queue Merger** — Integrate the "Thought Queue" functionality directly into the Chat architecture rather than having it as a standalone view.
+- [ ] **Graph & Flashcard Unification** — Explore merging the Knowledge Graph and Flashcards interfaces. Navigating the graph could organically transition into reviewing spaced-repetition cards for those concepts.
+- [ ] **Unified 'Source' Concept** — Combine "Documents" and "Web Captures" into a single, unified data model to simplify the ingestion pipeline and UI.
+- [ ] **Frictionless Flashcards** — Overhaul flashcard creation to be completely auto-generated seamlessly from chat/notes, or reduced to a single-click action.
+
+### 3. ⬜ Data Lifecycle & Migrations
+- [ ] **Cascading Deletes & Workspace Moves** — Define exact behavior when deleting a workspace or project. Implement the ability to move a project to another workspace. Determine the exact cascading rules for owned entities: do chats, concepts, notes, flashcards, learning goals, daily notes, and templates move with the project or stay behind?
 
 ## 🎬 Demo Mode — Plan
 
