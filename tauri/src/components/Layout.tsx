@@ -7,7 +7,7 @@ import { Check, Columns2, Plus } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
 import ArtifactPanel from "./ArtifactPanel";
-import WindowControls, { onDragRegionMouseDown } from "./WindowControls";
+import WindowControls, { onDragRegionDoubleClick, onDragRegionMouseDown } from "./WindowControls";
 import { type NavigationPresentation, type PaneId, type PaneView, type SplitNavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 import { api } from "../lib/api";
 import { useHotkeys, type HotkeyBinding } from "../hooks/useHotkeys";
@@ -376,7 +376,7 @@ function TopToolbar({
   }
 
   return (
-    <div data-tauri-drag-region onMouseDown={onDragRegionMouseDown} className={`flex items-center h-11 pt-1 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] pr-2 shrink-0 ${isMac ? "pl-[78px]" : ""}`}>
+    <div data-tauri-drag-region onMouseDown={onDragRegionMouseDown} onDoubleClick={onDragRegionDoubleClick} className={`flex items-center h-11 pt-1 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] pr-2 shrink-0 ${isMac ? "pl-[78px]" : ""}`}>
       <div className="flex items-center overflow-x-auto min-w-0 flex-1 px-3 gap-0.5">
         {splitMode ? (
           <div className="flex min-w-0 flex-1 items-center">

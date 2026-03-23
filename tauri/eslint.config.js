@@ -70,6 +70,7 @@ export default [
 
       // React Hooks
       ...reactHooks.configs.recommended.rules,
+      "react-hooks/exhaustive-deps": "error",
 
       // React Refresh (HMR)
       "react-refresh/only-export-components": [

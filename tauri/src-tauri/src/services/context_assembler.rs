@@ -51,7 +51,9 @@ pub fn assemble_context(
 
     // Global prompt instructions from settings
     {
-        let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = 'prompt_instructions'").unwrap();
+        let mut stmt = conn
+            .prepare("SELECT value FROM settings WHERE key = 'prompt_instructions'")
+            .map_err(|e| e.to_string())?;
         if let Ok(val) = stmt.query_row([], |row| row.get::<_, String>(0)) {
             let text: String = serde_json::from_str(&val).unwrap_or_default();
             if !text.is_empty() {
@@ -62,7 +64,9 @@ pub fn assemble_context(
 
     // Workspace-level prompt instructions
     {
-        let mut stmt = conn.prepare("SELECT prompt_instructions FROM workspaces WHERE id = ?1").unwrap();
+        let mut stmt = conn
+            .prepare("SELECT prompt_instructions FROM workspaces WHERE id = ?1")
+            .map_err(|e| e.to_string())?;
         if let Ok(instr) = stmt.query_row(rusqlite::params![workspace_id], |row| row.get::<_, String>(0)) {
             if !instr.is_empty() {
                 system_parts.push(instr);
@@ -71,7 +75,9 @@ pub fn assemble_context(
     }
 
     // Load project custom instructions if session is linked to a project
-    let mut stmt = conn.prepare("SELECT p.custom_instructions FROM projects p JOIN chat_sessions cs ON p.id = cs.project_id WHERE cs.id = ?1").unwrap();
+    let mut stmt = conn
+        .prepare("SELECT p.custom_instructions FROM projects p JOIN chat_sessions cs ON p.id = cs.project_id WHERE cs.id = ?1")
+        .map_err(|e| e.to_string())?;
     if let Ok(Some(instr)) = stmt.query_row(rusqlite::params![session_id], |row| {
         let text: Option<String> = row.get(0)?;
         Ok(text)
@@ -82,7 +88,9 @@ pub fn assemble_context(
     }
 
     // Check if session has a custom system prompt
-    let mut stmt = conn.prepare("SELECT system_prompt FROM chat_sessions WHERE id = ?1").unwrap();
+    let mut stmt = conn
+        .prepare("SELECT system_prompt FROM chat_sessions WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
     if let Ok(Some(sp)) = stmt.query_row(rusqlite::params![session_id], |row| {
         let text: Option<String> = row.get(0)?;
         Ok(text)
@@ -112,15 +120,20 @@ pub fn assemble_context(
 
     // Tier 1: Pinned memories (always included, no budget cap)
     {
-        let pinned: Vec<(String, String, String)> = conn.prepare(
-            "SELECT id, content, scope FROM memories \
-             WHERE is_active = 1 AND is_pinned = 1 \
-             AND ((workspace_id = ?1 AND scope = 'workspace') OR scope = 'global') \
-             ORDER BY scope ASC, updated_at DESC"
-        ).unwrap()
-        .query_map(rusqlite::params![workspace_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
-        }).unwrap().flatten().collect();
+        let pinned: Vec<(String, String, String)> = conn
+            .prepare(
+                "SELECT id, content, scope FROM memories \
+                 WHERE is_active = 1 AND is_pinned = 1 \
+                 AND ((workspace_id = ?1 AND scope = 'workspace') OR scope = 'global') \
+                 ORDER BY scope ASC, updated_at DESC",
+            )
+            .map_err(|e| e.to_string())?
+            .query_map(rusqlite::params![workspace_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            })
+            .map_err(|e| e.to_string())?
+            .flatten()
+            .collect();
 
         for (id, content, scope) in pinned {
             let prefix = if scope == "global" { "[global] " } else { "" };
@@ -133,17 +146,22 @@ pub fn assemble_context(
 
     // Tier 1.5: Non-pinned memories WITHOUT embeddings (legacy/manual — include unconditionally)
     {
-        let unembedded: Vec<(String, String, String)> = conn.prepare(
-            "SELECT m.id, m.content, m.scope FROM memories m \
-             LEFT JOIN memory_embeddings me ON m.id = me.memory_id \
-             WHERE m.is_active = 1 AND m.is_pinned = 0 \
-             AND ((m.workspace_id = ?1 AND m.scope = 'workspace') OR m.scope = 'global') \
-             AND me.memory_id IS NULL \
-             ORDER BY m.updated_at DESC"
-        ).unwrap()
-        .query_map(rusqlite::params![workspace_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
-        }).unwrap().flatten().collect();
+        let unembedded: Vec<(String, String, String)> = conn
+            .prepare(
+                "SELECT m.id, m.content, m.scope FROM memories m \
+                 LEFT JOIN memory_embeddings me ON m.id = me.memory_id \
+                 WHERE m.is_active = 1 AND m.is_pinned = 0 \
+                 AND ((m.workspace_id = ?1 AND m.scope = 'workspace') OR m.scope = 'global') \
+                 AND me.memory_id IS NULL \
+                 ORDER BY m.updated_at DESC",
+            )
+            .map_err(|e| e.to_string())?
+            .query_map(rusqlite::params![workspace_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            })
+            .map_err(|e| e.to_string())?
+            .flatten()
+            .collect();
 
         for (id, content, scope) in unembedded {
             if !append_memory(id, &content, &scope, &mut memory_tokens, &mut memories_text, &mut sources.memories_used, budget.memories) {
@@ -156,15 +174,20 @@ pub fn assemble_context(
     if memory_tokens < budget.memories {
         if let Some(qe) = query_embedding {
             // Semantic retrieval: score each embedded non-pinned memory
-            let candidates: Vec<(String, String, String, Vec<u8>)> = conn.prepare(
-                "SELECT m.id, m.content, m.scope, me.embedding FROM memories m \
-                 JOIN memory_embeddings me ON m.id = me.memory_id \
-                 WHERE m.is_active = 1 AND m.is_pinned = 0 \
-                 AND ((m.workspace_id = ?1 AND m.scope = 'workspace') OR m.scope = 'global')"
-            ).unwrap()
-            .query_map(rusqlite::params![workspace_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, Vec<u8>>(3)?))
-            }).unwrap().flatten().collect();
+            let candidates: Vec<(String, String, String, Vec<u8>)> = conn
+                .prepare(
+                    "SELECT m.id, m.content, m.scope, me.embedding FROM memories m \
+                     JOIN memory_embeddings me ON m.id = me.memory_id \
+                     WHERE m.is_active = 1 AND m.is_pinned = 0 \
+                     AND ((m.workspace_id = ?1 AND m.scope = 'workspace') OR m.scope = 'global')",
+                )
+                .map_err(|e| e.to_string())?
+                .query_map(rusqlite::params![workspace_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, Vec<u8>>(3)?))
+                })
+                .map_err(|e| e.to_string())?
+                .flatten()
+                .collect();
 
             let mut scored: Vec<(f32, String, String, String)> = candidates.into_iter()
                 .filter_map(|(id, content, scope, emb_bytes)| {
@@ -186,16 +209,21 @@ pub fn assemble_context(
             }
         } else {
             // Fallback: no embedding available, use recency-based retrieval
-            let fallback: Vec<(String, String, String)> = conn.prepare(
-                "SELECT m.id, m.content, m.scope FROM memories m \
-                 JOIN memory_embeddings me ON m.id = me.memory_id \
-                 WHERE m.is_active = 1 AND m.is_pinned = 0 \
-                 AND ((m.workspace_id = ?1 AND m.scope = 'workspace') OR m.scope = 'global') \
-                 ORDER BY m.updated_at DESC LIMIT 10"
-            ).unwrap()
-            .query_map(rusqlite::params![workspace_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
-            }).unwrap().flatten().collect();
+            let fallback: Vec<(String, String, String)> = conn
+                .prepare(
+                    "SELECT m.id, m.content, m.scope FROM memories m \
+                     JOIN memory_embeddings me ON m.id = me.memory_id \
+                     WHERE m.is_active = 1 AND m.is_pinned = 0 \
+                     AND ((m.workspace_id = ?1 AND m.scope = 'workspace') OR m.scope = 'global') \
+                     ORDER BY m.updated_at DESC LIMIT 10",
+                )
+                .map_err(|e| e.to_string())?
+                .query_map(rusqlite::params![workspace_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+                })
+                .map_err(|e| e.to_string())?
+                .flatten()
+                .collect();
 
             for (id, content, scope) in fallback {
                 if !append_memory(id, &content, &scope, &mut memory_tokens, &mut memories_text, &mut sources.memories_used, budget.memories) {

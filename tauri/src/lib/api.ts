@@ -197,7 +197,10 @@ export interface GitSyncStatus {
 
 export interface SecurityStatus {
   pin_enabled: boolean;
+  pin_lock_enabled: boolean;
   touch_id_enabled: boolean;
+  biometric_available: boolean;
+  biometric_label: string;
 }
 
 export interface BacklinkEntry {

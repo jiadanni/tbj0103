@@ -3,6 +3,7 @@
  * Mirrors WorkspaceListView.swift + workspace picker behaviour.
  */
 import { useEffect, useState } from "react";
+import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { Plus, Trash2, Pencil, Check, X, LayoutGrid, Sparkles, Loader2 } from "lucide-react";
 import { api, type AiModel } from "../lib/api";
 import { resolveModelForRole } from "../lib/modelRoles";
@@ -61,10 +62,10 @@ export default function WorkspaceSettingsView() {
 
   async function deleteWorkspace(ws: Workspace) {
     if (workspaces.length === 1) {
-      window.alert("Cannot delete the last workspace.");
+      await message("Cannot delete the last workspace.");
       return;
     }
-    if (!window.confirm(`Delete "${ws.name}" and all its projects, notes, and data? This cannot be undone.`)) {return;}
+    if (!await confirm(`Delete "${ws.name}" and all its projects, notes, and data? This cannot be undone.`)) {return;}
     await api.workspace.delete(ws.id);
     const remaining = workspaces.filter((w) => w.id !== ws.id);
     setWorkspaces(remaining);
@@ -82,7 +83,7 @@ export default function WorkspaceSettingsView() {
       setWorkspaces(workspaces.map(w => w.id === id ? { ...w, topic_signature: newSignature } : w));
     } catch (err) {
       console.error("Failed to analyze workspace:", err);
-      window.alert(err instanceof Error ? err.message : String(err));
+      await message(err instanceof Error ? err.message : String(err));
     } finally {
       setAnalyzingId(null);
     }

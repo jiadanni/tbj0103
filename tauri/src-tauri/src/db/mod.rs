@@ -265,7 +265,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
-    // v9: ensure all indexes exist (moved from schema.sql to avoid panics on missing columns during init)
+    // v9: backfill indexes for existing databases; fresh installs get them from schema.sql
     let applied_v9: i64 = conn.query_row(
         "SELECT COUNT(*) FROM _migrations WHERE name = 'v9_ensure_all_indexes'",
         [],

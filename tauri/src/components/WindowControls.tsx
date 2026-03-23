@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { isLinux } from "../lib/platform";
+import { isLinux, isMac } from "../lib/platform";
 
 /** onMouseDown handler that initiates window dragging. Use on drag region elements. */
 export function onDragRegionMouseDown(e: React.MouseEvent) {
@@ -10,6 +10,20 @@ export function onDragRegionMouseDown(e: React.MouseEvent) {
   if (target.closest("button, input, select, textarea, a, [data-no-drag]")) return;
   e.preventDefault();
   getCurrentWindow().startDragging();
+}
+
+export async function onDragRegionDoubleClick(e: React.MouseEvent) {
+  if (isMac || e.button !== 0) return;
+  const target = e.target as HTMLElement;
+  if (target.closest("button, input, select, textarea, a, [data-no-drag]")) return;
+
+  const appWindow = getCurrentWindow();
+  const maximized = await appWindow.isMaximized();
+  if (maximized) {
+    await appWindow.unmaximize();
+  } else {
+    await appWindow.maximize();
+  }
 }
 
 function WindowControls() {

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save } from "lucide-react";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { confirm, message, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
@@ -478,7 +478,7 @@ export default function ChatView() {
     if (document.activeElement !== folderInputRef.current) {
       folderInputRef.current.focus();
     }
-  }, [creatingFolder, newFolderName]);
+  }, [creatingFolder]);
 
   // Model comparison state
   const [compareModelA, setCompareModelA] = useState(savedCompareA || "");
@@ -486,8 +486,12 @@ export default function ChatView() {
 
   // Sync comparison models when store hydrates
   useEffect(() => {
-    if (savedCompareA && !compareModelA) {setCompareModelA(savedCompareA);}
-    if (savedCompareB && !compareModelB) {setCompareModelB(savedCompareB);}
+    if (savedCompareA) {
+      setCompareModelA((current) => current || savedCompareA);
+    }
+    if (savedCompareB) {
+      setCompareModelB((current) => current || savedCompareB);
+    }
   }, [savedCompareA, savedCompareB]);
 
   // External link confirmation dialog
@@ -675,7 +679,10 @@ export default function ChatView() {
   const incognitoSessionIdsRef = useRef<Set<string>>(new Set());
   const refineContentRef = useRef("");
 
-  const activeMessages = activeChatId ? (messages[activeChatId] ?? []) : [];
+  const activeMessages = useMemo(
+    () => (activeChatId ? (messages[activeChatId] ?? []) : []),
+    [activeChatId, messages]
+  );
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
   const isCurrentlyRefining = isRefiningPhase && refineStreamingContent.length > 0;
@@ -877,9 +884,7 @@ export default function ChatView() {
       if (enabled.length > 0) {
         const modelIds = enabled.map((m) => m.model_id);
         setAvailableModels(modelIds);
-        if (!modelIds.includes(selectedModel)) {
-          setSelectedModel(modelIds[0]);
-        }
+        setSelectedModel((current) => (modelIds.includes(current) ? current : modelIds[0]));
         return;
       }
       // Fallback to raw Ollama models
@@ -887,9 +892,7 @@ export default function ChatView() {
         if (m.length > 0) {
           const names = m.map((x) => x.name);
           setAvailableModels(names);
-          if (!names.includes(selectedModel)) {
-            setSelectedModel(names[0]);
-          }
+          setSelectedModel((current) => (names.includes(current) ? current : names[0]));
         }
       }).catch(() => {});
     }).catch(() => {
@@ -898,9 +901,7 @@ export default function ChatView() {
         if (m.length > 0) {
           const names = m.map((x) => x.name);
           setAvailableModels(names);
-          if (!names.includes(selectedModel)) {
-            setSelectedModel(names[0]);
-          }
+          setSelectedModel((current) => (names.includes(current) ? current : names[0]));
         }
       }).catch(() => {});
     });
@@ -1226,7 +1227,7 @@ export default function ChatView() {
         ? "Permanently delete this chat session and all its messages? This cannot be undone."
         : "Move this chat to the recycle bin?";
 
-      if (!window.confirm(confirmMsg)) {return;}
+      if (!await confirm(confirmMsg)) {return;}
     }
 
     await api.chat.deleteSession(effectiveWorkspaceId, id);
@@ -1260,7 +1261,7 @@ export default function ChatView() {
       if (!destPath) {return;}
       await api.chatFile.exportAsJson(session.id, destPath);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to save chat.");
+      await message(err instanceof Error ? err.message : "Failed to save chat.");
     }
   }
 
@@ -1370,9 +1371,14 @@ export default function ChatView() {
     if (chatMode !== "compare") {return;}
     api.ollama.listModels(ollamaUrl || undefined).then((list) => {
       setCompareModels(list);
-      if (list.length > 0 && !compareModelA) {setCompareModelA(list[0].name);}
-      if (list.length > 1 && !compareModelB) {setCompareModelB(list[1].name);}
-      else if (list.length === 1 && !compareModelB) {setCompareModelB(list[0].name);}
+      if (list.length > 0) {
+        setCompareModelA((current) => current || list[0].name);
+      }
+      if (list.length > 1) {
+        setCompareModelB((current) => current || list[1].name);
+      } else if (list.length === 1) {
+        setCompareModelB((current) => current || list[0].name);
+      }
     }).catch(() => {});
   }, [chatMode, ollamaUrl]);
 
