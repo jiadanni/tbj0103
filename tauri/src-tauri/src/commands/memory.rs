@@ -20,35 +20,71 @@ fn row_to_memory(row: &rusqlite::Row) -> rusqlite::Result<Memory> {
 
 const MEMORY_COLUMNS: &str = "id, workspace_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at";
 
+/// Best-effort: generate and store an embedding for a memory.
+/// Does not fail if Ollama is unavailable.
+async fn store_memory_embedding(state: &DbState, memory_id: &str, content: &str, ollama_url: Option<String>) {
+    let client = OllamaClient::new(ollama_url);
+    if let Ok(embedding) = client.generate_embedding("nomic-embed-text", content).await {
+        if let Ok(conn) = state.0.lock() {
+            let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
+            let now = chrono::Utc::now().to_rfc3339();
+            let _ = conn.execute(
+                "INSERT OR REPLACE INTO memory_embeddings (memory_id, embedding, model, created_at) VALUES (?1, ?2, 'nomic-embed-text', ?3)",
+                rusqlite::params![memory_id, embedding_bytes, now],
+            );
+        }
+    }
+}
+
+/// Read ollama_url from settings table (returns None if not set or default).
+fn read_ollama_url(state: &DbState) -> Option<String> {
+    let conn = state.0.lock().ok()?;
+    let val: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'ollama_url'",
+        [],
+        |row| row.get(0),
+    ).ok()?;
+    let url: String = serde_json::from_str(&val).unwrap_or_default();
+    if url.is_empty() { None } else { Some(url) }
+}
+
 #[tauri::command]
-pub fn create_memory(state: State<DbState>, req: CreateMemoryRequest) -> Result<Memory, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let id = uuid::Uuid::new_v4().to_string();
-    let memory_type = req.memory_type.unwrap_or_else(|| "fact".to_string());
-    let scope = req.scope.unwrap_or_else(|| "workspace".to_string());
-    let now = chrono::Utc::now().to_rfc3339();
+pub async fn create_memory(state: State<'_, DbState>, req: CreateMemoryRequest) -> Result<Memory, String> {
+    let memory = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let memory_type = req.memory_type.unwrap_or_else(|| "fact".to_string());
+        let scope = req.scope.unwrap_or_else(|| "workspace".to_string());
+        let now = chrono::Utc::now().to_rfc3339();
 
-    // Global memories have no workspace_id
-    let workspace_id = if scope == "global" { None } else { req.workspace_id.clone() };
+        // Global memories have no workspace_id
+        let workspace_id = if scope == "global" { None } else { req.workspace_id.clone() };
 
-    conn.execute(
-        "INSERT INTO memories (id, workspace_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 1, ?7, ?7)",
-        rusqlite::params![id, workspace_id, req.content, memory_type, scope, req.source_session_id, now],
-    ).map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO memories (id, workspace_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 1, ?7, ?7)",
+            rusqlite::params![id, workspace_id, req.content, memory_type, scope, req.source_session_id, now],
+        ).map_err(|e| e.to_string())?;
 
-    Ok(Memory {
-        id,
-        workspace_id,
-        content: req.content,
-        memory_type,
-        scope,
-        source_session_id: req.source_session_id,
-        is_pinned: false,
-        is_active: true,
-        created_at: now.clone(),
-        updated_at: now,
-    })
+        Memory {
+            id,
+            workspace_id,
+            content: req.content,
+            memory_type,
+            scope,
+            source_session_id: req.source_session_id,
+            is_pinned: false,
+            is_active: true,
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    };
+
+    // Best-effort embedding generation (outside DB lock)
+    let ollama_url = read_ollama_url(&state);
+    store_memory_embedding(&state, &memory.id, &memory.content, ollama_url).await;
+
+    Ok(memory)
 }
 
 #[tauri::command]
@@ -82,33 +118,39 @@ pub fn list_global_memories(state: State<DbState>) -> Result<Vec<Memory>, String
 }
 
 #[tauri::command]
-pub fn update_memory(state: State<DbState>, req: UpdateMemoryRequest) -> Result<Memory, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "UPDATE memories SET
-            content = COALESCE(?1, content),
-            memory_type = COALESCE(?2, memory_type),
-            is_pinned = COALESCE(?3, is_pinned),
-            is_active = COALESCE(?4, is_active),
-            updated_at = ?5
-         WHERE id = ?6",
-        rusqlite::params![
-            req.content,
-            req.memory_type,
-            req.is_pinned.map(|v| v as i32),
-            req.is_active.map(|v| v as i32),
-            now,
-            req.id
-        ],
-    ).map_err(|e| e.to_string())?;
+pub async fn update_memory(state: State<'_, DbState>, req: UpdateMemoryRequest) -> Result<Memory, String> {
+    let content_changed = req.content.is_some();
+    let memory = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE memories SET
+                content = COALESCE(?1, content),
+                memory_type = COALESCE(?2, memory_type),
+                is_pinned = COALESCE(?3, is_pinned),
+                is_active = COALESCE(?4, is_active),
+                updated_at = ?5
+             WHERE id = ?6",
+            rusqlite::params![
+                req.content,
+                req.memory_type,
+                req.is_pinned.map(|v| v as i32),
+                req.is_active.map(|v| v as i32),
+                now,
+                req.id
+            ],
+        ).map_err(|e| e.to_string())?;
 
-    let sql = format!("SELECT {} FROM memories WHERE id = ?1", MEMORY_COLUMNS);
-    let memory = conn.query_row(
-        &sql,
-        rusqlite::params![req.id],
-        row_to_memory,
-    ).map_err(|e| e.to_string())?;
+        let sql = format!("SELECT {} FROM memories WHERE id = ?1", MEMORY_COLUMNS);
+        conn.query_row(&sql, rusqlite::params![req.id], row_to_memory)
+            .map_err(|e| e.to_string())?
+    };
+
+    // Re-generate embedding if content changed
+    if content_changed {
+        let ollama_url = read_ollama_url(&state);
+        store_memory_embedding(&state, &memory.id, &memory.content, ollama_url).await;
+    }
 
     Ok(memory)
 }
@@ -208,8 +250,7 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
         return Ok(vec![]);
     }
 
-    // 5. Insert new memories
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    // 5. Insert new memories with embeddings
     let mut created = Vec::new();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -219,11 +260,26 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
             _ => "fact".to_string(),
         };
         let id = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO memories (id, workspace_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, 'workspace', ?5, 0, 1, ?6, ?6)",
-            rusqlite::params![id, req.workspace_id, em.content, valid_type, req.session_id, now],
-        ).map_err(|e| e.to_string())?;
+
+        {
+            let conn = state.0.lock().map_err(|e| e.to_string())?;
+            conn.execute(
+                "INSERT INTO memories (id, workspace_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, 'workspace', ?5, 0, 1, ?6, ?6)",
+                rusqlite::params![id, req.workspace_id, em.content, valid_type, req.session_id, now],
+            ).map_err(|e| e.to_string())?;
+        }
+
+        // Generate and store embedding (best-effort, outside DB lock)
+        if let Ok(embedding) = client.generate_embedding("nomic-embed-text", &em.content).await {
+            if let Ok(conn) = state.0.lock() {
+                let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
+                let _ = conn.execute(
+                    "INSERT OR REPLACE INTO memory_embeddings (memory_id, embedding, model, created_at) VALUES (?1, ?2, 'nomic-embed-text', ?3)",
+                    rusqlite::params![id, embedding_bytes, now],
+                );
+            }
+        }
 
         created.push(Memory {
             id,

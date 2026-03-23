@@ -4,6 +4,8 @@
 CREATE TABLE IF NOT EXISTS workspaces (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL DEFAULT 'My Workspace',
+    description TEXT NOT NULL DEFAULT '',
+    prompt_instructions TEXT NOT NULL DEFAULT '',
     topic_signature TEXT NOT NULL DEFAULT '{}',
     signature_updated_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -341,7 +343,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('compare_model_a', '""'),
     ('compare_model_b', '""'),
     ('immediate_delete', 'false'),
-    ('confirm_move_to_trash', 'true');
+    ('confirm_move_to_trash', 'true'),
+    ('prompt_instructions', '""');
 
 -- Conversation summaries
 CREATE TABLE IF NOT EXISTS conversation_summaries (

@@ -570,5 +570,40 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v24: add description column to workspaces
+    let applied_v24: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v24_workspace_description'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v24 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE workspaces ADD COLUMN description TEXT NOT NULL DEFAULT '';",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v24_workspace_description');",
+        )?;
+    }
+
+    // v25: add prompt_instructions to workspaces and global settings
+    let applied_v25: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v25_prompt_instructions'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v25 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE workspaces ADD COLUMN prompt_instructions TEXT NOT NULL DEFAULT '';",
+        );
+        let _ = conn.execute_batch(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES ('prompt_instructions', '\"\"');",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v25_prompt_instructions');",
+        )?;
+    }
+
     Ok(())
 }

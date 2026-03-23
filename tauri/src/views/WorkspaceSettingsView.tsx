@@ -15,11 +15,15 @@ export default function WorkspaceSettingsView() {
   const { preferredModel, backgroundModel, ollamaUrl } = useSettingsStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
   const [creating, setCreating] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
+  const [editingInstructionsId, setEditingInstructionsId] = useState<string | null>(null);
+  const [editInstructions, setEditInstructions] = useState("");
 
   useEffect(() => {
     api.aiModel.list().then(setAiModels).catch(() => {});
@@ -29,21 +33,30 @@ export default function WorkspaceSettingsView() {
     if (!newName.trim()) {return;}
     setCreating(true);
     try {
-      const ws = await api.workspace.create(newName.trim());
+      const ws = await api.workspace.create(newName.trim(), newDescription.trim() || undefined);
       addWorkspace(ws);
       setActiveWorkspaceId(ws.id);
       setNewName("");
+      setNewDescription("");
       setShowNew(false);
     } finally {
       setCreating(false);
     }
   }
 
-  async function renameWorkspace(id: string) {
+  async function saveWorkspace(id: string) {
     if (!editName.trim()) { setEditingId(null); return; }
-    await api.workspace.update(id, editName.trim());
-    setWorkspaces(workspaces.map((w) => w.id === id ? { ...w, name: editName.trim() } : w));
+    await api.workspace.update(id, editName.trim(), editDescription);
+    setWorkspaces(workspaces.map((w) => w.id === id ? { ...w, name: editName.trim(), description: editDescription } : w));
     setEditingId(null);
+  }
+
+  async function saveInstructions(id: string) {
+    const ws = workspaces.find(w => w.id === id);
+    if (!ws) { return; }
+    await api.workspace.update(id, ws.name, ws.description, editInstructions);
+    setWorkspaces(workspaces.map(w => w.id === id ? { ...w, prompt_instructions: editInstructions } : w));
+    setEditingInstructionsId(null);
   }
 
   async function deleteWorkspace(ws: Workspace) {
@@ -106,36 +119,48 @@ export default function WorkspaceSettingsView() {
 
       {/* New workspace form */}
       {showNew && (
-        <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] shrink-0">
+        <div className="flex flex-col gap-2 px-5 py-3 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] shrink-0">
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {createWorkspace();}
+                if (e.key === "Escape") { setShowNew(false); setNewName(""); setNewDescription(""); }
+              }}
+              placeholder="Workspace name…"
+              className="flex-1 text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+            />
+            <button
+              onClick={createWorkspace}
+              disabled={creating || !newName.trim()}
+              className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
+            >
+              {creating ? "Creating…" : "Create"}
+            </button>
+            <button
+              onClick={() => { setShowNew(false); setNewName(""); setNewDescription(""); }}
+              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            >
+              <X size={14} />
+            </button>
+          </div>
           <input
-            autoFocus
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {createWorkspace();}
-              if (e.key === "Escape") { setShowNew(false); setNewName(""); }
+              if (e.key === "Escape") { setShowNew(false); setNewName(""); setNewDescription(""); }
             }}
-            placeholder="Workspace name…"
-            className="flex-1 text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+            placeholder="Description (optional)…"
+            className="text-xs bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
           />
-          <button
-            onClick={createWorkspace}
-            disabled={creating || !newName.trim()}
-            className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
-          >
-            {creating ? "Creating…" : "Create"}
-          </button>
-          <button
-            onClick={() => { setShowNew(false); setNewName(""); }}
-            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          >
-            <X size={14} />
-          </button>
         </div>
       )}
 
       {/* Workspace list */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
         {workspaces.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">
             <LayoutGrid size={32} className="opacity-30" />
@@ -166,23 +191,36 @@ export default function WorkspaceSettingsView() {
 
                     <div className="flex-1 min-w-0">
                       {isEditing ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            autoFocus
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              autoFocus
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {saveWorkspace(ws.id);}
+                                if (e.key === "Escape") {setEditingId(null);}
+                              }}
+                              placeholder="Workspace name…"
+                              className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
+                            />
+                            <button onClick={() => saveWorkspace(ws.id)} className="text-[var(--accent-color)]">
+                              <Check size={14} />
+                            </button>
+                            <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
+                              <X size={14} />
+                            </button>
+                          </div>
+                          <textarea
+                            value={editDescription}
+                            onChange={(e) => setEditDescription(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") {renameWorkspace(ws.id);}
                               if (e.key === "Escape") {setEditingId(null);}
                             }}
-                            className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
+                            placeholder="Description (optional)…"
+                            rows={2}
+                            className="text-xs bg-[var(--bg-input)] border border-[var(--border-color)] rounded px-2 py-1 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none resize-none focus:border-[var(--accent-color)]"
                           />
-                          <button onClick={() => renameWorkspace(ws.id)} className="text-[var(--accent-color)]">
-                            <Check size={14} />
-                          </button>
-                          <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
-                            <X size={14} />
-                          </button>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
@@ -193,6 +231,9 @@ export default function WorkspaceSettingsView() {
                             </span>
                           )}
                         </div>
+                      )}
+                      {!isEditing && ws.description && (
+                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">{ws.description}</p>
                       )}
                       <p className="text-[11px] text-[var(--text-muted)] mt-1">
                         Created {formatDate(ws.created_at)}
@@ -209,7 +250,7 @@ export default function WorkspaceSettingsView() {
                         </button>
                       )}
                       <button
-                        onClick={() => { setEditingId(ws.id); setEditName(ws.name); }}
+                        onClick={() => { setEditingId(ws.id); setEditName(ws.name); setEditDescription(ws.description ?? ""); }}
                         className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
                         title="Rename"
                       >
@@ -223,6 +264,55 @@ export default function WorkspaceSettingsView() {
                         <Trash2 size={13} />
                       </button>
                     </div>
+                  </div>
+
+                  {/* Prompt Instructions */}
+                  <div className="pl-5 pt-2 border-t border-[var(--border-color)]">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h3 className="text-xs font-semibold text-[var(--text-secondary)]">Prompt Instructions</h3>
+                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Prepended to every chat in this workspace</p>
+                      </div>
+                      {editingInstructionsId !== ws.id && (
+                        <button
+                          onClick={() => { setEditingInstructionsId(ws.id); setEditInstructions(ws.prompt_instructions); }}
+                          className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
+                          title="Edit instructions"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      )}
+                    </div>
+                    {editingInstructionsId === ws.id ? (
+                      <div className="space-y-2">
+                        <textarea
+                          autoFocus
+                          value={editInstructions}
+                          onChange={(e) => setEditInstructions(e.target.value)}
+                          placeholder="e.g. You are a helpful tutor. Explain concepts step by step…"
+                          rows={3}
+                          className="w-full text-[11px] bg-[var(--bg-input)] border border-[var(--accent-color)] rounded-lg px-3 py-2 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none resize-y"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => saveInstructions(ws.id)}
+                            className="px-2.5 py-1 text-[10px] rounded-md bg-[var(--accent-color)] text-white hover:opacity-90"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => setEditingInstructionsId(null)}
+                            className="px-2.5 py-1 text-[10px] rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : ws.prompt_instructions ? (
+                      <p className="text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap">{ws.prompt_instructions}</p>
+                    ) : (
+                      <p className="text-[11px] text-[var(--text-muted)] italic">No instructions set</p>
+                    )}
                   </div>
 
                   {/* Context and Topics (Topic Signature) */}
@@ -242,11 +332,15 @@ export default function WorkspaceSettingsView() {
 
                     <div className="space-y-4">
                       {/* AI Topics */}
-                      {ws.topic_signature?.domain_tags?.length > 0 && (
+                      {ws.topic_signature?.domain_tags?.length > 0 && (() => {
+                        const ignoredSet = new Set(ws.topic_signature.ignored_tags || []);
+                        const visibleTags = ws.topic_signature.domain_tags.filter(t => !ignoredSet.has(t.tag));
+                        if (visibleTags.length === 0) return null;
+                        return (
                         <div>
                           <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Inferred Topics</p>
                           <div className="flex flex-wrap gap-1.5">
-                            {ws.topic_signature.domain_tags.map((tag, idx) => (
+                            {visibleTags.map((tag, idx) => (
                               <div
                                 key={idx}
                                 className="group flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-[var(--bg-hover)] border border-[var(--border-color)] text-[var(--text-secondary)]"
@@ -266,7 +360,8 @@ export default function WorkspaceSettingsView() {
                             ))}
                           </div>
                         </div>
-                      )}
+                        );
+                      })()}
 
                       {/* Manual Tags */}
                       <div>

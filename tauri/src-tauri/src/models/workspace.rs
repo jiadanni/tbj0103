@@ -22,6 +22,8 @@ pub struct TopicSignature {
 pub struct Workspace {
     pub id: String,
     pub name: String,
+    pub description: String,
+    pub prompt_instructions: String,
     pub topic_signature: TopicSignature,
     pub signature_updated_at: Option<String>,
     pub created_at: String,
@@ -31,20 +33,25 @@ pub struct Workspace {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateWorkspaceRequest {
     pub name: String,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateWorkspaceRequest {
     pub id: String,
     pub name: String,
+    pub description: Option<String>,
+    pub prompt_instructions: Option<String>,
 }
 
 impl Workspace {
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
         let now = chrono::Utc::now().to_rfc3339();
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             name: name.into(),
+            description: description.into(),
+            prompt_instructions: String::new(),
             topic_signature: TopicSignature::default(),
             signature_updated_at: None,
             created_at: now.clone(),
