@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare } from "lucide-react";
-import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus } from "../lib/api";
+import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus } from "../lib/api";
 import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
 import { ACCENT_COLORS, THEMES } from "../lib/theme";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -97,6 +97,7 @@ export default function SettingsView() {
   const ollamaModelsRequestRef = useRef(0);
 
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
+  const [securityStatus, setSecurityStatus] = useState<SecurityStatus | null>(null);
   const [showAddModel, setShowAddModel] = useState(false);
   const [newModelId, setNewModelId] = useState("");
   const [newModelName, setNewModelName] = useState("");
@@ -248,6 +249,7 @@ export default function SettingsView() {
       refreshOllamaModels(s.ollama_base_url);
     }).catch(() => {});
     loadAiModels();
+    api.security.getStatus().then(setSecurityStatus).catch(() => {});
     api.mcp.listServers().then(setMcpServers).catch(() => {});
     api.gitSync.getStatus().then((s) => { setGitSync(s); setGitSyncUrl(s.remote_url); }).catch(() => {});
   }, []);
@@ -269,6 +271,7 @@ export default function SettingsView() {
   async function handleSetPin() {
     if (!dbSettings) {return;}
 
+    const hadConfiguredPin = securityStatus?.pin_enabled ?? false;
     setPinMessage(null);
 
     if (!/^\d{4,8}$/.test(newPin)) {
@@ -281,24 +284,31 @@ export default function SettingsView() {
       return;
     }
 
-    if (dbSettings.pin_lock_enabled && !/^\d{4,8}$/.test(currentPin)) {
+    if (hadConfiguredPin && !/^\d{4,8}$/.test(currentPin)) {
       setPinMessage({ type: "error", text: "Enter your current PIN to change it." });
       return;
     }
 
     setPinSaving(true);
     try {
-      await api.security.setPin(newPin, dbSettings.pin_lock_enabled ? currentPin : undefined);
-      setDbSettings((prev) => prev ? { ...prev, pin_lock_enabled: true } : prev);
+      await api.security.setPin(newPin, hadConfiguredPin ? currentPin : undefined);
+      const refreshedStatus = await api.security.getStatus();
+      setSecurityStatus(refreshedStatus);
       resetPinForm();
-      setPinMessage({ type: "success", text: dbSettings.pin_lock_enabled ? "PIN updated." : "PIN enabled." });
+      setPinMessage({
+        type: "success",
+        text: hadConfiguredPin
+          ? "PIN updated."
+          : dbSettings.pin_lock_enabled
+          ? "PIN saved."
+          : "PIN saved. Enable app lock to require it on launch.",
+      });
     } catch (err) {
       setPinMessage({ type: "error", text: err instanceof Error ? err.message : "Unable to save PIN." });
     } finally {
       setPinSaving(false);
     }
   }
-
   async function handleRemovePin() {
     if (!dbSettings) {return;}
 
@@ -311,6 +321,8 @@ export default function SettingsView() {
     setPinSaving(true);
     try {
       await api.security.removePin(currentPin);
+      const refreshedStatus = await api.security.getStatus();
+      setSecurityStatus(refreshedStatus);
       setDbSettings((prev) => prev ? { ...prev, pin_lock_enabled: false } : prev);
       resetPinForm();
       setPinMessage({ type: "success", text: "PIN removed." });
@@ -320,7 +332,6 @@ export default function SettingsView() {
       setPinSaving(false);
     }
   }
-
   if (!dbSettings) {
     return (
       <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
@@ -328,6 +339,11 @@ export default function SettingsView() {
       </div>
     );
   }
+
+  const pinConfigured = securityStatus?.pin_enabled ?? false;
+  const biometricAvailable = securityStatus?.biometric_available ?? false;
+  const biometricLabel = securityStatus?.biometric_label ?? "Biometric authentication";
+  const anyLockEnabled = dbSettings.pin_lock_enabled || dbSettings.touch_id_enabled;
 
   const settingsTabButtons = (
     <div className={settingsNavLayout === "top-tabs" ? "flex gap-1.5 overflow-x-auto pb-0.5" : "flex flex-col gap-1.5"}>
@@ -1169,34 +1185,38 @@ export default function SettingsView() {
           {/* ── Security ── */}
           {activeTab === "security" && (
             <>
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Biometric authentication</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    Require biometric authentication before opening the app.
-                  </p>
+              {biometricAvailable && (
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">{biometricLabel}</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      Require {biometricLabel} before opening the app.
+                    </p>
+                  </div>
+                  <Toggle on={dbSettings.touch_id_enabled} onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)} />
                 </div>
-                <Toggle on={dbSettings.touch_id_enabled} onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)} />
-              </div>
+              )}
 
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm text-[var(--text-secondary)]">PIN passcode</p>
                     <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-sm">
-                      Use a 4 to 8 digit PIN to lock Aetherium on launch. The PIN is stored as a hash, not plaintext.
+                      Save a 4 to 8 digit PIN, then choose whether app lock should require it on launch. The PIN is stored as a hash, not plaintext.
                     </p>
                   </div>
                   <span className={`text-[11px] px-2 py-1 rounded-full border ${
                     dbSettings.pin_lock_enabled
                       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                      : pinConfigured
+                      ? "border-sky-500/30 bg-sky-500/10 text-sky-400"
                       : "border-[var(--border-color)] text-[var(--text-muted)]"
                   }`}>
-                    {dbSettings.pin_lock_enabled ? "Enabled" : "Not set"}
+                    {dbSettings.pin_lock_enabled ? "Enabled" : pinConfigured ? "Saved" : "Not set"}
                   </span>
                 </div>
 
-                {dbSettings.pin_lock_enabled && (
+                {pinConfigured && (
                   <div>
                     <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Current PIN</label>
                     <input
@@ -1213,7 +1233,7 @@ export default function SettingsView() {
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">{dbSettings.pin_lock_enabled ? "New PIN" : "PIN"}</label>
+                    <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">{pinConfigured ? "New PIN" : "PIN"}</label>
                     <input
                       type="password"
                       inputMode="numeric"
@@ -1246,15 +1266,32 @@ export default function SettingsView() {
                   </p>
                 )}
 
+                <div className="rounded-lg border border-[var(--border-color)]/80 bg-[var(--bg-primary)] px-3 py-2.5 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-[var(--text-secondary)]">Require PIN on launch</p>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                      {pinConfigured ? "Turn this on when you want the app to lock at startup." : "Save a PIN first to make app lock available."}
+                    </p>
+                  </div>
+                  <Toggle
+                    on={dbSettings.pin_lock_enabled}
+                    disabled={!pinConfigured}
+                    onToggle={() => {
+                      if (!pinConfigured) {return;}
+                      set("pin_lock_enabled", !dbSettings.pin_lock_enabled);
+                    }}
+                  />
+                </div>
+
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={handleSetPin}
                     disabled={pinSaving}
                     className="px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-60"
                   >
-                    {pinSaving ? "Saving..." : dbSettings.pin_lock_enabled ? "Update PIN" : "Set PIN"}
+                    {pinSaving ? "Saving..." : pinConfigured ? "Update PIN" : "Save PIN"}
                   </button>
-                  {dbSettings.pin_lock_enabled && (
+                  {pinConfigured && (
                     <button
                       onClick={handleRemovePin}
                       disabled={pinSaving}
@@ -1268,6 +1305,7 @@ export default function SettingsView() {
 
               <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-2 block">Auto-lock</label>
+                <p className="text-[11px] text-[var(--text-muted)] mb-2">Auto-lock becomes active once a launch lock is enabled.</p>
                 <div className="space-y-2">
                   <label className="flex items-center gap-2 text-sm">
                     <input
@@ -1275,6 +1313,7 @@ export default function SettingsView() {
                       name="auto_lock"
                       checked={dbSettings.auto_lock_minutes === 0}
                       onChange={() => set("auto_lock_minutes", 0)}
+                      disabled={!anyLockEnabled}
                       className="accent-[var(--accent-color)]"
                     />
                     <span className="text-[var(--text-secondary)]">Off</span>
@@ -1285,6 +1324,7 @@ export default function SettingsView() {
                       name="auto_lock"
                       checked={dbSettings.auto_lock_minutes > 0}
                       onChange={() => set("auto_lock_minutes", dbSettings.auto_lock_minutes > 0 ? dbSettings.auto_lock_minutes : 5)}
+                      disabled={!anyLockEnabled}
                       className="accent-[var(--accent-color)]"
                     />
                     <span className="text-[var(--text-secondary)]">Lock after</span>
@@ -1296,6 +1336,7 @@ export default function SettingsView() {
                         min={1}
                         max={1440}
                         value={dbSettings.auto_lock_minutes}
+                        disabled={!anyLockEnabled}
                         onChange={(e) => {
                           const val = Number(e.target.value);
                           if (val > 0) {set("auto_lock_minutes", val);}

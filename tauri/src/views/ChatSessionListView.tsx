@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MessageSquare, Pin, PinOff, Trash2, Plus, Search, ExternalLink, Save } from "lucide-react";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { confirm, message, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -70,7 +70,7 @@ export default function ChatSessionListView() {
         ? "Permanently delete this chat session and all its messages? This cannot be undone."
         : "Move this chat to the recycle bin?";
 
-      if (!window.confirm(confirmMsg)) {return;}
+      if (!await confirm(confirmMsg)) {return;}
     }
 
     await api.chat.deleteSession(activeWorkspaceId, id);
@@ -97,7 +97,7 @@ export default function ChatSessionListView() {
       if (!destPath) {return;}
       await api.chatFile.exportAsJson(session.id, destPath);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to save chat.");
+      await message(err instanceof Error ? err.message : "Failed to save chat.");
     }
   }
 

@@ -45,7 +45,7 @@ export default function RecycleBinView() {
   }
 
   async function hardDeleteSession(id: string) {
-    if (!activeWorkspaceId || !window.confirm("Permanently delete this chat? This cannot be undone.")) {return;}
+    if (!activeWorkspaceId || !await confirm("Permanently delete this chat? This cannot be undone.")) {return;}
     try {
       await api.chat.hardDeleteSession(activeWorkspaceId, id);
       setDeletedSessions(prev => prev.filter(s => s.id !== id));
@@ -55,7 +55,7 @@ export default function RecycleBinView() {
   }
 
   async function emptyRecycleBin() {
-    if (!activeWorkspaceId || !window.confirm("Permanently delete all chats in the recycle bin?")) {return;}
+    if (!activeWorkspaceId || !await confirm("Permanently delete all chats in the recycle bin?")) {return;}
     try {
       await api.chat.emptyRecycleBin(activeWorkspaceId);
       setDeletedSessions([]);

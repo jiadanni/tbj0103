@@ -34,7 +34,7 @@ export default function ArtifactPanel() {
   };
 
   const handleDelete = async () => {
-    if (confirm('Are you sure you want to delete this artifact?')) {
+    if (await confirm("Are you sure you want to delete this artifact?")) {
       await deleteArtifact(activeArtifact.id);
       setPanelOpen(false);
     }

@@ -72,6 +72,10 @@ impl Default for Settings {
 
 const AUTOSTART_ARG: &str = "--autostart";
 
+fn biometric_available() -> bool {
+    false
+}
+
 fn get_setting(conn: &rusqlite::Connection, key: &str) -> Option<String> {
     conn.query_row("SELECT value FROM settings WHERE key = ?1", rusqlite::params![key], |r| r.get(0)).ok()
 }
@@ -92,6 +96,10 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         .autolaunch()
         .is_enabled()
         .map_err(|e| e.to_string())?;
+    let pin_configured = get_setting(&conn, "pin_passcode_hash")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let biometric_available = biometric_available();
 
     Ok(Settings {
         preferred_model: get_setting(&conn, "preferred_model")
@@ -108,10 +116,12 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
             .unwrap_or(def.backup_enabled),
         touch_id_enabled: get_setting(&conn, "touch_id_enabled")
             .and_then(|v| v.parse().ok())
-            .unwrap_or(def.touch_id_enabled),
-        pin_lock_enabled: get_setting(&conn, "pin_passcode_hash")
-            .map(|v| !v.trim().is_empty())
-            .unwrap_or(def.pin_lock_enabled),
+            .unwrap_or(def.touch_id_enabled)
+            && biometric_available,
+        pin_lock_enabled: get_setting(&conn, "pin_lock_enabled")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.pin_lock_enabled)
+            && pin_configured,
         auto_lock_minutes: get_setting(&conn, "auto_lock_minutes")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.auto_lock_minutes),
@@ -181,11 +191,17 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
 #[tauri::command]
 pub fn update_settings(app: AppHandle, state: State<DbState>, settings: Settings) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let pin_configured = get_setting(&conn, "pin_passcode_hash")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let biometric_available = biometric_available();
+
     set_setting(&conn, "preferred_model", &serde_json::to_string(&settings.preferred_model).unwrap())?;
     set_setting(&conn, "background_model", &serde_json::to_string(&settings.background_model).unwrap())?;
     set_setting(&conn, "quick_search_models", &serde_json::to_string(&settings.quick_search_models).unwrap())?;
     set_setting(&conn, "backup_enabled", &settings.backup_enabled.to_string())?;
-    set_setting(&conn, "touch_id_enabled", &settings.touch_id_enabled.to_string())?;
+    set_setting(&conn, "touch_id_enabled", &(settings.touch_id_enabled && biometric_available).to_string())?;
+    set_setting(&conn, "pin_lock_enabled", &(settings.pin_lock_enabled && pin_configured).to_string())?;
     set_setting(&conn, "auto_lock_minutes", &settings.auto_lock_minutes.to_string())?;
     set_setting(&conn, "theme", &serde_json::to_string(&settings.theme).unwrap())?;
     set_setting(&conn, "accent_color", &serde_json::to_string(&settings.accent_color).unwrap())?;
@@ -214,7 +230,7 @@ pub fn update_settings(app: AppHandle, state: State<DbState>, settings: Settings
         app.autolaunch().disable().map_err(|e| e.to_string())?;
     }
 
-    // pin_lock_enabled and chat_encryption_enabled are managed by dedicated commands.
+    // chat_encryption_enabled is managed by dedicated commands.
     Ok(())
 }
 
