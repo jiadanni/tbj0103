@@ -2,6 +2,7 @@
 
 use tauri::State;
 use crate::db::DbState;
+use crate::models::chat::ChatSession;
 use crate::services::chat_file_store;
 
 /// In-memory passphrase state — populated at startup from keyring if
@@ -143,19 +144,54 @@ pub fn export_chat_as_json(
 }
 
 /// Import a chat JSON (plain or encrypted) into the database.
-/// Returns the session id.
+/// Returns the imported chat session.
 #[tauri::command]
 pub fn import_chat_from_json(
     path: String,
+    workspace_id: String,
+    project_id: Option<String>,
     passphrase: Option<String>,
+    chats_dir_state: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
-) -> Result<String, String> {
+) -> Result<ChatSession, String> {
     let conn = db_state.0.lock().map_err(|e| e.to_string())?;
-    chat_file_store::import_session_from_file(
+    let session_id = chat_file_store::import_session_from_file(
         &conn,
         std::path::Path::new(&path),
+        &workspace_id,
+        project_id.as_deref().unwrap_or(""),
         passphrase.as_deref(),
+    )?;
+
+    let pass = crypto.0.lock().ok().and_then(|g| g.clone());
+    let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, &session_id, pass.as_deref());
+
+    conn.query_row(
+        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, parent_session_id, branch_message_id, created_at, updated_at
+         FROM chat_sessions WHERE id = ?1",
+        rusqlite::params![session_id],
+        |row| {
+            Ok(ChatSession {
+                id: row.get(0)?,
+                workspace_id: row.get(1)?,
+                project_id: row.get(2)?,
+                title: row.get(3)?,
+                model_name: row.get(4)?,
+                system_prompt: row.get(5)?,
+                is_pinned: row.get::<_, i32>(6)? != 0,
+                is_incognito: row.get::<_, i32>(7)? != 0,
+                exclude_from_analytics: row.get::<_, i32>(8)? != 0,
+                is_deleted: row.get::<_, i32>(9)? != 0,
+                deleted_at: row.get(10)?,
+                parent_session_id: row.get(11)?,
+                branch_message_id: row.get(12)?,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
+            })
+        },
     )
+    .map_err(|e| e.to_string())
 }
 
 /// Sync every session in the DB to the chats directory.
