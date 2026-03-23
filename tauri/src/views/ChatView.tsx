@@ -1172,7 +1172,7 @@ export default function ChatView() {
         const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
-            finalizeStream(sid!, modelId);
+            finalizeStream(sid!, modelId, tokensUsed, durationMs);
             setIsStreaming(false);
             unlisten();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
@@ -1305,7 +1305,7 @@ export default function ChatView() {
       const sid = activeChatId;
       const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
         if (done) {
-          finalizeStream(sid, selectedModel);
+          finalizeStream(sid, selectedModel, tokensUsed, durationMs);
           setIsStreaming(false);
           unlisten();
           const assembled = useChatStore.getState().streamingContent;
@@ -1342,7 +1342,7 @@ export default function ChatView() {
       const sid = activeChatId;
       const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
         if (done) {
-          finalizeStream(sid, selectedModel);
+          finalizeStream(sid, selectedModel, tokensUsed, durationMs);
           setIsStreaming(false);
           unlisten();
           const assembled = useChatStore.getState().streamingContent;
@@ -1805,20 +1805,6 @@ export default function ChatView() {
                         )}
                       </div>
                     )}
-                    {/* Follow-up suggestion pills */}
-                    {msg.role === "assistant" && i === activeMessages.length - 1 && followUps.length > 0 && (
-                      <div className="flex flex-col gap-1.5 mt-2 max-w-[75%]">
-                        {followUps.map((q, j) => (
-                          <button
-                            key={j}
-                            onClick={() => { setInput(q); inputRef.current?.focus(); }}
-                            className="text-left px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[12px] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] transition-colors"
-                          >
-                            {q}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </>
                 )}
               </div>
@@ -1937,7 +1923,7 @@ export default function ChatView() {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   disabled={isStreaming}
-                  placeholder={isStreaming ? "Waiting for response…" : !selectedModel ? "No models available — install one via ollama pull" : activeMessages.length > 0 ? "Message this Claude thread..." : "Start a new Claude thread..."}
+                  placeholder={isStreaming ? "Waiting for response…" : !selectedModel ? "No models available — install one via ollama pull" : activeMessages.length > 0 ? "Message this thread…" : "Start a new thread…"}
                   rows={1}
                   className="flex-1 resize-none px-3 py-2 text-sm bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors max-h-40 overflow-y-auto"
                   style={{ minHeight: 40 }}

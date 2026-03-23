@@ -48,7 +48,7 @@ interface ChatStore {
   updateMessage: (sessionId: string, message: Message) => void;
   setStreamingSession: (id: string | null) => void;
   appendStreamChunk: (sessionId: string, chunk: string) => void;
-  finalizeStream: (sessionId: string, modelName?: string) => void;
+  finalizeStream: (sessionId: string, modelName?: string, tokensUsed?: number, durationMs?: number) => void;
   // Refine (large model second pass)
   appendRefineChunk: (sessionId: string, chunk: string) => void;
   finalizeRefine: (sessionId: string, modelName?: string) => void;
@@ -90,7 +90,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ streamingSessionId, streamingContent: "" }),
   appendStreamChunk: (sessionId, chunk) =>
     set((s) => ({ streamingSessionId: sessionId, streamingContent: s.streamingContent + chunk })),
-  finalizeStream: (sessionId, modelName) => {
+  finalizeStream: (sessionId, modelName, tokensUsed, durationMs) => {
     const { streamingContent } = get();
     const assistantMsg: Message = {
       id: window.crypto.randomUUID(),
@@ -98,6 +98,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       role: "assistant",
       content: streamingContent,
       model_name: modelName,
+      tokens_used: tokensUsed,
+      duration_ms: durationMs,
       created_at: new Date().toISOString(),
     };
     set((s) => ({

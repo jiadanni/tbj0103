@@ -5,6 +5,8 @@ import { useChatStore } from "./chatStore";
 export interface Workspace {
   id: string;
   name: string;
+  description: string;
+  prompt_instructions: string;
   topic_signature: TopicSignature;
   signature_updated_at: string | null;
   created_at: string;

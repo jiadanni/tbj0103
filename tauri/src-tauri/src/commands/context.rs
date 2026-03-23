@@ -10,6 +10,25 @@ pub async fn assemble_and_send(
     state: State<'_, DbState>,
     req: AssembleAndSendRequest,
 ) -> Result<String, String> {
+    // 0. Embed the latest user message for semantic memory retrieval
+    let last_user_message = {
+        let conn_guard = state.0.lock().map_err(|e| e.to_string())?;
+        conn_guard.query_row(
+            "SELECT content FROM messages WHERE session_id = ?1 AND role = 'user' ORDER BY created_at DESC LIMIT 1",
+            rusqlite::params![req.session_id],
+            |row| row.get::<_, String>(0),
+        ).ok()
+    };
+
+    let client_url = req.options.get("ollama_url").and_then(|v: &serde_json::Value| v.as_str()).map(|s: &str| s.to_string());
+    let client = OllamaClient::new(client_url);
+
+    let query_embedding = if let Some(msg) = &last_user_message {
+        client.generate_embedding("nomic-embed-text", msg).await.ok()
+    } else {
+        None
+    };
+
     // 1. Build context
     let (messages, sources) = {
         let conn_guard = state.0.lock().map_err(|e| e.to_string())?;
@@ -18,7 +37,8 @@ pub async fn assemble_and_send(
             &req.workspace_id,
             &req.session_id,
             &req.model_name,
-            &req.options
+            &req.options,
+            query_embedding.as_deref(),
         )?
     };
 
@@ -43,9 +63,6 @@ pub async fn assemble_and_send(
         );
     }
 
-    let client_url = req.options.get("ollama_url").and_then(|v: &serde_json::Value| v.as_str()).map(|s: &str| s.to_string());
-    let client = OllamaClient::new(client_url);
-    
     // Send event for sources so frontend knows what context was used
     let _ = app.emit(
         &format!("context-sources-{}", req.session_id),

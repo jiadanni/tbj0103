@@ -376,15 +376,15 @@ function TopToolbar({
   }
 
   return (
-    <div data-tauri-drag-region onMouseDown={onDragRegionMouseDown} className={`flex items-center h-11 pt-1 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] pr-2 shrink-0 ${isMac ? "pl-[78px]" : "pl-2"}`}>
-      <div className="flex items-center overflow-x-auto min-w-0 flex-1">
+    <div data-tauri-drag-region onMouseDown={onDragRegionMouseDown} className={`flex items-center h-11 pt-1 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] pr-2 shrink-0 ${isMac ? "pl-[78px]" : ""}`}>
+      <div className="flex items-center overflow-x-auto min-w-0 flex-1 px-3 gap-0.5">
         {splitMode ? (
           <div className="flex min-w-0 flex-1 items-center">
-            <div className="min-w-0 px-2" style={{ flexBasis: `${splitSizes[0]}%`, maxWidth: `${splitSizes[0]}%` }}>
+            <div className="min-w-0 px-3" style={{ flexBasis: `${splitSizes[0]}%`, maxWidth: `${splitSizes[0]}%` }}>
               <SplitWorkspaceSelector paneId="primary" mode={resolvedSplitWorkspaceNavigation} />
             </div>
             <div className="h-8 w-px bg-[var(--border-color)] shrink-0" />
-            <div className="min-w-0 px-2" style={{ flexBasis: `${splitSizes[1]}%`, maxWidth: `${splitSizes[1]}%` }}>
+            <div className="min-w-0 px-3" style={{ flexBasis: `${splitSizes[1]}%`, maxWidth: `${splitSizes[1]}%` }}>
               <SplitWorkspaceSelector paneId="secondary" mode={resolvedSplitWorkspaceNavigation} />
             </div>
           </div>

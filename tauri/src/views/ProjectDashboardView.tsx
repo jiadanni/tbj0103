@@ -93,20 +93,20 @@ function ActivityHeatmap({ days, activityMap }: { days: number; activityMap: Rec
     return { className: "", style: { backgroundColor: 'var(--accent-color)', opacity } };
   }
 
-  const cols = Math.min(days, 7);
+  const weeks = Math.ceil(cells.length / 7);
   return (
     <div className="rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)]">
       <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Activity Heatmap</h3>
       <div
-        className="grid gap-1"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        className="grid gap-[3px]"
+        style={{ gridTemplateColumns: `repeat(${weeks}, 14px)`, gridTemplateRows: "repeat(7, 14px)" }}
       >
-        {cells.map(({ key, count }) => (
+        {cells.map(({ key, count }, i) => (
           <div
             key={key}
             title={`${key}: ${count} activities`}
-            className={`aspect-square rounded-sm ${cellStyle(count).className}`}
-            style={cellStyle(count).style}
+            className={`rounded-sm ${cellStyle(count).className}`}
+            style={{ ...cellStyle(count).style, gridRow: (i % 7) + 1, gridColumn: Math.floor(i / 7) + 1 }}
           />
         ))}
       </div>
