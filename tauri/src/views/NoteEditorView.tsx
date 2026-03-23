@@ -333,7 +333,7 @@ function ProjectNoteEditor({
   }
 
   async function deleteNote() {
-    if (!window.confirm("Delete this note?")) {return;}
+    if (!await confirm("Delete this note?")) {return;}
     await api.note.delete(note.id);
     onDeleted(note.id);
   }

@@ -76,7 +76,7 @@ export default function WebCaptureView() {
   }
 
   async function deleteCapture(id: string) {
-    if (!window.confirm("Delete this web capture?")) {return;}
+    if (!await confirm("Delete this web capture?")) {return;}
     await api.webCapture.delete(id);
     setCaptures((prev) => prev.filter((c) => c.id !== id));
     if (selected?.id === id) {setSelected(null);}

@@ -2,8 +2,14 @@ use tauri::State;
 use crate::db::DbState;
 use crate::models::source::{UploadedDocument, UploadDocumentRequest, ProcessDocumentRequest};
 
+const MAX_UPLOAD_FILE_SIZE_BYTES: i64 = 50 * 1024 * 1024;
+
 #[tauri::command]
 pub fn upload_document(state: State<DbState>, req: UploadDocumentRequest) -> Result<UploadedDocument, String> {
+    if req.file_size > MAX_UPLOAD_FILE_SIZE_BYTES {
+        return Err("File exceeds 50MB limit".to_string());
+    }
+
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let doc = UploadedDocument {
