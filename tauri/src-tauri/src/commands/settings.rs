@@ -73,7 +73,15 @@ impl Default for Settings {
 const AUTOSTART_ARG: &str = "--autostart";
 
 fn biometric_available() -> bool {
-    false
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        true
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        false
+    }
 }
 
 fn get_setting(conn: &rusqlite::Connection, key: &str) -> Option<String> {

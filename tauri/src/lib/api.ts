@@ -316,8 +316,8 @@ export const api = {
     disableEncryption: () => invoke<number>("disable_chat_encryption"),
     exportAsJson: (sessionId: string, destPath: string) =>
       invoke<void>("export_chat_as_json", { sessionId, destPath }),
-    importFromJson: (path: string, passphrase?: string) =>
-      invoke<string>("import_chat_from_json", { path, passphrase }),
+    importFromJson: (path: string, workspaceId: string, projectId?: string | null, passphrase?: string) =>
+      invoke<ChatSession>("import_chat_from_json", { path, workspaceId, projectId: projectId ?? null, passphrase }),
     syncAll: () => invoke<number>("sync_all_chats_to_files"),
   },
 

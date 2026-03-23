@@ -221,34 +221,42 @@ pub fn read_session_file(path: &Path, passphrase: Option<&str>) -> Result<ChatFi
 pub fn import_session_from_file(
     conn: &Connection,
     path: &Path,
+    workspace_id: &str,
+    project_id: &str,
     passphrase: Option<&str>,
 ) -> Result<String, String> {
     let data = read_session_file(path, passphrase)?;
+    let session_id = uuid::Uuid::new_v4().to_string();
     conn.execute(
-        "INSERT OR IGNORE INTO chat_sessions
-             (id, project_id, title, model_name, system_prompt, is_pinned, created_at, updated_at)
-         VALUES (?1, '', ?2, ?3, ?4, 0, ?5, ?6)",
+        "INSERT INTO chat_sessions
+             (id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, parent_session_id, branch_message_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 0, 0, NULL, NULL, NULL, ?7, ?8)",
         rusqlite::params![
-            data.id, data.title, data.model, data.system_prompt,
+            session_id, workspace_id, project_id, data.title, data.model, data.system_prompt,
             data.created_at, data.updated_at
         ],
     )
     .map_err(|e| e.to_string())?;
 
     for msg in &data.messages {
+        let role = msg.role.trim().to_lowercase();
+        if !matches!(role.as_str(), "user" | "assistant" | "system") {
+            return Err(format!("Unsupported message role: {}", msg.role));
+        }
+
         conn.execute(
-            "INSERT OR IGNORE INTO messages
+            "INSERT INTO messages
                  (id, session_id, role, content, model_name, tokens_used, duration_ms, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
-                msg.id, data.id, msg.role, msg.content,
+                uuid::Uuid::new_v4().to_string(), session_id, role, msg.content,
                 msg.model, msg.tokens_used, msg.duration_ms, msg.timestamp
             ],
         )
         .map_err(|e| e.to_string())?;
     }
 
-    Ok(data.id)
+    Ok(session_id)
 }
 
 /// Re-encrypt (or decrypt) every chat file in `chats_dir`.
