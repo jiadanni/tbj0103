@@ -4,8 +4,8 @@
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MessageSquare, Pin, PinOff, Trash2, Plus, Search, ExternalLink, Save } from "lucide-react";
-import { confirm, message, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { MessageSquare, Pin, PinOff, Trash2, Plus, Search, ExternalLink, Save, Upload } from "lucide-react";
+import { confirm, message, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -98,6 +98,25 @@ export default function ChatSessionListView() {
       await api.chatFile.exportAsJson(session.id, destPath);
     } catch (err) {
       await message(err instanceof Error ? err.message : "Failed to save chat.");
+    }
+  }
+
+  async function importSession() {
+    if (!activeWorkspaceId) {return;}
+
+    try {
+      const selectedPath = await open({
+        multiple: false,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!selectedPath || Array.isArray(selectedPath)) {return;}
+
+      const imported = await api.chatFile.importFromJson(selectedPath, activeWorkspaceId, activeProjectId);
+      setSessions([imported, ...sessions]);
+      setActiveChatId(imported.id);
+      navigate(`/chat/${imported.id}`);
+    } catch (err) {
+      await message(err instanceof Error ? err.message : "Failed to import chat.");
     }
   }
 
@@ -209,12 +228,20 @@ export default function ChatSessionListView() {
             <p className="text-[11px] text-[var(--text-muted)]">{projectName}</p>
           )}
         </div>
-        <button
-          onClick={createSession}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
-        >
-          <Plus size={12} /> New Chat
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={importSession}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          >
+            <Upload size={12} /> Import JSON
+          </button>
+          <button
+            onClick={createSession}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
+          >
+            <Plus size={12} /> New Chat
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -236,9 +263,14 @@ export default function ChatSessionListView() {
           <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--text-muted)]">
             <MessageSquare size={32} className="opacity-30" />
             <p className="text-sm">No chat sessions yet</p>
-            <button onClick={createSession} className="text-xs text-[var(--accent-color)] hover:underline">
-              + Start a new chat
-            </button>
+            <div className="flex items-center gap-3">
+              <button onClick={createSession} className="text-xs text-[var(--accent-color)] hover:underline">
+                + Start a new chat
+              </button>
+              <button onClick={importSession} className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:underline">
+                Import LM Studio JSON
+              </button>
+            </div>
           </div>
         ) : (
           <>

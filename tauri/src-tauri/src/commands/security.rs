@@ -9,7 +9,15 @@ const PIN_HASH_KEY: &str = "pin_passcode_hash";
 const PIN_ITERATIONS: u32 = 100_000;
 
 fn biometric_available() -> bool {
-    false
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        true
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        false
+    }
 }
 
 fn biometric_label() -> String {
