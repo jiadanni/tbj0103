@@ -13,7 +13,6 @@ use tauri_plugin_autostart::MacosLauncher;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
@@ -56,9 +55,11 @@ pub fn run() {
             ));
             app.manage(mcp_manager);
 
-            if should_open_in_background {
-                if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_webview_window("main") {
+                if should_open_in_background {
                     let _ = window.hide();
+                } else {
+                    let _ = window.maximize();
                 }
             }
             
@@ -186,6 +187,9 @@ pub fn run() {
             commands::flashcard::review_flashcard,
             commands::flashcard::get_review_stats,
             commands::flashcard::generate_flashcards,
+            commands::flashcard::generate_flashcards_from_concept,
+            commands::flashcard::list_flashcards_by_concept,
+            commands::flashcard::extract_flashcards_from_content,
             // Note & template commands
             commands::note::create_note,
             commands::note::list_notes,
@@ -260,6 +264,13 @@ pub fn run() {
             commands::web_capture::get_web_capture,
             commands::web_capture::delete_web_capture,
             commands::web_capture::update_web_capture,
+            // Unified source commands
+            commands::source::create_source,
+            commands::source::list_sources,
+            commands::source::get_source,
+            commands::source::update_source,
+            commands::source::delete_source,
+            commands::source::process_source,
             // AI model commands
             commands::ai_model::list_ai_models,
             commands::ai_model::add_ai_model,
@@ -292,6 +303,7 @@ pub fn run() {
             // Thought queue commands
             commands::thought_queue::create_thought,
             commands::thought_queue::list_thoughts,
+            commands::thought_queue::list_thoughts_by_session,
             commands::thought_queue::get_due_thoughts,
             commands::thought_queue::update_thought_status,
             commands::thought_queue::update_thought_result,
@@ -303,6 +315,7 @@ pub fn run() {
             commands::chat_file::export_chat_as_json,
             commands::chat_file::import_chat_from_json,
             commands::chat_file::sync_all_chats_to_files,
+            commands::chat_file::import_lmstudio_folder,
             // Web AI (Playwright bridge)
             commands::web_ai::send_web_message,
             // Topic signatures

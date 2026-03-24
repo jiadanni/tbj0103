@@ -194,6 +194,94 @@ pub fn import_chat_from_json(
     .map_err(|e| e.to_string())
 }
 
+/// Import all LM Studio `.conversation.json` files from a folder (recursively).
+/// Root folder name → workspace, subfolders → projects, conversations → sessions.
+/// Returns the workspace ID and count of imported sessions.
+#[tauri::command]
+pub fn import_lmstudio_folder(
+    folder_path: String,
+    chats_dir_state: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
+    db_state: State<DbState>,
+) -> Result<serde_json::Value, String> {
+    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let folder = std::path::Path::new(&folder_path);
+    if !folder.is_dir() {
+        return Err(format!("{} is not a directory", folder_path));
+    }
+
+    // Root folder name becomes the workspace name
+    let workspace_name = folder.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Imported Chats")
+        .to_string();
+
+    let workspace_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
+         VALUES (?1, ?2, '', '', '{}', ?3, ?3)",
+        rusqlite::params![workspace_id, workspace_name, now],
+    ).map_err(|e| e.to_string())?;
+
+    // Discover all conversation files with their subfolder names
+    let conversations = chat_file_store::discover_lmstudio_conversations(folder)?;
+    if conversations.is_empty() {
+        return Err("No .conversation.json files found in the selected folder.".to_string());
+    }
+
+    // Build project map: subfolder name → project ID
+    let mut project_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+    let mut session_ids = Vec::new();
+    let mut errors = Vec::new();
+
+    for conv in &conversations {
+        // Create project for subfolder if we haven't yet
+        let project_id = if conv.subfolder.is_empty() {
+            String::new() // root-level conversations have no project
+        } else {
+            let pid = project_map.entry(conv.subfolder.clone()).or_insert_with(|| {
+                let id = uuid::Uuid::new_v4().to_string();
+                let _ = conn.execute(
+                    "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, '', '', '#007AFF', 'folder', ?4, ?4)",
+                    rusqlite::params![id, workspace_id, conv.subfolder, now],
+                );
+                id
+            });
+            pid.clone()
+        };
+
+        match std::fs::read(&conv.path) {
+            Ok(bytes) => match chat_file_store::parse_lmstudio_conversation(&bytes) {
+                Ok(data) => {
+                    match chat_file_store::import_chat_data(&conn, &data, &workspace_id, &project_id) {
+                        Ok(sid) => session_ids.push(sid),
+                        Err(e) => errors.push(format!("{}: {e}", conv.path.display())),
+                    }
+                }
+                Err(e) => errors.push(format!("{}: {e}", conv.path.display())),
+            },
+            Err(e) => errors.push(format!("{}: {e}", conv.path.display())),
+        }
+    }
+
+    // Sync imported sessions to chat files (best-effort)
+    let pass = crypto.0.lock().ok().and_then(|g| g.clone());
+    for id in &session_ids {
+        let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, id, pass.as_deref());
+    }
+
+    Ok(serde_json::json!({
+        "imported": session_ids.len(),
+        "workspace_id": workspace_id,
+        "workspace_name": workspace_name,
+        "projects_created": project_map.len(),
+        "errors": errors.len(),
+    }))
+}
+
 /// Sync every session in the DB to the chats directory.
 /// Useful after a cold start to ensure files are up to date.
 #[tauri::command]

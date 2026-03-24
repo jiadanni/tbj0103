@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   Panel, PanelGroup, PanelResizeHandle,
@@ -7,7 +7,7 @@ import { Check, Columns2, Plus } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
 import ArtifactPanel from "./ArtifactPanel";
-import WindowControls, { onDragRegionDoubleClick, onDragRegionMouseDown } from "./WindowControls";
+import WindowControls, { onDragRegionMouseDown } from "./WindowControls";
 import { type NavigationPresentation, type PaneId, type PaneView, type SplitNavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 import { api } from "../lib/api";
 import { useHotkeys, type HotkeyBinding } from "../hooks/useHotkeys";
@@ -18,7 +18,7 @@ import {
   MessageSquare, Network, CreditCard,
   ChevronDown, FileText, Settings,
   BarChart2, LucideIcon,
-  Globe, FileEdit, Trash2, Brain, Inbox,
+  FileEdit, Trash2, Brain, Inbox,
 } from "lucide-react";
 
 const NAV_ITEMS: { path: string; icon: LucideIcon; label: string; key?: string }[] = [
@@ -26,9 +26,8 @@ const NAV_ITEMS: { path: string; icon: LucideIcon; label: string; key?: string }
   { path: "/chat",          icon: MessageSquare,          label: "Chat",            key: "C" },
   { path: "/memory",        icon: Brain,                  label: "Memory",          key: "M" },
   { path: "/notes",         icon: FileEdit,               label: "Notes",           key: "N" },
-  { path: "/thoughts",      icon: Inbox,                  label: "Thought Queue",   key: "T" },
-  { path: "/documents",     icon: FileText,               label: "Documents",       key: "O" },
-  { path: "/webcapture",    icon: Globe,                  label: "Web Captures",    key: "W" },
+  { path: "/thoughts",      icon: Inbox,                  label: "Queued Tasks",    key: "T" },
+  { path: "/sources",       icon: FileText,               label: "Sources",         key: "O" },
   { path: "/graph",         icon: Network,                label: "Knowledge Graph", key: "G" },
   { path: "/flashcards",    icon: CreditCard,             label: "Flashcards",      key: "F" },
   { path: "/recycle-bin",   icon: Trash2,                 label: "Recycle Bin",     key: "R" },
@@ -46,9 +45,8 @@ import KnowledgeGraphView from "../views/KnowledgeGraphView";
 import FlashcardReviewView from "../views/FlashcardReviewView";
 import ProjectDashboardView from "../views/ProjectDashboardView";
 import SettingsView from "../views/SettingsView";
-import DocumentBrowserView from "../views/DocumentBrowserView";
 import NoteEditorView from "../views/NoteEditorView";
-import WebCaptureView from "../views/WebCaptureView";
+import SourceBrowserView from "../views/SourceBrowserView";
 import ThoughtQueueView from "../views/ThoughtQueueView";
 import RecycleBinView from "../views/RecycleBinView";
 
@@ -63,10 +61,10 @@ function pathToPaneView(pathname: string): PaneView {
       return "memory";
     case "thoughts":
       return "thoughts";
+    case "sources":
     case "documents":
-      return "documents";
     case "webcapture":
-      return "webcapture";
+      return "sources";
     case "graph":
       return "graph";
     case "flashcards":
@@ -100,8 +98,9 @@ function MainRoutes() {
       <Route path="/memory" element={<MemoryView />} />
       <Route path="/notes" element={<NoteEditorView />} />
       <Route path="/thoughts" element={<ThoughtQueueView />} />
-      <Route path="/documents" element={<DocumentBrowserView />} />
-      <Route path="/webcapture" element={<WebCaptureView />} />
+      <Route path="/sources" element={<SourceBrowserView />} />
+      <Route path="/documents" element={<Navigate to="/sources" replace />} />
+      <Route path="/webcapture" element={<Navigate to="/sources" replace />} />
       <Route path="/graph" element={<KnowledgeGraphView />} />
       <Route path="/flashcards" element={<FlashcardReviewView />} />
       <Route path="/settings" element={<SettingsView />} />
@@ -122,10 +121,8 @@ function PaneViewRenderer({ view }: { view: PaneView }) {
       return <NoteEditorView />;
     case "thoughts":
       return <ThoughtQueueView />;
-    case "documents":
-      return <DocumentBrowserView />;
-    case "webcapture":
-      return <WebCaptureView />;
+    case "sources":
+      return <SourceBrowserView />;
     case "graph":
       return <KnowledgeGraphView />;
     case "flashcards":
@@ -293,6 +290,11 @@ function SplitWorkspaceSelector({
 }) {
   const { workspaces, panes, setPaneWorkspace } = useWorkspaceStore();
   const activeWorkspaceId = panes[paneId].workspaceId ?? "";
+  const activeTabRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeWorkspaceId]);
 
   if (mode === "dropdown") {
     return (
@@ -307,10 +309,11 @@ function SplitWorkspaceSelector({
   }
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
       {workspaces.map((workspace) => (
         <button
           key={`${paneId}-${workspace.id}`}
+          ref={activeWorkspaceId === workspace.id ? activeTabRef : undefined}
           onClick={() => setPaneWorkspace(paneId, workspace.id)}
           className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors ${
             activeWorkspaceId === workspace.id
@@ -333,11 +336,37 @@ function TopToolbar({
   workspaceNavigation: NavigationPresentation;
 }) {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces, setProjects, setWorkspaceTopicSignature, splitMode } = useWorkspaceStore();
-  const { splitWorkspaceNavigation, splitSizes, panes, workspaceNavigation: mainWorkspaceNavigation } = useWorkspaceStore();
+  const { splitWorkspaceNavigation, splitSizes, panes: _panes, workspaceNavigation: mainWorkspaceNavigation } = useWorkspaceStore();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [dragOverWsId, setDragOverWsId] = useState<string | null>(null);
   const resolvedSplitWorkspaceNavigation = resolveSplitNavigation(splitWorkspaceNavigation, mainWorkspaceNavigation, "dropdown");
+
+  const [overflowOpen, setOverflowOpen] = useState(false);
+
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // ~130px per tab, reserve ~200px for settings/split/window controls
+  const maxVisibleTabs = Math.max(2, Math.floor((windowWidth - 200) / 130));
+  const activeIdx = workspaces.findIndex(ws => ws.id === activeWorkspaceId);
+  const needsOverflow = workspaces.length > maxVisibleTabs;
+  const visibleWorkspaces = needsOverflow
+    ? (() => {
+        const visible = workspaces.slice(0, maxVisibleTabs);
+        if (activeIdx >= maxVisibleTabs) {
+          visible[maxVisibleTabs - 1] = workspaces[activeIdx];
+        }
+        return visible;
+      })()
+    : workspaces;
+  const overflowWorkspaces = needsOverflow
+    ? workspaces.filter(ws => !visibleWorkspaces.includes(ws))
+    : [];
 
   async function createWorkspace() {
     if (!newName.trim()) {return;}
@@ -376,15 +405,15 @@ function TopToolbar({
   }
 
   return (
-    <div data-tauri-drag-region onMouseDown={onDragRegionMouseDown} onDoubleClick={onDragRegionDoubleClick} className={`flex items-center h-11 pt-1 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] pr-2 shrink-0 ${isMac ? "pl-[78px]" : ""}`}>
-      <div className="flex items-center overflow-x-auto min-w-0 flex-1 px-3 gap-0.5">
+    <div className={`flex items-center h-11 pt-1 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] pr-2 shrink-0 ${isMac ? "pl-[78px]" : ""}`}>
+      <div className="flex items-center min-w-0 flex-1 px-3 gap-0.5">
         {splitMode ? (
           <div className="flex min-w-0 flex-1 items-center">
-            <div className="min-w-0 px-3" style={{ flexBasis: `${splitSizes[0]}%`, maxWidth: `${splitSizes[0]}%` }}>
+            <div className="flex min-w-0 px-3 overflow-hidden" style={{ flexBasis: `${splitSizes[0]}%`, maxWidth: `${splitSizes[0]}%` }}>
               <SplitWorkspaceSelector paneId="primary" mode={resolvedSplitWorkspaceNavigation} />
             </div>
             <div className="h-8 w-px bg-[var(--border-color)] shrink-0" />
-            <div className="min-w-0 px-3" style={{ flexBasis: `${splitSizes[1]}%`, maxWidth: `${splitSizes[1]}%` }}>
+            <div className="flex min-w-0 px-3 overflow-hidden" style={{ flexBasis: `${splitSizes[1]}%`, maxWidth: `${splitSizes[1]}%` }}>
               <SplitWorkspaceSelector paneId="secondary" mode={resolvedSplitWorkspaceNavigation} />
             </div>
           </div>
@@ -425,11 +454,13 @@ function TopToolbar({
           </div>
         ) : (
           <>
-            {workspaces.map((ws, idx) => (
+            {visibleWorkspaces.map((ws) => {
+              const originalIdx = workspaces.indexOf(ws);
+              return (
               <button
                 key={ws.id}
                 onClick={() => setActiveWorkspaceId(ws.id)}
-                title={idx < 9 ? `${ws.name} (${CTRL_KEY}+${idx + 1})` : ws.name}
+                title={originalIdx < 9 ? `${ws.name} (${CTRL_KEY}+${originalIdx + 1})` : ws.name}
                 onDragOver={(e) => {
                   if (e.dataTransfer.types.includes("application/x-chat-session-ids")) {
                     e.preventDefault();
@@ -439,7 +470,7 @@ function TopToolbar({
                 }}
                 onDragLeave={() => setDragOverWsId(null)}
                 onDrop={(e) => handleDrop(e, ws.id)}
-                className={`flex items-center gap-1.5 px-4 h-8 text-[13px] font-medium whitespace-nowrap transition-colors ${
+                className={`flex items-center gap-1.5 px-3 h-8 text-[13px] font-medium whitespace-nowrap transition-colors ${
                   dragOverWsId === ws.id
                     ? "rounded-md bg-[var(--accent-color)]/15 text-[var(--accent-color)] font-medium ring-1 ring-[var(--accent-color)]"
                     : activeWorkspaceId === ws.id
@@ -449,7 +480,45 @@ function TopToolbar({
               >
                 {ws.name}
               </button>
-            ))}
+              );
+            })}
+            {overflowWorkspaces.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setOverflowOpen(v => !v)}
+                  className="flex items-center gap-1 px-2 h-8 text-[13px] rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  <span>+{overflowWorkspaces.length}</span>
+                  <ChevronDown size={12} />
+                </button>
+                {overflowOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setOverflowOpen(false)} />
+                    <div className="absolute top-full right-0 mt-1 z-50 py-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg">
+                      {overflowWorkspaces.map((ws) => {
+                        const originalIdx = workspaces.indexOf(ws);
+                        return (
+                        <button
+                          key={ws.id}
+                          onClick={() => { setActiveWorkspaceId(ws.id); setOverflowOpen(false); }}
+                          className={`w-full text-left px-3 py-1.5 text-[13px] transition-colors ${
+                            activeWorkspaceId === ws.id
+                              ? "bg-[var(--accent-color)] text-white font-medium"
+                              : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                          }`}
+                        >
+                          {ws.name}
+                          {originalIdx < 9 && (
+                            <span className="ml-2 text-[11px] opacity-50">{CTRL_KEY}+{originalIdx + 1}</span>
+                          )}
+                        </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             {creating ? (
               <div className="flex items-center gap-1 ml-1">
                 <input
@@ -555,7 +624,7 @@ function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
     setPaneView,
     setProjects,
     setActivePaneId,
-    workspaceNavigation,
+    workspaceNavigation: _workspaceNavigation,
     sectionNavigation,
     splitSectionNavigation,
   } = useWorkspaceStore();
@@ -641,7 +710,7 @@ export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { workspaceNavigation, sectionNavigation, splitMode, setPaneView, setPaneChatSession, panes, workspaces } = useWorkspaceStore();
+  const { workspaceNavigation, sectionNavigation, splitMode, setPaneView: _setPaneView, setPaneChatSession: _setPaneChatSession, panes: _layoutPanes, workspaces: _workspaces } = useWorkspaceStore();
   const sidebarEnabled = workspaceNavigation === "sidebar" || sectionNavigation === "sidebar";
 
   const toggleSplitModeFromShell = React.useCallback(() => {
@@ -653,7 +722,7 @@ export default function Layout() {
       return;
     }
 
-    if (store.workspaces.length < 2) {
+    if (store.workspaces.length < 2 || window.innerWidth < 900) {
       return;
     }
 
@@ -752,8 +821,29 @@ export default function Layout() {
 
   useHotkeys(hotkeys);
 
+  // Auto-exit split mode when window is too narrow
+  const MIN_SPLIT_WIDTH = 900;
+  useEffect(() => {
+    function handleResize() {
+      if (window.innerWidth < MIN_SPLIT_WIDTH && useWorkspaceStore.getState().splitMode) {
+        const store = useWorkspaceStore.getState();
+        navigate(paneViewToPath(store.panes.primary.view, store.panes.primary.chatSessionId));
+        store.exitSplitMode();
+      }
+    }
+    window.addEventListener("resize", handleResize);
+    handleResize();
+    return () => window.removeEventListener("resize", handleResize);
+  }, [navigate]);
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
+      {/* Drag region: thin strip at top for window dragging, behind interactive elements */}
+      <div
+        data-tauri-drag-region
+        onMouseDown={onDragRegionMouseDown}
+        className="fixed top-0 left-0 right-0 h-3 z-50"
+      />
       {commandPaletteOpen && (
         <CommandPalette
           onClose={() => setCommandPaletteOpen(false)}

@@ -18,6 +18,7 @@ import {
   type BacklinkEntry,
   type ProjectNote,
   type LearningGoal,
+  type LearningCard,
   type AnalysisResult,
   type SuggestedGoal,
 } from "../lib/api";
@@ -147,6 +148,11 @@ export default function KnowledgeGraphView() {
   const [pagerankNodes, setPagerankNodes] = useState<{ id: string; name: string; score: number }[]>([]);
   const [communities, setCommunities] = useState<{ id: string; members: string[] }[]>([]);
 
+  // Concept flashcards
+  const [conceptCards, setConceptCards] = useState<LearningCard[]>([]);
+  const [isGeneratingCards, setIsGeneratingCards] = useState(false);
+  const [genCardError, setGenCardError] = useState("");
+
   // ── Load models ───────────────────────────────────────────────────────────
   useEffect(() => {
     api.aiModel.list()
@@ -167,6 +173,7 @@ export default function KnowledgeGraphView() {
         if (!names.includes(selectedModel)) {setSelectedModel(names[0] || "");}
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ollamaUrl]);
 
   // ── Load graph data ───────────────────────────────────────────────────────
@@ -181,6 +188,26 @@ export default function KnowledgeGraphView() {
   }, [activeWorkspaceId]);
 
   useEffect(() => { loadGraph(); }, [loadGraph]);
+
+  // ── Load flashcards linked to selected concept ──────────────────────────
+  useEffect(() => {
+    if (!selectedConcept) { setConceptCards([]); return; }
+    api.flashcard.listByConcept(selectedConcept.id).then(setConceptCards).catch(() => setConceptCards([]));
+  }, [selectedConcept]);
+
+  async function generateConceptCards() {
+    if (!selectedConcept || !activeWorkspaceId || !selectedModel || isGeneratingCards) {return;}
+    setIsGeneratingCards(true);
+    setGenCardError("");
+    try {
+      const cards = await api.flashcard.generateFromConcept(activeWorkspaceId, selectedConcept.id, selectedModel, 5, ollamaUrl);
+      setConceptCards((prev) => [...cards, ...prev]);
+    } catch (err) {
+      setGenCardError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsGeneratingCards(false);
+    }
+  }
 
   // ── Load existing goals when Insights tab opens ───────────────────────────
   useEffect(() => {
@@ -270,6 +297,7 @@ export default function KnowledgeGraphView() {
     });
 
     return () => { sim.stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredD3Nodes, links]);
 
   // ── AI: analyze workspace ─────────────────────────────────────────────────
@@ -297,6 +325,7 @@ export default function KnowledgeGraphView() {
     if (!newConceptName.trim() || !activeWorkspaceId) {return;}
     const concept = await api.graph.createConcept(activeWorkspaceId, newConceptName.trim(), {
       concept_type: newConceptType,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
     setNodes((prev) => [...prev, concept]);
     setNewConceptName("");
@@ -414,7 +443,9 @@ export default function KnowledgeGraphView() {
         nodes.map((n) => ({ id: n.id, name: n.name })),
         links.map((l) => ({ source: l.source_id, target: l.target_id })),
       );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sorted = [...result].sort((a: any, b: any) => b.score - a.score).slice(0, 10);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setPagerankNodes(sorted.map((r: any) => ({
         id: r.id,
         name: nodes.find((n) => n.id === r.id)?.name ?? r.id,
@@ -430,6 +461,7 @@ export default function KnowledgeGraphView() {
         nodes.map((n) => ({ id: n.id })),
         links.map((l) => ({ source: l.source_id, target: l.target_id })),
       );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setCommunities((result as any[]).slice(0, 6).map((c: any, i: number) => ({
         id: String(i),
         members: (c.members ?? []).map((mid: string) => nodes.find((n) => n.id === mid)?.name ?? mid),
@@ -442,6 +474,7 @@ export default function KnowledgeGraphView() {
       runPagerank();
       runCommunities();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, nodes.length]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -573,6 +606,37 @@ export default function KnowledgeGraphView() {
             </span>
             {selectedConcept.concept_description && (
               <p className="text-[10px] text-[var(--text-muted)] mb-2">{selectedConcept.concept_description}</p>
+            )}
+            {/* Flashcard integration */}
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                onClick={generateConceptCards}
+                disabled={isGeneratingCards || !selectedModel}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-[var(--border-color)] text-[var(--accent-color)] hover:bg-[var(--accent-color)]/10 disabled:opacity-40 transition-colors"
+              >
+                {isGeneratingCards ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                {isGeneratingCards ? "Generating..." : "Generate Cards"}
+              </button>
+              {conceptCards.length > 0 && (
+                <span className="text-[10px] text-[var(--text-muted)]">
+                  {conceptCards.length} card{conceptCards.length !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+            {genCardError && (
+              <p className="text-[10px] text-red-400 mb-2 leading-tight">{genCardError}</p>
+            )}
+            {conceptCards.length > 0 && (
+              <div className="mb-2 max-h-24 overflow-y-auto space-y-1">
+                {conceptCards.slice(0, 5).map((c) => (
+                  <div key={c.id} className="text-[10px] text-[var(--text-muted)] truncate px-1.5 py-0.5 bg-[var(--bg-hover)] rounded">
+                    {c.front}
+                  </div>
+                ))}
+                {conceptCards.length > 5 && (
+                  <div className="text-[10px] text-[var(--text-muted)] px-1.5">+{conceptCards.length - 5} more</div>
+                )}
+              </div>
             )}
             <button
               onClick={() => deleteConcept(selectedConcept.id)}

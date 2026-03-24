@@ -25,6 +25,8 @@ export interface Project {
   updated_at: string;
 }
 
+export type WorkspaceSortOrder = "name-asc" | "name-desc" | "created-newest" | "created-oldest" | "updated-newest" | "updated-oldest";
+
 export type PaneId = "primary" | "secondary";
 export type NavigationPresentation = "sidebar" | "top-tabs" | "top-dropdown";
 export type SplitNavigationPresentation = "match-main" | "tabs" | "dropdown";
@@ -34,6 +36,7 @@ export type PaneView =
   | "chat"
   | "memory"
   | "notes"
+  | "sources"
   | "documents"
   | "webcapture"
   | "graph"
@@ -111,15 +114,30 @@ function persistSplitLayout(state: Pick<WorkspaceStore, "splitMode" | "splitSize
   }));
 }
 
-function sortWorkspaces(workspaces: Workspace[]): Workspace[] {
+function sortWorkspaces(workspaces: Workspace[], order: WorkspaceSortOrder = "name-asc"): Workspace[] {
   return [...workspaces].sort((a, b) => {
-    const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
-    if (byName !== 0) {return byName;}
-
-    const byCreatedAt = a.created_at.localeCompare(b.created_at);
-    if (byCreatedAt !== 0) {return byCreatedAt;}
-
-    return a.id.localeCompare(b.id);
+    switch (order) {
+      case "name-asc":
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true })
+          || a.created_at.localeCompare(b.created_at)
+          || a.id.localeCompare(b.id);
+      case "name-desc":
+        return b.name.localeCompare(a.name, undefined, { sensitivity: "base", numeric: true })
+          || a.created_at.localeCompare(b.created_at)
+          || a.id.localeCompare(b.id);
+      case "created-newest":
+        return b.created_at.localeCompare(a.created_at)
+          || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+      case "created-oldest":
+        return a.created_at.localeCompare(b.created_at)
+          || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+      case "updated-newest":
+        return b.updated_at.localeCompare(a.updated_at)
+          || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+      case "updated-oldest":
+        return a.updated_at.localeCompare(b.updated_at)
+          || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+    }
   });
 }
 
@@ -134,6 +152,7 @@ interface WorkspaceStore {
   sectionNavigation: NavigationPresentation;
   splitWorkspaceNavigation: SplitNavigationPresentation;
   splitSectionNavigation: SplitNavigationPresentation;
+  workspaceSortOrder: WorkspaceSortOrder;
   activeTopicSignature: TopicSignature | null;
   migrationSuggestion: WorkspaceMatchResult | null;
   splitMode: boolean;
@@ -152,6 +171,7 @@ interface WorkspaceStore {
   setSectionNavigation: (layout: NavigationPresentation) => void;
   setSplitWorkspaceNavigation: (layout: SplitNavigationPresentation) => void;
   setSplitSectionNavigation: (layout: SplitNavigationPresentation) => void;
+  setWorkspaceSortOrder: (order: WorkspaceSortOrder) => void;
   setActiveTopicSignature: (sig: TopicSignature | null) => void;
   setWorkspaceTopicSignature: (workspaceId: string, sig: TopicSignature | null) => void;
   setMigrationSuggestion: (suggestion: WorkspaceMatchResult | null) => void;
@@ -213,6 +233,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     sectionNavigation: migratedNavigation.sectionNavigation,
     splitWorkspaceNavigation: readSplitNavigationSetting("splitWorkspaceNavigation", "match-main"),
     splitSectionNavigation: readSplitNavigationSetting("splitSectionNavigation", "match-main"),
+    workspaceSortOrder: (window.localStorage.getItem("workspaceSortOrder") as WorkspaceSortOrder | null) ?? "name-asc",
     activeTopicSignature: null,
     migrationSuggestion: null,
     splitMode: storedSplitLayout.splitMode,
@@ -220,7 +241,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     activePaneId: storedSplitLayout.activePaneId,
     panes: storedSplitLayout.panes,
     setWorkspaces: (workspaces) => set((state) => {
-      const sortedWorkspaces = sortWorkspaces(workspaces);
+      const sortedWorkspaces = sortWorkspaces(workspaces, state.workspaceSortOrder);
       let activeWorkspaceId = state.activeWorkspaceId;
       if (!activeWorkspaceId && sortedWorkspaces.length > 0) {
         activeWorkspaceId = sortedWorkspaces[0].id;
@@ -292,7 +313,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
       return { isDemoMode, activeWorkspaceId: nextWorkspaceId, panes };
     }),
-    addWorkspace: (ws) => set((s) => ({ workspaces: sortWorkspaces([...s.workspaces, ws]) })),
+    addWorkspace: (ws) => set((s) => ({ workspaces: sortWorkspaces([...s.workspaces, ws], s.workspaceSortOrder) })),
     addProject: (p) => set((s) => ({
       projects: p.workspace_id === s.activeWorkspaceId ? [...s.projects, p] : s.projects,
       projectsByWorkspace: {
@@ -324,6 +345,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     setSplitSectionNavigation: (splitSectionNavigation) => {
       window.localStorage.setItem("splitSectionNavigation", splitSectionNavigation);
       set({ splitSectionNavigation });
+    },
+    setWorkspaceSortOrder: (workspaceSortOrder) => {
+      window.localStorage.setItem("workspaceSortOrder", workspaceSortOrder);
+      set((state) => ({
+        workspaceSortOrder,
+        workspaces: sortWorkspaces(state.workspaces, workspaceSortOrder),
+      }));
     },
     setActiveTopicSignature: (activeTopicSignature) => set({ activeTopicSignature }),
     setWorkspaceTopicSignature: (workspaceId, sig) => set((state) => {

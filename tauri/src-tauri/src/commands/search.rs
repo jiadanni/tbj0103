@@ -123,12 +123,18 @@ pub fn semantic_search(state: State<DbState>, req: SearchRequest, query_embeddin
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let limit = req.limit.unwrap_or(10) as usize;
 
-    // Load all chunk embeddings for this workspace
+    // Load all chunk embeddings for this workspace (unified sources table first, fallback to legacy)
     let mut stmt = conn.prepare(
-        "SELECT dc.id, dc.document_id, dc.content, dc.embedding, d.filename
+        "SELECT sc.id, sc.source_id, sc.content, sc.embedding, s.title
+         FROM source_chunks sc
+         JOIN sources s ON sc.source_id = s.id
+         WHERE s.workspace_id = ?1 AND sc.embedding IS NOT NULL
+         UNION ALL
+         SELECT dc.id, dc.document_id, dc.content, dc.embedding, d.filename
          FROM document_chunks dc
          JOIN uploaded_documents d ON dc.document_id = d.id
-         WHERE d.workspace_id = ?1 AND dc.embedding IS NOT NULL"
+         WHERE d.workspace_id = ?1 AND dc.embedding IS NOT NULL
+         AND dc.document_id NOT IN (SELECT id FROM sources)"
     ).map_err(|e| e.to_string())?;
 
     let mut scored: Vec<(f64, SearchResult)> = stmt.query_map(rusqlite::params![workspace_id], |row| {

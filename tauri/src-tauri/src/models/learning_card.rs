@@ -51,6 +51,25 @@ pub struct GenerateCardsRequest {
     pub ollama_url: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateFromConceptRequest {
+    pub workspace_id: String,
+    pub concept_id: String,
+    pub count: Option<u32>,
+    pub model: String,
+    pub ollama_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractFlashcardsRequest {
+    pub workspace_id: String,
+    pub content: String,
+    pub source_type: String,
+    pub source_id: Option<String>,
+    pub model: String,
+    pub ollama_url: Option<String>,
+}
+
 impl LearningCard {
     pub fn new(workspace_id: impl Into<String>, front: impl Into<String>, back: impl Into<String>) -> Self {
         let now = chrono::Utc::now().to_rfc3339();

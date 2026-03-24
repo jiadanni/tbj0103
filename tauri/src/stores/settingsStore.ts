@@ -26,6 +26,7 @@ interface AppSettings {
   immediateDelete: boolean;
   confirmMoveToTrash: boolean;
   promptInstructions: string;
+  autoGenerateFlashcards: boolean;
 }
 
 interface SettingsStore extends AppSettings {
@@ -48,6 +49,7 @@ interface SettingsStore extends AppSettings {
   setImmediateDelete: (v: boolean) => void;
   setConfirmMoveToTrash: (v: boolean) => void;
   setPromptInstructions: (v: string) => void;
+  setAutoGenerateFlashcards: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -73,6 +75,7 @@ export const useSettingsStore = create<SettingsStore>()(
       immediateDelete: false,
       confirmMoveToTrash: true,
       promptInstructions: "",
+      autoGenerateFlashcards: false,
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
@@ -92,6 +95,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setImmediateDelete: (immediateDelete) => set({ immediateDelete }),
       setConfirmMoveToTrash: (confirmMoveToTrash) => set({ confirmMoveToTrash }),
       setPromptInstructions: (promptInstructions) => set({ promptInstructions }),
+      setAutoGenerateFlashcards: (autoGenerateFlashcards) => set({ autoGenerateFlashcards }),
     }),
     { name: "aetherium-settings" }
   )

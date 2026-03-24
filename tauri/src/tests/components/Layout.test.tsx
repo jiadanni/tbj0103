@@ -50,9 +50,8 @@ vi.mock("@/views/KnowledgeGraphView", () => ({ default: () => <div>Graph View</d
 vi.mock("@/views/FlashcardReviewView", () => ({ default: () => <div>Flashcards View</div> }));
 vi.mock("@/views/ProjectDashboardView", () => ({ default: () => <div>Project Dashboard</div> }));
 vi.mock("@/views/SettingsView", () => ({ default: () => <div>Settings View</div> }));
-vi.mock("@/views/DocumentBrowserView", () => ({ default: () => <div>Documents View</div> }));
 vi.mock("@/views/NoteEditorView", () => ({ default: () => <div>Notes View</div> }));
-vi.mock("@/views/WebCaptureView", () => ({ default: () => <div>Web Capture View</div> }));
+vi.mock("@/views/SourceBrowserView", () => ({ default: () => <div>Sources View</div> }));
 vi.mock("@/views/ThoughtQueueView", () => ({ default: () => <div>Thoughts View</div> }));
 vi.mock("@/views/RecycleBinView", () => ({ default: () => <div>Recycle Bin View</div> }));
 
@@ -88,8 +87,8 @@ describe("Layout", () => {
   it("exits split mode before opening settings from the global toolbar", () => {
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "ws-1", name: "Agentic", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, created_at: "", updated_at: "" },
-        { id: "ws-2", name: "Rust", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, created_at: "", updated_at: "" },
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, created_at: "", updated_at: "" },
       ],
       activeWorkspaceId: "ws-1",
       splitMode: true,
