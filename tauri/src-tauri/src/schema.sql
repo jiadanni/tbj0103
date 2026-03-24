@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     prompt_instructions TEXT NOT NULL DEFAULT '',
     topic_signature TEXT NOT NULL DEFAULT '{}',
     signature_updated_at TEXT,
+    is_archived INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

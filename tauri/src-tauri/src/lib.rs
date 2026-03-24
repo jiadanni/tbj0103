@@ -110,9 +110,12 @@ pub fn run() {
             // Workspace commands
             commands::workspace::create_workspace,
             commands::workspace::list_workspaces,
+            commands::workspace::list_archived_workspaces,
             commands::workspace::get_workspace,
             commands::workspace::update_workspace,
             commands::workspace::delete_workspace,
+            commands::workspace::archive_workspace,
+            commands::workspace::unarchive_workspace,
             // Project commands
             commands::project::create_project,
             commands::project::list_projects,
