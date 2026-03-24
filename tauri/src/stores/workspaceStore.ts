@@ -9,7 +9,7 @@ export interface Workspace {
   prompt_instructions: string;
   topic_signature: TopicSignature;
   signature_updated_at: string | null;
-  is_archived: boolean;
+  is_hidden: boolean;
   created_at: string;
   updated_at: string;
 }

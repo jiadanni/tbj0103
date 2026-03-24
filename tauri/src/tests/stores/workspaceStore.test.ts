@@ -61,7 +61,7 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
       ollama_enriched: false,
     },
     signature_updated_at: null,
-    is_archived: false,
+    is_hidden: false,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
     ...overrides,
