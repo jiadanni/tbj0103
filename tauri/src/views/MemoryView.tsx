@@ -85,76 +85,77 @@ export default function MemoryView() {
   const isWorkspaceDisabled = scopeTab === "workspace" && !activeWorkspaceId;
 
   return (
-    <div className="flex h-full overflow-hidden">
-      <div className="w-72 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] flex flex-col">
-        <div className="px-4 py-3 border-b border-[var(--border-color)]">
-          <div className="flex items-center gap-2 text-[var(--text-primary)]">
-            <Brain size={15} className="text-[var(--accent-color)]" />
-            <h2 className="text-sm font-semibold">Memory</h2>
-          </div>
-          <p className="mt-1 text-xs text-[var(--text-muted)]">
-            {scopeTab === "global"
-              ? "Facts and preferences shared across all workspaces."
-              : "Workspace-scoped facts, preferences, and context for this workspace."}
-          </p>
-        </div>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--bg-primary)]">
+      <div className="border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-6 py-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-2 text-[var(--text-primary)]">
+                <Brain size={18} className="text-[var(--accent-color)]" />
+                <h2 className="text-lg font-semibold">Memory</h2>
+              </div>
+              <p className="mt-2 text-sm text-[var(--text-muted)]">
+                {scopeTab === "global"
+                  ? "Facts and preferences shared across all workspaces."
+                  : "Workspace-scoped facts, preferences, and context for this workspace."}
+              </p>
+            </div>
 
-        {/* Scope tabs */}
-        <div className="flex border-b border-[var(--border-color)]">
-          <button
-            onClick={() => setScopeTab("workspace")}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors ${
-              scopeTab === "workspace"
-                ? "text-[var(--accent-color)] border-b-2 border-[var(--accent-color)]"
-                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-            }`}
-          >
-            <Layers size={13} />
-            Workspace
-          </button>
-          <button
-            onClick={() => setScopeTab("global")}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors ${
-              scopeTab === "global"
-                ? "text-[var(--accent-color)] border-b-2 border-[var(--accent-color)]"
-                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-            }`}
-          >
-            <Globe size={13} />
-            Global
-          </button>
-        </div>
+            <div className="grid grid-cols-3 gap-3 text-center lg:w-[360px]">
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+                <div className="text-lg font-semibold text-[var(--text-primary)]">{counts.total}</div>
+                <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Total</div>
+              </div>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+                <div className="text-lg font-semibold text-[var(--text-primary)]">{counts.active}</div>
+                <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Active</div>
+              </div>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+                <div className="text-lg font-semibold text-[var(--text-primary)]">{counts.pinned}</div>
+                <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Pinned</div>
+              </div>
+            </div>
+          </div>
 
-        <div className="grid grid-cols-3 gap-2 px-4 py-3 border-b border-[var(--border-color)] text-center">
-          <div className="rounded-lg bg-[var(--bg-elevated)] p-2">
-            <div className="text-sm font-semibold text-[var(--text-primary)]">{counts.total}</div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Total</div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setScopeTab("workspace")}
+              className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${
+                scopeTab === "workspace"
+                  ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)]"
+                  : "border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+              }`}
+            >
+              <Layers size={13} />
+              Workspace
+            </button>
+            <button
+              onClick={() => setScopeTab("global")}
+              className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${
+                scopeTab === "global"
+                  ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)]"
+                  : "border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+              }`}
+            >
+              <Globe size={13} />
+              Global
+            </button>
           </div>
-          <div className="rounded-lg bg-[var(--bg-elevated)] p-2">
-            <div className="text-sm font-semibold text-[var(--text-primary)]">{counts.active}</div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Active</div>
-          </div>
-          <div className="rounded-lg bg-[var(--bg-elevated)] p-2">
-            <div className="text-sm font-semibold text-[var(--text-primary)]">{counts.pinned}</div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Pinned</div>
-          </div>
-        </div>
 
-        <div className="p-4 space-y-3">
-          <textarea
-            value={newContent}
-            onChange={(e) => setNewContent(e.target.value)}
-            placeholder={scopeTab === "global"
-              ? "Add something worth remembering across all workspaces..."
-              : "Add something worth remembering about this workspace..."}
-            rows={4}
-            className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-          />
-          <div className="relative">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+            <textarea
+              value={newContent}
+              onChange={(e) => setNewContent(e.target.value)}
+              placeholder={scopeTab === "global"
+                ? "Add something worth remembering across all workspaces..."
+                : "Add something worth remembering about this workspace..."}
+              rows={4}
+              className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+            />
             <select
               value={newType}
-              onChange={(e) => setNewType(e.target.value)}
-              className="h-10 w-full appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+              onChange={(e) => setNewType(e.target.value as Memory["memory_type"])}
+              className="h-11 w-full appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
             >
               {MEMORY_TYPES.map((type) => (
                 <option key={type} value={type}>
@@ -162,19 +163,19 @@ export default function MemoryView() {
                 </option>
               ))}
             </select>
+            <button
+              onClick={createMemory}
+              disabled={submitting || !newContent.trim() || isWorkspaceDisabled}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              <Plus size={14} />
+              {submitting ? "Saving..." : "Add memory"}
+            </button>
           </div>
-          <button
-            onClick={createMemory}
-            disabled={submitting || !newContent.trim() || isWorkspaceDisabled}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-color)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-          >
-            <Plus size={14} />
-            {submitting ? "Saving..." : "Add memory"}
-          </button>
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {isWorkspaceDisabled ? (
           <div className="flex h-full items-center justify-center text-sm text-[var(--text-muted)]">
             Select a workspace to view workspace memory.
@@ -194,7 +195,7 @@ export default function MemoryView() {
             </div>
           </div>
         ) : (
-          <div className="p-5 space-y-3">
+          <div className="mx-auto w-full max-w-7xl space-y-3 px-6 py-6">
             {memories.map((memory) => (
               <div
                 key={memory.id}

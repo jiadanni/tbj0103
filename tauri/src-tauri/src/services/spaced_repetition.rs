@@ -94,7 +94,7 @@ mod tests {
     fn make_card() -> LearningCard {
         LearningCard {
             id: "test".to_string(),
-            project_id: "proj".to_string(),
+            workspace_id: "ws".to_string(),
             front: "Q".to_string(),
             back: "A".to_string(),
             source_type: "manual".to_string(),

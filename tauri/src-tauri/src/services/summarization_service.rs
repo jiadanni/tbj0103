@@ -1,5 +1,6 @@
 use crate::db::DbState;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
+use crate::services::model_settings::get_configured_chat_model;
 
 pub async fn generate_rolling_summary(
     state: &DbState,
@@ -48,11 +49,14 @@ pub async fn generate_rolling_summary(
 
     let msgs = vec![OllamaMessage { role: "user".to_string(), content: prompt }];
     
-    // Get default model or fallback
+    // Use the configured background/chat model and skip quietly if none is available.
     let model = {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
-        conn.query_row("SELECT model_id FROM ai_models WHERE enabled = 1 ORDER BY priority ASC LIMIT 1", [], |row| row.get::<_, String>(0))
-            .unwrap_or_else(|_| "llama3.2".to_string())
+        get_configured_chat_model(&conn)
+    };
+
+    let Some(model) = model else {
+        return Ok(());
     };
 
     if let Ok(summary_content) = client.send_message(&model, msgs).await {

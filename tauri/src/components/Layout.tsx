@@ -3,6 +3,7 @@ import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-
 import {
   Panel, PanelGroup, PanelResizeHandle,
 } from "react-resizable-panels";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { Check, Columns2, Plus } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
@@ -19,7 +20,7 @@ import {
   MessageSquare, Network, CreditCard,
   ChevronDown, FileText, Settings,
   BarChart2, LucideIcon,
-  FileEdit, Trash2, Brain,
+  FileEdit, Trash2, Brain, Pencil,
 } from "lucide-react";
 
 const NAV_ITEMS: { path: string; icon: LucideIcon; label: string; key?: string }[] = [
@@ -252,6 +253,94 @@ function SelectMenu({
   );
 }
 
+type WorkspaceTabMenuState = {
+  workspaceId: string;
+  x: number;
+  y: number;
+};
+
+function WorkspaceTabContextMenu({
+  x,
+  y,
+  canDelete,
+  onClose,
+  onRename,
+  onManage,
+  onDelete,
+}: {
+  x: number;
+  y: number;
+  canDelete: boolean;
+  onClose: () => void;
+  onRename: () => void;
+  onManage: () => void;
+  onDelete: () => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="fixed z-[70] min-w-[180px] overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
+      style={{ left: x, top: y }}
+    >
+      <button
+        onClick={() => {
+          onRename();
+          onClose();
+        }}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
+      >
+        <Pencil size={11} />
+        Rename
+      </button>
+      <button
+        onClick={() => {
+          onManage();
+          onClose();
+        }}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
+      >
+        <Settings size={11} />
+        Manage Workspaces
+      </button>
+      <div className="my-1 border-t border-[var(--border-color)]" />
+      <button
+        onClick={() => {
+          onDelete();
+          onClose();
+        }}
+        disabled={!canDelete}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Trash2 size={11} />
+        Delete
+      </button>
+    </div>
+  );
+}
+
 function GlobalSettingsButton() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -334,11 +423,15 @@ function TopToolbar({
   onToggleSplit: () => void;
   workspaceNavigation: NavigationPresentation;
 }) {
+  const navigate = useNavigate();
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces, setProjectsForWorkspace, setWorkspaceTopicSignature, splitMode } = useWorkspaceStore();
   const { splitWorkspaceNavigation, splitSizes, panes: _panes, workspaceNavigation: mainWorkspaceNavigation } = useWorkspaceStore();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [dragOverWsId, setDragOverWsId] = useState<string | null>(null);
+  const [tabMenu, setTabMenu] = useState<WorkspaceTabMenuState | null>(null);
+  const [renamingWorkspaceId, setRenamingWorkspaceId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const resolvedSplitWorkspaceNavigation = resolveSplitNavigation(splitWorkspaceNavigation, mainWorkspaceNavigation, "dropdown");
 
   const [overflowOpen, setOverflowOpen] = useState(false);
@@ -375,6 +468,74 @@ function TopToolbar({
     setNewName("");
     setCreating(false);
   }
+
+  async function renameWorkspace() {
+    if (!renamingWorkspaceId) {
+      return;
+    }
+
+    const trimmedName = renameValue.trim();
+    if (!trimmedName) {
+      setRenamingWorkspaceId(null);
+      setRenameValue("");
+      return;
+    }
+
+    const workspace = workspaces.find((item) => item.id === renamingWorkspaceId);
+    if (!workspace) {
+      setRenamingWorkspaceId(null);
+      setRenameValue("");
+      return;
+    }
+
+    await api.workspace.update(
+      renamingWorkspaceId,
+      trimmedName,
+      workspace.description,
+      workspace.prompt_instructions
+    );
+
+    setWorkspaces(
+      workspaces.map((item) =>
+        item.id === renamingWorkspaceId ? { ...item, name: trimmedName } : item
+      )
+    );
+    setRenamingWorkspaceId(null);
+    setRenameValue("");
+  }
+
+  function openWorkspaceMenu(event: React.MouseEvent, workspaceId: string) {
+    event.preventDefault();
+    setOverflowOpen(false);
+    setTabMenu({
+      workspaceId,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
+  async function deleteWorkspace(workspaceId: string) {
+    const workspace = workspaces.find((item) => item.id === workspaceId);
+    if (!workspace || workspaces.length <= 1) {
+      return;
+    }
+
+    const shouldDelete = await confirm(`Delete "${workspace.name}" and all its projects, notes, and data? This cannot be undone.`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    await api.workspace.delete(workspaceId);
+    const remaining = workspaces.filter((item) => item.id !== workspaceId);
+    setWorkspaces(remaining);
+    if (activeWorkspaceId === workspaceId) {
+      setActiveWorkspaceId(remaining[0]?.id ?? null);
+    }
+  }
+
+  const menuWorkspace = tabMenu
+    ? workspaces.find((workspace) => workspace.id === tabMenu.workspaceId) ?? null
+    : null;
 
   async function handleDrop(e: React.DragEvent, targetWsId: string) {
     e.preventDefault();
@@ -464,6 +625,7 @@ function TopToolbar({
               <button
                 key={ws.id}
                 onClick={() => setActiveWorkspaceId(ws.id)}
+                onContextMenu={(event) => openWorkspaceMenu(event, ws.id)}
                 title={originalIdx < 9 ? `${ws.name} (${CTRL_KEY}+${originalIdx + 1})` : ws.name}
                 onDragOver={(e) => {
                   if (e.dataTransfer.types.includes("application/x-chat-session-ids")) {
@@ -505,6 +667,7 @@ function TopToolbar({
                         <button
                           key={ws.id}
                           onClick={() => { setActiveWorkspaceId(ws.id); setOverflowOpen(false); }}
+                          onContextMenu={(event) => openWorkspaceMenu(event, ws.id)}
                           className={`w-full text-left px-3 py-1.5 text-[13px] transition-colors ${
                             activeWorkspaceId === ws.id
                               ? "bg-[var(--accent-color)] text-white font-medium"
@@ -557,6 +720,64 @@ function TopToolbar({
         <SplitToolbarButton onToggle={onToggleSplit} />
       </div>
       <WindowControls />
+      {tabMenu && menuWorkspace && (
+        <WorkspaceTabContextMenu
+          x={tabMenu.x}
+          y={tabMenu.y}
+          canDelete={workspaces.length > 1}
+          onClose={() => setTabMenu(null)}
+          onRename={() => {
+            setRenamingWorkspaceId(menuWorkspace.id);
+            setRenameValue(menuWorkspace.name);
+          }}
+          onManage={() => navigate("/settings", { state: { settingsTab: "workspaces" } })}
+          onDelete={() => void deleteWorkspace(menuWorkspace.id)}
+        />
+      )}
+      {renamingWorkspaceId && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5 shadow-2xl">
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold text-[var(--text-primary)]">Rename workspace</h2>
+              <p className="text-sm text-[var(--text-secondary)]">Update the name shown in the workspace tabs.</p>
+            </div>
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void renameWorkspace();
+                }
+                if (event.key === "Escape") {
+                  setRenamingWorkspaceId(null);
+                  setRenameValue("");
+                }
+              }}
+              placeholder="Workspace name"
+              className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setRenamingWorkspaceId(null);
+                  setRenameValue("");
+                }}
+                className="flex-1 rounded-lg border border-[var(--border-color)] py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void renameWorkspace()}
+                disabled={!renameValue.trim()}
+                className="flex-1 rounded-lg bg-[var(--accent-color)] py-2 text-sm text-white hover:opacity-90 disabled:opacity-40"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
