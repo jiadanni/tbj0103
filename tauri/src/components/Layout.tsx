@@ -515,6 +515,7 @@ function TopToolbar({
 
   function openWorkspaceMenu(event: React.MouseEvent, workspaceId: string) {
     event.preventDefault();
+    event.stopPropagation();
     setOverflowOpen(false);
     setTabMenu({
       workspaceId,
@@ -647,8 +648,10 @@ function TopToolbar({
               return (
               <button
                 key={ws.id}
+                data-no-drag
                 onClick={() => setActiveWorkspaceId(ws.id)}
                 onContextMenu={(event) => openWorkspaceMenu(event, ws.id)}
+                onMouseDown={(event) => { if (event.button === 2) { openWorkspaceMenu(event, ws.id); } }}
                 title={originalIdx < 9 ? `${ws.name} (${CTRL_KEY}+${originalIdx + 1})` : ws.name}
                 onDragOver={(e) => {
                   if (e.dataTransfer.types.includes("application/x-chat-session-ids")) {
@@ -689,8 +692,10 @@ function TopToolbar({
                         return (
                         <button
                           key={ws.id}
+                          data-no-drag
                           onClick={() => { setActiveWorkspaceId(ws.id); setOverflowOpen(false); }}
                           onContextMenu={(event) => openWorkspaceMenu(event, ws.id)}
+                          onMouseDown={(event) => { if (event.button === 2) { openWorkspaceMenu(event, ws.id); } }}
                           className={`w-full text-left px-3 py-1.5 text-[13px] transition-colors ${
                             activeWorkspaceId === ws.id
                               ? "bg-[var(--accent-color)] text-white font-medium"
