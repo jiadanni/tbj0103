@@ -10,8 +10,8 @@ pub fn create_workspace(state: State<DbState>, req: CreateWorkspaceRequest) -> R
     let sig_json = serde_json::to_string(&ws.topic_signature).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, signature_updated_at, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        rusqlite::params![ws.id, ws.name, ws.description, ws.prompt_instructions, sig_json, ws.signature_updated_at, ws.created_at, ws.updated_at],
+        "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_archived, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![ws.id, ws.name, ws.description, ws.prompt_instructions, sig_json, ws.signature_updated_at, ws.is_archived as i64, ws.created_at, ws.updated_at],
     ).map_err(|e| e.to_string())?;
     Ok(ws)
 }
@@ -20,13 +20,15 @@ pub fn create_workspace(state: State<DbState>, req: CreateWorkspaceRequest) -> R
 pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, created_at, updated_at
+        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_archived, created_at, updated_at
          FROM workspaces
+         WHERE is_archived = 0
          ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
     ).map_err(|e| e.to_string())?;
     let items = stmt.query_map([], |row| {
         let sig_json: String = row.get(4)?;
         let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
+        let is_archived: i64 = row.get(6)?;
         Ok(Workspace {
             id: row.get(0)?,
             name: row.get(1)?,
@@ -34,8 +36,39 @@ pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> 
             prompt_instructions: row.get(3)?,
             topic_signature,
             signature_updated_at: row.get(5)?,
-            created_at: row.get(6)?,
-            updated_at: row.get(7)?,
+            is_archived: is_archived != 0,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn list_archived_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_archived, created_at, updated_at
+         FROM workspaces
+         WHERE is_archived = 1
+         ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt.query_map([], |row| {
+        let sig_json: String = row.get(4)?;
+        let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
+        let is_archived: i64 = row.get(6)?;
+        Ok(Workspace {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            prompt_instructions: row.get(3)?,
+            topic_signature,
+            signature_updated_at: row.get(5)?,
+            is_archived: is_archived != 0,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
         })
     }).map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>()
@@ -47,11 +80,12 @@ pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> 
 pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspace>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, created_at, updated_at FROM workspaces WHERE id = ?1",
+        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_archived, created_at, updated_at FROM workspaces WHERE id = ?1",
         rusqlite::params![id],
         |row| {
             let sig_json: String = row.get(4)?;
             let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
+            let is_archived: i64 = row.get(6)?;
             Ok(Workspace {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -59,8 +93,9 @@ pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspa
                 prompt_instructions: row.get(3)?,
                 topic_signature,
                 signature_updated_at: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                is_archived: is_archived != 0,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
             })
         },
     );
@@ -69,6 +104,28 @@ pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspa
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
+}
+
+#[tauri::command]
+pub fn archive_workspace(state: State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE workspaces SET is_archived = 1, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn unarchive_workspace(state: State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE workspaces SET is_archived = 0, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]

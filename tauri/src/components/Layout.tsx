@@ -20,7 +20,7 @@ import {
   MessageSquare, Network, CreditCard,
   ChevronDown, FileText, Settings,
   BarChart2, LucideIcon,
-  FileEdit, Trash2, Brain, Pencil,
+  FileEdit, Trash2, Brain, Pencil, Archive,
 } from "lucide-react";
 
 const NAV_ITEMS: { path: string; icon: LucideIcon; label: string; key?: string }[] = [
@@ -266,6 +266,7 @@ function WorkspaceTabContextMenu({
   onClose,
   onRename,
   onManage,
+  onArchive,
   onDelete,
 }: {
   x: number;
@@ -274,6 +275,7 @@ function WorkspaceTabContextMenu({
   onClose: () => void;
   onRename: () => void;
   onManage: () => void;
+  onArchive: () => void;
   onDelete: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -326,6 +328,16 @@ function WorkspaceTabContextMenu({
         Manage Workspaces
       </button>
       <div className="my-1 border-t border-[var(--border-color)]" />
+      <button
+        onClick={() => {
+          onArchive();
+          onClose();
+        }}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
+      >
+        <Archive size={11} />
+        Archive
+      </button>
       <button
         onClick={() => {
           onDelete();
@@ -512,6 +524,20 @@ function TopToolbar({
       x: event.clientX,
       y: event.clientY,
     });
+  }
+
+  async function archiveWorkspace(workspaceId: string) {
+    const workspace = workspaces.find((item) => item.id === workspaceId);
+    if (!workspace || workspaces.length <= 1) {
+      return;
+    }
+
+    await api.workspace.archive(workspaceId);
+    const remaining = workspaces.filter((item) => item.id !== workspaceId);
+    setWorkspaces(remaining);
+    if (activeWorkspaceId === workspaceId) {
+      setActiveWorkspaceId(remaining[0]?.id ?? null);
+    }
   }
 
   async function deleteWorkspace(workspaceId: string) {
@@ -731,6 +757,7 @@ function TopToolbar({
             setRenameValue(menuWorkspace.name);
           }}
           onManage={() => navigate("/settings", { state: { settingsTab: "workspaces" } })}
+          onArchive={() => void archiveWorkspace(menuWorkspace.id)}
           onDelete={() => void deleteWorkspace(menuWorkspace.id)}
         />
       )}
