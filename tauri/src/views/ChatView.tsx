@@ -36,16 +36,17 @@ interface SessionItemProps {
   setRenameTitle: (title: string) => void;
   setActiveChatId: (id: string) => void;
   renameSession: (id: string) => void;
+  refreshSessionTitle: (session: ChatSession) => void;
   togglePin: (session: ChatSession) => void;
   saveSession: (session: ChatSession) => void;
   deleteSession: (id: string) => void;
 }
 
 interface SessionSidebarProps {
-  sessions: ChatSession[];
-  pinnedSessions: ChatSession[];
-  unpinnedSessions: ChatSession[];
-  filteredSessions: ChatSession[];
+  sidebarSessions: ChatSession[];
+  projects: Project[];
+  activeProjectId: string | null;
+  setActiveProjectId: (projectId: string | null) => void;
   activeProject: Project | null;
   sessionQuery: string;
   setSessionQuery: (q: string) => void;
@@ -63,6 +64,7 @@ interface SessionSidebarProps {
   setRenameTitle: (title: string) => void;
   setActiveChatId: (id: string) => void;
   renameSession: (id: string) => void;
+  refreshSessionTitle: (session: ChatSession) => void;
   togglePin: (session: ChatSession) => void;
   saveSession: (session: ChatSession) => void;
   deleteSession: (id: string) => void;
@@ -71,7 +73,7 @@ interface SessionSidebarProps {
 function SessionItem({
   session, activeChatId, renamingId, renameTitle,
   setRenamingId, setRenameTitle, setActiveChatId,
-  renameSession, togglePin, saveSession, deleteSession,
+  renameSession, refreshSessionTitle, togglePin, saveSession, deleteSession,
 }: SessionItemProps) {
   const isSplitPane = useWorkspacePane() !== null;
   const isActive = activeChatId === session.id;
@@ -136,6 +138,13 @@ function SessionItem({
           </button>
         )}
         <button
+          onClick={(e) => { e.stopPropagation(); refreshSessionTitle(session); }}
+          className={`rounded hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "p-1" : "p-0.5"}`}
+          title="Refresh chat name"
+        >
+          <RefreshCw size={isSplitPane ? 12 : 10} />
+        </button>
+        <button
           onClick={(e) => { e.stopPropagation(); togglePin(session); }}
           className={`rounded hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "p-1" : "p-0.5"}`}
           title={session.is_pinned ? "Unpin" : "Pin"}
@@ -161,21 +170,57 @@ function SessionItem({
 }
 
 function SessionSidebar({
-  sessions, pinnedSessions, unpinnedSessions, filteredSessions,
-  activeProject, sessionQuery, setSessionQuery,
+  sidebarSessions, projects, activeProjectId, setActiveProjectId,
+  activeProject: _activeProject, sessionQuery, setSessionQuery,
   creatingFolder, setCreatingFolder, newFolderName, setNewFolderName,
   folderInputRef, handleCreateFolder, createNewSession,
   activeChatId, renamingId, renameTitle, setRenamingId, setRenameTitle,
-  setActiveChatId, renameSession, togglePin, saveSession, deleteSession,
+  setActiveChatId, renameSession, refreshSessionTitle, togglePin, saveSession, deleteSession,
 }: SessionSidebarProps) {
   const isSplitPane = useWorkspacePane() !== null;
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const cancelCreateFolder = () => {
+    setCreatingFolder(false);
+    setNewFolderName("");
+  };
+  const visibleSessions = sidebarSessions;
+  const byProject: Record<string, ChatSession[]> = {};
+  const ungrouped: ChatSession[] = [];
+
+  visibleSessions.forEach((session) => {
+    if (session.project_id) {
+      (byProject[session.project_id] ??= []).push(session);
+    } else {
+      ungrouped.push(session);
+    }
+  });
+
+  function renderSessionList(items: ChatSession[]) {
+    return items.map((session) => (
+      <SessionItem
+        key={session.id}
+        session={session}
+        activeChatId={activeChatId}
+        renamingId={renamingId}
+        renameTitle={renameTitle}
+        setRenamingId={setRenamingId}
+        setRenameTitle={setRenameTitle}
+        setActiveChatId={setActiveChatId}
+        renameSession={renameSession}
+        refreshSessionTitle={refreshSessionTitle}
+        togglePin={togglePin}
+        saveSession={saveSession}
+        deleteSession={deleteSession}
+      />
+    ));
+  }
 
   return (
     <div className={`relative z-10 border-r border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)] overflow-hidden shrink-0 ${isSplitPane ? "w-64" : "w-56"}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)]">
         <span className={`font-medium text-[var(--text-secondary)] truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>
-          {activeProject?.name ?? "Conversations"}
+          Conversations
         </span>
         <div className="flex items-center gap-0.5">
           <button
@@ -245,89 +290,98 @@ function SessionSidebar({
               e.stopPropagation();
               if (e.key === "Enter") {
                 e.preventDefault();
-                handleCreateFolder(e.currentTarget.value);
+                void handleCreateFolder(e.currentTarget.value);
               }
               if (e.key === "Escape") {
                 e.preventDefault();
-                setCreatingFolder(false);
-                setNewFolderName("");
+                cancelCreateFolder();
               }
             }}
             onClick={(e) => e.stopPropagation()}
             placeholder="Folder name…"
             className={`flex-1 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}
           />
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void handleCreateFolder(folderInputRef.current?.value)}
+            className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+            title="Create folder"
+          >
+            <Check size={isSplitPane ? 13 : 12} />
+          </button>
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={cancelCreateFolder}
+            className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+            title="Cancel folder creation"
+          >
+            <X size={isSplitPane ? 13 : 12} />
+          </button>
         </div>
       )}
 
       {/* Session list */}
       <div className="flex-1 overflow-y-auto">
-        {filteredSessions.length === 0 && sessions.length === 0 ? (
+        {visibleSessions.length === 0 && projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-3">
             <MessageSquare size={isSplitPane ? 22 : 20} className="text-[var(--text-muted)] opacity-30" />
             <p className={`text-[var(--text-muted)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}>No conversations yet</p>
           </div>
-        ) : filteredSessions.length === 0 ? (
+        ) : sessionQuery.trim() && visibleSessions.length === 0 ? (
           <p className={`px-3 py-4 text-[var(--text-muted)] text-center ${isSplitPane ? "text-xs" : "text-[11px]"}`}>No matches</p>
         ) : (
           <>
-            {pinnedSessions.length > 0 && (
+            {ungrouped.length > 0 && (
               <>
-                <div className={`px-3 py-1 uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-sidebar)] ${isSplitPane ? "text-[11px]" : "text-[10px]"}`}>
-                  Pinned
+                <button
+                  onClick={() => setActiveProjectId(null)}
+                  className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${
+                    activeProjectId === null
+                      ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  <MessageSquare size={isSplitPane ? 14 : 13} className="text-[var(--text-muted)] shrink-0" />
+                  <span className={`truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>All Conversations</span>
+                </button>
+                {renderSessionList(ungrouped)}
+              </>
+            )}
+            {projects.map((project) => {
+              const projectSessions = byProject[project.id] ?? [];
+              const isOpen = expanded[project.id] ?? true;
+              return (
+                <div key={project.id}>
+                  <button
+                    onClick={() => {
+                      setActiveProjectId(project.id);
+                      if (activeProjectId === project.id) {
+                        setExpanded((prev) => ({ ...prev, [project.id]: !isOpen }));
+                      }
+                    }}
+                    className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${
+                      activeProjectId === project.id
+                        ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
+                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    <Folder size={isSplitPane ? 14 : 13} className="text-[var(--text-muted)] shrink-0" />
+                    <span className={`flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{project.name}</span>
+                    <ChevronDown size={12} className={`text-[var(--text-muted)] transition-transform ${isOpen ? "" : "-rotate-90"}`} />
+                  </button>
+                  {isOpen && renderSessionList(projectSessions)}
                 </div>
-                {pinnedSessions.map((s) => (
-                  <SessionItem
-                    key={s.id}
-                    session={s}
-                    activeChatId={activeChatId}
-                    renamingId={renamingId}
-                    renameTitle={renameTitle}
-                    setRenamingId={setRenamingId}
-                    setRenameTitle={setRenameTitle}
-                    setActiveChatId={setActiveChatId}
-                    renameSession={renameSession}
-                    togglePin={togglePin}
-                    saveSession={saveSession}
-                    deleteSession={deleteSession}
-                  />
-                ))}
-              </>
-            )}
-            {unpinnedSessions.length > 0 && (
-              <>
-                {pinnedSessions.length > 0 && (
-                  <div className={`px-3 py-1 uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-sidebar)] ${isSplitPane ? "text-[11px]" : "text-[10px]"}`}>
-                    All
-                  </div>
-                )}
-                {unpinnedSessions.map((s) => (
-                  <SessionItem
-                    key={s.id}
-                    session={s}
-                    activeChatId={activeChatId}
-                    renamingId={renamingId}
-                    renameTitle={renameTitle}
-                    setRenamingId={setRenamingId}
-                    setRenameTitle={setRenameTitle}
-                    setActiveChatId={setActiveChatId}
-                    renameSession={renameSession}
-                    togglePin={togglePin}
-                    saveSession={saveSession}
-                    deleteSession={deleteSession}
-                  />
-                ))}
-              </>
-            )}
+              );
+            })}
           </>
         )}
       </div>
 
       {/* Footer stats */}
-      {sessions.length > 0 && (
+      {sidebarSessions.length > 0 && (
         <div className="px-3 py-1.5 border-t border-[var(--border-color)] shrink-0">
           <p className={`text-[var(--text-muted)] ${isSplitPane ? "text-[11px]" : "text-[10px]"}`}>
-            {sessions.length} session{sessions.length !== 1 ? "s" : ""}{pinnedSessions.length > 0 ? ` · ${pinnedSessions.length} pinned` : ""}
+            {sidebarSessions.length} session{sidebarSessions.length !== 1 ? "s" : ""}{sidebarSessions.some((session) => session.is_pinned) ? ` · ${sidebarSessions.filter((session) => session.is_pinned).length} pinned` : ""}
           </p>
         </div>
       )}
@@ -368,7 +422,7 @@ export default function ChatView() {
   const { activeChatId, setActiveChatId } = useScopedChat();
 
   const { 
-    activeProjectId, activeWorkspaceId,
+    activeProjectId, activeWorkspaceId, setProjectsForWorkspace,
   } = useWorkspaceStore();
   const {
     activeProjectId: scopedProjectId,
@@ -391,6 +445,7 @@ export default function ChatView() {
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [sidebarSessions, setSidebarSessions] = useState<ChatSession[]>([]);
   const [selectedModel, setSelectedModel] = useState(preferredModel || "");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
@@ -464,15 +519,17 @@ export default function ChatView() {
 
   async function handleCreateFolder(nameOverride?: string) {
     const folderName = (nameOverride ?? newFolderName).trim();
+    const previousProjectId = effectiveProjectId;
     if (!folderName || !effectiveWorkspaceId) {
       setCreatingFolder(false);
       setNewFolderName("");
       return;
     }
     try {
-      const p = await api.project.create(effectiveWorkspaceId, folderName);
-      useWorkspaceStore.getState().addProject(p);
-      setScopedProjectId(p.id);
+      await api.project.create(effectiveWorkspaceId, folderName);
+      const refreshedProjects = await api.project.list(effectiveWorkspaceId);
+      setProjectsForWorkspace(effectiveWorkspaceId, refreshedProjects);
+      setScopedProjectId(previousProjectId);
     } catch (e) {
       console.error(e);
     }
@@ -584,6 +641,7 @@ export default function ChatView() {
   const [compareResponseB, setCompareResponseB] = useState("");
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
+  const [emptyStatePrivacyMode, setEmptyStatePrivacyMode] = useState<"standard" | "incognito" | "exclude">("standard");
   const [compareModels, setCompareModels] = useState<OllamaModel[]>([]);
 
   // Grounded chat (RAG) state
@@ -717,14 +775,23 @@ export default function ChatView() {
     chatgpt: "ChatGPT", deepseek: "DeepSeek", claude: "Claude", gemini: "Gemini",
   };
 
-  // Filter + sort sessions: pinned first, then by date
-  const filteredSessions = sessions.filter(
-    (s) =>
-      s.title.toLowerCase().includes(sessionQuery.toLowerCase()) ||
-      s.model_name.toLowerCase().includes(sessionQuery.toLowerCase())
-  );
-  const pinnedSessions = filteredSessions.filter((s) => s.is_pinned);
-  const unpinnedSessions = filteredSessions.filter((s) => !s.is_pinned);
+  useEffect(() => {
+    if (!effectiveWorkspaceId) {
+      setSidebarSessions([]);
+      return;
+    }
+
+    const trimmedQuery = sessionQuery.trim();
+    const timeoutId = window.setTimeout(() => {
+      const request = trimmedQuery
+        ? api.chat.searchSessions(effectiveWorkspaceId, trimmedQuery, null)
+        : api.chat.listSessions(effectiveWorkspaceId, null);
+
+      request.then(setSidebarSessions).catch(() => {});
+    }, trimmedQuery ? 150 : 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [effectiveWorkspaceId, sessionQuery, sessions]);
 
   // Load processed doc count for grounded chat indicator
   useEffect(() => {
@@ -1276,6 +1343,39 @@ export default function ChatView() {
     setRenamingId(null);
   }
 
+  async function refreshSessionTitle(session: ChatSession) {
+    if (!effectiveWorkspaceId) {return;}
+
+    const sessionMessages = (useChatStore.getState().messages[session.id] ?? messages[session.id] ?? [])
+      .filter((message) => message.role === "user" || message.role === "assistant");
+    const firstUserMessage = sessionMessages.find((message) => message.role === "user")?.content?.trim() ?? "";
+    if (!firstUserMessage) {return;}
+
+    const model = session.model_name || selectedModel;
+    if (!model) {return;}
+
+    try {
+      const aiTitle = sessionMessages.filter((message) => message.role === "user").length > 1
+        ? await api.ollama.generateTitleFromConversation(
+            model,
+            sessionMessages.map((message) => ({ role: message.role, content: message.content })),
+            ollamaUrl,
+          ).catch(() => null)
+        : await api.ollama.generateTitle(model, firstUserMessage, ollamaUrl).catch(() => null);
+
+      const title = resolveChatTitle({ aiTitle, firstMessage: firstUserMessage });
+      await api.chat.updateSession(effectiveWorkspaceId, session.id, { title });
+      useChatStore.getState().updateSession({
+        ...session,
+        title,
+        title_generated_at: new Date().toISOString(),
+        message_count_at_title_gen: sessionMessages.filter((message) => message.role === "user").length,
+      });
+    } catch {
+      // Leave the current title in place if refresh fails.
+    }
+  }
+
   async function saveSession(session: ChatSession) {
     try {
       const destPath = await saveDialog({
@@ -1475,10 +1575,10 @@ export default function ChatView() {
   return (
     <div className="flex h-full min-w-0 overflow-hidden">
       <SessionSidebar
-        sessions={sessions}
-        pinnedSessions={pinnedSessions}
-        unpinnedSessions={unpinnedSessions}
-        filteredSessions={filteredSessions}
+        sidebarSessions={sidebarSessions}
+        projects={projects}
+        activeProjectId={effectiveProjectId}
+        setActiveProjectId={setScopedProjectId}
         activeProject={activeProject}
         sessionQuery={sessionQuery}
         setSessionQuery={setSessionQuery}
@@ -1496,6 +1596,7 @@ export default function ChatView() {
         setRenameTitle={setRenameTitle}
         setActiveChatId={setActiveChatId}
         renameSession={renameSession}
+        refreshSessionTitle={refreshSessionTitle}
         togglePin={togglePin}
         saveSession={saveSession}
         deleteSession={deleteSession}
@@ -1642,24 +1743,51 @@ export default function ChatView() {
           <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
           <div className="flex flex-wrap justify-center gap-2">
             <button
-              onClick={() => createNewSession()}
+              onClick={() => createNewSession({
+                isIncognito: emptyStatePrivacyMode === "incognito",
+                excludeFromAnalytics: emptyStatePrivacyMode === "exclude",
+              })}
               className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
             >
               Start a new chat
             </button>
-
-            <button
-              onClick={() => createNewSession({ isIncognito: true })}
-              className="px-4 py-2 bg-[var(--accent-color)]/10 text-[var(--accent-color)] border border-[var(--accent-color)]/20 rounded-lg text-sm hover:bg-[var(--accent-color)]/20"
-            >
-              Start incognito
-            </button>
-            <button
-              onClick={() => createNewSession({ excludeFromAnalytics: true })}
-              className="px-4 py-2 bg-[var(--accent-color)]/10 text-[var(--accent-color)] border border-[var(--accent-color)]/20 rounded-lg text-sm hover:bg-[var(--accent-color)]/20"
-            >
-              Exclude analytics
-            </button>
+          </div>
+          <div className="w-full max-w-xs rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3 text-left">
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                <input
+                  type="radio"
+                  name="empty-state-privacy"
+                  checked={emptyStatePrivacyMode === "incognito"}
+                  onChange={() => setEmptyStatePrivacyMode("incognito")}
+                  className="accent-[var(--accent-color)]"
+                />
+                <Ghost size={14} className="text-purple-400" />
+                Incognito
+              </label>
+              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                <input
+                  type="radio"
+                  name="empty-state-privacy"
+                  checked={emptyStatePrivacyMode === "exclude"}
+                  onChange={() => setEmptyStatePrivacyMode("exclude")}
+                  className="accent-[var(--accent-color)]"
+                />
+                <Shield size={14} className="text-sky-400" />
+                Exclude from analytics
+              </label>
+              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                <input
+                  type="radio"
+                  name="empty-state-privacy"
+                  checked={emptyStatePrivacyMode === "standard"}
+                  onChange={() => setEmptyStatePrivacyMode("standard")}
+                  className="accent-[var(--accent-color)]"
+                />
+                <MessageSquare size={14} className="text-[var(--text-muted)]" />
+                Standard
+              </label>
+            </div>
           </div>
         </div>
       ) : (
@@ -1675,6 +1803,15 @@ export default function ChatView() {
                 <span title="Excluded from analytics"><Shield size={14} className="text-sky-400" /></span>
               )}
             </span>
+            {activeSession && (
+              <button
+                onClick={() => refreshSessionTitle(activeSession)}
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)] transition-colors"
+                title="Refresh chat name"
+              >
+                <RefreshCw size={14} />
+              </button>
+            )}
             {availableModels.length === 0 && (
               <span className="text-xs text-amber-400">No Ollama models found</span>
             )}

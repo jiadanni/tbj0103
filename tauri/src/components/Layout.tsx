@@ -13,6 +13,7 @@ import { api } from "../lib/api";
 import { useHotkeys, type HotkeyBinding } from "../hooks/useHotkeys";
 import { isMac, MOD_KEY, CTRL_KEY } from "../lib/platform";
 import { WorkspacePaneProvider, useScopedWorkspace } from "../lib/workspacePane";
+import { useSettingsStore } from "../stores/settingsStore";
 
 import {
   MessageSquare, Network, CreditCard,
@@ -333,7 +334,7 @@ function TopToolbar({
   onToggleSplit: () => void;
   workspaceNavigation: NavigationPresentation;
 }) {
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces, setProjects, setWorkspaceTopicSignature, splitMode } = useWorkspaceStore();
+  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces, setProjectsForWorkspace, setWorkspaceTopicSignature, splitMode } = useWorkspaceStore();
   const { splitWorkspaceNavigation, splitSizes, panes: _panes, workspaceNavigation: mainWorkspaceNavigation } = useWorkspaceStore();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -394,7 +395,7 @@ function TopToolbar({
           api.project.list(activeWorkspaceId),
           api.topicSignature.get(activeWorkspaceId),
         ]);
-        setProjects(refreshedProjects);
+        setProjectsForWorkspace(activeWorkspaceId, refreshedProjects);
         setWorkspaceTopicSignature(activeWorkspaceId, refreshedSignature);
       }
     } catch (err) {
@@ -625,7 +626,7 @@ function resolveSplitNavigation(
 function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
   const {
     setPaneView,
-    setProjects,
+    setProjectsForWorkspace,
     setActivePaneId,
     workspaceNavigation: _workspaceNavigation,
     sectionNavigation,
@@ -636,8 +637,10 @@ function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
 
   React.useEffect(() => {
     if (!activeWorkspaceId) {return;}
-    api.project.list(activeWorkspaceId).then(setProjects).catch(() => {});
-  }, [activeWorkspaceId, setProjects]);
+    api.project.list(activeWorkspaceId).then((projects) => {
+      setProjectsForWorkspace(activeWorkspaceId, projects);
+    }).catch(() => {});
+  }, [activeWorkspaceId, setProjectsForWorkspace]);
 
   return (
     <div
@@ -734,15 +737,26 @@ function SplitPaneLayout({ collapsed = false }: { collapsed?: boolean }) {
   );
 }
 
+const MIN_SIDEBAR_WIDTH = 200;
+const MAX_SIDEBAR_WIDTH = 480;
+
+function clampSidebarWidth(width: number, viewportWidth: number) {
+  const maxAllowed = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, viewportWidth - 320));
+  return Math.min(Math.max(width, MIN_SIDEBAR_WIDTH), maxAllowed);
+}
+
 export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const [sidebarDragActive, setSidebarDragActive] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { workspaceNavigation, sectionNavigation, splitMode, setPaneView: _setPaneView, setPaneChatSession: _setPaneChatSession, panes: _layoutPanes, workspaces: _workspaces } = useWorkspaceStore();
+  const { sidebarWidth, setSidebarWidth } = useSettingsStore();
   const sidebarEnabled = workspaceNavigation === "sidebar" || sectionNavigation === "sidebar";
   const MIN_SPLIT_WIDTH = 900;
   const isSplitCollapsed = splitMode && windowWidth < MIN_SPLIT_WIDTH;
+  const effectiveSidebarWidth = clampSidebarWidth(sidebarWidth, windowWidth);
 
   const toggleSplitModeFromShell = React.useCallback(() => {
     const store = useWorkspaceStore.getState();
@@ -861,6 +875,36 @@ export default function Layout() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  useEffect(() => {
+    if (effectiveSidebarWidth !== sidebarWidth) {
+      setSidebarWidth(effectiveSidebarWidth);
+    }
+  }, [effectiveSidebarWidth, setSidebarWidth, sidebarWidth]);
+
+  useEffect(() => {
+    if (!sidebarDragActive) {return;}
+
+    function handleMouseMove(event: MouseEvent) {
+      setSidebarWidth(clampSidebarWidth(event.clientX, window.innerWidth));
+    }
+
+    function handleMouseUp() {
+      setSidebarDragActive(false);
+    }
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [setSidebarWidth, sidebarDragActive]);
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
       {/* Drag region: thin strip at top for window dragging, behind interactive elements */}
@@ -888,30 +932,35 @@ export default function Layout() {
           <MainRoutes />
         </div>
       ) : (
-        <PanelGroup direction="horizontal" className="flex-1 flex overflow-hidden min-h-0">
-        {/* Sidebar: workspace/project nav */}
-        <Panel
-          id="sidebar"
-          order={0}
-          defaultSize={18}
-          minSize={12}
-          maxSize={30}
-          className="border-r border-[var(--border-color)] overflow-hidden"
-        >
-          <Sidebar
-            onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-            showWorkspaceNavigation={workspaceNavigation === "sidebar"}
-            showSectionNavigation={sectionNavigation === "sidebar"}
-          />
-        </Panel>
+        <div className="flex flex-1 overflow-hidden min-h-0">
+          <div
+            className="shrink-0 border-r border-[var(--border-color)] overflow-hidden min-h-0"
+            style={{ width: effectiveSidebarWidth }}
+          >
+            <Sidebar
+              onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+              showWorkspaceNavigation={workspaceNavigation === "sidebar"}
+              showSectionNavigation={sectionNavigation === "sidebar"}
+            />
+          </div>
 
-        <PanelResizeHandle className="w-[1px] bg-[var(--border-color)] hover:bg-[var(--accent-color)] transition-colors cursor-col-resize" />
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize chat sidebar"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              setSidebarDragActive(true);
+            }}
+            className="group relative w-2 shrink-0 cursor-col-resize bg-transparent"
+          >
+            <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--border-color)] transition-colors group-hover:bg-[var(--accent-color)]" />
+          </div>
 
-        {/* Main content area */}
-        <Panel id="main" order={1} className="overflow-hidden flex flex-col min-w-0 min-h-0">
-          <MainRoutes />
-        </Panel>
-      </PanelGroup>
+          <div className="flex-1 overflow-hidden flex flex-col min-w-0 min-h-0">
+            <MainRoutes />
+          </div>
+        </div>
       )}
       <ArtifactPanel />
     </div>

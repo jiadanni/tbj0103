@@ -3,7 +3,8 @@
  * Mirrors BackupSettingsSection.swift + BackupTimelineView.swift.
  */
 import { useEffect, useState } from "react";
-import { Download, Upload, Trash2, Archive, RefreshCw } from "lucide-react";
+import { confirm, message, open } from "@tauri-apps/plugin-dialog";
+import { Upload, Trash2, Archive, RefreshCw, FolderInput } from "lucide-react";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
@@ -15,10 +16,11 @@ interface BackupMeta {
 }
 
 export default function BackupSettingsSection() {
-  const { activeWorkspaceId, workspaces } = useWorkspaceStore();
+  const { activeWorkspaceId, setActiveWorkspaceId, setProjectsForWorkspace, setWorkspaces } = useWorkspaceStore();
   const [backups, setBackups] = useState<BackupMeta[]>([]);
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState<string | null>(null);
+  const [importingLmStudio, setImportingLmStudio] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,10 +32,10 @@ export default function BackupSettingsSection() {
     setCreating(true);
     setError(null);
     try {
-      const json = await api.backup.create(activeWorkspaceId);
+      await api.backup.create(activeWorkspaceId);
       await api.backup.list().then((b) => setBackups(b as BackupMeta[]));
-    } catch (e: any) {
-      setError(e?.message ?? "Backup failed");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Backup failed");
     } finally {
       setCreating(false);
     }
@@ -47,8 +49,8 @@ export default function BackupSettingsSection() {
       // In a real flow we'd load the JSON then call api.backup.restore(json)
       // For now, trigger a reload
       await api.backup.list().then((b) => setBackups(b as BackupMeta[]));
-    } catch (e: any) {
-      setError(e?.message ?? "Restore failed");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Restore failed");
     } finally {
       setRestoring(null);
     }
@@ -58,6 +60,44 @@ export default function BackupSettingsSection() {
     if (!await confirm("Delete this backup?")) {return;}
     await api.backup.delete(id);
     setBackups((prev) => prev.filter((b) => b.id !== id));
+  }
+
+  async function importFromLmStudio() {
+    setError(null);
+    setImportingLmStudio(true);
+
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Select LM Studio conversations folder",
+      });
+      const folderPath = Array.isArray(selected) ? selected[0] : selected;
+      if (!folderPath) {return;}
+
+      const result = await api.chatFile.importLmStudioFolder(folderPath);
+      const [workspaces, importedProjects] = await Promise.all([
+        api.workspace.list(),
+        api.project.list(result.workspace_id),
+      ]);
+      setWorkspaces(workspaces);
+      setProjectsForWorkspace(result.workspace_id, importedProjects);
+      setActiveWorkspaceId(result.workspace_id);
+
+      const summary = [
+        `Imported ${result.imported} conversation${result.imported === 1 ? "" : "s"} into "${result.workspace_name}".`,
+        `${result.projects_created} project${result.projects_created === 1 ? "" : "s"} created.`,
+        result.errors > 0 ? `${result.errors} file${result.errors === 1 ? "" : "s"} could not be imported.` : "No import errors reported.",
+      ].join(" ");
+
+      await message(summary, { title: "LM Studio import complete", kind: result.errors > 0 ? "warning" : "info" });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "LM Studio import failed";
+      setError(msg);
+      await message(msg, { title: "LM Studio import failed", kind: "error" });
+    } finally {
+      setImportingLmStudio(false);
+    }
   }
 
   function formatDate(iso: string) {
@@ -84,6 +124,25 @@ export default function BackupSettingsSection() {
             {error}
           </div>
         )}
+
+        <div className="mb-5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-[var(--text-primary)]">Import from LM Studio</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                Pick a folder containing LM Studio <code>.conversation.json</code> files. The folder name becomes a new workspace and subfolders become projects.
+              </p>
+            </div>
+            <button
+              onClick={() => void importFromLmStudio()}
+              disabled={importingLmStudio}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+            >
+              {importingLmStudio ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+              {importingLmStudio ? "Importing…" : "Import Folder"}
+            </button>
+          </div>
+        </div>
 
         {!activeWorkspaceId && (
           <p className="text-[var(--text-muted)] text-sm">Select a workspace to manage backups.</p>

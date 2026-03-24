@@ -13,7 +13,7 @@ const DEFAULT_WORKSPACE_NAME = "Workspace";
 
 export default function App() {
   const { theme, accentColor, fontSize } = useSettingsStore();
-  const { setWorkspaces, setProjects, setActiveWorkspaceId, activeWorkspaceId } = useWorkspaceStore();
+  const { setWorkspaces, setProjectsForWorkspace, setActiveWorkspaceId, activeWorkspaceId } = useWorkspaceStore();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingWorkspaceRenameId, setPendingWorkspaceRenameId] = useState<string | null>(null);
@@ -74,8 +74,10 @@ export default function App() {
 
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
-    api.project.list(activeWorkspaceId).then(setProjects).catch(() => {});
-  }, [activeWorkspaceId, setProjects]);
+    api.project.list(activeWorkspaceId).then((projects) => {
+      setProjectsForWorkspace(activeWorkspaceId, projects);
+    }).catch(() => {});
+  }, [activeWorkspaceId, setProjectsForWorkspace]);
 
   async function savePendingWorkspaceRename() {
     if (!pendingWorkspaceRenameId || !pendingWorkspaceName.trim() || savingWorkspaceName) {return;}

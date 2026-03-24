@@ -4,7 +4,7 @@
  * activity heatmap, topic cloud, concept-growth + accuracy charts,
  * recent activity, deduplication, AI insights.
  */
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FileText, MessageSquare, CreditCard, Network, Lightbulb,
   Sparkles, Clock, Copy, Brain, RefreshCw, BarChart2, Cpu,
@@ -298,6 +298,8 @@ export default function ProjectDashboardView() {
   // AI Usage Dashboard
   const [tokenByDate, setTokenByDate] = useState<{ day: string; total_tokens: number }[]>([]);
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
+  const dashboardLoadIdRef = useRef(0);
+  const topicLoadIdRef = useRef(0);
 
   const workspaceSessions = useMemo(
     () => sessions.filter((session) => session.workspace_id === activeWorkspaceId),
@@ -305,6 +307,8 @@ export default function ProjectDashboardView() {
   );
 
   useEffect(() => {
+    const loadId = ++dashboardLoadIdRef.current;
+
     if (!activeWorkspaceId) {
       setProjectStats(null);
       setReviewStats(null);
@@ -318,9 +322,20 @@ export default function ProjectDashboardView() {
       return;
     }
 
+    setProjectStats(null);
+    setReviewStats(null);
+    setGraphStats(null);
+    setRecentNotes([]);
+    setConcepts([]);
+    setTokenByDate([]);
+    setAiTopics([]);
+    setTopicsError(null);
+    setTopicsLoading(false);
+
     api.project.list(activeWorkspaceId)
       .then((projects) => Promise.all(projects.map((p) => api.project.getStats(p.id).catch(() => null))))
       .then((statsList) => {
+        if (loadId !== dashboardLoadIdRef.current) {return;}
         const merged: ProjectStats = { note_count: 0, document_count: 0, chat_session_count: 0, flashcard_count: 0, web_capture_count: 0 };
         statsList.forEach((stats) => {
           if (!stats) {return;}
@@ -334,38 +349,64 @@ export default function ProjectDashboardView() {
       })
       .catch(() => {});
 
-    api.flashcard.getStats(activeWorkspaceId).then(setReviewStats).catch(() => {});
-    api.graph.getStats(activeWorkspaceId).then(setGraphStats).catch(() => {});
-    api.graph.listConcepts(activeWorkspaceId).then(setConcepts).catch(() => {});
+    api.flashcard.getStats(activeWorkspaceId).then((stats) => {
+      if (loadId !== dashboardLoadIdRef.current) {return;}
+      setReviewStats(stats);
+    }).catch(() => {});
+    api.graph.getStats(activeWorkspaceId).then((stats) => {
+      if (loadId !== dashboardLoadIdRef.current) {return;}
+      setGraphStats(stats);
+    }).catch(() => {});
+    api.graph.listConcepts(activeWorkspaceId).then((nextConcepts) => {
+      if (loadId !== dashboardLoadIdRef.current) {return;}
+      setConcepts(nextConcepts);
+    }).catch(() => {});
     api.note.list(activeWorkspaceId)
       .then((notes) => {
+        if (loadId !== dashboardLoadIdRef.current) {return;}
         setRecentNotes(notes.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
       })
       .catch(() => {});
-    api.chat.getTokenUsageByDate(activeWorkspaceId, 90).then(setTokenByDate).catch(() => {});
+    api.chat.getTokenUsageByDate(activeWorkspaceId, 90).then((usage) => {
+      if (loadId !== dashboardLoadIdRef.current) {return;}
+      setTokenByDate(usage);
+    }).catch(() => {});
 
     // AI models are global (not workspace-scoped)
-    api.aiModel.list().then(setAiModels).catch(() => {});
+    api.aiModel.list().then((models) => {
+      if (loadId !== dashboardLoadIdRef.current) {return;}
+      setAiModels(models);
+    }).catch(() => {});
   }, [activeWorkspaceId]);
 
   // Fetch AI topics whenever sessions or notes change (debounced by dependency)
   const fetchAiTopics = async () => {
+    const loadId = ++topicLoadIdRef.current;
     const model = resolveModelForRole(aiModels, "background", backgroundModel, preferredModel);
     const texts = [
       ...workspaceSessions.map((s) => s.title).filter(Boolean),
       ...recentNotes.map((n) => n.title).filter(Boolean),
       ...concepts.map((c) => c.name).filter(Boolean),
     ];
-    if (texts.length === 0 || !model) {return;}
+    if (texts.length === 0 || !model) {
+      setAiTopics([]);
+      setTopicsLoading(false);
+      setTopicsError(null);
+      return;
+    }
     setTopicsLoading(true);
     setTopicsError(null);
     try {
       const result = await api.ollama.extractTopics(texts, model, ollamaUrl || undefined);
+      if (loadId !== topicLoadIdRef.current) {return;}
       setAiTopics(result.map((t) => ({ topic: t.topic, count: t.weight })));
     } catch (e: unknown) {
+      if (loadId !== topicLoadIdRef.current) {return;}
       setTopicsError(e instanceof Error ? e.message : String(e));
     } finally {
-      setTopicsLoading(false);
+      if (loadId === topicLoadIdRef.current) {
+        setTopicsLoading(false);
+      }
     }
   };
 
@@ -441,9 +482,8 @@ export default function ProjectDashboardView() {
     const out: string[] = [];
     const totalConcepts = graphStats?.total_concepts ?? 0;
     const totalCards = reviewStats?.total_cards ?? 0;
-    const accuracy = totalCards > 0
-      ? reviewStats!.learned / totalCards
-      : 0;
+    const learnedCards = reviewStats?.learned ?? 0;
+    const accuracy = totalCards > 0 ? learnedCards / totalCards : 0;
     const dueCards = reviewStats?.due_today ?? 0;
     const density = graphStats?.density ?? 0;
 
