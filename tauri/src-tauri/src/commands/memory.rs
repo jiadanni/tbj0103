@@ -2,6 +2,7 @@ use tauri::State;
 use crate::db::DbState;
 use crate::models::memory::{Memory, CreateMemoryRequest, UpdateMemoryRequest, ExtractMemoriesRequest};
 use crate::ollama::client::{OllamaClient, OllamaMessage};
+use crate::services::model_settings::{get_embedding_model, get_ollama_base_url};
 
 fn row_to_memory(row: &rusqlite::Row) -> rusqlite::Result<Memory> {
     Ok(Memory {
@@ -24,28 +25,32 @@ const MEMORY_COLUMNS: &str = "id, workspace_id, content, memory_type, scope, sou
 /// Does not fail if Ollama is unavailable.
 async fn store_memory_embedding(state: &DbState, memory_id: &str, content: &str, ollama_url: Option<String>) {
     let client = OllamaClient::new(ollama_url);
-    if let Ok(embedding) = client.generate_embedding("nomic-embed-text", content).await {
+    let embedding_model = {
+        let Ok(conn) = state.0.lock() else {
+            return;
+        };
+        get_embedding_model(&conn)
+    };
+    let Some(embedding_model) = embedding_model else {
+        return;
+    };
+
+    if let Ok(embedding) = client.generate_embedding(&embedding_model, content).await {
         if let Ok(conn) = state.0.lock() {
             let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
             let now = chrono::Utc::now().to_rfc3339();
             let _ = conn.execute(
-                "INSERT OR REPLACE INTO memory_embeddings (memory_id, embedding, model, created_at) VALUES (?1, ?2, 'nomic-embed-text', ?3)",
-                rusqlite::params![memory_id, embedding_bytes, now],
+                "INSERT OR REPLACE INTO memory_embeddings (memory_id, embedding, model, created_at) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![memory_id, embedding_bytes, embedding_model, now],
             );
         }
     }
 }
 
-/// Read ollama_url from settings table (returns None if not set or default).
+/// Read Ollama base URL from settings.
 fn read_ollama_url(state: &DbState) -> Option<String> {
     let conn = state.0.lock().ok()?;
-    let val: String = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'ollama_url'",
-        [],
-        |row| row.get(0),
-    ).ok()?;
-    let url: String = serde_json::from_str(&val).unwrap_or_default();
-    if url.is_empty() { None } else { Some(url) }
+    get_ollama_base_url(&conn)
 }
 
 #[tauri::command]
@@ -271,13 +276,20 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
         }
 
         // Generate and store embedding (best-effort, outside DB lock)
-        if let Ok(embedding) = client.generate_embedding("nomic-embed-text", &em.content).await {
-            if let Ok(conn) = state.0.lock() {
-                let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
-                let _ = conn.execute(
-                    "INSERT OR REPLACE INTO memory_embeddings (memory_id, embedding, model, created_at) VALUES (?1, ?2, 'nomic-embed-text', ?3)",
-                    rusqlite::params![id, embedding_bytes, now],
-                );
+        let embedding_model = {
+            let conn = state.0.lock().map_err(|e| e.to_string())?;
+            get_embedding_model(&conn)
+        };
+
+        if let Some(embedding_model) = embedding_model {
+            if let Ok(embedding) = client.generate_embedding(&embedding_model, &em.content).await {
+                if let Ok(conn) = state.0.lock() {
+                    let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
+                    let _ = conn.execute(
+                        "INSERT OR REPLACE INTO memory_embeddings (memory_id, embedding, model, created_at) VALUES (?1, ?2, ?3, ?4)",
+                        rusqlite::params![id, embedding_bytes, embedding_model, now],
+                    );
+                }
             }
         }
 

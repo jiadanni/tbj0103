@@ -86,41 +86,18 @@ pub fn run() {
 
                     {
                         let db = app_handle.state::<db::DbState>();
-                        let conn = db.0.lock().unwrap();
-
-                        let workspace_ids: Vec<String> = conn
-                            .prepare("SELECT id FROM workspaces")
-                            .and_then(|mut stmt| {
-                                stmt.query_map([], |row| row.get::<_, String>(0))?
-                                    .collect::<Result<Vec<_>, _>>()
-                            })
-                            .unwrap_or_default();
+                        let workspace_ids: Vec<String> = {
+                            let conn = db.0.lock().unwrap();
+                            conn.prepare("SELECT id FROM workspaces")
+                                .and_then(|mut stmt| {
+                                    stmt.query_map([], |row| row.get::<_, String>(0))?
+                                        .collect::<Result<Vec<_>, _>>()
+                                })
+                                .unwrap_or_default()
+                        };
 
                         for id in workspace_ids {
-                            if let Ok((text, count)) = crate::services::topic_signature::collect_workspace_text(&conn, &id) {
-                                if count > 0 {
-                                    // Get existing to preserve manual/ignored
-                                    let existing_json: String = conn.query_row(
-                                        "SELECT topic_signature FROM workspaces WHERE id = ?1",
-                                        rusqlite::params![id],
-                                        |row| row.get(0),
-                                    ).unwrap_or_else(|_| "{}".to_string());
-                                    let existing: crate::models::workspace::TopicSignature = serde_json::from_str(&existing_json).unwrap_or_default();
-
-                                    let mut sig = crate::services::topic_signature::generate_heuristic(&text);
-                                    sig.message_count_at_gen = Some(count);
-                                    sig.manual_tags = existing.manual_tags;
-                                    sig.ignored_tags = existing.ignored_tags;
-
-                                    if let Ok(sig_json) = serde_json::to_string(&sig) {
-                                        let now = chrono::Utc::now().to_rfc3339();
-                                        let _ = conn.execute(
-                                            "UPDATE workspaces SET topic_signature = ?1, signature_updated_at = ?2 WHERE id = ?3",
-                                            rusqlite::params![sig_json, now, id],
-                                        );
-                                    }
-                                }
-                            }
+                            let _ = crate::services::topic_signature::recompute_workspace_signature_with_ai(&db, &id, None, None).await;
                         }
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;

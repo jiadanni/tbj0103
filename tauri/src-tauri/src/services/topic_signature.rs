@@ -1,6 +1,9 @@
 use rusqlite::Connection;
+use crate::db::DbState;
 use crate::models::workspace::{TopicSignature, TopicTag};
+use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::ai_content_generator::generate_tags;
+use crate::services::model_settings::{get_configured_background_model, get_ollama_base_url};
 use std::collections::HashMap;
 
 const GENERIC_TOPIC_TAGS: &[&str] = &[
@@ -12,6 +15,19 @@ const GENERIC_TOPIC_TAGS: &[&str] = &[
     "implementation", "implement", "feature", "features", "system", "using", "used",
     "use", "make", "build", "create", "need", "want", "trying", "works", "work",
     "thing", "things", "stuff", "project", "projects", "app", "apps",
+    "line", "lines", "file", "files", "folder", "folders", "module", "modules",
+    "import", "imports", "command", "commands", "data", "core", "load", "loads",
+    "loaded", "loading", "print", "output", "input", "step", "steps", "part",
+    "parts", "last", "first", "second", "third", "four", "five", "minute",
+    "minutes", "hour", "hours", "day", "days", "start", "started", "starting",
+    "run", "runs", "running", "process", "processes", "message", "messages",
+    "chat", "chats", "text", "texts", "content", "result", "results",
+    "current", "previous", "next", "new", "old", "generic", "either",
+    "consuming", "consumed",
+];
+
+const SPECIFIC_SHORT_TAGS: &[&str] = &[
+    "api", "sql", "css", "html", "rust", "java", "swift", "linux",
 ];
 
 fn is_specific_topic_tag(tag: &str) -> bool {
@@ -19,8 +35,16 @@ fn is_specific_topic_tag(tag: &str) -> bool {
         return false;
     }
 
-    if matches!(tag, "api" | "sql" | "css" | "html" | "rust" | "java" | "swift") {
+    if SPECIFIC_SHORT_TAGS.contains(&tag) {
         return true;
+    }
+
+    if tag.chars().all(|ch| ch.is_ascii_digit()) {
+        return false;
+    }
+
+    if tag.ends_with("ing") && tag.len() <= 10 {
+        return false;
     }
 
     tag.len() >= 4
@@ -65,6 +89,61 @@ fn extract_specific_tags(text: &str, max: usize) -> Vec<String> {
     });
 
     ranked.into_iter().take(max).map(|(tag, _, _)| tag).collect()
+}
+
+fn normalize_topic_label(tag: &str) -> Option<String> {
+    let normalized = tag
+        .trim()
+        .trim_matches(|c: char| !c.is_alphanumeric() && c != ' ' && c != '-' && c != '+')
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+
+    if normalized.is_empty() || normalized.len() > 40 {
+        return None;
+    }
+
+    let word_count = normalized.split_whitespace().count();
+    if word_count > 4 {
+        return None;
+    }
+
+    if word_count == 1 {
+        is_specific_topic_tag(&normalized).then_some(normalized)
+    } else {
+        let has_specific_word = normalized.split_whitespace().any(is_specific_topic_tag);
+        has_specific_word.then_some(normalized)
+    }
+}
+
+fn merge_topic_tags(primary: Vec<TopicTag>, secondary: Vec<TopicTag>, max: usize) -> Vec<TopicTag> {
+    let mut merged = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for tag in primary.into_iter().chain(secondary.into_iter()) {
+        let Some(normalized) = normalize_topic_label(&tag.tag) else {
+            continue;
+        };
+        if seen.insert(normalized.clone()) {
+            merged.push(TopicTag {
+                tag: normalized,
+                weight: tag.weight,
+                source: tag.source,
+            });
+        }
+        if merged.len() >= max {
+            break;
+        }
+    }
+
+    merged
+}
+
+fn extract_json_object(s: &str) -> Option<String> {
+    let start = s.find('{')?;
+    let end = s.rfind('}')?;
+    (end > start).then(|| s[start..=end].to_string())
 }
 
 pub fn collect_workspace_text(conn: &Connection, workspace_id: &str) -> Result<(String, u64), String> {
@@ -172,8 +251,167 @@ pub fn generate_heuristic(text: &str) -> TopicSignature {
     }
 }
 
-pub async fn enrich_with_ollama(heuristic: TopicSignature, _text: &str, _model: &str, _ollama_url: &str) -> TopicSignature {
-    heuristic
+#[cfg(test)]
+mod tests {
+    use super::{extract_specific_tags, is_specific_topic_tag};
+
+    #[test]
+    fn filters_generic_log_words() {
+        assert!(!is_specific_topic_tag("line"));
+        assert!(!is_specific_topic_tag("module"));
+        assert!(!is_specific_topic_tag("consuming"));
+    }
+
+    #[test]
+    fn keeps_real_domain_terms() {
+        assert!(is_specific_topic_tag("anaconda"));
+        assert!(is_specific_topic_tag("linux"));
+        assert!(is_specific_topic_tag("java"));
+    }
+
+    #[test]
+    fn prefers_specific_topics_over_generic_noise() {
+        let text = "\
+error loading module line line line data import command\n\
+anaconda environment on linux with java sdk setup\n\
+fixing anaconda path issue on linux for java tooling\n";
+
+        let tags = extract_specific_tags(text, 10);
+
+        assert!(tags.iter().any(|tag| tag == "anaconda"));
+        assert!(tags.iter().any(|tag| tag == "linux"));
+        assert!(tags.iter().any(|tag| tag == "java"));
+        assert!(!tags.iter().any(|tag| tag == "line"));
+        assert!(!tags.iter().any(|tag| tag == "module"));
+        assert!(!tags.iter().any(|tag| tag == "command"));
+    }
+}
+
+pub async fn enrich_with_ollama(
+    heuristic: TopicSignature,
+    text: &str,
+    model: &str,
+    ollama_url: &str,
+) -> TopicSignature {
+    #[derive(serde::Deserialize)]
+    struct EnrichmentPayload {
+        topics: Vec<String>,
+        intent_patterns: Option<Vec<String>>,
+    }
+
+    let sample = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .take(120)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if sample.trim().is_empty() {
+        return heuristic;
+    }
+
+    let prompt = format!(
+        "Analyze these workspace chat excerpts and infer the most specific recurring subject areas.\n\
+Return ONLY a JSON object with this exact shape:\n\
+{{\"topics\":[\"topic one\",\"topic two\"],\"intent_patterns\":[\"learning\",\"debugging\"]}}\n\
+Rules:\n\
+- topics must be 2 to 4 words when possible\n\
+- prefer concrete domains, libraries, tools, frameworks, languages, environments, and problem areas\n\
+- avoid generic words like system, module, data, import, file, line, command, issue, question\n\
+- return 6 to 12 topics max\n\
+- intent_patterns can only contain: learning, debugging, tutorial, code-review\n\
+- no markdown, no explanation\n\n\
+Chat excerpts:\n{sample}"
+    );
+
+    let client = OllamaClient::new(Some(ollama_url.to_string()));
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+
+    let Ok(raw) = client.send_message(model, messages).await else {
+        return heuristic;
+    };
+    let Some(json_str) = extract_json_object(&raw) else {
+        return heuristic;
+    };
+    let Ok(payload) = serde_json::from_str::<EnrichmentPayload>(&json_str) else {
+        return heuristic;
+    };
+
+    let ollama_tags = payload
+        .topics
+        .into_iter()
+        .filter_map(|topic| normalize_topic_label(&topic))
+        .enumerate()
+        .map(|(idx, tag)| TopicTag {
+            tag,
+            weight: (30usize.saturating_sub(idx * 2)) as u32,
+            source: "ollama".to_string(),
+        })
+        .collect::<Vec<_>>();
+
+    let mut intent_patterns = payload.intent_patterns.unwrap_or_default();
+    intent_patterns.retain(|intent| matches!(intent.as_str(), "learning" | "debugging" | "tutorial" | "code-review"));
+    intent_patterns.sort();
+    intent_patterns.dedup();
+
+    let mut enriched = heuristic;
+    enriched.domain_tags = merge_topic_tags(ollama_tags, enriched.domain_tags, 12);
+    if !intent_patterns.is_empty() {
+        enriched.intent_patterns = intent_patterns;
+    }
+    enriched.ollama_enriched = true;
+    enriched
+}
+
+pub async fn recompute_workspace_signature_with_ai(
+    state: &DbState,
+    workspace_id: &str,
+    model_override: Option<String>,
+    ollama_url_override: Option<String>,
+) -> Result<TopicSignature, String> {
+    let (existing, text, count, model, ollama_url) = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let existing_json: String = conn.query_row(
+            "SELECT topic_signature FROM workspaces WHERE id = ?1",
+            rusqlite::params![workspace_id],
+            |row| row.get(0),
+        ).map_err(|e| e.to_string())?;
+        let existing: TopicSignature = serde_json::from_str(&existing_json).unwrap_or_default();
+        let (text, count) = collect_workspace_text(&conn, workspace_id)?;
+        let model = model_override.or_else(|| get_configured_background_model(&conn));
+        let ollama_url = ollama_url_override.or_else(|| get_ollama_base_url(&conn));
+        (existing, text, count, model, ollama_url)
+    };
+
+    if count == 0 {
+        return Ok(existing);
+    }
+
+    let mut sig = generate_heuristic(&text);
+    sig.message_count_at_gen = Some(count);
+
+    if let (Some(model), Some(ollama_url)) = (model, ollama_url) {
+        sig = enrich_with_ollama(sig, &text, &model, &ollama_url).await;
+    }
+
+    sig.manual_tags = existing.manual_tags;
+    sig.ignored_tags = existing.ignored_tags;
+    sig.domain_tags.retain(|t| !sig.ignored_tags.contains(&t.tag));
+
+    let now = chrono::Utc::now().to_rfc3339();
+    sig.generated_at = Some(now.clone());
+    let sig_json = serde_json::to_string(&sig).map_err(|e| e.to_string())?;
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE workspaces SET topic_signature = ?1, signature_updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![sig_json, now, workspace_id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(sig)
 }
 
 pub fn compute_match_score(message: &str, signature: &TopicSignature) -> f64 {

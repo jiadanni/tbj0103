@@ -20,3 +20,4 @@ pub mod summarization_service;
 pub mod background_scheduler;
 pub mod vector_index;
 pub mod git_sync;
+pub mod model_settings;

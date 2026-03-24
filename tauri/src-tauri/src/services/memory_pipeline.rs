@@ -1,6 +1,7 @@
 use crate::db::DbState;
 use crate::models::chat::Message;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
+use crate::services::model_settings::{get_configured_chat_model, get_embedding_model};
 
 /// Auto-extract memories if the session has new unextracted messages.
 /// This checks if the session length is a multiple of 5.
@@ -75,11 +76,22 @@ pub async fn extract_and_store_memories(
 
     let msgs = vec![OllamaMessage { role: "user".to_string(), content: prompt }];
     
-    // Call Ollama using the default model or fallback
+    // Use the configured background/chat model and skip quietly if none is available.
     let model = {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
-        conn.query_row("SELECT model_id FROM ai_models WHERE enabled = 1 ORDER BY priority ASC LIMIT 1", [], |row| row.get::<_, String>(0))
-            .unwrap_or_else(|_| "llama3.2".to_string())
+        get_configured_chat_model(&conn)
+    };
+
+    let embedding_model = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        get_embedding_model(&conn)
+    };
+
+    let Some(model) = model else {
+        return Ok(());
+    };
+    let Some(embedding_model) = embedding_model else {
+        return Ok(());
     };
 
     if let Ok(response) = client.send_message(&model, msgs).await {
@@ -90,7 +102,7 @@ pub async fn extract_and_store_memories(
                 if let Ok(facts) = serde_json::from_str::<Vec<String>>(json_str) {
                     for fact in facts {
                         // 1. Generate embedding for the new fact
-                        let embedding = if let Ok(emb) = client.generate_embedding("nomic-embed-text", &fact).await {
+                        let embedding = if let Ok(emb) = client.generate_embedding(&embedding_model, &fact).await {
                             emb
                         } else {
                             // Fallback to dummy if embedding fails, or skip
@@ -137,8 +149,8 @@ pub async fn extract_and_store_memories(
                         let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
                         let _ = conn.execute(
                             "INSERT INTO memory_embeddings (memory_id, embedding, model, created_at)
-                             VALUES (?1, ?2, 'nomic-embed-text', ?3)",
-                            rusqlite::params![id, embedding_bytes, now],
+                             VALUES (?1, ?2, ?3, ?4)",
+                            rusqlite::params![id, embedding_bytes, embedding_model, now],
                         );
                     }
                 }
