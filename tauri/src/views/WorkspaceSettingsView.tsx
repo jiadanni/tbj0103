@@ -336,7 +336,7 @@ export default function WorkspaceSettingsView() {
                       {ws.topic_signature?.domain_tags?.length > 0 && (() => {
                         const ignoredSet = new Set(ws.topic_signature.ignored_tags || []);
                         const visibleTags = ws.topic_signature.domain_tags.filter(t => !ignoredSet.has(t.tag));
-                        if (visibleTags.length === 0) return null;
+                        if (visibleTags.length === 0) {return null;}
                         return (
                         <div>
                           <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Inferred Topics</p>

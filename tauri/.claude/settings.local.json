@@ -4,7 +4,11 @@
       "Bash(bash:*)",
       "Bash(curl:*)",
       "Bash(source:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(cargo check:*)",
+      "Bash(~/.nvm/versions/node/v20.19.0/bin/npx tsc:*)",
+      "Bash(git status:*)",
+      "Bash(git add:*)"
     ]
   },
   "outputStyle": "Learning",

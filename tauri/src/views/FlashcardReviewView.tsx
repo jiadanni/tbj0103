@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from "react";
 import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2 } from "lucide-react";
-import { api, type LearningCard, type ReviewStats, type AiModel } from "../lib/api";
+import { api, type LearningCard, type ReviewStats } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace } from "../lib/workspacePane";
 
@@ -65,7 +65,7 @@ export default function FlashcardReviewView() {
         if (!names.includes(selectedModel)) {setSelectedModel(names[0] || "");}
       }).catch(() => {});
     });
-  }, [ollamaUrl]);
+  }, [ollamaUrl, selectedModel]);
 
   // Load due cards + stats
   useEffect(() => {

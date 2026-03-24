@@ -22,6 +22,7 @@ import {
   mergeComposerInput,
   type ComposerSuggestion,
 } from "../lib/composerSuggestions";
+import { resolveChatTitle } from "../lib/chatTitles";
 
 type ChatMode = "chat" | "compare";
 
@@ -453,7 +454,7 @@ export default function ChatView() {
   // Chat mode: normal chat vs model comparison
   const [chatMode, setChatMode] = useState<ChatMode>("chat");
 
-  // Session list features (merged from ChatSessionListView)
+  // Session list features
   const [sessionQuery, setSessionQuery] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
@@ -967,7 +968,8 @@ export default function ChatView() {
     // Initial title generation on first message
     if (isFirstMessage && effectiveWorkspaceId) {
       try {
-        const title = await api.ollama.generateTitle(model, firstMessage, ollamaUrl);
+        const aiTitle = await api.ollama.generateTitle(model, firstMessage, ollamaUrl).catch(() => null);
+        const title = resolveChatTitle({ aiTitle, firstMessage });
         // Persist to DB
         await api.chat.updateSession(effectiveWorkspaceId, sessionId, { title });
         // Update local store
@@ -978,7 +980,7 @@ export default function ChatView() {
           message_count_at_title_gen: 1
         });
       } catch {
-        // Silently fail if title generation errors
+        // Leave the existing title untouched if persistence fails.
       }
       return;
     }
@@ -992,7 +994,8 @@ export default function ChatView() {
         try {
           // Send conversation context for a better title
           const conversation = sessionMessages.map(m => ({ role: m.role, content: m.content }));
-          const title = await api.ollama.generateTitleFromConversation(model, conversation, ollamaUrl);
+          const aiTitle = await api.ollama.generateTitleFromConversation(model, conversation, ollamaUrl).catch(() => null);
+          const title = resolveChatTitle({ aiTitle, firstMessage });
           // Persist to DB
           await api.chat.updateSession(effectiveWorkspaceId, sessionId, { title });
           // Update local store

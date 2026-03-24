@@ -124,13 +124,6 @@ export default function DailyNotesView() {
     api.note.listTemplates(activeWorkspaceId).then(setTemplates).catch(() => {});
   }, [activeWorkspaceId]);
 
-  // --- Auto-save debounce ---
-  useEffect(() => {
-    if (!note) {return;}
-    const t = setTimeout(() => saveNote(), 2000);
-    return () => clearTimeout(t);
-  }, [content, mood, productivity]);
-
   const saveNote = useCallback(async () => {
     if (!note) {return;}
     setSaving(true);
@@ -149,6 +142,14 @@ export default function DailyNotesView() {
       setSaving(false);
     }
   }, [note, content, mood, productivity, activeWorkspaceId, currentMonth]);
+
+  // --- Auto-save debounce ---
+  useEffect(() => {
+    if (!note) {return;}
+    const t = setTimeout(() => saveNote(), 2000);
+    return () => clearTimeout(t);
+  }, [content, mood, productivity, note, saveNote]);
+
 
   async function applyTemplate(template: NoteTemplate) {
     try {

@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Read(//home/urljenkins/.nvm/versions/node/**)",
+      "Read(//home/urljenkins/.nvm/**)",
+      "Bash(~/.nvm/versions/node/v24.14.0/bin/npx tsc:*)",
+      "Bash($HOME/.nvm/versions/node/v22.22.1/bin/npx tsc:*)",
+      "Bash(~/.cargo/bin/cargo check:*)",
+      "Bash(~/.nvm/versions/node/v20.19.5/bin/npx tsc:*)",
+      "Bash(ls ~/.nvm/versions/node/*/bin/npx)",
+      "Bash(PATH=\"$HOME/.nvm/versions/node/v22.22.1/bin:$PATH\" npx tsc --noEmit)"
     ]
   }
 }

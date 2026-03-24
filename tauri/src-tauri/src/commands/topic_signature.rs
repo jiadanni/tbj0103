@@ -57,9 +57,10 @@ pub fn regenerate_topic_signature(
     let mut sig = generate_heuristic(&text);
     sig.message_count_at_gen = Some(count);
     
-    // Preserve
+    // Preserve manual/ignored and strip ignored from domain_tags
     sig.manual_tags = existing.manual_tags;
     sig.ignored_tags = existing.ignored_tags;
+    sig.domain_tags.retain(|t| !sig.ignored_tags.contains(&t.tag));
     
     let sig_json = serde_json::to_string(&sig).map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
@@ -89,7 +90,8 @@ pub fn update_topic_signature(
     
     let mut sig: TopicSignature = serde_json::from_str(&sig_json).unwrap_or_default();
     sig.manual_tags = manual_tags;
-    sig.ignored_tags = ignored_tags;
+    sig.ignored_tags = ignored_tags.clone();
+    sig.domain_tags.retain(|t| !ignored_tags.contains(&t.tag));
     
     let updated_json = serde_json::to_string(&sig).map_err(|e| e.to_string())?;
     conn.execute(

@@ -8,7 +8,6 @@
     "store:allow-set",
     "store:allow-save",
     "store:allow-load",
-    "notification:default",
     "dialog:default",
     "autostart:allow-enable",
     "autostart:allow-disable",
@@ -28,6 +27,7 @@
     "core:window:allow-is-maximized",
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",
+    "core:window:allow-set-focus",
     "core:window:allow-close",
     "core:window:allow-start-dragging"
   ]
