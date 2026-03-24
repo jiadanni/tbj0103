@@ -397,6 +397,8 @@ export const api = {
       invoke<LearningCard[]>("generate_flashcards_from_concept", { req: { workspace_id: workspaceId, concept_id: conceptId, model, count, ollama_url: ollamaUrl } }),
     listByConcept: (conceptId: string) =>
       invoke<LearningCard[]>("list_flashcards_by_concept", { conceptId }),
+    listGraph: (workspaceId: string) =>
+      invoke<LearningCard[]>("list_graph_flashcards", { workspaceId }),
     extractFromContent: (workspaceId: string, content: string, sourceType: string, model: string, sourceId?: string, ollamaUrl?: string) =>
       invoke<LearningCard[]>("extract_flashcards_from_content", { req: { workspace_id: workspaceId, content, source_type: sourceType, source_id: sourceId, model, ollama_url: ollamaUrl } }),
   },
