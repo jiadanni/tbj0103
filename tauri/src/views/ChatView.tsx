@@ -74,6 +74,7 @@ interface SessionSidebarProps {
   sessionQuery: string;
   setSessionQuery: (q: string) => void;
   creatingFolder: boolean;
+  creatingFolderPending: boolean;
   setCreatingFolder: (v: boolean) => void;
   newFolderName: string;
   setNewFolderName: (v: string) => void;
@@ -220,6 +221,7 @@ function SessionSidebar({
   sidebarSessions, workspaces, projectsByWorkspace, projects, activeProjectId, setActiveProjectId,
   activeProject: _activeProject, moveSessionsToTarget, bulkDeleteSessions, renameProject, deleteProject, sessionQuery, setSessionQuery,
   creatingFolder, setCreatingFolder, newFolderName, setNewFolderName,
+  creatingFolderPending,
   folderInputRef, handleCreateFolder, createNewSession,
   activeChatId, renamingId, renameTitle, setRenamingId, setRenameTitle,
   setActiveChatId, renameSession, refreshSessionTitle, togglePin, saveSession, deleteSession,
@@ -505,8 +507,12 @@ function SessionSidebar({
             ref={folderInputRef}
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
+            disabled={creatingFolderPending}
             onKeyDown={(e) => {
               e.stopPropagation();
+              if (creatingFolderPending) {
+                return;
+              }
               if (e.key === "Enter") {
                 e.preventDefault();
                 void handleCreateFolder(e.currentTarget.value);
@@ -518,20 +524,26 @@ function SessionSidebar({
             }}
             onClick={(e) => e.stopPropagation()}
             placeholder="Folder name…"
-            className={`flex-1 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}
+            className={`flex-1 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] disabled:cursor-wait disabled:opacity-70 ${isSplitPane ? "text-xs" : "text-[11px]"}`}
           />
           <button
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => void handleCreateFolder(folderInputRef.current?.value)}
-            className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+            disabled={creatingFolderPending}
+            className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors disabled:cursor-wait disabled:opacity-50"
             title="Create folder"
           >
-            <Check size={isSplitPane ? 13 : 12} />
+            {creatingFolderPending ? (
+              <Loader2 size={isSplitPane ? 13 : 12} className="animate-spin" />
+            ) : (
+              <Check size={isSplitPane ? 13 : 12} />
+            )}
           </button>
           <button
             onMouseDown={(e) => e.preventDefault()}
             onClick={cancelCreateFolder}
-            className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+            disabled={creatingFolderPending}
+            className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             title="Cancel folder creation"
           >
             <X size={isSplitPane ? 13 : 12} />
@@ -889,10 +901,13 @@ export default function ChatView() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [creatingFolderPending, setCreatingFolderPending] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const creatingFolderRequestRef = useRef(false);
 
   async function handleCreateFolder(nameOverride?: string) {
+    if (creatingFolderRequestRef.current) {return;}
     const folderName = (nameOverride ?? newFolderName).trim();
     const previousProjectId = effectiveProjectId;
     if (!folderName || !effectiveWorkspaceId) {
@@ -900,6 +915,8 @@ export default function ChatView() {
       setNewFolderName("");
       return;
     }
+    creatingFolderRequestRef.current = true;
+    setCreatingFolderPending(true);
     try {
       await api.project.create(effectiveWorkspaceId, folderName);
       const refreshedProjects = await api.project.list(effectiveWorkspaceId);
@@ -907,9 +924,12 @@ export default function ChatView() {
       setScopedProjectId(previousProjectId);
     } catch (e) {
       console.error(e);
+    } finally {
+      creatingFolderRequestRef.current = false;
+      setCreatingFolderPending(false);
+      setCreatingFolder(false);
+      setNewFolderName("");
     }
-    setCreatingFolder(false);
-    setNewFolderName("");
   }
 
   useEffect(() => {
@@ -2078,6 +2098,7 @@ export default function ChatView() {
         sessionQuery={sessionQuery}
         setSessionQuery={setSessionQuery}
         creatingFolder={creatingFolder}
+        creatingFolderPending={creatingFolderPending}
         setCreatingFolder={setCreatingFolder}
         newFolderName={newFolderName}
         setNewFolderName={setNewFolderName}
