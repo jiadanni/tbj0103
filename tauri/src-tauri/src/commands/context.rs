@@ -2,6 +2,7 @@ use tauri::{AppHandle, State, Emitter};
 use crate::models::context::AssembleAndSendRequest;
 use crate::db::DbState;
 use crate::services::context_assembler::assemble_context;
+use crate::services::model_settings::get_embedding_model;
 use crate::ollama::client::OllamaClient;
 use crate::ollama::client::OllamaMessage;
 
@@ -161,8 +162,13 @@ pub async fn assemble_and_send(
         ).ok()
     };
 
-    let query_embedding = if let Some(msg) = &last_user_message {
-        client.generate_embedding("nomic-embed-text", msg).await.ok()
+    let embedding_model = {
+        let conn_guard = state.0.lock().map_err(|e| e.to_string())?;
+        get_embedding_model(&conn_guard)
+    };
+
+    let query_embedding = if let (Some(msg), Some(model)) = (&last_user_message, &embedding_model) {
+        client.generate_embedding(model, msg).await.ok()
     } else {
         None
     };

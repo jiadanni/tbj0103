@@ -4,6 +4,10 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  confirm: vi.fn(),
+}));
+
 vi.mock("react-resizable-panels", () => ({
   PanelGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -147,5 +151,28 @@ describe("Layout", () => {
 
     expect(useWorkspaceStore.getState().splitMode).toBe(true);
     expect(screen.getByLabelText("Second pane collapsed until the window is wider")).toBeInTheDocument();
+  });
+
+  it("opens a context menu for workspace tabs", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+      workspaceNavigation: "top-tabs",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Agentic" }));
+
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Manage Workspaces" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 });
