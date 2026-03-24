@@ -66,10 +66,12 @@ export default function SettingsView() {
     sectionNavigation,
     splitWorkspaceNavigation,
     splitSectionNavigation,
+    workspaceSortOrder,
     setWorkspaceNavigation,
     setSectionNavigation,
     setSplitWorkspaceNavigation,
     setSplitSectionNavigation,
+    setWorkspaceSortOrder,
   } = useWorkspaceStore();
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>("general");
@@ -86,7 +88,7 @@ export default function SettingsView() {
 
   const [dbSettings, setDbSettings] = useState<AppSettings | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [_saveError, setSaveError] = useState<string | null>(null);
   const [testingOllama, setTestingOllama] = useState(false);
   const [ollamaTestResult, setOllamaTestResult] = useState<{ success: boolean; msg: string } | null>(null);
   const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
@@ -134,6 +136,7 @@ export default function SettingsView() {
   }, []);
 
   function syncClientSettings(settings: AppSettings) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     zustandSettings.setTheme(settings.theme as any);
     zustandSettings.setAccentColor(settings.accent_color);
     zustandSettings.setFontSize(settings.font_size);
@@ -225,7 +228,7 @@ export default function SettingsView() {
       setOllamaTestResult(null);
     }
 
-    api.ollama.listModels(ollamaUrl || undefined)
+    api.ollama.listModelsFresh(ollamaUrl || undefined)
       .then((models) => {
         if (requestId !== ollamaModelsRequestRef.current) {return;}
         setOllamaModels(models.map((model) => model.name));
@@ -252,6 +255,7 @@ export default function SettingsView() {
     api.security.getStatus().then(setSecurityStatus).catch(() => {});
     api.mcp.listServers().then(setMcpServers).catch(() => {});
     api.gitSync.getStatus().then((s) => { setGitSync(s); setGitSyncUrl(s.remote_url); }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function set<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
@@ -549,6 +553,32 @@ export default function SettingsView() {
               </div>
 
               <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Workspace Sort Order</label>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {([
+                    { id: "name-asc", label: "Name A\u2013Z" },
+                    { id: "name-desc", label: "Name Z\u2013A" },
+                    { id: "created-newest", label: "Newest First" },
+                    { id: "created-oldest", label: "Oldest First" },
+                    { id: "updated-newest", label: "Recently Updated" },
+                    { id: "updated-oldest", label: "Least Recently Updated" },
+                  ] as const).map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => setWorkspaceSortOrder(option.id)}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                        workspaceSortOrder === option.id
+                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      }`}
+                    >
+                      <div className="text-xs font-medium">{option.label}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-2 block">Settings Navigation</label>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {[
@@ -569,6 +599,17 @@ export default function SettingsView() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Auto-generate Flashcards</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically extract flashcards from chat responses and notes</p>
+                </div>
+                <Toggle
+                  on={zustandSettings.autoGenerateFlashcards}
+                  onToggle={() => zustandSettings.setAutoGenerateFlashcards(!zustandSettings.autoGenerateFlashcards)}
+                />
               </div>
 
               <div>
@@ -664,10 +705,10 @@ export default function SettingsView() {
                       setTestingOllama(true);
                       setOllamaTestResult(null);
                       try {
-                        const m = await api.ollama.listModels(dbSettings.ollama_base_url || undefined);
+                        const m = await api.ollama.listModelsFresh(dbSettings.ollama_base_url || undefined);
                         setOllamaTestResult({ success: true, msg: `Success! ${m.length} models found.` });
                         refreshOllamaModels(dbSettings.ollama_base_url);
-                      } catch (err: any) {
+                      } catch {
                         setOllamaTestResult({ success: false, msg: `Connection failed. Is Ollama running?` });
                       } finally {
                         setTestingOllama(false);
@@ -1377,6 +1418,7 @@ export default function SettingsView() {
                     try {
                       await api.gitSync.configure(gitSyncUrl, next);
                       setGitSync((s) => s ? { ...s, enabled: next } : s);
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     } catch (e: any) {
                       setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
                     } finally {
@@ -1402,6 +1444,7 @@ export default function SettingsView() {
                       try {
                         await api.gitSync.configure(gitSyncUrl, gitSync?.enabled ?? false);
                         setGitSync((s) => s ? { ...s, remote_url: gitSyncUrl, last_error: "" } : s);
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       } catch (e: any) {
                         setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
                       } finally {
@@ -1432,6 +1475,7 @@ export default function SettingsView() {
                     try {
                       const s = await api.gitSync.triggerSync();
                       setGitSync(s);
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     } catch (e: any) {
                       setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
                     } finally {

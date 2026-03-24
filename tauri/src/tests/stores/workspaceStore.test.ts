@@ -49,6 +49,8 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
   return {
     id: "ws1",
     name: "Workspace 1",
+    description: "",
+    prompt_instructions: "",
     topic_signature: {
       domain_tags: [],
       manual_tags: [],

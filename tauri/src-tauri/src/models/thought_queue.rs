@@ -11,6 +11,7 @@ pub struct ThoughtItem {
     pub prompt_prefix: String,
     pub result: Option<String>,
     pub result_at: Option<String>,
+    pub session_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -22,4 +23,5 @@ pub struct CreateThoughtRequest {
     pub process_at: Option<String>,
     pub model_name: Option<String>,
     pub prompt_prefix: Option<String>,
+    pub session_id: Option<String>,
 }

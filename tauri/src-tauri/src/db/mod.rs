@@ -605,5 +605,36 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v26: add session_id to thought_queue for chat integration
+    let applied: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v26_thought_session_id'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE thought_queue ADD COLUMN session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL;",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v26_thought_session_id');",
+        )?;
+    }
+
+    // v27: add folder and token_count columns to sources
+    let applied_v27: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v27_sources_folder_tokens'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v27 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE sources ADD COLUMN folder TEXT;
+             ALTER TABLE sources ADD COLUMN token_count INTEGER;",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v27_sources_folder_tokens');",
+        )?;
+    }
+
     Ok(())
 }

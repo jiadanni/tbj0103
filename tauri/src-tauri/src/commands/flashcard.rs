@@ -1,6 +1,6 @@
 use tauri::State;
 use crate::db::DbState;
-use crate::models::learning_card::{LearningCard, ReviewRequest, ReviewStats, CreateCardRequest, GenerateCardsRequest};
+use crate::models::learning_card::{LearningCard, ReviewRequest, ReviewStats, CreateCardRequest, GenerateCardsRequest, GenerateFromConceptRequest, ExtractFlashcardsRequest};
 use crate::services::spaced_repetition;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 
@@ -70,6 +70,15 @@ pub fn review_flashcard(state: State<DbState>, req: ReviewRequest) -> Result<Lea
         "UPDATE learning_cards SET ease_factor = ?1, interval = ?2, repetitions = ?3, next_review_date = ?4, last_reviewed_at = ?5 WHERE id = ?6",
         rusqlite::params![result.ease_factor, result.interval, result.repetitions, result.next_review_date, now, req.card_id],
     ).map_err(|e| e.to_string())?;
+    // Sync review_count on linked concept node
+    if card.source_type == "concept" {
+        if let Some(ref concept_id) = card.source_id {
+            let _ = conn.execute(
+                "UPDATE concept_nodes SET review_count = review_count + 1, updated_at = ?1 WHERE id = ?2",
+                rusqlite::params![now, concept_id],
+            );
+        }
+    }
     let updated_card = LearningCard {
         ease_factor: result.ease_factor,
         interval: result.interval,
@@ -150,6 +159,155 @@ pub async fn generate_flashcards(state: State<'_, DbState>, req: GenerateCardsRe
         if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
         let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
         card.source_type = "ai_generated".to_string();
+        conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id,
+                              card.ease_factor, card.interval, card.repetitions, card.next_review_date, card.last_reviewed_at, card.created_at],
+        ).map_err(|e| e.to_string())?;
+        cards.push(card);
+    }
+    Ok(cards)
+}
+
+/// Generate flashcards from an existing concept node.
+#[tauri::command]
+pub async fn generate_flashcards_from_concept(state: State<'_, DbState>, req: GenerateFromConceptRequest) -> Result<Vec<LearningCard>, String> {
+    // Fetch the concept
+    let (concept_name, concept_desc) = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let row = conn.query_row(
+            "SELECT name, concept_description FROM concept_nodes WHERE id = ?1",
+            rusqlite::params![req.concept_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        ).map_err(|e| format!("Concept not found: {e}"))?;
+        row
+    };
+
+    let topic = if concept_desc.is_empty() {
+        concept_name.clone()
+    } else {
+        format!("{concept_name}: {concept_desc}")
+    };
+
+    let count = req.count.unwrap_or(5).min(20);
+    let prompt = format!(
+        "Generate exactly {count} flashcards about: \"{topic}\"\n\n\
+        Output ONLY a JSON array of objects, each with \"front\" (question) and \"back\" (answer) keys.\n\
+        No markdown, no explanation, no code fences — just the raw JSON array.\n\
+        Example: [{{\"front\":\"What is X?\",\"back\":\"X is...\"}}]",
+        count = count,
+        topic = topic,
+    );
+    let client = OllamaClient::new(req.ollama_url);
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+    let raw = client.send_message(&req.model, messages).await?;
+
+    let trimmed = raw.trim();
+    let json_str = if let Some(start) = trimmed.find('[') {
+        if let Some(end) = trimmed.rfind(']') {
+            &trimmed[start..=end]
+        } else {
+            return Err("AI response did not contain a valid JSON array".to_string());
+        }
+    } else {
+        return Err("AI response did not contain a JSON array".to_string());
+    };
+
+    #[derive(serde::Deserialize)]
+    struct CardPair { front: String, back: String }
+
+    let pairs: Vec<CardPair> = serde_json::from_str(json_str)
+        .map_err(|e| format!("Failed to parse AI-generated cards: {e}\nRaw: {json_str}"))?;
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut cards = Vec::new();
+    for pair in pairs {
+        if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
+        let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
+        card.source_type = "concept".to_string();
+        card.source_id = Some(req.concept_id.clone());
+        conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id,
+                              card.ease_factor, card.interval, card.repetitions, card.next_review_date, card.last_reviewed_at, card.created_at],
+        ).map_err(|e| e.to_string())?;
+        cards.push(card);
+    }
+    Ok(cards)
+}
+
+/// List all flashcards linked to a specific concept node.
+#[tauri::command]
+pub fn list_flashcards_by_concept(state: State<DbState>, concept_id: String) -> Result<Vec<LearningCard>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+         FROM learning_cards WHERE source_type = 'concept' AND source_id = ?1 ORDER BY created_at DESC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt.query_map(rusqlite::params![concept_id], row_to_card)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+/// Extract flashcards from arbitrary text content (chat response, note, etc.).
+/// Uses the LLM to identify key Q&A pairs worth remembering.
+#[tauri::command]
+pub async fn extract_flashcards_from_content(state: State<'_, DbState>, req: ExtractFlashcardsRequest) -> Result<Vec<LearningCard>, String> {
+    let content = req.content.trim().to_string();
+    if content.len() < 50 {
+        return Ok(vec![]); // Too short to extract meaningful cards
+    }
+
+    // Truncate to avoid overwhelming the LLM
+    let text: String = content.chars().take(3000).collect();
+
+    let prompt = format!(
+        "Read the following text and extract 1-5 flashcards for key facts, concepts, or definitions worth remembering.\n\
+        Only extract cards if the text contains educational or factual content. If the text is casual conversation, return an empty array.\n\n\
+        Text:\n\"{text}\"\n\n\
+        Output ONLY a JSON array of objects, each with \"front\" (question) and \"back\" (answer) keys.\n\
+        If nothing is worth making a flashcard for, return: []\n\
+        No markdown, no explanation, no code fences — just the raw JSON array."
+    );
+
+    let client = OllamaClient::new(req.ollama_url);
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+    let raw = client.send_message(&req.model, messages).await?;
+
+    let trimmed = raw.trim();
+    let json_str = if let Some(start) = trimmed.find('[') {
+        if let Some(end) = trimmed.rfind(']') {
+            &trimmed[start..=end]
+        } else {
+            return Ok(vec![]);
+        }
+    } else {
+        return Ok(vec![]);
+    };
+
+    #[derive(serde::Deserialize)]
+    struct CardPair { front: String, back: String }
+
+    let pairs: Vec<CardPair> = serde_json::from_str(json_str).unwrap_or_default();
+    if pairs.is_empty() { return Ok(vec![]); }
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut cards = Vec::new();
+    for pair in pairs {
+        if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
+        let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
+        card.source_type = req.source_type.clone();
+        card.source_id = req.source_id.clone();
         conn.execute(
             "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",

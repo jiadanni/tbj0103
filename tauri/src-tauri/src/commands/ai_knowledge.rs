@@ -142,8 +142,35 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
         }
     }
 
-    // --- uploaded_documents ---
+    // --- sources (unified documents + web captures) ---
     if total_len < CAP {
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT source_type, title, content, summary FROM sources WHERE workspace_id = ?1 \
+             ORDER BY updated_at DESC LIMIT 30",
+        ) {
+            let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
+                let source_type: String = row.get(0)?;
+                let title: String = row.get(1)?;
+                let content: String = row.get(2)?;
+                let summary: Option<String> = row.get(3)?;
+                Ok((source_type, title, content, summary))
+            }).map(|rows| {
+                for (source_type, title, content, summary) in rows.flatten() {
+                    if total_len >= CAP { return; }
+                    let text = summary.unwrap_or(content);
+                    let snippet = safe_truncate(&text, 500);
+                    let label = if source_type == "document" { "Document" } else { "Web Capture" };
+                    let entry = format!("{} ({}): {}\n", label, title, snippet);
+                    total_len += entry.len();
+                    parts.push(entry);
+                    source_items += 1;
+                }
+            });
+        }
+    }
+
+    // --- legacy: fallback to uploaded_documents if sources table is empty ---
+    if total_len < CAP && source_items == 0 {
         if let Ok(mut stmt) = conn.prepare(
             "SELECT filename, content, summary FROM uploaded_documents WHERE workspace_id = ?1 \
              ORDER BY updated_at DESC LIMIT 15",
@@ -159,31 +186,6 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
                     let text = summary.unwrap_or(content);
                     let snippet = safe_truncate(&text, 500);
                     let entry = format!("Document ({}): {}\n", name, snippet);
-                    total_len += entry.len();
-                    parts.push(entry);
-                    source_items += 1;
-                }
-            });
-        }
-    }
-
-    // --- web_captures ---
-    if total_len < CAP {
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT title, content, summary FROM web_captures WHERE workspace_id = ?1 \
-             ORDER BY created_at DESC LIMIT 15",
-        ) {
-            let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
-                let title: String = row.get(0)?;
-                let content: String = row.get(1)?;
-                let summary: Option<String> = row.get(2)?;
-                Ok((title, content, summary))
-            }).map(|rows| {
-                for (title, content, summary) in rows.flatten() {
-                    if total_len >= CAP { return; }
-                    let text = summary.unwrap_or(content);
-                    let snippet = safe_truncate(&text, 500);
-                    let entry = format!("Web Capture ({}): {}\n", title, snippet);
                     total_len += entry.len();
                     parts.push(entry);
                     source_items += 1;

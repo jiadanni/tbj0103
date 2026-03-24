@@ -221,6 +221,50 @@ CREATE TABLE IF NOT EXISTS web_captures (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Unified sources table (merges uploaded_documents + web_captures)
+CREATE TABLE IF NOT EXISTS sources (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    source_type TEXT NOT NULL CHECK(source_type IN ('document', 'web_capture')),
+    title TEXT NOT NULL DEFAULT '',
+    filename TEXT,
+    file_type TEXT,
+    file_size INTEGER,
+    url TEXT,
+    content TEXT NOT NULL DEFAULT '',
+    summary TEXT,
+    favicon_data TEXT,
+    is_processed INTEGER NOT NULL DEFAULT 0,
+    folder TEXT,
+    token_count INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS source_chunks (
+    id TEXT PRIMARY KEY NOT NULL,
+    source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    embedding TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Migrate existing documents into sources
+INSERT OR IGNORE INTO sources (id, workspace_id, source_type, title, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at)
+    SELECT id, workspace_id, 'document', filename, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at
+    FROM uploaded_documents;
+
+-- Migrate existing web captures into sources
+INSERT OR IGNORE INTO sources (id, workspace_id, source_type, title, url, content, summary, favicon_data, is_processed, created_at, updated_at)
+    SELECT id, workspace_id, 'web_capture', title, url, content, summary, favicon_data, is_processed, created_at, datetime('now')
+    FROM web_captures;
+
+-- Migrate existing document_chunks into source_chunks
+INSERT OR IGNORE INTO source_chunks (id, source_id, content, chunk_index, embedding, created_at)
+    SELECT id, document_id, content, chunk_index, embedding, created_at
+    FROM document_chunks;
+
 CREATE TABLE IF NOT EXISTS audio_transcriptions (
     id TEXT PRIMARY KEY NOT NULL,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -268,9 +312,13 @@ CREATE TABLE IF NOT EXISTS thought_queue (
     prompt_prefix TEXT NOT NULL DEFAULT '',
     result TEXT,
     result_at TEXT,
+    session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Migration: add session_id to existing thought_queue if missing
+-- (SQLite doesn't support ADD COLUMN IF NOT EXISTS, so we handle this in code)
 
 -- AI memory for cross-session context
 CREATE TABLE IF NOT EXISTS memories (

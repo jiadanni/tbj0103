@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MessageSquare, Pin, PinOff, Trash2, Plus, Search, ExternalLink, Save, Upload } from "lucide-react";
+import { MessageSquare, Pin, PinOff, Trash2, Plus, Search, ExternalLink, Save, Upload, FolderOpen } from "lucide-react";
 import { confirm, message, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
@@ -24,6 +24,7 @@ export default function ChatSessionListView() {
   function chatExportFilename(title: string) {
     const base = (title || "chat")
       .trim()
+      // eslint-disable-next-line no-control-regex
       .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
       .replace(/\s+/g, "-")
       .slice(0, 80);
@@ -33,6 +34,7 @@ export default function ChatSessionListView() {
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
     api.chat.listSessions(activeWorkspaceId, activeProjectId).then(setSessions).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspaceId, activeProjectId]);
 
   const filtered = sessions.filter(
@@ -117,6 +119,30 @@ export default function ChatSessionListView() {
       navigate(`/chat/${imported.id}`);
     } catch (err) {
       await message(err instanceof Error ? err.message : "Failed to import chat.");
+    }
+  }
+
+  async function importFolder() {
+    try {
+      const selectedPath = await open({ directory: true, multiple: false });
+      if (!selectedPath || Array.isArray(selectedPath)) {return;}
+
+      const result = await api.chatFile.importLmStudioFolder(selectedPath);
+      if (result.imported === 0) {
+        await message("No .conversation.json files found in the selected folder.");
+        return;
+      }
+      // Refresh workspaces and switch to the newly created one
+      const allWorkspaces = await api.workspace.list();
+      const { setWorkspaces, setActiveWorkspaceId } = useWorkspaceStore.getState();
+      setWorkspaces(allWorkspaces);
+      setActiveWorkspaceId(result.workspace_id);
+
+      const msg = `Imported ${result.imported} conversation${result.imported === 1 ? "" : "s"} into workspace "${result.workspace_name}"` +
+        (result.projects_created > 0 ? ` with ${result.projects_created} project${result.projects_created === 1 ? "" : "s"}` : "") + ".";
+      await message(msg);
+    } catch (err) {
+      await message(err instanceof Error ? err.message : "Failed to import folder.");
     }
   }
 
@@ -229,6 +255,12 @@ export default function ChatSessionListView() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={importFolder}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          >
+            <FolderOpen size={12} /> Import Folder
+          </button>
           <button
             onClick={importSession}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"

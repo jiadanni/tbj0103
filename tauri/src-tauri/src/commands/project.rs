@@ -120,9 +120,12 @@ pub fn get_project_stats(state: State<DbState>, id: String) -> Result<ProjectSta
         rusqlite::params![workspace_id], |r| r.get(0)
     ).unwrap_or(0);
     let document_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sources WHERE workspace_id = ?1 AND source_type = 'document'",
+        rusqlite::params![workspace_id], |r| r.get(0)
+    ).unwrap_or_else(|_| conn.query_row(
         "SELECT COUNT(*) FROM uploaded_documents WHERE workspace_id = ?1",
         rusqlite::params![workspace_id], |r| r.get(0)
-    ).unwrap_or(0);
+    ).unwrap_or(0));
     // Chat sessions are still project-scoped (project = optional chat container)
     let chat_session_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM chat_sessions WHERE project_id = ?1",
@@ -133,9 +136,12 @@ pub fn get_project_stats(state: State<DbState>, id: String) -> Result<ProjectSta
         rusqlite::params![workspace_id], |r| r.get(0)
     ).unwrap_or(0);
     let web_capture_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sources WHERE workspace_id = ?1 AND source_type = 'web_capture'",
+        rusqlite::params![workspace_id], |r| r.get(0)
+    ).unwrap_or_else(|_| conn.query_row(
         "SELECT COUNT(*) FROM web_captures WHERE workspace_id = ?1",
         rusqlite::params![workspace_id], |r| r.get(0)
-    ).unwrap_or(0);
+    ).unwrap_or(0));
     Ok(ProjectStats {
         note_count,
         document_count,
