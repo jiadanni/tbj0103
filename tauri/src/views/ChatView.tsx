@@ -1739,7 +1739,7 @@ export default function ChatView() {
           }
         });
 
-        await api.context.assembleAndSend(sid, effectiveWorkspaceId, modelId, { ollama_url: ollamaUrl || undefined });
+        await api.ollama.sendMessage(sid, modelId, history, true, ollamaUrl || undefined);
       } catch (err) {
         setIsStreaming(false);
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -1949,7 +1949,7 @@ export default function ChatView() {
           appendStreamChunk(sid, chunk);
         }
       });
-      await api.context.assembleAndSend(sid, effectiveWorkspaceId, selectedModel, { ollama_url: ollamaUrl || undefined });
+      await api.ollama.sendMessage(sid, selectedModel, history, true, ollamaUrl || undefined);
     } catch (err) {
       setIsStreaming(false);
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -1986,7 +1986,7 @@ export default function ChatView() {
           appendStreamChunk(sid, chunk);
         }
       });
-      await api.context.assembleAndSend(sid, effectiveWorkspaceId, selectedModel, { ollama_url: ollamaUrl || undefined });
+      await api.ollama.sendMessage(sid, selectedModel, trimmedMessages.map((m) => ({ role: m.role, content: m.content })), true, ollamaUrl || undefined);
     } catch (err) {
       setIsStreaming(false);
       const errMsg = err instanceof Error ? err.message : String(err);
