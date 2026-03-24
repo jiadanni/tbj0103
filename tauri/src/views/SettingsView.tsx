@@ -120,6 +120,7 @@ export default function SettingsView() {
   const [gitSyncUrl, setGitSyncUrl] = useState("");
   const [gitSyncing, setGitSyncing] = useState(false);
   const [gitSyncSaving, setGitSyncSaving] = useState(false);
+  const isGitSyncSshUrl = gitSyncUrl.trim().startsWith("git@") || gitSyncUrl.trim().startsWith("ssh://");
   const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -1444,7 +1445,7 @@ export default function SettingsView() {
                     className="flex-1 px-3 py-1.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] font-mono"
                   />
                   <button
-                    disabled={gitSyncSaving || !gitSyncUrl}
+                  disabled={gitSyncSaving || !gitSyncUrl.trim() || !isGitSyncSshUrl}
                     onClick={async () => {
                       setGitSyncSaving(true);
                       try {
@@ -1463,8 +1464,13 @@ export default function SettingsView() {
                   </button>
                 </div>
                 <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                  SSH remotes are recommended. For SSH auth, ensure your key is loaded in ssh-agent.
+                  SSH remote required. Use `git@...` or `ssh://...` and ensure your key is loaded in `ssh-agent`.
                 </p>
+                {gitSyncUrl.trim() && !isGitSyncSshUrl && (
+                  <p className="text-[11px] text-amber-400 mt-1">
+                    Git sync only accepts SSH remotes.
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center justify-between py-1">

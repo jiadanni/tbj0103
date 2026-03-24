@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Send, Plus, Trash2, Copy, ChevronDown, ChevronRight, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
-import { confirm, message, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { message, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
@@ -25,6 +25,19 @@ import {
 import { resolveChatTitle } from "../lib/chatTitles";
 
 type ChatMode = "chat" | "compare";
+const MIN_SESSION_SIDEBAR_WIDTH = 220;
+const MAX_SESSION_SIDEBAR_WIDTH = 420;
+
+function clampSessionSidebarWidth(width: number) {
+  return Math.max(MIN_SESSION_SIDEBAR_WIDTH, Math.min(width, MAX_SESSION_SIDEBAR_WIDTH));
+}
+
+interface ConfirmDialogState {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone?: "danger" | "default";
+}
 
 function canRefreshSessionTitle(
   session: ChatSession,
@@ -44,12 +57,13 @@ interface SessionItemProps {
   activeChatId: string | null;
   selectMode: boolean;
   isSelected: boolean;
+  depth?: number;
   canRefreshTitle: boolean;
   renamingId: string | null;
   renameTitle: string;
   setRenamingId: (id: string | null) => void;
   setRenameTitle: (title: string) => void;
-  setActiveChatId: (id: string) => void;
+  openSession: (session: ChatSession) => void;
   toggleSelect: (id: string) => void;
   openContextMenu: (event: ReactMouseEvent, session: ChatSession) => void;
   renameSession: (id: string) => void;
@@ -71,6 +85,7 @@ interface SessionSidebarProps {
   bulkDeleteSessions: (sessionIds: string[], projectIds?: string[]) => Promise<void>;
   renameProject: (projectId: string, name: string) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
+  moveProjectToWorkspace: (project: Project, targetWorkspaceId: string) => Promise<void>;
   sessionQuery: string;
   setSessionQuery: (q: string) => void;
   creatingFolder: boolean;
@@ -96,7 +111,8 @@ interface SessionSidebarProps {
 
 function SessionItem({
   session, activeChatId, selectMode, isSelected, canRefreshTitle, renamingId, renameTitle,
-  setRenamingId, setRenameTitle, setActiveChatId,
+  depth = 0,
+  setRenamingId, setRenameTitle, openSession,
   toggleSelect, openContextMenu,
   renameSession, refreshSessionTitle, togglePin, saveSession, deleteSession,
 }: SessionItemProps) {
@@ -123,14 +139,15 @@ function SessionItem({
         e.dataTransfer.effectAllowed = "move";
       }}
       onContextMenu={(e) => openContextMenu(e, session)}
-      onClick={() => selectMode ? toggleSelect(session.id) : setActiveChatId(session.id)}
-      className={`group flex items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${
+      onClick={() => selectMode ? toggleSelect(session.id) : openSession(session)}
+      className={`group flex min-w-0 items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${
         isSelected
           ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
           : isActive
           ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
           : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
       }`}
+      style={{ paddingLeft: `${12 + depth * 20}px` }}
     >
       {selectMode && (
         <button
@@ -155,19 +172,19 @@ function SessionItem({
           }}
           onBlur={() => renameSession(session.id)}
           onClick={(e) => e.stopPropagation()}
-          className={`flex-1 bg-[var(--bg-elevated)] border border-[var(--accent-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${
+          className={`min-w-0 flex-1 bg-[var(--bg-elevated)] border border-[var(--accent-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${
             isSplitPane ? "text-xs" : "text-[11px]"
           }`}
         />
       ) : (
-        <span className={`flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{session.title || "New Chat"}</span>
+        <span className={`min-w-0 flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{session.title || "New Chat"}</span>
       )}
       {session.is_incognito && <Ghost size={isSplitPane ? 12 : 11} className="text-purple-400 shrink-0" />}
       {!session.is_incognito && session.exclude_from_analytics && <Shield size={isSplitPane ? 12 : 11} className="text-sky-400 shrink-0" />}
       <span className={`text-[var(--text-muted)] shrink-0 mr-1 ${isSplitPane ? "text-[11px]" : "text-[10px]"}`}>
         {timeAgo}
       </span>
-      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+      <div className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
         {!isRenaming && (
           <button
             onClick={(e) => { e.stopPropagation(); setRenamingId(session.id); setRenameTitle(session.title); }}
@@ -219,7 +236,7 @@ function SessionItem({
 
 function SessionSidebar({
   sidebarSessions, workspaces, projectsByWorkspace, projects, activeProjectId, setActiveProjectId,
-  activeProject: _activeProject, moveSessionsToTarget, bulkDeleteSessions, renameProject, deleteProject, sessionQuery, setSessionQuery,
+  activeProject: _activeProject, moveSessionsToTarget, bulkDeleteSessions, renameProject, deleteProject, moveProjectToWorkspace, sessionQuery, setSessionQuery,
   creatingFolder, setCreatingFolder, newFolderName, setNewFolderName,
   creatingFolderPending,
   folderInputRef, handleCreateFolder, createNewSession,
@@ -238,7 +255,9 @@ function SessionSidebar({
   const [bulkActionPending, setBulkActionPending] = useState<"move" | "delete" | null>(null);
   const [projectRenamingId, setProjectRenamingId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState("");
+  const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
   const [ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
+  const [ctxProjectMoveWorkspaceId, setCtxProjectMoveWorkspaceId] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<
     | { type: "session"; x: number; y: number; session: ChatSession }
     | { type: "project"; x: number; y: number; project: Project }
@@ -261,7 +280,7 @@ function SessionSidebar({
     }
   });
 
-  function renderSessionList(items: ChatSession[]) {
+  function renderSessionList(items: ChatSession[], depth = 0) {
     return items.map((session) => (
       <SessionItem
         key={session.id}
@@ -269,12 +288,16 @@ function SessionSidebar({
         activeChatId={activeChatId}
         selectMode={selectMode}
         isSelected={selectedIds.has(session.id)}
+        depth={depth}
         canRefreshTitle={canRefreshSessionTitle(session, messages)}
         renamingId={renamingId}
         renameTitle={renameTitle}
         setRenamingId={setRenamingId}
         setRenameTitle={setRenameTitle}
-        setActiveChatId={setActiveChatId}
+        openSession={(targetSession) => {
+          setActiveProjectId(targetSession.project_id || null);
+          setActiveChatId(targetSession.id);
+        }}
         toggleSelect={(id) => {
           setSelectedIds((prev) => {
             const next = new Set(prev);
@@ -302,7 +325,38 @@ function SessionSidebar({
     setSelectedProjectIds(new Set());
     setMoveMenuOpen(false);
     setBulkMoveWorkspaceId(null);
+    setDragOverProjectId(null);
     setCtxMoveWorkspaceId(null);
+    setCtxProjectMoveWorkspaceId(null);
+  }
+
+  async function handleProjectDrop(event: React.DragEvent, project: Project) {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOverProjectId(null);
+
+    const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+    if (!raw) {
+      return;
+    }
+
+    try {
+      const sessionIds = JSON.parse(raw) as string[];
+      const sessionsToMove = sessionIds.filter((sessionId) => {
+        const session = sidebarSessions.find((item) => item.id === sessionId);
+        return session && session.project_id !== project.id;
+      });
+
+      if (sessionsToMove.length === 0) {
+        return;
+      }
+
+      await moveSessionsToTarget(sessionsToMove, project.workspace_id, project.id);
+      setActiveProjectId(project.id);
+      setExpanded((prev) => ({ ...prev, [project.id]: true }));
+    } catch (error) {
+      console.error("Failed to drop chat into folder:", error);
+    }
   }
 
   function renderWorkspaceMoveSubmenu(
@@ -327,6 +381,32 @@ function SessionSidebar({
             <Folder size={11} /> <span className="truncate">{project.name}</span>
           </button>
         ))}
+      </div>
+    );
+  }
+
+  function renderProjectWorkspaceMoveSubmenu(
+    project: Project,
+    onSelect: (workspaceId: string) => void,
+  ) {
+    return (
+      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-lg">
+        {workspaces.map((workspace) => {
+          const isCurrentWorkspace = workspace.id === project.workspace_id;
+          return (
+            <button
+              key={workspace.id}
+              onClick={() => onSelect(workspace.id)}
+              disabled={isCurrentWorkspace}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="truncate flex-1">
+                {workspace.name}
+                {isCurrentWorkspace ? " (Current)" : ""}
+              </span>
+            </button>
+          );
+        })}
       </div>
     );
   }
@@ -357,7 +437,7 @@ function SessionSidebar({
   return (
     <div
       className="relative z-10 flex shrink-0 flex-col overflow-hidden border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]"
-      style={{ width: `${Math.max(220, Math.min(sidebarWidth, 420))}px` }}
+      style={{ width: `${clampSessionSidebarWidth(sidebarWidth)}px` }}
     >
       {/* Header */}
       <div className="px-3 py-2.5 border-b border-[var(--border-color)]">
@@ -576,6 +656,24 @@ function SessionSidebar({
                       event.stopPropagation();
                       setCtxMenu({ type: "project", x: event.clientX, y: event.clientY, project });
                     }}
+                    onDragOver={(event) => {
+                      if (selectMode || !event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      setDragOverProjectId(project.id);
+                    }}
+                    onDragLeave={(event) => {
+                      const relatedTarget = event.relatedTarget as Node | null;
+                      if (relatedTarget && event.currentTarget.contains(relatedTarget)) {
+                        return;
+                      }
+                      setDragOverProjectId((current) => current === project.id ? null : current);
+                    }}
+                    onDrop={(event) => {
+                      void handleProjectDrop(event, project);
+                    }}
                     onClick={() => {
                       if (selectMode) {
                         setSelectedProjectIds((prev) => {
@@ -591,7 +689,9 @@ function SessionSidebar({
                       }
                     }}
                     className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${
-                      selectedProjectIds.has(project.id)
+                      dragOverProjectId === project.id
+                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
+                        : selectedProjectIds.has(project.id)
                         ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
                         : activeProjectId === project.id
                         ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
@@ -651,7 +751,11 @@ function SessionSidebar({
                     )}
                     <ChevronDown size={12} className={`text-[var(--text-muted)] transition-transform ${isOpen ? "" : "-rotate-90"}`} />
                   </button>
-                  {isOpen && renderSessionList(projectSessions)}
+                  {isOpen && (
+                    <div className="ml-3 border-l border-[var(--border-color)]/70">
+                      {renderSessionList(projectSessions, 1)}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -697,6 +801,17 @@ function SessionSidebar({
               </button>
               <button
                 onClick={() => {
+                  void api.chatFile.reveal(ctxMenu.session.id).catch(async (error) => {
+                    await message(error instanceof Error ? error.message : "Failed to reveal chat file.");
+                  });
+                  setCtxMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <ExternalLink size={11} /> Show in Explorer
+              </button>
+              <button
+                onClick={() => {
                   void togglePin(ctxMenu.session);
                   setCtxMenu(null);
                 }}
@@ -721,7 +836,9 @@ function SessionSidebar({
                     <ChevronRight size={11} />
                   </button>
                   {ctxMoveWorkspaceId === workspace.id && renderWorkspaceMoveSubmenu(workspace.id, (targetWorkspaceId, targetProjectId) => {
-                    void moveSessionsToTarget([ctxMenu.session.id], targetWorkspaceId, targetProjectId);
+                    void moveSessionsToTarget([ctxMenu.session.id], targetWorkspaceId, targetProjectId).catch(async (error) => {
+                      await message(error instanceof Error ? error.message : "Failed to move chat.");
+                    });
                     setCtxMoveWorkspaceId(null);
                     setCtxMenu(null);
                   })}
@@ -759,6 +876,25 @@ function SessionSidebar({
               >
                 <Pencil size={11} /> Rename folder
               </button>
+              <div className="my-1 border-t border-[var(--border-color)]" />
+              <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Move to workspace</div>
+              <div
+                className="relative"
+                onMouseEnter={() => setCtxProjectMoveWorkspaceId("open")}
+              >
+                <button
+                  onClick={() => setCtxProjectMoveWorkspaceId((current) => current === "open" ? null : "open")}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <span className="truncate flex-1">Choose workspace</span>
+                  <ChevronRight size={11} />
+                </button>
+                {ctxProjectMoveWorkspaceId === "open" && renderProjectWorkspaceMoveSubmenu(ctxMenu.project, (targetWorkspaceId) => {
+                  void moveProjectToWorkspace(ctxMenu.project, targetWorkspaceId);
+                  setCtxProjectMoveWorkspaceId(null);
+                  setCtxMenu(null);
+                })}
+              </div>
               <button
                 onClick={() => {
                   void deleteProject(ctxMenu.project.id);
@@ -797,6 +933,31 @@ function chatExportFilename(title: string) {
   return `${base || "chat"}.json`;
 }
 
+function splitAssistantMessage(content: string) {
+  const thinkMatch = content.match(/^<think(?:\s+title="([^"]*)")?>\s*([\s\S]*?)\s*<\/think>\s*([\s\S]*)$/);
+  if (thinkMatch) {
+    return {
+      thoughtTitle: thinkMatch[1]?.replace(/&quot;/g, "\"").trim() || null,
+      thought: thinkMatch[2].trim(),
+      answer: thinkMatch[3].trim(),
+    };
+  }
+
+  const separatorMatch = content.match(/([\s\S]+?)\n{3,}([\s\S]+)/);
+  if (!separatorMatch) {
+    return null;
+  }
+
+  const thought = separatorMatch[1].trim();
+  const answer = separatorMatch[2].trim();
+  const looksLikeReasoning = /(I need to|I'll|Key points to cover:|I'll structure my response|The user is asking)/.test(thought);
+  if (!looksLikeReasoning || !answer) {
+    return null;
+  }
+
+  return { thought, answer };
+}
+
 export default function ChatView() {
   const navigate = useNavigate();
   const { sessionId: routeSessionId } = useParams();
@@ -826,6 +987,7 @@ export default function ChatView() {
     setCompareModelA: saveCompareA, setCompareModelB: saveCompareB, modelLabels, quickSearchModels,
     skipLinkConfirm, setSkipLinkConfirm,
   } = useSettingsStore();
+  const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
   const topSelectClassName = "h-8 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-8 text-xs font-medium text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
   const composerToggleBaseClass = "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium shadow-sm transition-colors";
   const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]";
@@ -839,6 +1001,8 @@ export default function ChatView() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [activeContextSources, setActiveContextSources] = useState<Record<string, any>>({});
   const [loadedSessionScopeKey, setLoadedSessionScopeKey] = useState<string | null>(null);
+  const [sessionSidebarDragActive, setSessionSidebarDragActive] = useState(false);
+  const chatViewRef = useRef<HTMLDivElement | null>(null);
   const currentSessionId = routeSessionId ?? activeChatId ?? null;
   const effectiveWorkspaceId = scopedWorkspaceId ?? activeWorkspaceId;
   const effectiveProjectId = scopedProjectId ?? activeProjectId;
@@ -853,6 +1017,39 @@ export default function ChatView() {
       unlistenPromise.then(fn => fn());
     };
   }, [currentSessionId]);
+
+  useEffect(() => {
+    if (!sessionSidebarDragActive) {
+      return;
+    }
+
+    function handleMouseMove(event: MouseEvent) {
+      const container = chatViewRef.current;
+      if (!container) {
+        return;
+      }
+
+      const bounds = container.getBoundingClientRect();
+      const relativeWidth = event.clientX - bounds.left;
+      setSidebarWidth(clampSessionSidebarWidth(relativeWidth));
+    }
+
+    function handleMouseUp() {
+      setSessionSidebarDragActive(false);
+    }
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [sessionSidebarDragActive, setSidebarWidth]);
 
   // Persist model choice to global settings
   const persistModelChoice = useCallback(async (model: string) => {
@@ -892,6 +1089,7 @@ export default function ChatView() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [expandedThoughtIds, setExpandedThoughtIds] = useState<Set<string>>(new Set());
 
   // Chat mode: normal chat vs model comparison
   const [chatMode, setChatMode] = useState<ChatMode>("chat");
@@ -903,8 +1101,23 @@ export default function ChatView() {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [creatingFolderPending, setCreatingFolderPending] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const creatingFolderRequestRef = useRef(false);
+  const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
+
+  const openConfirmDialog = useCallback((options: ConfirmDialogState) => {
+    setConfirmDialog(options);
+    return new Promise<boolean>((resolve) => {
+      confirmResolverRef.current = resolve;
+    });
+  }, []);
+
+  const closeConfirmDialog = useCallback((confirmed: boolean) => {
+    confirmResolverRef.current?.(confirmed);
+    confirmResolverRef.current = null;
+    setConfirmDialog(null);
+  }, []);
 
   async function handleCreateFolder(nameOverride?: string) {
     if (creatingFolderRequestRef.current) {return;}
@@ -938,6 +1151,13 @@ export default function ChatView() {
       folderInputRef.current.focus();
     }
   }, [creatingFolder]);
+
+  useEffect(() => {
+    return () => {
+      confirmResolverRef.current?.(false);
+      confirmResolverRef.current = null;
+    };
+  }, []);
 
   // Model comparison state
   const [compareModelA, setCompareModelA] = useState(savedCompareA || "");
@@ -1151,6 +1371,7 @@ export default function ChatView() {
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
   const isCurrentlyRefining = isRefiningPhase && refineStreamingContent.length > 0;
   const activeSession = activeChatId ? sessions.find((s) => s.id === activeChatId) ?? null : null;
+  const activeSessionWorkspaceId = activeSession?.workspace_id ?? effectiveWorkspaceId;
 
   function resetDualStreamingState() {
     setIsRefiningPhase(false);
@@ -1215,7 +1436,12 @@ export default function ChatView() {
         ? `Permanently delete ${totalCount} selected item${totalCount === 1 ? "" : "s"}? Chats will be deleted and folders removed. This cannot be undone.`
         : `Delete ${totalCount} selected item${totalCount === 1 ? "" : "s"}? Chats will move to the recycle bin and folders will be removed.`;
 
-      if (!await confirm(confirmMsg)) {return;}
+      if (!await openConfirmDialog({
+        title: isImmediate ? "Delete selected items?" : "Move selected items to recycle bin?",
+        description: confirmMsg,
+        confirmLabel: isImmediate ? "Delete" : "Move to Recycle Bin",
+        tone: "danger",
+      })) {return;}
     }
 
     await Promise.all(sessionIds.map((id) => api.chat.deleteSession(effectiveWorkspaceId, id)));
@@ -1397,11 +1623,17 @@ export default function ChatView() {
 
   // Load messages when session changes
   useEffect(() => {
-    if (!activeChatId || messages[activeChatId] || !effectiveWorkspaceId) {return;}
-    api.chat.getMessages(effectiveWorkspaceId, activeChatId)
+    if (!activeChatId || messages[activeChatId] || !activeSessionWorkspaceId) {return;}
+    api.chat.getMessages(activeSessionWorkspaceId, activeChatId)
       .then((msgs) => setMessages(activeChatId, msgs))
-      .catch(() => {});
-  }, [activeChatId, effectiveWorkspaceId, messages, setMessages]);
+      .catch((error) => {
+        console.error("Failed to load chat messages", {
+          sessionId: activeChatId,
+          workspaceId: activeSessionWorkspaceId,
+          error,
+        });
+      });
+  }, [activeChatId, activeSessionWorkspaceId, messages, setMessages]);
 
   // Load AI model priority list + fallback to raw Ollama models
   useEffect(() => {
@@ -1780,7 +2012,12 @@ export default function ChatView() {
         ? "Permanently delete this chat session and all its messages? This cannot be undone."
         : "Move this chat to the recycle bin?";
 
-      if (!await confirm(confirmMsg)) {return;}
+      if (!await openConfirmDialog({
+        title: isImmediate ? "Delete chat?" : "Move chat to recycle bin?",
+        description: confirmMsg,
+        confirmLabel: isImmediate ? "Delete" : "Move to Recycle Bin",
+        tone: "danger",
+      })) {return;}
     }
 
     await api.chat.deleteSession(effectiveWorkspaceId, id);
@@ -1844,14 +2081,37 @@ export default function ChatView() {
 
   async function moveSessionsToTarget(sessionIds: string[], workspaceId: string, projectId: string | null) {
     if (sessionIds.length === 0) {return;}
+    const sessionIdSet = new Set(sessionIds);
     await api.chat.moveSessions(sessionIds, workspaceId, projectId ?? undefined);
+    const isSameWorkspaceMove = workspaceId === effectiveWorkspaceId;
+
+    if (isSameWorkspaceMove) {
+      setScopedProjectId(projectId);
+      setSidebarSessions((prev) => prev.map((session) => (
+        sessionIdSet.has(session.id)
+          ? { ...session, workspace_id: workspaceId, project_id: projectId ?? "" }
+          : session
+      )));
+      setSessions(sessions.map((session) => (
+        sessionIdSet.has(session.id)
+          ? { ...session, workspace_id: workspaceId, project_id: projectId ?? "" }
+          : session
+      )));
+    } else {
+      setSidebarSessions((prev) => prev.filter((session) => !sessionIdSet.has(session.id)));
+      setSessions(sessions.filter((session) => !sessionIdSet.has(session.id)));
+    }
+
     if (effectiveWorkspaceId) {
       await Promise.all([
         refreshProjectTree(effectiveWorkspaceId),
-        refreshScopedSessions(effectiveWorkspaceId, workspaceId === effectiveWorkspaceId ? effectiveProjectId : effectiveProjectId),
+        refreshScopedSessions(
+          effectiveWorkspaceId,
+          isSameWorkspaceMove ? projectId : effectiveProjectId,
+        ),
       ]);
     }
-    if (activeChatId && sessionIds.includes(activeChatId) && (workspaceId !== effectiveWorkspaceId || effectiveProjectId !== projectId)) {
+    if (activeChatId && sessionIds.includes(activeChatId) && workspaceId !== effectiveWorkspaceId) {
       setActiveChatId(null);
     }
     if (workspaceId !== effectiveWorkspaceId) {
@@ -1865,9 +2125,57 @@ export default function ChatView() {
     await refreshProjectTree(effectiveWorkspaceId);
   }
 
+  async function moveProjectToWorkspace(project: Project, targetWorkspaceId: string) {
+    if (project.workspace_id === targetWorkspaceId) {return;}
+
+    const projectSessionIds = sidebarSessions
+      .filter((session) => session.project_id === project.id)
+      .map((session) => session.id);
+
+    const movedProject = await api.project.create(targetWorkspaceId, project.name, {
+      project_description: project.project_description,
+      color: project.color,
+      icon: project.icon,
+    });
+    await api.project.update(movedProject.id, {
+      custom_instructions: project.custom_instructions,
+    });
+    if (projectSessionIds.length > 0) {
+      await api.chat.moveSessions(projectSessionIds, targetWorkspaceId, movedProject.id);
+    }
+    await api.project.delete(project.id);
+
+    if (effectiveWorkspaceId) {
+      await Promise.all([
+        refreshProjectTree(effectiveWorkspaceId),
+        refreshScopedSessions(effectiveWorkspaceId, effectiveProjectId === project.id ? null : effectiveProjectId),
+      ]);
+    }
+    if (targetWorkspaceId !== effectiveWorkspaceId) {
+      await refreshProjectTree(targetWorkspaceId);
+    }
+    if (effectiveProjectId === project.id) {
+      setScopedProjectId(null);
+    }
+    if (activeChatId && projectSessionIds.includes(activeChatId)) {
+      setActiveChatId(null);
+    }
+  }
+
   async function deleteProject(projectId: string) {
     if (!effectiveWorkspaceId) {return;}
     const projectSessions = sidebarSessions.filter((session) => session.project_id === projectId).map((session) => session.id);
+    const confirmMsg = projectSessions.length > 0
+      ? `Delete this folder? ${projectSessions.length} chat${projectSessions.length === 1 ? "" : "s"} will be moved to the workspace root.`
+      : "Delete this empty folder?";
+
+    if (!await openConfirmDialog({
+      title: "Delete folder?",
+      description: confirmMsg,
+      confirmLabel: "Delete Folder",
+      tone: "danger",
+    })) {return;}
+
     if (projectSessions.length > 0) {
       await api.chat.moveSessions(projectSessions, effectiveWorkspaceId, undefined);
     }
@@ -2082,7 +2390,7 @@ export default function ChatView() {
 
   // ── Main render ──────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full min-w-0 overflow-hidden">
+    <div ref={chatViewRef} className="flex h-full min-w-0 overflow-hidden">
       <SessionSidebar
         sidebarSessions={sidebarSessions}
         workspaces={workspaces}
@@ -2095,6 +2403,7 @@ export default function ChatView() {
         bulkDeleteSessions={bulkDeleteSessions}
         renameProject={renameProject}
         deleteProject={deleteProject}
+        moveProjectToWorkspace={moveProjectToWorkspace}
         sessionQuery={sessionQuery}
         setSessionQuery={setSessionQuery}
         creatingFolder={creatingFolder}
@@ -2117,6 +2426,19 @@ export default function ChatView() {
         saveSession={saveSession}
         deleteSession={deleteSession}
       />
+
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize conversations sidebar"
+        onMouseDown={(event) => {
+          event.preventDefault();
+          setSessionSidebarDragActive(true);
+        }}
+        className="group relative w-2 shrink-0 cursor-col-resize bg-transparent"
+      >
+        <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--border-color)] transition-colors group-hover:bg-[var(--accent-color)]" />
+      </div>
 
       {/* Compare mode */}
       {chatMode === "compare" ? (
@@ -2416,12 +2738,51 @@ export default function ChatView() {
                       }`}
                     >
                       {msg.role === "assistant" ? (
-                        <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
-                          {i === activeMessages.length - 1 && currentSessionId && activeContextSources[currentSessionId] && (
-                            <ContextIndicator sources={activeContextSources[currentSessionId]} />
-                          )}
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{msg.content}</ReactMarkdown>
-                        </div>
+                        (() => {
+                          const parts = splitAssistantMessage(msg.content);
+                          const thoughtExpanded = expandedThoughtIds.has(msg.id);
+
+                          return (
+                            <div className="space-y-3">
+                              {i === activeMessages.length - 1 && currentSessionId && activeContextSources[currentSessionId] && (
+                                <ContextIndicator sources={activeContextSources[currentSessionId]} />
+                              )}
+                              {parts?.thought && (
+                                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/50">
+                                  <button
+                                    onClick={() => {
+                                      setExpandedThoughtIds((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(msg.id)) {
+                                          next.delete(msg.id);
+                                        } else {
+                                          next.add(msg.id);
+                                        }
+                                        return next;
+                                      });
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                                  >
+                                    {thoughtExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                    <span>{parts.thoughtTitle || "Thought"}</span>
+                                  </button>
+                                  {thoughtExpanded && (
+                                    <div className="border-t border-[var(--border-color)] px-3 py-2">
+                                      <div className="prose prose-sm prose-invert max-w-none overflow-x-auto text-[var(--text-secondary)]">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{parts.thought}</ReactMarkdown>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                  {parts?.answer || msg.content}
+                                </ReactMarkdown>
+                              </div>
+                            </div>
+                          );
+                        })()
                       ) : (
                         <p className="whitespace-pre-wrap">{msg.content}</p>
                       )}
@@ -2928,6 +3289,38 @@ export default function ChatView() {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      )}
+      {confirmDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => closeConfirmDialog(false)}
+        >
+          <div
+            className="mx-4 flex w-full max-w-md flex-col gap-4 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex flex-col gap-1">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">{confirmDialog.title}</h3>
+              <p className="text-sm text-[var(--text-secondary)]">{confirmDialog.description}</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => closeConfirmDialog(false)}
+                className="flex-1 rounded-lg border border-[var(--border-color)] py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => closeConfirmDialog(true)}
+                className={`flex-1 rounded-lg py-2 text-sm text-white hover:opacity-90 ${
+                  confirmDialog.tone === "danger" ? "bg-red-500" : "bg-[var(--accent-color)]"
+                }`}
+              >
+                {confirmDialog.confirmLabel}
+              </button>
+            </div>
           </div>
         </div>
       )}

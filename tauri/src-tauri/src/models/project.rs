@@ -26,6 +26,7 @@ pub struct CreateProjectRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateProjectRequest {
     pub id: String,
+    pub workspace_id: Option<String>,
     pub name: Option<String>,
     pub project_description: Option<String>,
     pub custom_instructions: Option<String>,
