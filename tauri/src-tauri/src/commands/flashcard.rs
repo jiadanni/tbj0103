@@ -256,6 +256,27 @@ pub fn list_flashcards_by_concept(state: State<DbState>, concept_id: String) -> 
     Ok(items)
 }
 
+/// List all concept-linked flashcards for a workspace so they can be shown in the graph.
+#[tauri::command]
+pub fn list_graph_flashcards(state: State<DbState>, workspace_id: String) -> Result<Vec<LearningCard>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT lc.id, lc.workspace_id, lc.front, lc.back, lc.source_type, lc.source_id,
+                lc.ease_factor, lc.interval, lc.repetitions, lc.next_review_date, lc.last_reviewed_at, lc.created_at
+         FROM learning_cards lc
+         JOIN concept_nodes cn ON cn.id = lc.source_id
+         WHERE lc.workspace_id = ?1
+           AND lc.source_type = 'concept'
+           AND cn.workspace_id = ?1
+         ORDER BY lc.created_at DESC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt.query_map(rusqlite::params![workspace_id], row_to_card)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
 /// Extract flashcards from arbitrary text content (chat response, note, etc.).
 /// Uses the LLM to identify key Q&A pairs worth remembering.
 #[tauri::command]
