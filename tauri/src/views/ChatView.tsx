@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Send, Plus, Trash2, Copy, ChevronDown, ChevronRight, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
-import { message, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
@@ -36,6 +36,7 @@ interface ConfirmDialogState {
   title: string;
   description: string;
   confirmLabel: string;
+  cancelLabel?: string | null;
   tone?: "danger" | "default";
 }
 
@@ -107,6 +108,7 @@ interface SessionSidebarProps {
   togglePin: (session: ChatSession) => void;
   saveSession: (session: ChatSession) => void;
   deleteSession: (id: string) => void;
+  showAlertDialog: (title: string, description: string, tone?: ConfirmDialogState["tone"]) => void;
 }
 
 function SessionItem({
@@ -241,7 +243,7 @@ function SessionSidebar({
   creatingFolderPending,
   folderInputRef, handleCreateFolder, createNewSession,
   activeChatId, renamingId, renameTitle, setRenamingId, setRenameTitle,
-  setActiveChatId, renameSession, refreshSessionTitle, togglePin, saveSession, deleteSession,
+  setActiveChatId, renameSession, refreshSessionTitle, togglePin, saveSession, deleteSession, showAlertDialog,
 }: SessionSidebarProps) {
   const isSplitPane = useWorkspacePane() !== null;
   const sidebarWidth = useSettingsStore((state) => state.sidebarWidth);
@@ -801,8 +803,14 @@ function SessionSidebar({
               </button>
               <button
                 onClick={() => {
-                  void api.chatFile.reveal(ctxMenu.session.id).catch(async (error) => {
-                    await message(error instanceof Error ? error.message : "Failed to reveal chat file.");
+                  void api.chatFile.reveal(ctxMenu.session.id).catch((error) => {
+                    const description = error instanceof Error
+                      ? error.message
+                      : typeof error === "string" && error.trim()
+                        ? error
+                        : "Failed to reveal chat file.";
+                    console.error("Failed to reveal chat file:", error);
+                    showAlertDialog("Show in Explorer failed", description, "danger");
                   });
                   setCtxMenu(null);
                 }}
@@ -836,8 +844,14 @@ function SessionSidebar({
                     <ChevronRight size={11} />
                   </button>
                   {ctxMoveWorkspaceId === workspace.id && renderWorkspaceMoveSubmenu(workspace.id, (targetWorkspaceId, targetProjectId) => {
-                    void moveSessionsToTarget([ctxMenu.session.id], targetWorkspaceId, targetProjectId).catch(async (error) => {
-                      await message(error instanceof Error ? error.message : "Failed to move chat.");
+                    void moveSessionsToTarget([ctxMenu.session.id], targetWorkspaceId, targetProjectId).catch((error) => {
+                      const description = error instanceof Error
+                        ? error.message
+                        : typeof error === "string" && error.trim()
+                          ? error
+                          : "Failed to move chat.";
+                      console.error("Failed to move chat:", error);
+                      showAlertDialog("Move failed", description, "danger");
                     });
                     setCtxMoveWorkspaceId(null);
                     setCtxMenu(null);
@@ -1110,6 +1124,16 @@ export default function ChatView() {
     setConfirmDialog(options);
     return new Promise<boolean>((resolve) => {
       confirmResolverRef.current = resolve;
+    });
+  }, []);
+
+  const openAlertDialog = useCallback((title: string, description: string, tone: ConfirmDialogState["tone"] = "default") => {
+    setConfirmDialog({
+      title,
+      description,
+      confirmLabel: "OK",
+      cancelLabel: null,
+      tone,
     });
   }, []);
 
@@ -2198,7 +2222,13 @@ export default function ChatView() {
       if (!destPath) {return;}
       await api.chatFile.exportAsJson(session.id, destPath);
     } catch (err) {
-      await message(err instanceof Error ? err.message : "Failed to save chat.");
+      const description = err instanceof Error
+        ? err.message
+        : typeof err === "string" && err.trim()
+          ? err
+          : "Failed to save chat.";
+      console.error("Failed to save chat:", err);
+      openAlertDialog("Save failed", description, "danger");
     }
   }
 
@@ -2425,6 +2455,7 @@ export default function ChatView() {
         togglePin={togglePin}
         saveSession={saveSession}
         deleteSession={deleteSession}
+        showAlertDialog={openAlertDialog}
       />
 
       <div
@@ -3298,23 +3329,34 @@ export default function ChatView() {
           onClick={() => closeConfirmDialog(false)}
         >
           <div
-            className="mx-4 flex w-full max-w-md flex-col gap-4 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+            className="mx-4 flex w-full max-w-md flex-col gap-5 rounded-3xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex flex-col gap-1">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">{confirmDialog.title}</h3>
-              <p className="text-sm text-[var(--text-secondary)]">{confirmDialog.description}</p>
+            <div className="flex items-start gap-3">
+              <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+                confirmDialog.tone === "danger"
+                  ? "bg-red-500/12 text-red-400"
+                  : "bg-[var(--accent-color)]/12 text-[var(--accent-color)]"
+              }`}>
+                {confirmDialog.tone === "danger" ? <Trash2 size={18} /> : <MessageSquare size={18} />}
+              </div>
+              <div className="flex flex-1 flex-col gap-1">
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">{confirmDialog.title}</h3>
+                <p className="text-sm leading-6 text-[var(--text-secondary)]">{confirmDialog.description}</p>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => closeConfirmDialog(false)}
-                className="flex-1 rounded-lg border border-[var(--border-color)] py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                Cancel
-              </button>
+            <div className="flex justify-end gap-2">
+              {confirmDialog.cancelLabel !== null && (
+                <button
+                  onClick={() => closeConfirmDialog(false)}
+                  className="rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  {confirmDialog.cancelLabel ?? "Cancel"}
+                </button>
+              )}
               <button
                 onClick={() => closeConfirmDialog(true)}
-                className={`flex-1 rounded-lg py-2 text-sm text-white hover:opacity-90 ${
+                className={`rounded-xl px-4 py-2 text-sm text-white hover:opacity-90 ${
                   confirmDialog.tone === "danger" ? "bg-red-500" : "bg-[var(--accent-color)]"
                 }`}
               >
