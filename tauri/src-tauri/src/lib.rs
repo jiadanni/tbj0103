@@ -168,6 +168,7 @@ pub fn run() {
             commands::flashcard::generate_flashcards,
             commands::flashcard::generate_flashcards_from_concept,
             commands::flashcard::list_flashcards_by_concept,
+            commands::flashcard::list_graph_flashcards,
             commands::flashcard::extract_flashcards_from_content,
             // Note & template commands
             commands::note::create_note,
