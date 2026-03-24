@@ -311,6 +311,7 @@ pub fn run() {
             commands::thought_queue::delete_thought,
             // Chat file / encryption commands
             commands::chat_file::get_chat_file_info,
+            commands::chat_file::reveal_chat_file,
             commands::chat_file::setup_chat_encryption,
             commands::chat_file::disable_chat_encryption,
             commands::chat_file::export_chat_as_json,

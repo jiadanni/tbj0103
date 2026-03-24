@@ -319,6 +319,15 @@ struct LmContentBlock {
     text: Option<String>,
     #[serde(rename = "tokensCount")]
     tokens_count: Option<i64>,
+    style: Option<LmBlockStyle>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LmBlockStyle {
+    style_type: Option<String>,
+    title: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -410,6 +419,7 @@ fn extract_messages_from_lm_conversation(conv: &LmConversation) -> Vec<ChatFileM
         let is_multi = version.msg_type.as_deref() == Some("multiStep");
 
         let mut text_parts: Vec<String> = Vec::new();
+        let mut thought_title: Option<String> = None;
         let mut model_name: Option<String> = None;
         let mut tokens: Option<i64> = None;
         let mut duration_ms: Option<i64> = None;
@@ -426,6 +436,11 @@ fn extract_messages_from_lm_conversation(conv: &LmConversation) -> Vec<ChatFileM
                             if !t.is_empty() {
                                 text_parts.push(t.clone());
                             }
+                        }
+                        if thought_title.is_none()
+                            && block.style.as_ref().and_then(|style| style.style_type.as_deref()) == Some("thinking")
+                        {
+                            thought_title = block.style.as_ref().and_then(|style| style.title.clone());
                         }
                     }
                 }
@@ -462,9 +477,19 @@ fn extract_messages_from_lm_conversation(conv: &LmConversation) -> Vec<ChatFileM
             model_name = version.sender_info.as_ref().and_then(|s| s.sender_name.clone());
         }
 
-        let content = text_parts.join("\n\n");
+        let mut content = text_parts.join("\n\n");
         if content.is_empty() {
             continue;
+        }
+        if let Some(title) = thought_title.filter(|value| !value.trim().is_empty()) {
+            if let Some((thought, answer)) = content.split_once("\n\n\n") {
+                let safe_title = title.replace('"', "&quot;");
+                content = format!(
+                    "<think title=\"{safe_title}\">\n{}\n</think>\n\n{}",
+                    thought.trim(),
+                    answer.trim(),
+                );
+            }
         }
 
         // Approximate timestamp: base + offset per message

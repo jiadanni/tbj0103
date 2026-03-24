@@ -76,14 +76,15 @@ pub fn update_project(state: State<DbState>, req: UpdateProjectRequest) -> Resul
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE projects SET
-            name = COALESCE(?1, name),
-            project_description = COALESCE(?2, project_description),
-            custom_instructions = COALESCE(?3, custom_instructions),
-            color = COALESCE(?4, color),
-            icon = COALESCE(?5, icon),
-            updated_at = ?6
-         WHERE id = ?7",
-        rusqlite::params![req.name, req.project_description, req.custom_instructions, req.color, req.icon, now, req.id],
+            workspace_id = COALESCE(?1, workspace_id),
+            name = COALESCE(?2, name),
+            project_description = COALESCE(?3, project_description),
+            custom_instructions = COALESCE(?4, custom_instructions),
+            color = COALESCE(?5, color),
+            icon = COALESCE(?6, icon),
+            updated_at = ?7
+         WHERE id = ?8",
+        rusqlite::params![req.workspace_id, req.name, req.project_description, req.custom_instructions, req.color, req.icon, now, req.id],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }

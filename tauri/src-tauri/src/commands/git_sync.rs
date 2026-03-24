@@ -3,6 +3,11 @@ use serde::{Deserialize, Serialize};
 use crate::db::DbState;
 use crate::services::git_sync;
 
+fn is_ssh_remote(remote_url: &str) -> bool {
+    let trimmed = remote_url.trim();
+    trimmed.starts_with("git@") || trimmed.starts_with("ssh://")
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GitSyncStatus {
     pub enabled: bool,
@@ -33,6 +38,10 @@ pub fn configure_git_sync(
     remote_url: String,
     enabled: bool,
 ) -> Result<(), String> {
+    if enabled && !remote_url.is_empty() && !is_ssh_remote(&remote_url) {
+        return Err("Git sync requires an SSH remote URL (for example git@github.com:you/aetherium-sync.git).".to_string());
+    }
+
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let conn = state.0.lock().map_err(|e| e.to_string())?;
 
@@ -65,6 +74,9 @@ pub async fn trigger_git_sync(app: AppHandle, state: State<'_, DbState>) -> Resu
 
     if remote_url.is_empty() {
         return Err("No remote URL configured".to_string());
+    }
+    if !is_ssh_remote(&remote_url) {
+        return Err("Git sync requires an SSH remote URL.".to_string());
     }
 
     git_sync::ensure_repo(&app_dir, &remote_url)?;
