@@ -925,92 +925,106 @@ export default function SettingsView() {
                 ) : (
                   <div className="space-y-1">
                     {aiModels.map((m, idx) => (
-                      <div key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)]">
-                        {/* Priority arrows */}
-                        <div className="flex flex-col gap-0.5">
-                          <button
-                            disabled={idx === 0}
-                            onClick={async () => {
-                              const prev = aiModels[idx - 1];
-                              await api.aiModel.update(m.id, { priority: prev.priority });
-                              await api.aiModel.update(prev.id, { priority: m.priority });
-                              loadAiModels();
-                            }}
-                            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
-                          >
-                            <ChevronUp size={11} />
-                          </button>
-                          <button
-                            disabled={idx === aiModels.length - 1}
-                            onClick={async () => {
-                              const next = aiModels[idx + 1];
-                              await api.aiModel.update(m.id, { priority: next.priority });
-                              await api.aiModel.update(next.id, { priority: m.priority });
-                              loadAiModels();
-                            }}
-                            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
-                          >
-                            <ChevronDown size={11} />
-                          </button>
-                        </div>
-
-                        {/* Model info */}
-                        <div className="flex-1 min-w-0">
-                          {editingModelId === m.id ? (
-                            <input
-                              autoFocus
-                              value={editingName}
-                              onChange={(e) => setEditingName(e.target.value)}
-                              onBlur={async () => {
-                                await api.aiModel.update(m.id, { name: editingName });
-                                setEditingModelId(null);
+                      <div key={m.id} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2">
+                        <div className="flex items-start gap-2">
+                          {/* Priority arrows */}
+                          <div className="flex flex-col gap-0.5 pt-0.5">
+                            <button
+                              disabled={idx === 0}
+                              onClick={async () => {
+                                const prev = aiModels[idx - 1];
+                                await api.aiModel.update(m.id, { priority: prev.priority });
+                                await api.aiModel.update(prev.id, { priority: m.priority });
                                 loadAiModels();
                               }}
-                              onKeyDown={async (e) => {
-                                if (e.key === "Enter") {
+                              className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
+                            >
+                              <ChevronUp size={11} />
+                            </button>
+                            <button
+                              disabled={idx === aiModels.length - 1}
+                              onClick={async () => {
+                                const next = aiModels[idx + 1];
+                                await api.aiModel.update(m.id, { priority: next.priority });
+                                await api.aiModel.update(next.id, { priority: m.priority });
+                                loadAiModels();
+                              }}
+                              className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
+                            >
+                              <ChevronDown size={11} />
+                            </button>
+                          </div>
+
+                          {/* Model info */}
+                          <div className="min-w-0 flex-1">
+                            {editingModelId === m.id ? (
+                              <input
+                                autoFocus
+                                value={editingName}
+                                onChange={(e) => setEditingName(e.target.value)}
+                                onBlur={async () => {
                                   await api.aiModel.update(m.id, { name: editingName });
                                   setEditingModelId(null);
                                   loadAiModels();
-                                }
-                                if (e.key === "Escape") {setEditingModelId(null);}
-                              }}
-                              className="w-full px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--accent-color)] text-sm text-[var(--text-primary)] outline-none"
-                            />
-                          ) : (
-                            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => { setEditingModelId(m.id); setEditingName(m.name); }}>
-                              <span className="text-sm font-medium text-[var(--text-primary)]">{m.name}</span>
-                              <Pencil size={10} className="text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
-                              <span className="ml-2 text-xs text-[var(--text-muted)] truncate">{m.model_id}</span>
+                                }}
+                                onKeyDown={async (e) => {
+                                  if (e.key === "Enter") {
+                                    await api.aiModel.update(m.id, { name: editingName });
+                                    setEditingModelId(null);
+                                    loadAiModels();
+                                  }
+                                  if (e.key === "Escape") {setEditingModelId(null);}
+                                }}
+                                className="w-full px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--accent-color)] text-sm text-[var(--text-primary)] outline-none"
+                              />
+                            ) : (
+                              <div className="group min-w-0 cursor-pointer" onClick={() => { setEditingModelId(m.id); setEditingName(m.name); }}>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="truncate text-sm font-medium text-[var(--text-primary)]">{m.name}</span>
+                                  <Pencil size={10} className="shrink-0 text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                                <div className="mt-0.5 truncate text-xs text-[var(--text-muted)]">{m.model_id}</div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="ml-auto flex shrink-0 items-start gap-2">
+                            <div className="flex flex-wrap items-center justify-end gap-1.5 pt-0.5">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--text-muted)]">{m.provider}</span>
+                              {m.is_paid && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">PAID</span>
+                              )}
+                              <span className="text-[10px] text-[var(--text-muted)] tabular-nums whitespace-nowrap">{m.tokens_used_total.toLocaleString()} tok</span>
                             </div>
-                          )}
-                          {m.role_tags.length > 0 && (
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {m.role_tags.map((role) => (
-                                <span key={role} className="rounded-full bg-[var(--accent-color)]/10 px-1.5 py-0.5 text-[10px] text-[var(--accent-color)]">
-                                  {role}
-                                </span>
-                              ))}
+
+                            <div className="pt-0.5">
+                              <Toggle
+                                on={m.enabled}
+                                onToggle={async () => {
+                                  await api.aiModel.update(m.id, { enabled: !m.enabled });
+                                  loadAiModels();
+                                }}
+                              />
                             </div>
-                          )}
+
+                            <button
+                              onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); }}
+                              className="p-1 text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
                         </div>
 
-                        {/* Badges */}
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--text-muted)]">{m.provider}</span>
-                        {m.is_paid && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">PAID</span>
-                        )}
-                        <span className="text-[10px] text-[var(--text-muted)] tabular-nums">{m.tokens_used_total.toLocaleString()} tok</span>
+                        <div className="mt-2 flex flex-wrap items-center gap-1">
+                          {m.role_tags.length > 0 && m.role_tags.map((role) => (
+                            <span key={`active-${role}`} className="rounded-full bg-[var(--accent-color)]/10 px-1.5 py-0.5 text-[10px] text-[var(--accent-color)]">
+                              {role}
+                            </span>
+                          ))}
+                        </div>
 
-                        {/* Enabled toggle */}
-                        <Toggle
-                          on={m.enabled}
-                          onToggle={async () => {
-                            await api.aiModel.update(m.id, { enabled: !m.enabled });
-                            loadAiModels();
-                          }}
-                        />
-
-                        <div className="flex flex-wrap items-center justify-end gap-1">
+                        <div className="mt-2 flex flex-wrap items-center gap-1">
                           {MODEL_ROLE_OPTIONS.map((role) => {
                             const active = m.role_tags.includes(role);
                             return (
@@ -1032,14 +1046,6 @@ export default function SettingsView() {
                             );
                           })}
                         </div>
-
-                        {/* Delete */}
-                        <button
-                          onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); }}
-                          className="p-1 text-[var(--text-muted)] hover:text-red-400 transition-colors"
-                        >
-                          <Trash2 size={12} />
-                        </button>
                       </div>
                     ))}
                   </div>

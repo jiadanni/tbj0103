@@ -290,8 +290,12 @@ export const api = {
   topicSignature: {
     get: (workspaceId: string) => invoke<TopicSignature>("get_topic_signature", { workspaceId }),
     regenerate: (workspaceId: string, model?: string, ollamaUrl?: string) => invoke<TopicSignature>("regenerate_topic_signature", { workspaceId, model, ollamaUrl }),
-    update: (workspaceId: string, manual_tags: string[], ignored_tags: string[]) => 
-      invoke<TopicSignature>("update_topic_signature", { workspaceId, manual_tags, ignored_tags }),
+    update: (workspaceId: string, manual_tags: string[], ignored_tags: string[]) =>
+      invoke<TopicSignature>("update_topic_signature", {
+        workspaceId,
+        manualTags: manual_tags,
+        ignoredTags: ignored_tags,
+      }),
     checkMatch: (workspaceId: string, message: string) => invoke<WorkspaceMatchResult>("check_workspace_match", { workspaceId, message }),
   },
   
