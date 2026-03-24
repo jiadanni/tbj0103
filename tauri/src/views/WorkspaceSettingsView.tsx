@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { confirm, message } from "@tauri-apps/plugin-dialog";
-import { Plus, Trash2, Pencil, Check, X, LayoutGrid, Sparkles, Loader2, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Trash2, Pencil, Check, X, LayoutGrid, Sparkles, Loader2, EyeOff, Eye } from "lucide-react";
 import { api, type AiModel } from "../lib/api";
 import { resolveModelForRole } from "../lib/modelRoles";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -25,18 +25,18 @@ export default function WorkspaceSettingsView() {
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
   const [editingInstructionsId, setEditingInstructionsId] = useState<string | null>(null);
   const [editInstructions, setEditInstructions] = useState("");
-  const [archivedWorkspaces, setArchivedWorkspaces] = useState<Workspace[]>([]);
-  const [showArchived, setShowArchived] = useState(false);
+  const [hiddenWorkspaces, setHiddenWorkspaces] = useState<Workspace[]>([]);
+  const [showHidden, setShowHidden] = useState(false);
 
   useEffect(() => {
     api.aiModel.list().then(setAiModels).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (showArchived) {
-      api.workspace.listArchived().then(setArchivedWorkspaces).catch(() => {});
+    if (showHidden) {
+      api.workspace.listHidden().then(setHiddenWorkspaces).catch(() => {});
     }
-  }, [showArchived]);
+  }, [showHidden]);
 
   async function createWorkspace() {
     if (!newName.trim()) {return;}
@@ -68,33 +68,33 @@ export default function WorkspaceSettingsView() {
     setEditingInstructionsId(null);
   }
 
-  async function archiveWorkspace(ws: Workspace) {
+  async function hideWorkspace(ws: Workspace) {
     if (workspaces.length === 1) {
-      await message("Cannot archive the last workspace.");
+      await message("Cannot hide the last workspace.");
       return;
     }
-    await api.workspace.archive(ws.id);
+    await api.workspace.hide(ws.id);
     const remaining = workspaces.filter((w) => w.id !== ws.id);
     setWorkspaces(remaining);
     if (activeWorkspaceId === ws.id) {
       setActiveWorkspaceId(remaining[0]?.id ?? null);
     }
-    if (showArchived) {
-      setArchivedWorkspaces((prev) => [...prev, { ...ws, is_archived: true }]);
+    if (showHidden) {
+      setHiddenWorkspaces((prev) => [...prev, { ...ws, is_hidden: true }]);
     }
   }
 
-  async function unarchiveWorkspace(ws: Workspace) {
-    await api.workspace.unarchive(ws.id);
-    setArchivedWorkspaces((prev) => prev.filter((w) => w.id !== ws.id));
+  async function unhideWorkspace(ws: Workspace) {
+    await api.workspace.unhide(ws.id);
+    setHiddenWorkspaces((prev) => prev.filter((w) => w.id !== ws.id));
     const refreshed = await api.workspace.list();
     setWorkspaces(refreshed);
   }
 
-  async function deleteArchivedWorkspace(ws: Workspace) {
+  async function deleteHiddenWorkspace(ws: Workspace) {
     if (!await confirm(`Permanently delete "${ws.name}" and all its projects, notes, and data? This cannot be undone.`)) {return;}
     await api.workspace.delete(ws.id);
-    setArchivedWorkspaces((prev) => prev.filter((w) => w.id !== ws.id));
+    setHiddenWorkspaces((prev) => prev.filter((w) => w.id !== ws.id));
   }
 
   async function deleteWorkspace(ws: Workspace) {
@@ -328,11 +328,11 @@ export default function WorkspaceSettingsView() {
                         <Pencil size={13} />
                       </button>
                       <button
-                        onClick={() => archiveWorkspace(ws)}
+                        onClick={() => hideWorkspace(ws)}
                         className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
-                        title="Archive workspace"
+                        title="Hide workspace"
                       >
-                        <Archive size={13} />
+                        <EyeOff size={13} />
                       </button>
                       <button
                         onClick={() => deleteWorkspace(ws)}
@@ -532,40 +532,40 @@ export default function WorkspaceSettingsView() {
         )}
       </div>
 
-      {/* Archived workspaces */}
+      {/* Hidden workspaces */}
       <div className="px-5 py-3 border-t border-[var(--border-color)] shrink-0">
         <button
-          onClick={() => setShowArchived((v) => !v)}
+          onClick={() => setShowHidden((v) => !v)}
           className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
         >
-          <Archive size={11} />
-          {showArchived ? "Hide archived workspaces" : "Show archived workspaces"}
+          <EyeOff size={11} />
+          {showHidden ? "Hide hidden workspaces" : "Show hidden workspaces"}
         </button>
-        {showArchived && (
+        {showHidden && (
           <div className="mt-3 space-y-2">
-            {archivedWorkspaces.length === 0 ? (
-              <p className="text-[11px] text-[var(--text-muted)] italic">No archived workspaces.</p>
+            {hiddenWorkspaces.length === 0 ? (
+              <p className="text-[11px] text-[var(--text-muted)] italic">No hidden workspaces.</p>
             ) : (
-              archivedWorkspaces.map((ws) => (
+              hiddenWorkspaces.map((ws) => (
                 <div
                   key={ws.id}
                   className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 opacity-70"
                 >
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-[var(--text-secondary)] truncate">{ws.name}</p>
-                    <p className="text-[10px] text-[var(--text-muted)]">Archived · {formatDate(ws.updated_at)}</p>
+                    <p className="text-[10px] text-[var(--text-muted)]">Hidden · {formatDate(ws.updated_at)}</p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
-                      onClick={() => unarchiveWorkspace(ws)}
+                      onClick={() => unhideWorkspace(ws)}
                       className="flex items-center gap-1 px-2 py-1 text-[10px] rounded-md border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
                       title="Restore workspace"
                     >
-                      <ArchiveRestore size={10} />
+                      <Eye size={10} />
                       Restore
                     </button>
                     <button
-                      onClick={() => deleteArchivedWorkspace(ws)}
+                      onClick={() => deleteHiddenWorkspace(ws)}
                       className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
                       title="Permanently delete"
                     >

@@ -636,18 +636,31 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
-    // v28: add is_archived column to workspaces
+    // v28: add is_hidden column to workspaces (renamed from is_archived)
     let applied_v28: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM _migrations WHERE name = 'v28_workspaces_is_archived'",
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v28_workspaces_is_hidden'",
         [],
         |row| row.get(0),
     )?;
     if applied_v28 == 0 {
-        let _ = conn.execute_batch(
-            "ALTER TABLE workspaces ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0;",
-        );
+        // If someone already applied the old is_archived column, rename it.
+        // Otherwise, add is_hidden directly.
+        let has_archived: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('workspaces') WHERE name = 'is_archived'",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        if has_archived > 0 {
+            let _ = conn.execute_batch(
+                "ALTER TABLE workspaces RENAME COLUMN is_archived TO is_hidden;",
+            );
+        } else {
+            let _ = conn.execute_batch(
+                "ALTER TABLE workspaces ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0;",
+            );
+        }
         conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v28_workspaces_is_archived');",
+            "INSERT INTO _migrations(name) VALUES('v28_workspaces_is_hidden');",
         )?;
     }
 
