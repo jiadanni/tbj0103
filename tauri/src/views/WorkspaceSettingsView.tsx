@@ -90,10 +90,43 @@ export default function WorkspaceSettingsView() {
   }
 
   async function updateSignature(id: string, manual: string[], ignored: string[]) {
+    const normalizedManual = [...new Set(manual.map((tag) => tag.trim()).filter(Boolean))];
+    const normalizedIgnored = [...new Set(ignored.map((tag) => tag.trim()).filter(Boolean))];
+    const previousWorkspaces = workspaces;
+
+    setWorkspaces(workspaces.map((workspace) => {
+      if (workspace.id !== id) {
+        return workspace;
+      }
+
+      const currentSignature = workspace.topic_signature ?? {
+        domain_tags: [],
+        manual_tags: [],
+        ignored_tags: [],
+        intent_patterns: [],
+        generated_at: null,
+        message_count_at_gen: null,
+        ollama_enriched: false,
+      };
+
+      return {
+        ...workspace,
+        topic_signature: {
+          ...currentSignature,
+          manual_tags: normalizedManual,
+          ignored_tags: normalizedIgnored,
+          domain_tags: (currentSignature.domain_tags || []).filter((tag) => !normalizedIgnored.includes(tag.tag)),
+        },
+      };
+    }));
+
     try {
-      const newSig = await api.topicSignature.update(id, manual, ignored);
-      setWorkspaces(workspaces.map(w => w.id === id ? { ...w, topic_signature: newSig } : w));
+      const newSig = await api.topicSignature.update(id, normalizedManual, normalizedIgnored);
+      setWorkspaces(useWorkspaceStore.getState().workspaces.map((workspace) =>
+        workspace.id === id ? { ...workspace, topic_signature: newSig } : workspace
+      ));
     } catch (err) {
+      setWorkspaces(previousWorkspaces);
       console.error("Failed to update signature:", err);
     }
   }
@@ -154,7 +187,7 @@ export default function WorkspaceSettingsView() {
               if (e.key === "Enter") {createWorkspace();}
               if (e.key === "Escape") { setShowNew(false); setNewName(""); setNewDescription(""); }
             }}
-            placeholder="Description (optional)…"
+            placeholder="Workspace description (optional)…"
             className="text-xs bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
           />
         </div>
@@ -218,7 +251,7 @@ export default function WorkspaceSettingsView() {
                             onKeyDown={(e) => {
                               if (e.key === "Escape") {setEditingId(null);}
                             }}
-                            placeholder="Description (optional)…"
+                            placeholder="Workspace description (optional)…"
                             rows={2}
                             className="text-xs bg-[var(--bg-input)] border border-[var(--border-color)] rounded px-2 py-1 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none resize-none focus:border-[var(--accent-color)]"
                           />
