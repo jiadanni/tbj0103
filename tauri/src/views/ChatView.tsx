@@ -76,6 +76,17 @@ function SessionItem({
   const isActive = activeChatId === session.id;
   const isRenaming = renamingId === session.id;
 
+  const timeAgo = useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity
+    const diff = Date.now() - new Date(session.updated_at).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) {return "now";}
+    if (m < 60) {return `${m}m`;}
+    const h = Math.floor(m / 60);
+    if (h < 24) {return `${h}h`;}
+    return `${Math.floor(h / 24)}d`;
+  }, [session.updated_at]);
+
   return (
     <div
       draggable
@@ -111,15 +122,7 @@ function SessionItem({
       {session.is_incognito && <Ghost size={isSplitPane ? 12 : 11} className="text-purple-400 shrink-0" />}
       {!session.is_incognito && session.exclude_from_analytics && <Shield size={isSplitPane ? 12 : 11} className="text-sky-400 shrink-0" />}
       <span className={`text-[var(--text-muted)] shrink-0 mr-1 ${isSplitPane ? "text-[11px]" : "text-[10px]"}`}>
-        {(() => {
-          const diff = Date.now() - new Date(session.updated_at).getTime();
-          const m = Math.floor(diff / 60000);
-          if (m < 1) {return "now";}
-          if (m < 60) {return `${m}m`;}
-          const h = Math.floor(m / 60);
-          if (h < 24) {return `${h}h`;}
-          return `${Math.floor(h / 24)}d`;
-        })()}
+        {timeAgo}
       </span>
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
         {!isRenaming && (
@@ -345,6 +348,7 @@ function formatMessageTimestamp(value: string) {
 function chatExportFilename(title: string) {
   const base = (title || "chat")
     .trim()
+    // eslint-disable-next-line no-control-regex
     .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
     .replace(/\s+/g, "-")
     .slice(0, 80);
@@ -389,6 +393,7 @@ export default function ChatView() {
   const [selectedModel, setSelectedModel] = useState(preferredModel || "");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [activeContextSources, setActiveContextSources] = useState<Record<string, any>>({});
   const [loadedSessionScopeKey, setLoadedSessionScopeKey] = useState<string | null>(null);
   const currentSessionId = routeSessionId ?? activeChatId ?? null;
@@ -421,6 +426,7 @@ export default function ChatView() {
   }, [setPreferredModel]);
 
   // Persist other settings
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const persistSetting = useCallback(async (key: keyof AppSettings, value: any) => {
     try {
       const current = await api.settings.get();
@@ -531,7 +537,8 @@ export default function ChatView() {
         {children}
       </a>
     ),
-    code: ({ node, inline, className, children, ...props }: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    code: ({ node: _node, inline, className, children, ...props }: any) => {
       const match = /language-(\w+)/.exec(className || "");
       const lang = match ? match[1] : "";
       const content = String(children).replace(/\n$/, "");
@@ -703,6 +710,7 @@ export default function ChatView() {
   // Web AI provider detection
   const selectedModelMeta = aiModelList.find((m) => m.model_id === selectedModel);
   const isWebProvider = selectedModelMeta?.provider.startsWith("web_") ?? false;
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const webProviderKey = isWebProvider ? selectedModelMeta!.provider.replace("web_", "") : "";
   const webProviderLabel: Record<string, string> = {
     chatgpt: "ChatGPT", deepseek: "DeepSeek", claude: "Claude", gemini: "Gemini",
@@ -1014,12 +1022,20 @@ export default function ChatView() {
     await sendMessageWithModel(selectedModel);
   }
 
+  function maybeExtractFlashcards(responseText: string, sessionId: string, modelId: string) {
+    const { autoGenerateFlashcards } = useSettingsStore.getState();
+    if (!autoGenerateFlashcards || !effectiveWorkspaceId || responseText.length < 100) {return;}
+    api.flashcard.extractFromContent(effectiveWorkspaceId, responseText, "chat", modelId, sessionId, ollamaUrl || undefined)
+      .catch(() => {});
+  }
+
   async function sendMessageWithModel(modelId: string, contentOverride?: string) {
     const userContent = (contentOverride ?? input).trim();
     if (!userContent || isStreaming || !modelId || !effectiveWorkspaceId) {return;}
 
     const modelMeta = aiModelList.find((m) => m.model_id === modelId);
     const isOneOffWebProvider = modelMeta?.provider.startsWith("web_") ?? false;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const oneOffWebProviderKey = isOneOffWebProvider ? modelMeta!.provider.replace("web_", "") : "";
 
     let sid = activeChatId;
@@ -1076,6 +1092,7 @@ export default function ChatView() {
           setMessageSources((prev) => ({ ...prev, [optimisticUserMsg.id]: chunkResults }));
         }
       } catch {
+        // grounded search failures are non-critical
       }
     }
 
@@ -1091,6 +1108,7 @@ export default function ChatView() {
 
     history.push({ role: "user", content: finalUserContent });
 
+    /* eslint-disable @typescript-eslint/no-non-null-assertion */
     if (isOneOffWebProvider && oneOffWebProviderKey) {
       try {
         const unlisten = await api.listenStream(sid, (chunk, done) => {
@@ -1102,6 +1120,7 @@ export default function ChatView() {
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
+            maybeExtractFlashcards(assembled, sid!, modelId);
           } else {
             appendStreamChunk(sid!, chunk);
           }
@@ -1182,6 +1201,7 @@ export default function ChatView() {
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(modelId, tokensUsed).catch(() => {});
             }
+            maybeExtractFlashcards(assembled, sid!, modelId);
           } else {
             appendStreamChunk(sid!, chunk);
           }
@@ -1195,6 +1215,7 @@ export default function ChatView() {
         finalizeStream(sid, modelId);
       }
     }
+    /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
     await generateSessionTitleIfNeeded(sid, modelId, userContent);
   }
@@ -1336,7 +1357,7 @@ export default function ChatView() {
     const trimmedMessages = activeMessages.slice(0, idx);
     setMessages(activeChatId, trimmedMessages);
 
-    const history = trimmedMessages.map((m) => ({ role: m.role, content: m.content }));
+    const _history = trimmedMessages.map((m) => ({ role: m.role, content: m.content }));
 
     setIsStreaming(true);
     try {
@@ -1398,6 +1419,7 @@ export default function ChatView() {
       ]);
       setCompareResponseA(resA);
       setCompareResponseB(resB);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setCompareError(err?.message ?? String(err));
     } finally {
@@ -1529,7 +1551,7 @@ export default function ChatView() {
               )}
             </div>
             <div className="flex items-center px-3">
-              <button onClick={() => api.ollama.listModels(ollamaUrl || undefined).then(setCompareModels).catch(() => {})} title="Refresh models" className="p-1.5 rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors">
+              <button onClick={() => api.ollama.listModelsFresh(ollamaUrl || undefined).then(setCompareModels).catch(() => {})} title="Refresh models" className="p-1.5 rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors">
                 <RefreshCw size={14} />
               </button>
             </div>
@@ -1615,7 +1637,7 @@ export default function ChatView() {
         <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center">
           <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
           <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-center gap-2">
             <button
               onClick={() => createNewSession()}
               className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
@@ -1625,13 +1647,13 @@ export default function ChatView() {
 
             <button
               onClick={() => createNewSession({ isIncognito: true })}
-              className="px-4 py-2 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-lg text-sm hover:bg-purple-500/20"
+              className="px-4 py-2 bg-[var(--accent-color)]/10 text-[var(--accent-color)] border border-[var(--accent-color)]/20 rounded-lg text-sm hover:bg-[var(--accent-color)]/20"
             >
               Start incognito
             </button>
             <button
               onClick={() => createNewSession({ excludeFromAnalytics: true })}
-              className="px-4 py-2 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-lg text-sm hover:bg-sky-500/20"
+              className="px-4 py-2 bg-[var(--accent-color)]/10 text-[var(--accent-color)] border border-[var(--accent-color)]/20 rounded-lg text-sm hover:bg-[var(--accent-color)]/20"
             >
               Exclude analytics
             </button>
@@ -1948,13 +1970,39 @@ export default function ChatView() {
                     <X size={16} />
                   </button>
                 ) : (
-                  <button
-                    onClick={sendMessage}
-                    disabled={!input.trim() || !selectedModel}
-                    className="flex-shrink-0 rounded-full w-8 h-8 flex items-center justify-center bg-[var(--accent-color)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity mb-1 mr-1"
-                  >
-                    <ArrowUpCircle size={18} />
-                  </button>
+                  <div className="flex items-center gap-1 mb-1 mr-1">
+                    <button
+                      onClick={sendMessage}
+                      disabled={!input.trim() || !selectedModel}
+                      className="flex-shrink-0 rounded-full w-8 h-8 flex items-center justify-center bg-[var(--accent-color)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
+                    >
+                      <ArrowUpCircle size={18} />
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!input.trim() || !effectiveWorkspaceId || !selectedModel) {return;}
+                        let sid = activeChatId;
+                        if (!sid) {
+                          const session = await api.chat.createSession(effectiveWorkspaceId, effectiveProjectId, { modelName: selectedModel });
+                          useChatStore.getState().addSession(session);
+                          sid = session.id;
+                          setActiveChatId(session.id);
+                          setMessages(session.id, []);
+                        }
+                        await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
+                          modelName: selectedModel,
+                          sessionId: sid,
+                          processAt: new Date(Date.now() + 60_000).toISOString(),
+                        });
+                        setInput("");
+                      }}
+                      disabled={!input.trim() || !selectedModel}
+                      className="flex-shrink-0 rounded-full w-8 h-8 flex items-center justify-center border border-[var(--border-color)] text-[var(--text-muted)] disabled:opacity-40 hover:text-[var(--accent-color)] hover:border-[var(--accent-color)] transition-colors"
+                      title="Schedule for background processing"
+                    >
+                      <Clock size={14} />
+                    </button>
+                  </div>
                 )}
               </div>
 

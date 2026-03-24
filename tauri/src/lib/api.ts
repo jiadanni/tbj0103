@@ -58,7 +58,7 @@ export interface ConceptLink {
 
 export interface LearningCard {
   id: string; workspace_id: string; front: string; back: string;
-  source_type: string; ease_factor: number; interval: number;
+  source_type: string; source_id?: string; ease_factor: number; interval: number;
   repetitions: number; next_review_date: string; last_reviewed_at?: string;
   created_at: string;
 }
@@ -88,12 +88,37 @@ export interface UploadedDocument {
   chunk_count?: number; created_at: string; updated_at: string;
 }
 
+export interface Source {
+  id: string; workspace_id: string; source_type: string; title: string;
+  filename?: string; file_type?: string; file_size?: number; url?: string;
+  content: string; summary?: string; favicon_data?: string; is_processed: boolean;
+  folder?: string; token_count?: number;
+  chunk_count?: number; created_at: string; updated_at: string;
+}
+
 export interface SearchResult {
   id: string; result_type: string; title: string; excerpt: string;
   score: number; source_id?: string; project_id?: string;
 }
 
 export interface OllamaModel { name: string; size?: number; modified_at?: string; }
+
+// ----- Model list cache -----
+let modelCache: { promise: Promise<OllamaModel[]>; url: string | undefined; ts: number } | null = null;
+const MODEL_CACHE_TTL = 30_000; // 30 seconds
+
+function cachedListModels(ollamaUrl?: string): Promise<OllamaModel[]> {
+  const now = Date.now();
+  if (modelCache && modelCache.url === ollamaUrl && now - modelCache.ts < MODEL_CACHE_TTL) {
+    return modelCache.promise;
+  }
+  const promise = invoke<OllamaModel[]>("list_models", { ollamaUrl });
+  modelCache = { promise, url: ollamaUrl, ts: now };
+  promise.catch(() => {
+    if (modelCache?.promise === promise) {modelCache = null;}
+  });
+  return promise;
+}
 
 export interface Artifact {
   id: string;
@@ -224,7 +249,8 @@ export interface ThoughtItem {
   id: string; workspace_id: string; content: string;
   status: 'pending' | 'scheduled' | 'processing' | 'done';
   process_at?: string; model_name: string; prompt_prefix: string;
-  result?: string; result_at?: string; created_at: string; updated_at: string;
+  result?: string; result_at?: string; session_id?: string;
+  created_at: string; updated_at: string;
 }
 
 export interface Memory {
@@ -319,6 +345,8 @@ export const api = {
     importFromJson: (path: string, workspaceId: string, projectId?: string | null, passphrase?: string) =>
       invoke<ChatSession>("import_chat_from_json", { path, workspaceId, projectId: projectId ?? null, passphrase }),
     syncAll: () => invoke<number>("sync_all_chats_to_files"),
+    importLmStudioFolder: (folderPath: string) =>
+      invoke<{ imported: number; workspace_id: string; workspace_name: string; projects_created: number; errors: number }>("import_lmstudio_folder", { folderPath }),
   },
 
   security: {
@@ -360,6 +388,12 @@ export const api = {
     getStats: (workspaceId: string) => invoke<ReviewStats>("get_review_stats", { workspaceId }),
     generate: (workspaceId: string, topic: string, model: string, count?: number, ollamaUrl?: string) =>
       invoke<LearningCard[]>("generate_flashcards", { req: { workspace_id: workspaceId, topic, model, count, ollama_url: ollamaUrl } }),
+    generateFromConcept: (workspaceId: string, conceptId: string, model: string, count?: number, ollamaUrl?: string) =>
+      invoke<LearningCard[]>("generate_flashcards_from_concept", { req: { workspace_id: workspaceId, concept_id: conceptId, model, count, ollama_url: ollamaUrl } }),
+    listByConcept: (conceptId: string) =>
+      invoke<LearningCard[]>("list_flashcards_by_concept", { conceptId }),
+    extractFromContent: (workspaceId: string, content: string, sourceType: string, model: string, sourceId?: string, ollamaUrl?: string) =>
+      invoke<LearningCard[]>("extract_flashcards_from_content", { req: { workspace_id: workspaceId, content, source_type: sourceType, source_id: sourceId, model, ollama_url: ollamaUrl } }),
   },
 
   note: {
@@ -398,6 +432,18 @@ export const api = {
     process: (documentId: string) => invoke<number>("process_document", { req: { document_id: documentId } }),
   },
 
+  source: {
+    create: (req: { workspace_id: string; source_type: string; title: string; filename?: string; file_type?: string; file_size?: number; url?: string; content: string; summary?: string; folder?: string }) =>
+      invoke<Source>("create_source", { req }),
+    list: (workspaceId: string, sourceType?: string) =>
+      invoke<Source[]>("list_sources", { workspaceId, sourceType }),
+    get: (id: string) => invoke<Source | null>("get_source", { id }),
+    update: (id: string, fields: { title?: string; summary?: string; is_processed?: boolean; folder?: string }) =>
+      invoke<void>("update_source", { id, ...fields }),
+    delete: (id: string) => invoke<void>("delete_source", { id }),
+    process: (id: string) => invoke<number>("process_source", { id }),
+  },
+
   search: {
     keyword: (query: string, workspaceId: string, projectId?: string) =>
       invoke<SearchResult[]>("keyword_search", { req: { query, workspace_id: workspaceId, project_id: projectId } }),
@@ -406,9 +452,12 @@ export const api = {
   },
 
   context: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     assembleAndSend: (sessionId: string, workspaceId: string, modelName: string, options?: Record<string, any>) =>
       invoke<string>("assemble_and_send", { req: { session_id: sessionId, workspace_id: workspaceId, model_name: modelName, options: options || {} } }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     listenContextSources: (sessionId: string, onSources: (sources: any) => void): Promise<UnlistenFn> =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       listen<any>(`context-sources-${sessionId}`, (event) => onSources(event.payload)),
   },
 
@@ -450,7 +499,9 @@ export const api = {
           ollama_url: ollamaUrl,
         },
       }),
-    listModels: (ollamaUrl?: string) => invoke<OllamaModel[]>("list_models", { ollamaUrl }),
+    listModels: (ollamaUrl?: string) => cachedListModels(ollamaUrl),
+    /** Bypass cache and fetch fresh model list from Ollama */
+    listModelsFresh: (ollamaUrl?: string) => { modelCache = null; return cachedListModels(ollamaUrl); },
     generateTitle: (model: string, firstMessage: string, ollamaUrl?: string) =>
       invoke<string>("generate_title", { model, firstMessage, ollamaUrl }),
     generateTitleFromConversation: (model: string, conversation: { role: string; content: string }[], ollamaUrl?: string) =>
@@ -472,6 +523,7 @@ export const api = {
 
   backup: {
     create: (workspaceId: string) => invoke<string>("create_backup", { workspaceId }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     list: () => invoke<any[]>("list_backups"),
     restore: (backupJson: string) => invoke<void>("restore_backup", { backupJson }),
     delete: (id: string) => invoke<void>("delete_backup", { id }),
@@ -483,11 +535,17 @@ export const api = {
   },
 
   graphAlgo: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     pagerank: (nodes: any[], edges: any[]) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       invoke<any[]>("compute_pagerank", { input: { nodes, edges } }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     communities: (nodes: any[], edges: any[]) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       invoke<any[]>("detect_communities", { input: { nodes, edges } }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     shortestPath: (nodes: any[], edges: any[], sourceId: string, targetId: string) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       invoke<any>("find_shortest_path", { input: { nodes, edges }, sourceId, targetId }),
   },
 
@@ -550,11 +608,12 @@ export const api = {
   },
 
   thoughtQueue: {
-    create: (workspaceId: string, content: string, opts?: { processAt?: string; modelName?: string; promptPrefix?: string }) =>
+    create: (workspaceId: string, content: string, opts?: { processAt?: string; modelName?: string; promptPrefix?: string; sessionId?: string }) =>
       invoke<ThoughtItem>("create_thought", {
-        req: { workspace_id: workspaceId, content, process_at: opts?.processAt, model_name: opts?.modelName, prompt_prefix: opts?.promptPrefix },
+        req: { workspace_id: workspaceId, content, process_at: opts?.processAt, model_name: opts?.modelName, prompt_prefix: opts?.promptPrefix, session_id: opts?.sessionId },
       }),
     list: (workspaceId: string) => invoke<ThoughtItem[]>("list_thoughts", { workspaceId }),
+    listBySession: (sessionId: string) => invoke<ThoughtItem[]>("list_thoughts_by_session", { sessionId }),
     getDue: (workspaceId: string) => invoke<ThoughtItem[]>("get_due_thoughts", { workspaceId }),
     updateStatus: (id: string, status: string) => invoke<void>("update_thought_status", { id, status }),
     updateResult: (id: string, result: string) => invoke<void>("update_thought_result", { id, result }),

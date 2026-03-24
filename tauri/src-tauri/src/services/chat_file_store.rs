@@ -259,6 +259,343 @@ pub fn import_session_from_file(
     Ok(session_id)
 }
 
+// ── LM Studio .conversation.json parser ──────────────────────────────────────
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LmConversation {
+    name: Option<String>,
+    created_at: Option<u64>,           // epoch ms
+    system_prompt: Option<String>,
+    messages: Vec<LmMessageSlot>,
+    /// Per-chat prediction config may hold systemPrompt override
+    #[serde(default)]
+    per_chat_prediction_config: Option<LmPredictionConfig>,
+    /// Model used in the conversation
+    last_used_model: Option<LmModelRef>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LmMessageSlot {
+    versions: Vec<LmMessageVersion>,
+    currently_selected: Option<usize>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LmMessageVersion {
+    role: Option<String>,
+    #[serde(default)]
+    content: Vec<LmContentBlock>,
+    /// For multiStep messages, content lives inside steps
+    #[serde(default)]
+    steps: Vec<LmStep>,
+    #[serde(default)]
+    sender_info: Option<LmSenderInfo>,
+    #[serde(rename = "type")]
+    msg_type: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LmStep {
+    #[serde(rename = "type")]
+    step_type: Option<String>,
+    #[serde(default)]
+    content: Vec<LmContentBlock>,
+    gen_info: Option<LmGenInfo>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct LmContentBlock {
+    #[serde(rename = "type")]
+    block_type: Option<String>,
+    text: Option<String>,
+    #[serde(rename = "tokensCount")]
+    tokens_count: Option<i64>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LmGenInfo {
+    identifier: Option<String>,
+    stats: Option<LmStats>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LmStats {
+    total_time_sec: Option<f64>,
+    predicted_tokens_count: Option<i64>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LmSenderInfo {
+    sender_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LmPredictionConfig {
+    fields: Vec<LmConfigField>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LmConfigField {
+    key: String,
+    value: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct LmModelRef {
+    identifier: Option<String>,
+}
+
+/// Extract the effective system prompt from the LM Studio conversation.
+fn lm_effective_system_prompt(conv: &LmConversation) -> String {
+    // Check per-chat prediction config first (higher priority)
+    if let Some(ref cfg) = conv.per_chat_prediction_config {
+        for f in &cfg.fields {
+            if f.key == "llm.prediction.systemPrompt" {
+                if let Some(s) = f.value.as_str() {
+                    if !s.is_empty() {
+                        return s.to_string();
+                    }
+                }
+            }
+        }
+    }
+    conv.system_prompt.clone().unwrap_or_default()
+}
+
+/// Convert epoch milliseconds to an ISO-8601 datetime string.
+fn epoch_ms_to_iso(ms: u64) -> String {
+    let secs = (ms / 1000) as i64;
+    let nsecs = ((ms % 1000) * 1_000_000) as u32;
+    chrono::DateTime::from_timestamp(secs, nsecs)
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
+}
+
+/// Extract flat messages from LM Studio's versioned/multi-step format.
+fn extract_messages_from_lm_conversation(conv: &LmConversation) -> Vec<ChatFileMessage> {
+    let base_ts = conv.created_at.unwrap_or(0);
+    let mut result = Vec::new();
+
+    for (i, slot) in conv.messages.iter().enumerate() {
+        if slot.versions.is_empty() {
+            continue;
+        }
+        let idx = slot.currently_selected.unwrap_or(0).min(slot.versions.len() - 1);
+        let version = &slot.versions[idx];
+
+        let role = match version.role.as_deref() {
+            Some(r) => r.to_lowercase(),
+            None => continue,
+        };
+        if !matches!(role.as_str(), "user" | "assistant" | "system") {
+            continue;
+        }
+
+        // Extract text content depending on singleStep vs multiStep
+        let is_multi = version.msg_type.as_deref() == Some("multiStep");
+
+        let mut text_parts: Vec<String> = Vec::new();
+        let mut model_name: Option<String> = None;
+        let mut tokens: Option<i64> = None;
+        let mut duration_ms: Option<i64> = None;
+
+        if is_multi {
+            // multiStep: iterate steps, skip debugInfoBlock
+            for step in &version.steps {
+                if step.step_type.as_deref() != Some("contentBlock") {
+                    continue;
+                }
+                for block in &step.content {
+                    if block.block_type.as_deref() == Some("text") {
+                        if let Some(ref t) = block.text {
+                            if !t.is_empty() {
+                                text_parts.push(t.clone());
+                            }
+                        }
+                    }
+                }
+                // Extract model/stats from genInfo on the step
+                if let Some(ref gi) = step.gen_info {
+                    if model_name.is_none() {
+                        model_name = gi.identifier.clone();
+                    }
+                    if let Some(ref stats) = gi.stats {
+                        if tokens.is_none() {
+                            tokens = stats.predicted_tokens_count;
+                        }
+                        if duration_ms.is_none() {
+                            duration_ms = stats.total_time_sec.map(|s| (s * 1000.0) as i64);
+                        }
+                    }
+                }
+            }
+        } else {
+            // singleStep: content blocks are directly on the version
+            for block in &version.content {
+                if block.block_type.as_deref() == Some("text") {
+                    if let Some(ref t) = block.text {
+                        if !t.is_empty() {
+                            text_parts.push(t.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fall back to sender_info for model name
+        if model_name.is_none() {
+            model_name = version.sender_info.as_ref().and_then(|s| s.sender_name.clone());
+        }
+
+        let content = text_parts.join("\n\n");
+        if content.is_empty() {
+            continue;
+        }
+
+        // Approximate timestamp: base + offset per message
+        let msg_ts = if base_ts > 0 {
+            epoch_ms_to_iso(base_ts + (i as u64 * 1000))
+        } else {
+            chrono::Utc::now().to_rfc3339()
+        };
+
+        result.push(ChatFileMessage {
+            id: uuid::Uuid::new_v4().to_string(),
+            role,
+            content,
+            model: model_name,
+            tokens_used: tokens,
+            duration_ms,
+            timestamp: msg_ts,
+        });
+    }
+
+    result
+}
+
+/// Parse an LM Studio `.conversation.json` file into our `ChatFileData`.
+pub fn parse_lmstudio_conversation(bytes: &[u8]) -> Result<ChatFileData, String> {
+    let conv: LmConversation =
+        serde_json::from_slice(bytes).map_err(|e| format!("Invalid LM Studio JSON: {e}"))?;
+
+    let title = conv.name.clone().unwrap_or_else(|| "Imported Chat".to_string());
+    let created = conv.created_at.map(epoch_ms_to_iso)
+        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+    let model = conv.last_used_model.as_ref()
+        .and_then(|m| m.identifier.clone())
+        .unwrap_or_default();
+    let system_prompt = lm_effective_system_prompt(&conv);
+
+    let messages = extract_messages_from_lm_conversation(&conv);
+
+    Ok(ChatFileData {
+        id: uuid::Uuid::new_v4().to_string(),
+        title,
+        model,
+        system_prompt,
+        created_at: created.clone(),
+        updated_at: created,
+        messages,
+    })
+}
+
+/// A conversation file with its relative subfolder path.
+pub struct DiscoveredConversation {
+    pub path: PathBuf,
+    /// The immediate parent folder name (used as project name), or empty for root-level files.
+    pub subfolder: String,
+}
+
+/// Walk a directory recursively and discover all `.conversation.json` files,
+/// grouped by their immediate parent folder relative to the root.
+pub fn discover_lmstudio_conversations(folder: &Path) -> Result<Vec<DiscoveredConversation>, String> {
+    let mut results = Vec::new();
+
+    fn walk(dir: &Path, root: &Path, results: &mut Vec<DiscoveredConversation>) -> Result<(), String> {
+        let entries = std::fs::read_dir(dir).map_err(|e| format!("Cannot read {}: {e}", dir.display()))?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, root, results)?;
+            } else if path.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.ends_with(".conversation.json"))
+                .unwrap_or(false)
+            {
+                // Determine the subfolder: immediate parent relative to root
+                let subfolder = path.parent()
+                    .filter(|p| *p != root)
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                results.push(DiscoveredConversation { path, subfolder });
+            }
+        }
+        Ok(())
+    }
+
+    walk(folder, folder, &mut results)?;
+    Ok(results)
+}
+
+/// Import a single parsed `ChatFileData` into the database.
+/// Returns the session ID on success.
+pub fn import_chat_data(
+    conn: &Connection,
+    data: &ChatFileData,
+    workspace_id: &str,
+    project_id: &str,
+) -> Result<String, String> {
+    let session_id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO chat_sessions
+             (id, workspace_id, project_id, title, model_name, system_prompt,
+              is_pinned, is_incognito, exclude_from_analytics, is_deleted,
+              deleted_at, parent_session_id, branch_message_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 0, 0, NULL, NULL, NULL, ?7, ?8)",
+        rusqlite::params![
+            session_id, workspace_id, project_id,
+            data.title, data.model, data.system_prompt,
+            data.created_at, data.updated_at
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    for msg in &data.messages {
+        let role = msg.role.trim().to_lowercase();
+        if !matches!(role.as_str(), "user" | "assistant" | "system") {
+            continue;
+        }
+        conn.execute(
+            "INSERT INTO messages
+                 (id, session_id, role, content, model_name, tokens_used, duration_ms, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                uuid::Uuid::new_v4().to_string(), session_id, role,
+                msg.content, msg.model, msg.tokens_used, msg.duration_ms,
+                msg.timestamp
+            ],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    Ok(session_id)
+}
+
 /// Re-encrypt (or decrypt) every chat file in `chats_dir`.
 /// Called when the user enables/disables encryption or changes the passphrase.
 /// Returns the number of files re-written.
