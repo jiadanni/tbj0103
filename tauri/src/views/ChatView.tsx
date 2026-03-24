@@ -1,14 +1,14 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Plus, Trash2, Copy, ChevronDown, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save } from "lucide-react";
+import { Send, Plus, Trash2, Copy, ChevronDown, ChevronRight, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
 import { confirm, message, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
-import { useWorkspaceStore, type Project } from "../stores/workspaceStore";
+import { useWorkspaceStore, type Project, type Workspace } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession, Message } from "../stores/chatStore";
 import ComposerSuggestionRows from "../components/ComposerSuggestionRows";
@@ -26,15 +26,32 @@ import { resolveChatTitle } from "../lib/chatTitles";
 
 type ChatMode = "chat" | "compare";
 
+function canRefreshSessionTitle(
+  session: ChatSession,
+  messageMap: Record<string, Message[]>,
+) {
+  const loadedMessages = messageMap[session.id];
+  if (loadedMessages) {
+    return loadedMessages.some((message) => message.role === "user" || message.role === "assistant");
+  }
+
+  return (session.message_count_at_title_gen ?? 0) > 0;
+}
+
 // ── Session sidebar types ─────────────────────────────────────────────────────
 interface SessionItemProps {
   session: ChatSession;
   activeChatId: string | null;
+  selectMode: boolean;
+  isSelected: boolean;
+  canRefreshTitle: boolean;
   renamingId: string | null;
   renameTitle: string;
   setRenamingId: (id: string | null) => void;
   setRenameTitle: (title: string) => void;
   setActiveChatId: (id: string) => void;
+  toggleSelect: (id: string) => void;
+  openContextMenu: (event: ReactMouseEvent, session: ChatSession) => void;
   renameSession: (id: string) => void;
   refreshSessionTitle: (session: ChatSession) => void;
   togglePin: (session: ChatSession) => void;
@@ -44,10 +61,16 @@ interface SessionItemProps {
 
 interface SessionSidebarProps {
   sidebarSessions: ChatSession[];
+  workspaces: Workspace[];
+  projectsByWorkspace: Record<string, Project[]>;
   projects: Project[];
   activeProjectId: string | null;
   setActiveProjectId: (projectId: string | null) => void;
   activeProject: Project | null;
+  moveSessionsToTarget: (sessionIds: string[], workspaceId: string, projectId: string | null) => Promise<void>;
+  bulkDeleteSessions: (sessionIds: string[], projectIds?: string[]) => Promise<void>;
+  renameProject: (projectId: string, name: string) => Promise<void>;
+  deleteProject: (projectId: string) => Promise<void>;
   sessionQuery: string;
   setSessionQuery: (q: string) => void;
   creatingFolder: boolean;
@@ -71,8 +94,9 @@ interface SessionSidebarProps {
 }
 
 function SessionItem({
-  session, activeChatId, renamingId, renameTitle,
+  session, activeChatId, selectMode, isSelected, canRefreshTitle, renamingId, renameTitle,
   setRenamingId, setRenameTitle, setActiveChatId,
+  toggleSelect, openContextMenu,
   renameSession, refreshSessionTitle, togglePin, saveSession, deleteSession,
 }: SessionItemProps) {
   const isSplitPane = useWorkspacePane() !== null;
@@ -92,18 +116,33 @@ function SessionItem({
 
   return (
     <div
-      draggable
+      draggable={!selectMode}
       onDragStart={(e) => {
         e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify([session.id]));
         e.dataTransfer.effectAllowed = "move";
       }}
-      onClick={() => setActiveChatId(session.id)}
+      onContextMenu={(e) => openContextMenu(e, session)}
+      onClick={() => selectMode ? toggleSelect(session.id) : setActiveChatId(session.id)}
       className={`group flex items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${
-        isActive
+        isSelected
+          ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+          : isActive
           ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
           : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
       }`}
     >
+      {selectMode && (
+        <button
+          onClick={(e) => { e.stopPropagation(); toggleSelect(session.id); }}
+          className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+            isSelected
+              ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+              : "border-[var(--text-muted)] text-transparent"
+          }`}
+        >
+          <Check size={10} />
+        </button>
+      )}
       {isRenaming ? (
         <input
           autoFocus
@@ -138,9 +177,10 @@ function SessionItem({
           </button>
         )}
         <button
-          onClick={(e) => { e.stopPropagation(); refreshSessionTitle(session); }}
-          className={`rounded hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "p-1" : "p-0.5"}`}
-          title="Refresh chat name"
+          onClick={(e) => { e.stopPropagation(); if (canRefreshTitle) {refreshSessionTitle(session);} }}
+          disabled={!canRefreshTitle}
+          className={`rounded transition-colors ${canRefreshTitle ? "hover:text-[var(--accent-color)]" : "cursor-not-allowed opacity-40"} ${isSplitPane ? "p-1" : "p-0.5"}`}
+          title={canRefreshTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"}
         >
           <RefreshCw size={isSplitPane ? 12 : 10} />
         </button>
@@ -164,21 +204,44 @@ function SessionItem({
         >
           <Trash2 size={isSplitPane ? 12 : 10} />
         </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); openContextMenu(e, session); }}
+          className={`rounded hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "p-1" : "p-0.5"}`}
+          title="More actions"
+        >
+          <MoreHorizontal size={isSplitPane ? 12 : 10} />
+        </button>
       </div>
     </div>
   );
 }
 
 function SessionSidebar({
-  sidebarSessions, projects, activeProjectId, setActiveProjectId,
-  activeProject: _activeProject, sessionQuery, setSessionQuery,
+  sidebarSessions, workspaces, projectsByWorkspace, projects, activeProjectId, setActiveProjectId,
+  activeProject: _activeProject, moveSessionsToTarget, bulkDeleteSessions, renameProject, deleteProject, sessionQuery, setSessionQuery,
   creatingFolder, setCreatingFolder, newFolderName, setNewFolderName,
   folderInputRef, handleCreateFolder, createNewSession,
   activeChatId, renamingId, renameTitle, setRenamingId, setRenameTitle,
   setActiveChatId, renameSession, refreshSessionTitle, togglePin, saveSession, deleteSession,
 }: SessionSidebarProps) {
   const isSplitPane = useWorkspacePane() !== null;
+  const sidebarWidth = useSettingsStore((state) => state.sidebarWidth);
+  const messages = useChatStore((state) => state.messages);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false);
+  const [bulkMoveWorkspaceId, setBulkMoveWorkspaceId] = useState<string | null>(null);
+  const [bulkActionPending, setBulkActionPending] = useState<"move" | "delete" | null>(null);
+  const [projectRenamingId, setProjectRenamingId] = useState<string | null>(null);
+  const [projectRenameValue, setProjectRenameValue] = useState("");
+  const [ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<
+    | { type: "session"; x: number; y: number; session: ChatSession }
+    | { type: "project"; x: number; y: number; project: Project }
+    | null
+  >(null);
   const cancelCreateFolder = () => {
     setCreatingFolder(false);
     setNewFolderName("");
@@ -186,6 +249,7 @@ function SessionSidebar({
   const visibleSessions = sidebarSessions;
   const byProject: Record<string, ChatSession[]> = {};
   const ungrouped: ChatSession[] = [];
+  const selectedCount = selectedIds.size + selectedProjectIds.size;
 
   visibleSessions.forEach((session) => {
     if (session.project_id) {
@@ -201,11 +265,26 @@ function SessionSidebar({
         key={session.id}
         session={session}
         activeChatId={activeChatId}
+        selectMode={selectMode}
+        isSelected={selectedIds.has(session.id)}
+        canRefreshTitle={canRefreshSessionTitle(session, messages)}
         renamingId={renamingId}
         renameTitle={renameTitle}
         setRenamingId={setRenamingId}
         setRenameTitle={setRenameTitle}
         setActiveChatId={setActiveChatId}
+        toggleSelect={(id) => {
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) {next.delete(id);} else {next.add(id);}
+            return next;
+          });
+        }}
+        openContextMenu={(event, targetSession) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setCtxMenu({ type: "session", x: event.clientX, y: event.clientY, session: targetSession });
+        }}
         renameSession={renameSession}
         refreshSessionTitle={refreshSessionTitle}
         togglePin={togglePin}
@@ -215,55 +294,195 @@ function SessionSidebar({
     ));
   }
 
+  function resetSelectionState() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setSelectedProjectIds(new Set());
+    setMoveMenuOpen(false);
+    setBulkMoveWorkspaceId(null);
+    setCtxMoveWorkspaceId(null);
+  }
+
+  function renderWorkspaceMoveSubmenu(
+    workspaceId: string,
+    onSelect: (workspaceId: string, projectId: string | null) => void,
+  ) {
+    const workspaceProjects = projectsByWorkspace[workspaceId] ?? [];
+    return (
+      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-lg">
+        <button
+          onClick={() => onSelect(workspaceId, null)}
+          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+        >
+          <MessageSquare size={11} /> Workspace
+        </button>
+        {workspaceProjects.map((project) => (
+          <button
+            key={project.id}
+            onClick={() => onSelect(workspaceId, project.id)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          >
+            <Folder size={11} /> <span className="truncate">{project.name}</span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  useEffect(() => {
+    if (!ctxMenu) {return;}
+
+    function handleClick(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-chat-tree-context-menu]")) {return;}
+      setCtxMenu(null);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setCtxMenu(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [ctxMenu]);
+
   return (
-    <div className={`relative z-10 border-r border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)] overflow-hidden shrink-0 ${isSplitPane ? "w-64" : "w-56"}`}>
+    <div
+      className="relative z-10 flex shrink-0 flex-col overflow-hidden border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]"
+      style={{ width: `${Math.max(220, Math.min(sidebarWidth, 420))}px` }}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)]">
+      <div className="px-3 py-2.5 border-b border-[var(--border-color)]">
         <span className={`font-medium text-[var(--text-secondary)] truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>
           Conversations
         </span>
-        <div className="flex items-center gap-0.5">
+      </div>
+
+      <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
+        <div className="flex flex-wrap items-center gap-1">
+          <button
+            onClick={() => setSelectMode((value) => !value)}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`}
+            title="Select items"
+          >
+            <Check size={12} />
+            Select
+          </button>
           <button
             onClick={() => { setCreatingFolder(true); setNewFolderName(""); }}
-            className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`}
             title="New folder"
           >
-            <FolderPlus size={14} />
+            <FolderPlus size={12} />
+            Folder
           </button>
           <button
             onClick={() => createNewSession()}
-            className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`}
             title="New chat"
           >
-            <Plus size={14} />
+            <Plus size={12} />
+            Chat
           </button>
           <button
             onClick={() => createNewSession({ isIncognito: true })}
-            className="p-1 rounded hover:bg-purple-500/10 text-[var(--text-muted)] hover:text-purple-400 transition-colors"
-            title="New incognito chat (deleted when you leave it)"
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-purple-500/10 hover:text-purple-400`}
+            title="New incognito chat"
           >
-            <Ghost size={14} />
+            <Ghost size={12} />
+            Incognito
           </button>
           <button
             onClick={() => createNewSession({ excludeFromAnalytics: true })}
-            className="p-1 rounded hover:bg-sky-500/10 text-[var(--text-muted)] hover:text-sky-400 transition-colors"
-            title="New private chat (saved, but excluded from analytics)"
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-sky-500/10 hover:text-sky-400`}
+            title="New private chat"
           >
-            <Shield size={14} />
+            <Shield size={12} />
+            Private
           </button>
         </div>
       </div>
 
-      {/* New Chat button */}
-      <div className="mx-2 mt-2 mb-1">
-        <button
-          onClick={() => createNewSession()}
-          className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] font-medium hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "text-sm" : "text-xs"}`}
-        >
-          <Plus size={isSplitPane ? 15 : 14} />
-          New Chat
-        </button>
-      </div>
+      {selectMode && (
+        <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
+          <div className="flex flex-wrap items-center gap-1">
+            <div className="relative">
+              <button
+                onClick={() => setMoveMenuOpen((value) => !value)}
+                disabled={selectedIds.size === 0 || bulkActionPending !== null}
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
+                title="Move selected chats"
+              >
+                <MoveRight size={12} />
+                {bulkActionPending === "move" ? "Moving..." : "Move"}
+              </button>
+              {moveMenuOpen && bulkActionPending === null && (
+                <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-lg">
+                  {workspaces.map((workspace) => (
+                    <div
+                      key={workspace.id}
+                      className="relative"
+                      onMouseEnter={() => setBulkMoveWorkspaceId(workspace.id)}
+                    >
+                      <button
+                        onClick={() => setBulkMoveWorkspaceId((current) => current === workspace.id ? null : workspace.id)}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      >
+                        <span className="truncate flex-1">{workspace.name}</span>
+                        <ChevronRight size={11} />
+                      </button>
+                      {bulkMoveWorkspaceId === workspace.id && renderWorkspaceMoveSubmenu(workspace.id, (targetWorkspaceId, targetProjectId) => {
+                        setBulkActionPending("move");
+                        void moveSessionsToTarget(Array.from(selectedIds), targetWorkspaceId, targetProjectId).then(() => {
+                          resetSelectionState();
+                        }).finally(() => {
+                          setBulkActionPending(null);
+                        });
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                setBulkActionPending("delete");
+                void bulkDeleteSessions(Array.from(selectedIds), Array.from(selectedProjectIds)).then(() => {
+                  resetSelectionState();
+                }).finally(() => {
+                  setBulkActionPending(null);
+                });
+              }}
+              disabled={selectedCount === 0 || bulkActionPending !== null}
+              className={`flex items-center gap-1 rounded-md px-2 py-1 text-red-400 transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] disabled:opacity-30`}
+              title="Delete selected items"
+            >
+              <Trash2 size={12} />
+              {bulkActionPending === "delete" ? "Deleting..." : "Delete"}
+            </button>
+            <button
+              onClick={() => {
+                resetSelectionState();
+              }}
+              disabled={bulkActionPending !== null}
+              className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
+              title="Exit selection mode"
+            >
+              <X size={12} />
+              Cancel
+            </button>
+            <span className={`ml-auto text-[var(--text-muted)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}>
+              {selectedCount} selected
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
@@ -332,20 +551,7 @@ function SessionSidebar({
         ) : (
           <>
             {ungrouped.length > 0 && (
-              <>
-                <button
-                  onClick={() => setActiveProjectId(null)}
-                  className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${
-                    activeProjectId === null
-                      ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
-                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                  }`}
-                >
-                  <MessageSquare size={isSplitPane ? 14 : 13} className="text-[var(--text-muted)] shrink-0" />
-                  <span className={`truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>All Conversations</span>
-                </button>
-                {renderSessionList(ungrouped)}
-              </>
+              renderSessionList(ungrouped)
             )}
             {projects.map((project) => {
               const projectSessions = byProject[project.id] ?? [];
@@ -353,20 +559,84 @@ function SessionSidebar({
               return (
                 <div key={project.id}>
                   <button
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setCtxMenu({ type: "project", x: event.clientX, y: event.clientY, project });
+                    }}
                     onClick={() => {
+                      if (selectMode) {
+                        setSelectedProjectIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(project.id)) {next.delete(project.id);} else {next.add(project.id);}
+                          return next;
+                        });
+                        return;
+                      }
                       setActiveProjectId(project.id);
                       if (activeProjectId === project.id) {
                         setExpanded((prev) => ({ ...prev, [project.id]: !isOpen }));
                       }
                     }}
                     className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${
-                      activeProjectId === project.id
+                      selectedProjectIds.has(project.id)
+                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                        : activeProjectId === project.id
                         ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
                         : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                     }`}
                   >
+                    {selectMode && (
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedProjectIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(project.id)) {next.delete(project.id);} else {next.add(project.id);}
+                            return next;
+                          });
+                        }}
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                          selectedProjectIds.has(project.id)
+                            ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+                            : "border-[var(--text-muted)] text-transparent"
+                        }`}
+                      >
+                        <Check size={10} />
+                      </button>
+                    )}
                     <Folder size={isSplitPane ? 14 : 13} className="text-[var(--text-muted)] shrink-0" />
-                    <span className={`flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{project.name}</span>
+                    {projectRenamingId === project.id ? (
+                      <input
+                        autoFocus
+                        value={projectRenameValue}
+                        onChange={(event) => setProjectRenameValue(event.target.value)}
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void renameProject(project.id, projectRenameValue).then(() => {
+                              setProjectRenamingId(null);
+                              setProjectRenameValue("");
+                            });
+                          }
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setProjectRenamingId(null);
+                            setProjectRenameValue("");
+                          }
+                        }}
+                        onBlur={() => {
+                          void renameProject(project.id, projectRenameValue).then(() => {
+                            setProjectRenamingId(null);
+                            setProjectRenameValue("");
+                          });
+                        }}
+                        className={`flex-1 rounded border border-[var(--accent-color)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${isSplitPane ? "text-sm" : "text-xs"}`}
+                      />
+                    ) : (
+                      <span className={`flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{project.name}</span>
+                    )}
                     <ChevronDown size={12} className={`text-[var(--text-muted)] transition-transform ${isOpen ? "" : "-rotate-90"}`} />
                   </button>
                   {isOpen && renderSessionList(projectSessions)}
@@ -383,6 +653,111 @@ function SessionSidebar({
           <p className={`text-[var(--text-muted)] ${isSplitPane ? "text-[11px]" : "text-[10px]"}`}>
             {sidebarSessions.length} session{sidebarSessions.length !== 1 ? "s" : ""}{sidebarSessions.some((session) => session.is_pinned) ? ` · ${sidebarSessions.filter((session) => session.is_pinned).length} pinned` : ""}
           </p>
+        </div>
+      )}
+
+      {ctxMenu && (
+        <div
+          data-chat-tree-context-menu
+          className="fixed z-50 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+        >
+          {ctxMenu.type === "session" ? (
+            <>
+              <button
+                onClick={() => {
+                  setActiveChatId(ctxMenu.session.id);
+                  setCtxMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <ExternalLink size={11} /> Open chat
+              </button>
+              <button
+                onClick={() => {
+                  setRenamingId(ctxMenu.session.id);
+                  setRenameTitle(ctxMenu.session.title);
+                  setCtxMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <Pencil size={11} /> Rename
+              </button>
+              <button
+                onClick={() => {
+                  void togglePin(ctxMenu.session);
+                  setCtxMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                {ctxMenu.session.is_pinned ? <PinOff size={11} /> : <Pin size={11} />}
+                {ctxMenu.session.is_pinned ? "Unpin" : "Pin"}
+              </button>
+              <div className="my-1 border-t border-[var(--border-color)]" />
+              <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Move to</div>
+              {workspaces.map((workspace) => (
+                <div
+                  key={workspace.id}
+                  className="relative"
+                  onMouseEnter={() => setCtxMoveWorkspaceId(workspace.id)}
+                >
+                  <button
+                    onClick={() => setCtxMoveWorkspaceId((current) => current === workspace.id ? null : workspace.id)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    <span className="truncate flex-1">{workspace.name}</span>
+                    <ChevronRight size={11} />
+                  </button>
+                  {ctxMoveWorkspaceId === workspace.id && renderWorkspaceMoveSubmenu(workspace.id, (targetWorkspaceId, targetProjectId) => {
+                    void moveSessionsToTarget([ctxMenu.session.id], targetWorkspaceId, targetProjectId);
+                    setCtxMoveWorkspaceId(null);
+                    setCtxMenu(null);
+                  })}
+                </div>
+              ))}
+              <div className="my-1 border-t border-[var(--border-color)]" />
+              <button
+                onClick={() => {
+                  void deleteSession(ctxMenu.session.id);
+                  setCtxMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
+              >
+                <Trash2 size={11} /> Delete
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => {
+                  setActiveProjectId(ctxMenu.project.id);
+                  setCtxMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <ExternalLink size={11} /> Open folder
+              </button>
+              <button
+                onClick={() => {
+                  setProjectRenamingId(ctxMenu.project.id);
+                  setProjectRenameValue(ctxMenu.project.name);
+                  setCtxMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <Pencil size={11} /> Rename folder
+              </button>
+              <button
+                onClick={() => {
+                  void deleteProject(ctxMenu.project.id);
+                  setCtxMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
+              >
+                <Trash2 size={11} /> Delete folder
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -422,7 +797,7 @@ export default function ChatView() {
   const { activeChatId, setActiveChatId } = useScopedChat();
 
   const { 
-    activeProjectId, activeWorkspaceId, setProjectsForWorkspace,
+    activeProjectId, activeWorkspaceId, setProjectsForWorkspace, projectsByWorkspace,
   } = useWorkspaceStore();
   const {
     activeProjectId: scopedProjectId,
@@ -749,6 +1124,9 @@ export default function ChatView() {
     () => (activeChatId ? (messages[activeChatId] ?? []) : []),
     [activeChatId, messages]
   );
+  const hasLoadedActiveMessages = activeChatId
+    ? Object.prototype.hasOwnProperty.call(messages, activeChatId)
+    : false;
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
   const isCurrentlyRefining = isRefiningPhase && refineStreamingContent.length > 0;
@@ -792,6 +1170,59 @@ export default function ChatView() {
 
     return () => window.clearTimeout(timeoutId);
   }, [effectiveWorkspaceId, sessionQuery, sessions]);
+
+  async function refreshProjectTree(workspaceId: string) {
+    const refreshedProjects = await api.project.list(workspaceId);
+    const refreshedSidebarSessions = await api.chat.listSessions(workspaceId, null);
+    setProjectsForWorkspace(workspaceId, refreshedProjects);
+    setSidebarSessions(refreshedSidebarSessions);
+  }
+
+  async function refreshScopedSessions(workspaceId: string, projectId: string | null) {
+    const refreshedSessions = await api.chat.listSessions(workspaceId, projectId);
+    setSessions(refreshedSessions);
+  }
+
+  async function bulkDeleteSessions(sessionIds: string[], projectIds: string[] = []) {
+    if (!effectiveWorkspaceId || (sessionIds.length === 0 && projectIds.length === 0)) {return;}
+    const settings = useSettingsStore.getState();
+    const isImmediate = settings.immediateDelete;
+    const skipConfirm = !isImmediate && !settings.confirmMoveToTrash;
+    const totalCount = sessionIds.length + projectIds.length;
+
+    if (!skipConfirm) {
+      const confirmMsg = isImmediate
+        ? `Permanently delete ${totalCount} selected item${totalCount === 1 ? "" : "s"}? Chats will be deleted and folders removed. This cannot be undone.`
+        : `Delete ${totalCount} selected item${totalCount === 1 ? "" : "s"}? Chats will move to the recycle bin and folders will be removed.`;
+
+      if (!await confirm(confirmMsg)) {return;}
+    }
+
+    await Promise.all(sessionIds.map((id) => api.chat.deleteSession(effectiveWorkspaceId, id)));
+    for (const projectId of projectIds) {
+      const projectSessionIds = sidebarSessions
+        .filter((session) => session.project_id === projectId && !sessionIds.includes(session.id))
+        .map((session) => session.id);
+      if (projectSessionIds.length > 0) {
+        await api.chat.moveSessions(projectSessionIds, effectiveWorkspaceId, undefined);
+      }
+      await api.project.delete(projectId);
+    }
+    const removedSessionIds = new Set(sessionIds);
+    setSessions(sessions.filter((session) => !removedSessionIds.has(session.id)));
+    sessionIds.forEach((id) => useChatStore.getState().removeSession(id));
+
+    await Promise.all([
+      refreshProjectTree(effectiveWorkspaceId),
+      refreshScopedSessions(effectiveWorkspaceId, projectIds.includes(effectiveProjectId ?? "") ? null : effectiveProjectId),
+    ]);
+    if (projectIds.includes(effectiveProjectId ?? "")) {
+      setScopedProjectId(null);
+    }
+    if (activeChatId && sessionIds.includes(activeChatId)) {
+      setActiveChatId(null);
+    }
+  }
 
   // Load processed doc count for grounded chat indicator
   useEffect(() => {
@@ -990,6 +1421,17 @@ export default function ChatView() {
       behavior: isCurrentlyStreaming ? "instant" : "smooth",
     });
   }, [activeMessages.length, streamingContent, isCurrentlyStreaming]);
+
+  useEffect(() => {
+    if (!activeChatId || !hasLoadedActiveMessages || activeMessages.length > 0 || isStreaming) {return;}
+
+    requestAnimationFrame(() => {
+      if (!inputRef.current || document.activeElement === inputRef.current) {return;}
+      inputRef.current.focus();
+      const cursorPosition = inputRef.current.value.length;
+      inputRef.current.setSelectionRange(cursorPosition, cursorPosition);
+    });
+  }, [activeChatId, hasLoadedActiveMessages, activeMessages.length, isStreaming]);
 
   async function createNewSession(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
     if (!effectiveWorkspaceId) {return;}
@@ -1323,6 +1765,7 @@ export default function ChatView() {
 
     await api.chat.deleteSession(effectiveWorkspaceId, id);
     useChatStore.getState().removeSession(id);
+    setSidebarSessions((prev) => prev.filter((session) => session.id !== id));
     if (activeChatId === id) {setActiveChatId(null);}
   }
 
@@ -1334,12 +1777,14 @@ export default function ChatView() {
         s.id === session.id ? { ...s, is_pinned: !s.is_pinned } : s
       )
     );
+    setSidebarSessions((prev) => prev.map((item) => item.id === session.id ? { ...item, is_pinned: !item.is_pinned } : item));
   }
 
   async function renameSession(id: string) {
     if (!renameTitle.trim() || !effectiveWorkspaceId) { setRenamingId(null); return; }
     await api.chat.updateSession(effectiveWorkspaceId, id, { title: renameTitle });
     setSessions(sessions.map((s) => s.id === id ? { ...s, title: renameTitle } : s));
+    setSidebarSessions((prev) => prev.map((session) => session.id === id ? { ...session, title: renameTitle } : session));
     setRenamingId(null);
   }
 
@@ -1371,9 +1816,49 @@ export default function ChatView() {
         title_generated_at: new Date().toISOString(),
         message_count_at_title_gen: sessionMessages.filter((message) => message.role === "user").length,
       });
+      setSidebarSessions((prev) => prev.map((item) => item.id === session.id ? { ...item, title } : item));
     } catch {
       // Leave the current title in place if refresh fails.
     }
+  }
+
+  async function moveSessionsToTarget(sessionIds: string[], workspaceId: string, projectId: string | null) {
+    if (sessionIds.length === 0) {return;}
+    await api.chat.moveSessions(sessionIds, workspaceId, projectId ?? undefined);
+    if (effectiveWorkspaceId) {
+      await Promise.all([
+        refreshProjectTree(effectiveWorkspaceId),
+        refreshScopedSessions(effectiveWorkspaceId, workspaceId === effectiveWorkspaceId ? effectiveProjectId : effectiveProjectId),
+      ]);
+    }
+    if (activeChatId && sessionIds.includes(activeChatId) && (workspaceId !== effectiveWorkspaceId || effectiveProjectId !== projectId)) {
+      setActiveChatId(null);
+    }
+    if (workspaceId !== effectiveWorkspaceId) {
+      await refreshProjectTree(workspaceId);
+    }
+  }
+
+  async function renameProject(projectId: string, name: string) {
+    if (!effectiveWorkspaceId || !name.trim()) {return;}
+    await api.project.update(projectId, { name: name.trim() });
+    await refreshProjectTree(effectiveWorkspaceId);
+  }
+
+  async function deleteProject(projectId: string) {
+    if (!effectiveWorkspaceId) {return;}
+    const projectSessions = sidebarSessions.filter((session) => session.project_id === projectId).map((session) => session.id);
+    if (projectSessions.length > 0) {
+      await api.chat.moveSessions(projectSessions, effectiveWorkspaceId, undefined);
+    }
+    await api.project.delete(projectId);
+    if (effectiveProjectId === projectId) {
+      setScopedProjectId(null);
+    }
+    await Promise.all([
+      refreshProjectTree(effectiveWorkspaceId),
+      refreshScopedSessions(effectiveWorkspaceId, effectiveProjectId === projectId ? null : effectiveProjectId),
+    ]);
   }
 
   async function saveSession(session: ChatSession) {
@@ -1571,15 +2056,25 @@ export default function ChatView() {
     id: optimistic.id,
   });
 
+  const canRefreshActiveSessionTitle = activeSession
+    ? canRefreshSessionTitle(activeSession, messages)
+    : false;
+
   // ── Main render ──────────────────────────────────────────────────────────
   return (
     <div className="flex h-full min-w-0 overflow-hidden">
       <SessionSidebar
         sidebarSessions={sidebarSessions}
+        workspaces={workspaces}
+        projectsByWorkspace={projectsByWorkspace}
         projects={projects}
         activeProjectId={effectiveProjectId}
         setActiveProjectId={setScopedProjectId}
         activeProject={activeProject}
+        moveSessionsToTarget={moveSessionsToTarget}
+        bulkDeleteSessions={bulkDeleteSessions}
+        renameProject={renameProject}
+        deleteProject={deleteProject}
         sessionQuery={sessionQuery}
         setSessionQuery={setSessionQuery}
         creatingFolder={creatingFolder}
@@ -1805,9 +2300,14 @@ export default function ChatView() {
             </span>
             {activeSession && (
               <button
-                onClick={() => refreshSessionTitle(activeSession)}
-                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)] transition-colors"
-                title="Refresh chat name"
+                onClick={() => { if (canRefreshActiveSessionTitle) {refreshSessionTitle(activeSession);} }}
+                disabled={!canRefreshActiveSessionTitle}
+                className={`p-1.5 rounded-lg text-[var(--text-muted)] transition-colors ${
+                  canRefreshActiveSessionTitle
+                    ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
+                    : "cursor-not-allowed opacity-40"
+                }`}
+                title={canRefreshActiveSessionTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"}
               >
                 <RefreshCw size={14} />
               </button>
@@ -2040,9 +2540,7 @@ export default function ChatView() {
                       <Zap size={9} /> Refining with {modelDisplayName(selectedModel)}…
                     </div>
                   )}
-                  <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{streamingContent}</ReactMarkdown>
-                  </div>
+                  <p className="whitespace-pre-wrap">{streamingContent}</p>
                   <span className="streaming-cursor" />
                 </div>
               </div>
@@ -2054,9 +2552,7 @@ export default function ChatView() {
                   <div className="flex items-center gap-1 mb-1 text-[10px] text-[var(--accent-color)]">
                     <Zap size={9} /> Refining with {modelDisplayName(selectedModel)}…
                   </div>
-                  <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{refineStreamingContent}</ReactMarkdown>
-                  </div>
+                  <p className="whitespace-pre-wrap">{refineStreamingContent}</p>
                   <span className="streaming-cursor" />
                 </div>
               </div>
