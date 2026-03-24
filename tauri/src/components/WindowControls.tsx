@@ -1,33 +1,55 @@
+/* eslint-disable react-refresh/only-export-components */
+import React from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isLinux, isMac } from "../lib/platform";
 
+async function maximizeWindow() {
+  const appWindow = getCurrentWindow();
+
+  if (isLinux) {
+    await appWindow.setFocus().catch(() => {});
+  }
+
+  await appWindow.maximize();
+
+  // Some Linux WMs ignore the first maximize on undecorated windows.
+  if (isLinux) {
+    await new Promise((resolve) => window.setTimeout(resolve, 60));
+    const maximized = await appWindow.isMaximized().catch(() => false);
+    if (!maximized) {
+      await appWindow.setFocus().catch(() => {});
+      await appWindow.maximize().catch(() => {});
+    }
+  }
+}
+
 /** onMouseDown handler that initiates window dragging. Use on drag region elements. */
 export function onDragRegionMouseDown(e: React.MouseEvent) {
-  if (!isLinux) return;
+  if (!isLinux) {return;}
   // Only drag on left-click, and only when clicking the element itself (not child buttons/inputs)
-  if (e.button !== 0) return;
+  if (e.button !== 0) {return;}
   const target = e.target as HTMLElement;
-  if (target.closest("button, input, select, textarea, a, [data-no-drag]")) return;
+  if (target.closest("button, input, select, textarea, a, [data-no-drag]")) {return;}
   e.preventDefault();
   getCurrentWindow().startDragging();
 }
 
 export async function onDragRegionDoubleClick(e: React.MouseEvent) {
-  if (isMac || e.button !== 0) return;
+  if (isMac || e.button !== 0) {return;}
   const target = e.target as HTMLElement;
-  if (target.closest("button, input, select, textarea, a, [data-no-drag]")) return;
+  if (target.closest("button, input, select, textarea, a, [data-no-drag]")) {return;}
 
   const appWindow = getCurrentWindow();
   const maximized = await appWindow.isMaximized();
   if (maximized) {
     await appWindow.unmaximize();
   } else {
-    await appWindow.maximize();
+    await maximizeWindow();
   }
 }
 
 function WindowControls() {
-  if (!isLinux) return null;
+  if (!isLinux) {return null;}
 
   const appWindow = getCurrentWindow();
 
@@ -36,7 +58,7 @@ function WindowControls() {
     if (maximized) {
       await appWindow.unmaximize();
     } else {
-      await appWindow.maximize();
+      await maximizeWindow();
     }
   }
 

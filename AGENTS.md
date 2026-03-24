@@ -117,17 +117,17 @@ swift test                      # run all tests
 ```bash
 # TypeScript check
 cd tauri
-~/.nvm/versions/node/v20.19.5/bin/npx tsc --noEmit
+~/.nvm/versions/node/v22.22.1/bin/npx tsc --noEmit
 
 # Rust check
 ~/.cargo/bin/cargo check --manifest-path tauri/src-tauri/Cargo.toml
 
 # Run dev server (requires Ollama running on :11434 for AI features)
 cd tauri
-PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v20.19.5/bin:$PATH" npm run tauri dev
+PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v22.22.1/bin:$PATH" npm run tauri dev
 ```
 
-> **Note:** `node` and `npm` may not be in `$PATH` in some shell environments. Use absolute paths via `~/.nvm/versions/node/v20.19.5/bin/` when needed.
+> **Note:** `node` and `npm` may not be in `$PATH` in some shell environments. Use absolute paths via `~/.nvm/versions/node/v22.22.1/bin/` when needed.
 
 ---
 

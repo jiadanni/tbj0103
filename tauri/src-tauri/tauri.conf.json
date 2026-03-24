@@ -21,7 +21,7 @@
         "maximized": true,
         "fullscreen": false,
         "visible": true,
-        "focus": false
+        "focus": true
       }
     ],
     "security": {

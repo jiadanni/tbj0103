@@ -54,7 +54,7 @@ export function detectArtifacts(content: string): DetectedArtifact[] {
       // Try to find a filename in the first line if it's a comment
       const firstLine = code.split('\n')[0].trim();
       if (firstLine.startsWith('// ') || firstLine.startsWith('# ') || firstLine.startsWith('/* ')) {
-        const potentialTitle = firstLine.replace(/[\/#\*]/g, '').trim();
+        const potentialTitle = firstLine.replace(/[/#*]/g, '').trim();
         if (potentialTitle && potentialTitle.length < 50) {
           title = potentialTitle;
         }

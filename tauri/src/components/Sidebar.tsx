@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useChatStore, findUnusedSession, type ChatSession } from "../stores/chatStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   SquarePen, BarChart2, Folder, Settings,
   MessageSquare, ChevronRight, ChevronDown, FileEdit,
-  FileText, Globe, Network, CreditCard, Inbox,
+  FileText, Globe, Network, CreditCard,
   Check, Trash2, Ghost, MoveRight, X, FolderPlus, Search, Shield, Brain,
+  MoreHorizontal, Pencil, Pin, PinOff, ExternalLink,
 } from "lucide-react";
 
 import { api } from "../lib/api";
 import { MOD_KEY } from "../lib/platform";
+import { confirm } from "@tauri-apps/plugin-dialog";
+import { useSettingsStore } from "../stores/settingsStore";
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -29,7 +32,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({
-  onOpenCommandPalette,
+  onOpenCommandPalette: _onOpenCommandPalette,
   showWorkspaceNavigation = true,
   showSectionNavigation = true,
 }: SidebarProps) {
@@ -37,6 +40,7 @@ export default function Sidebar({
   const location = useLocation();
   const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId, setActiveWorkspaceId, workspaces, setWorkspaces, setProjects, setWorkspaceTopicSignature } = useWorkspaceStore();
   const { sessions, messages, setActiveChatId } = useChatStore();
+  const { immediateDelete, confirmMoveToTrash } = useSettingsStore();
 
   const activeSegment = "/" + location.pathname.split("/")[1];
   const activeChatId = location.pathname.startsWith("/chat/") ? location.pathname.split("/")[2] : null;
@@ -88,6 +92,22 @@ export default function Sidebar({
   const [selectMode, setSelectMode] = useState(false);
   const [moveMenuOpen, setMoveMenuOpen] = useState(false);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; session: ChatSession } | null>(null);
+
+  async function refreshSidebarData(workspaceId: string) {
+    const [refreshedSessions, refreshedProjects, refreshedSignature, refreshedWorkspaces] = await Promise.all([
+      api.chat.listSessions(workspaceId, null),
+      api.project.list(workspaceId),
+      api.topicSignature.get(workspaceId),
+      api.workspace.list(),
+    ]);
+    setAllSessions(refreshedSessions);
+    setProjects(refreshedProjects);
+    setWorkspaceTopicSignature(workspaceId, refreshedSignature);
+    setWorkspaces(refreshedWorkspaces);
+  }
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -108,20 +128,20 @@ export default function Sidebar({
     if (selectedIds.size === 0 || !activeWorkspaceId) {return;}
     try {
       await api.chat.moveSessions(Array.from(selectedIds), activeWorkspaceId, projectId ?? undefined);
-      // Trigger refresh by touching sessions
-      const [refreshedSessions, refreshedProjects, refreshedSignature, refreshedWorkspaces] = await Promise.all([
-        api.chat.listSessions(activeWorkspaceId, null),
-        api.project.list(activeWorkspaceId),
-        api.topicSignature.get(activeWorkspaceId),
-        api.workspace.list(),
-      ]);
-      setAllSessions(refreshedSessions);
-      setProjects(refreshedProjects);
-      setWorkspaceTopicSignature(activeWorkspaceId, refreshedSignature);
-      setWorkspaces(refreshedWorkspaces);
+      await refreshSidebarData(activeWorkspaceId);
       exitSelectMode();
     } catch (e) {
       console.error("Failed to move sessions:", e);
+    }
+  }
+
+  async function moveSessionToFolder(sessionId: string, projectId: string | null) {
+    if (!activeWorkspaceId) {return;}
+    try {
+      await api.chat.moveSessions([sessionId], activeWorkspaceId, projectId ?? undefined);
+      await refreshSidebarData(activeWorkspaceId);
+    } catch (e) {
+      console.error("Failed to move session:", e);
     }
   }
 
@@ -187,18 +207,117 @@ export default function Sidebar({
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
+  useEffect(() => {
+    if (!ctxMenu) {return;}
+
+    function handleClick(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-chat-context-menu]")) {return;}
+      setCtxMenu(null);
+    }
+
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setCtxMenu(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [ctxMenu]);
+
+  function openSession(sessionId: string) {
+    setActiveChatId(sessionId);
+    navigate(`/chat/${sessionId}`);
+  }
+
+  async function renameSession(sessionId: string) {
+    const nextTitle = renameTitle.trim();
+    if (!nextTitle || !activeWorkspaceId) {
+      setRenamingId(null);
+      setRenameTitle("");
+      return;
+    }
+
+    try {
+      await api.chat.updateSession(activeWorkspaceId, sessionId, { title: nextTitle });
+      useChatStore.getState().setSessions(
+        useChatStore.getState().sessions.map((session) =>
+          session.id === sessionId ? { ...session, title: nextTitle } : session
+        )
+      );
+      setAllSessions((prev) => prev.map((session) => (
+        session.id === sessionId ? { ...session, title: nextTitle } : session
+      )));
+    } catch (e) {
+      console.error("Failed to rename session:", e);
+    } finally {
+      setRenamingId(null);
+      setRenameTitle("");
+    }
+  }
+
+  async function togglePinned(session: ChatSession) {
+    if (!activeWorkspaceId) {return;}
+    try {
+      await api.chat.updateSession(activeWorkspaceId, session.id, { is_pinned: !session.is_pinned });
+      const updateSession = (item: ChatSession) => item.id === session.id ? { ...item, is_pinned: !session.is_pinned } : item;
+      useChatStore.getState().setSessions(useChatStore.getState().sessions.map(updateSession));
+      setAllSessions((prev) => prev.map(updateSession));
+    } catch (e) {
+      console.error("Failed to toggle pin:", e);
+    }
+  }
+
+  async function deleteSession(session: ChatSession) {
+    if (!activeWorkspaceId) {return;}
+    const isImmediate = immediateDelete;
+    const skipConfirm = !isImmediate && !confirmMoveToTrash;
+
+    if (!skipConfirm) {
+      const confirmMsg = isImmediate
+        ? "Permanently delete this chat session and all its messages? This cannot be undone."
+        : "Move this chat to the recycle bin?";
+
+      if (!await confirm(confirmMsg)) {return;}
+    }
+
+    try {
+      await api.chat.deleteSession(activeWorkspaceId, session.id);
+      useChatStore.getState().removeSession(session.id);
+      setAllSessions((prev) => prev.filter((item) => item.id !== session.id));
+      if (activeChatId === session.id) {
+        setActiveChatId(null);
+      }
+    } catch (e) {
+      console.error("Failed to delete session:", e);
+    }
+  }
+
+  function openContextMenu(e: ReactMouseEvent, session: ChatSession) {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY, session });
+  }
+
   function renderThreadItem(s: ChatSession) {
     const msgCount = s.message_count_at_title_gen ?? 0;
     const isSelected = selectedIds.has(s.id);
+    const isRenaming = renamingId === s.id;
     return (
       <div
         key={s.id}
-        className="flex items-center gap-0.5"
+        className="flex items-center gap-0.5 group"
         draggable={!selectMode}
         onDragStart={(e) => {
           e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify([s.id]));
           e.dataTransfer.effectAllowed = "move";
         }}
+        onContextMenu={(e) => openContextMenu(e, s)}
       >
         {selectMode && (
           <button
@@ -212,9 +331,8 @@ export default function Sidebar({
             {isSelected && <Check size={8} className="text-white" />}
           </button>
         )}
-        <button
-          onClick={() => selectMode ? toggleSelect(s.id) : navigate(`/chat/${s.id}`)}
-          className={`w-full flex items-center justify-between ${selectMode ? "pl-1" : "pl-7"} pr-2 py-1.5 rounded-lg text-xs transition-colors group ${
+        <div
+          className={`w-full flex items-center justify-between ${selectMode ? "pl-1" : "pl-7"} pr-2 py-1.5 rounded-lg text-xs transition-colors ${
             isSelected
               ? "bg-[var(--accent-color)]/10 text-[var(--accent-color)]"
               : activeChatId === s.id
@@ -222,17 +340,50 @@ export default function Sidebar({
                 : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           }`}
         >
-          <span className="truncate pr-2 flex-1 text-left flex items-center gap-1.5">
-            <span className="truncate">{s.title || "New Chat"}</span>
+          <div className="min-w-0 flex-1 flex items-center gap-1.5 text-left">
+            {isRenaming ? (
+              <input
+                autoFocus
+                value={renameTitle}
+                onChange={(e) => setRenameTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void renameSession(s.id);
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setRenamingId(null);
+                    setRenameTitle("");
+                  }
+                }}
+                onBlur={() => void renameSession(s.id)}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full rounded border border-[var(--accent-color)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-primary)] outline-none"
+              />
+            ) : (
+              <button
+                onClick={() => selectMode ? toggleSelect(s.id) : openSession(s.id)}
+                className="min-w-0 flex-1 truncate text-left"
+              >
+              <span className="truncate">{s.title || "New Chat"}</span>
+              </button>
+            )}
             {s.is_incognito && <Ghost size={11} className="text-purple-400 flex-shrink-0" />}
             {!s.is_incognito && s.exclude_from_analytics && <Shield size={11} className="text-sky-400 flex-shrink-0" />}
-          </span>
+          </div>
           <span className="flex items-center gap-1.5 flex-shrink-0 text-[10px] text-[var(--text-muted)]">
             {msgCount > 0 && <span>{msgCount}</span>}
-            <ChevronRight size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            <button
+              onClick={(e) => openContextMenu(e, s)}
+              className="rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[var(--bg-hover)]"
+              title="Thread actions"
+            >
+              <MoreHorizontal size={11} />
+            </button>
             <span>{timeAgo(s.updated_at)}</span>
           </span>
-        </button>
+        </div>
       </div>
     );
   }
@@ -372,16 +523,6 @@ export default function Sidebar({
             >
               <CreditCard size={14} className="text-[var(--text-muted)]" />
               Flashcards
-            </button>
-
-            <button
-              onClick={() => navigate("/thoughts")}
-              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                activeSegment === "/thoughts" ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              <Inbox size={14} className="text-[var(--text-muted)]" />
-              Thought Queue
             </button>
           </>
         )}
@@ -553,16 +694,7 @@ export default function Sidebar({
                   try {
                     const ids: string[] = JSON.parse(data);
                     await api.chat.moveSessions(ids, activeWorkspaceId, p.id);
-                    const [refreshedSessions, refreshedProjects, refreshedSignature, refreshedWorkspaces] = await Promise.all([
-                      api.chat.listSessions(activeWorkspaceId, null),
-                      api.project.list(activeWorkspaceId),
-                      api.topicSignature.get(activeWorkspaceId),
-                      api.workspace.list(),
-                    ]);
-                    setAllSessions(refreshedSessions);
-                    setProjects(refreshedProjects);
-                    setWorkspaceTopicSignature(activeWorkspaceId, refreshedSignature);
-                    setWorkspaces(refreshedWorkspaces);
+                    await refreshSidebarData(activeWorkspaceId);
                   } catch (err) {
                     console.error("Failed to move sessions:", err);
                   }
@@ -629,16 +761,7 @@ export default function Sidebar({
                   try {
                     const ids: string[] = JSON.parse(data);
                     await api.chat.moveSessions(ids, activeWorkspaceId);
-                    const [refreshedSessions, refreshedProjects, refreshedSignature, refreshedWorkspaces] = await Promise.all([
-                      api.chat.listSessions(activeWorkspaceId, null),
-                      api.project.list(activeWorkspaceId),
-                      api.topicSignature.get(activeWorkspaceId),
-                      api.workspace.list(),
-                    ]);
-                    setAllSessions(refreshedSessions);
-                    setProjects(refreshedProjects);
-                    setWorkspaceTopicSignature(activeWorkspaceId, refreshedSignature);
-                    setWorkspaces(refreshedWorkspaces);
+                    await refreshSidebarData(activeWorkspaceId);
                   } catch (err) {
                     console.error("Failed to move sessions:", err);
                   }
@@ -693,6 +816,79 @@ export default function Sidebar({
           <ChevronRight size={14} className="text-[var(--text-muted)]" />
         </button>
       </div>
+
+      {ctxMenu && (
+        <div
+          data-chat-context-menu
+          className="fixed z-50 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+        >
+          <button
+            onClick={() => {
+              openSession(ctxMenu.session.id);
+              setCtxMenu(null);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          >
+            <ExternalLink size={11} /> Open chat
+          </button>
+          <button
+            onClick={() => {
+              setRenamingId(ctxMenu.session.id);
+              setRenameTitle(ctxMenu.session.title);
+              setCtxMenu(null);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          >
+            <Pencil size={11} /> Rename
+          </button>
+          <button
+            onClick={() => {
+              void togglePinned(ctxMenu.session);
+              setCtxMenu(null);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          >
+            {ctxMenu.session.is_pinned ? <PinOff size={11} /> : <Pin size={11} />}
+            {ctxMenu.session.is_pinned ? "Unpin" : "Pin"}
+          </button>
+          <div className="my-1 border-t border-[var(--border-color)]" />
+          <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+            Move to
+          </div>
+          <button
+            onClick={() => {
+              void moveSessionToFolder(ctxMenu.session.id, null);
+              setCtxMenu(null);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          >
+            <MessageSquare size={11} /> Ungrouped
+          </button>
+          {projects.map((project) => (
+            <button
+              key={project.id}
+              onClick={() => {
+                void moveSessionToFolder(ctxMenu.session.id, project.id);
+                setCtxMenu(null);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+            >
+              <Folder size={11} /> <span className="truncate">{project.name}</span>
+            </button>
+          ))}
+          <div className="my-1 border-t border-[var(--border-color)]" />
+          <button
+            onClick={() => {
+              void deleteSession(ctxMenu.session);
+              setCtxMenu(null);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
+          >
+            <Trash2 size={11} /> Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }

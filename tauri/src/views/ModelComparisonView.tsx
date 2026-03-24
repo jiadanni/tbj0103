@@ -51,8 +51,8 @@ export default function ModelComparisonView() {
       ]);
       setResponseA(resA);
       setResponseB(resB);
-    } catch (err: any) {
-      setError(err?.message ?? String(err));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -66,7 +66,7 @@ export default function ModelComparisonView() {
   }
 
   function refreshModels() {
-    api.ollama.listModels(ollamaUrl || undefined).then(setModels).catch(() => {});
+    api.ollama.listModelsFresh(ollamaUrl || undefined).then(setModels).catch(() => {});
   }
 
   return (
