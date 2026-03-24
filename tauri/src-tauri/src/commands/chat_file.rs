@@ -4,6 +4,7 @@ use tauri::State;
 use crate::db::DbState;
 use crate::models::chat::ChatSession;
 use crate::services::chat_file_store;
+use std::process::Command;
 
 /// In-memory passphrase state — populated at startup from keyring if
 /// encryption is enabled, or when the user calls `setup_chat_encryption`.
@@ -51,6 +52,55 @@ pub fn get_chat_file_info(
         "chats_dir": chats_dir,
         "encryption_enabled": encrypted,
     }))
+}
+
+#[tauri::command]
+pub fn reveal_chat_file(
+    session_id: String,
+    chats_dir_state: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
+) -> Result<(), String> {
+    let encrypted = crypto.0.lock().map_err(|e| e.to_string())?.is_some();
+    let path = chat_file_store::session_file_path(&chats_dir_state.0, &session_id, encrypted);
+    let fallback_path = chat_file_store::session_file_path(&chats_dir_state.0, &session_id, !encrypted);
+    let reveal_path = if path.exists() { path } else { fallback_path };
+
+    if !reveal_path.exists() {
+        return Err("Chat file not found on disk".to_string());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg("-R")
+            .arg(&reveal_path)
+            .status()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("explorer")
+            .arg("/select,")
+            .arg(&reveal_path)
+            .status()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let parent = reveal_path.parent().ok_or_else(|| "Chat folder not found".to_string())?;
+        Command::new("xdg-open")
+            .arg(parent)
+            .status()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Err("Show in explorer is not supported on this platform".to_string())
 }
 
 /// Enable (or rotate) encryption for all chat JSON files.
@@ -216,13 +266,25 @@ pub fn import_lmstudio_folder(
         .unwrap_or("Imported Chats")
         .to_string();
 
-    let workspace_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
-         VALUES (?1, ?2, '', '', '{}', ?3, ?3)",
-        rusqlite::params![workspace_id, workspace_name, now],
-    ).map_err(|e| e.to_string())?;
+    let normalized_workspace_name = workspace_name.trim();
+    let existing_workspace_id = conn.query_row(
+        "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
+        rusqlite::params![normalized_workspace_name],
+        |row| row.get::<_, String>(0),
+    ).ok();
+
+    let workspace_id = if let Some(existing_workspace_id) = existing_workspace_id {
+        existing_workspace_id
+    } else {
+        let new_workspace_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
+             VALUES (?1, ?2, '', '', '{}', ?3, ?3)",
+            rusqlite::params![new_workspace_id, workspace_name, now],
+        ).map_err(|e| e.to_string())?;
+        new_workspace_id
+    };
 
     // Discover all conversation files with their subfolder names
     let conversations = chat_file_store::discover_lmstudio_conversations(folder)?;
@@ -242,6 +304,15 @@ pub fn import_lmstudio_folder(
             String::new() // root-level conversations have no project
         } else {
             let pid = project_map.entry(conv.subfolder.clone()).or_insert_with(|| {
+                let normalized_project_name = conv.subfolder.trim();
+                if let Ok(existing_project_id) = conn.query_row(
+                    "SELECT id FROM projects WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) LIMIT 1",
+                    rusqlite::params![workspace_id, normalized_project_name],
+                    |row| row.get::<_, String>(0),
+                ) {
+                    return existing_project_id;
+                }
+
                 let id = uuid::Uuid::new_v4().to_string();
                 let _ = conn.execute(
                     "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)

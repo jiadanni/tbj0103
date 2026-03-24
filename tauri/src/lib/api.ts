@@ -342,6 +342,7 @@ export const api = {
 
   chatFile: {
     getInfo: () => invoke<{ chats_dir: string; encryption_enabled: boolean }>("get_chat_file_info"),
+    reveal: (sessionId: string) => invoke<void>("reveal_chat_file", { sessionId }),
     setupEncryption: (passphrase: string) => invoke<number>("setup_chat_encryption", { passphrase }),
     disableEncryption: () => invoke<number>("disable_chat_encryption"),
     exportAsJson: (sessionId: string, destPath: string) =>
