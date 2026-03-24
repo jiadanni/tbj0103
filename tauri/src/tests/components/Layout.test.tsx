@@ -25,6 +25,7 @@ vi.mock("@/components/ArtifactPanel", () => ({
 vi.mock("@/components/WindowControls", () => ({
   __esModule: true,
   default: () => null,
+  onDragRegionDoubleClick: vi.fn(),
   onDragRegionMouseDown: vi.fn(),
 }));
 
@@ -82,6 +83,7 @@ const INITIAL = {
 describe("Layout", () => {
   beforeEach(() => {
     useWorkspaceStore.setState(INITIAL);
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1280 });
   });
 
   it("exits split mode before opening settings from the global toolbar", () => {
@@ -104,9 +106,46 @@ describe("Layout", () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /settings/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /settings/i })[0]);
 
     expect(useWorkspaceStore.getState().splitMode).toBe(false);
     expect(screen.getByText("Settings View")).toBeInTheDocument();
+  });
+
+  it("marks the top toolbar as a drag region", () => {
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const dragRegions = document.querySelectorAll("[data-tauri-drag-region]");
+    expect(dragRegions.length).toBeGreaterThan(1);
+  });
+
+  it("keeps split mode active in a collapsed state when the window is narrow", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 640 });
+
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+      splitMode: true,
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(useWorkspaceStore.getState().splitMode).toBe(true);
+    expect(screen.getByLabelText("Second pane collapsed until the window is wider")).toBeInTheDocument();
   });
 });

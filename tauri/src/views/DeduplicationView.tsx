@@ -2,7 +2,7 @@
  * DeduplicationView — find and merge duplicate/similar concept nodes.
  * Mirrors DeduplicationView.swift: shows candidate pairs, lets user merge or dismiss.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { GitMerge, X, Check, Search, RefreshCw, Network } from "lucide-react";
 import { api, type ConceptNode } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -38,7 +38,7 @@ export default function DeduplicationView() {
   const [merging, setMerging] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
-  async function scan() {
+  const scan = useCallback(async () => {
     if (!activeWorkspaceId) {return;}
     setLoading(true);
     try {
@@ -58,11 +58,11 @@ export default function DeduplicationView() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [activeWorkspaceId, threshold]);
 
   useEffect(() => {
     if (activeWorkspaceId) {scan();}
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, scan]);
 
   function dismiss(idx: number) {
     setPairs((prev) => prev.map((p, i) => i === idx ? { ...p, dismissed: true } : p));

@@ -113,6 +113,7 @@ pub fn recompute_workspace_signature(conn: &Connection, workspace_id: &str) -> R
 
     sig.manual_tags = existing.manual_tags;
     sig.ignored_tags = existing.ignored_tags;
+    sig.domain_tags.retain(|t| !sig.ignored_tags.contains(&t.tag));
     let now = chrono::Utc::now().to_rfc3339();
     let sig_json = serde_json::to_string(&sig).map_err(|e| e.to_string())?;
 

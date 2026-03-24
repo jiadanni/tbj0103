@@ -7,7 +7,7 @@ import { Check, Columns2, Plus } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
 import ArtifactPanel from "./ArtifactPanel";
-import WindowControls, { onDragRegionMouseDown } from "./WindowControls";
+import WindowControls, { onDragRegionDoubleClick, onDragRegionMouseDown } from "./WindowControls";
 import { type NavigationPresentation, type PaneId, type PaneView, type SplitNavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 import { api } from "../lib/api";
 import { useHotkeys, type HotkeyBinding } from "../hooks/useHotkeys";
@@ -18,7 +18,7 @@ import {
   MessageSquare, Network, CreditCard,
   ChevronDown, FileText, Settings,
   BarChart2, LucideIcon,
-  FileEdit, Trash2, Brain, Inbox,
+  FileEdit, Trash2, Brain,
 } from "lucide-react";
 
 const NAV_ITEMS: { path: string; icon: LucideIcon; label: string; key?: string }[] = [
@@ -26,7 +26,6 @@ const NAV_ITEMS: { path: string; icon: LucideIcon; label: string; key?: string }
   { path: "/chat",          icon: MessageSquare,          label: "Chat",            key: "C" },
   { path: "/memory",        icon: Brain,                  label: "Memory",          key: "M" },
   { path: "/notes",         icon: FileEdit,               label: "Notes",           key: "N" },
-  { path: "/thoughts",      icon: Inbox,                  label: "Queued Tasks",    key: "T" },
   { path: "/sources",       icon: FileText,               label: "Sources",         key: "O" },
   { path: "/graph",         icon: Network,                label: "Knowledge Graph", key: "G" },
   { path: "/flashcards",    icon: CreditCard,             label: "Flashcards",      key: "F" },
@@ -47,7 +46,6 @@ import ProjectDashboardView from "../views/ProjectDashboardView";
 import SettingsView from "../views/SettingsView";
 import NoteEditorView from "../views/NoteEditorView";
 import SourceBrowserView from "../views/SourceBrowserView";
-import ThoughtQueueView from "../views/ThoughtQueueView";
 import RecycleBinView from "../views/RecycleBinView";
 
 function pathToPaneView(pathname: string): PaneView {
@@ -60,7 +58,7 @@ function pathToPaneView(pathname: string): PaneView {
     case "memory":
       return "memory";
     case "thoughts":
-      return "thoughts";
+      return "chat";
     case "sources":
     case "documents":
     case "webcapture":
@@ -97,7 +95,7 @@ function MainRoutes() {
       <Route path="/chat/:sessionId" element={<ChatView />} />
       <Route path="/memory" element={<MemoryView />} />
       <Route path="/notes" element={<NoteEditorView />} />
-      <Route path="/thoughts" element={<ThoughtQueueView />} />
+      <Route path="/thoughts" element={<Navigate to="/chat" replace />} />
       <Route path="/sources" element={<SourceBrowserView />} />
       <Route path="/documents" element={<Navigate to="/sources" replace />} />
       <Route path="/webcapture" element={<Navigate to="/sources" replace />} />
@@ -120,7 +118,7 @@ function PaneViewRenderer({ view }: { view: PaneView }) {
     case "notes":
       return <NoteEditorView />;
     case "thoughts":
-      return <ThoughtQueueView />;
+      return <ChatView />;
     case "sources":
       return <SourceBrowserView />;
     case "graph":
@@ -405,7 +403,12 @@ function TopToolbar({
   }
 
   return (
-    <div className={`flex items-center h-11 pt-1 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] pr-2 shrink-0 ${isMac ? "pl-[78px]" : ""}`}>
+    <div
+      data-tauri-drag-region
+      onMouseDown={onDragRegionMouseDown}
+      onDoubleClick={onDragRegionDoubleClick}
+      className={`flex items-center h-11 pt-1 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] pr-2 shrink-0 ${isMac ? "pl-[78px]" : ""}`}
+    >
       <div className="flex items-center min-w-0 flex-1 px-3 gap-0.5">
         {splitMode ? (
           <div className="flex min-w-0 flex-1 items-center">
@@ -678,8 +681,33 @@ function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
   );
 }
 
-function SplitPaneLayout() {
+function CollapsedSplitRail() {
+  return (
+    <div
+      className="flex h-full w-7 shrink-0 items-center justify-center border-l border-[var(--border-color)] bg-[var(--bg-sidebar)]"
+      title="Second pane will return when the window is wider"
+      aria-label="Second pane collapsed until the window is wider"
+    >
+      <div className="h-16 w-1 rounded-full bg-[var(--border-color)]/90" />
+    </div>
+  );
+}
+
+function SplitPaneLayout({ collapsed = false }: { collapsed?: boolean }) {
   const { splitSizes, setSplitSizes } = useWorkspaceStore();
+
+  if (collapsed) {
+    return (
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <WorkspacePaneProvider paneId="primary">
+            <WorkspacePaneChrome paneId="primary" />
+          </WorkspacePaneProvider>
+        </div>
+        <CollapsedSplitRail />
+      </div>
+    );
+  }
 
   return (
     <PanelGroup
@@ -708,10 +736,13 @@ function SplitPaneLayout() {
 
 export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const navigate = useNavigate();
   const location = useLocation();
   const { workspaceNavigation, sectionNavigation, splitMode, setPaneView: _setPaneView, setPaneChatSession: _setPaneChatSession, panes: _layoutPanes, workspaces: _workspaces } = useWorkspaceStore();
   const sidebarEnabled = workspaceNavigation === "sidebar" || sectionNavigation === "sidebar";
+  const MIN_SPLIT_WIDTH = 900;
+  const isSplitCollapsed = splitMode && windowWidth < MIN_SPLIT_WIDTH;
 
   const toggleSplitModeFromShell = React.useCallback(() => {
     const store = useWorkspaceStore.getState();
@@ -722,7 +753,7 @@ export default function Layout() {
       return;
     }
 
-    if (store.workspaces.length < 2 || window.innerWidth < 900) {
+    if (store.workspaces.length < 2) {
       return;
     }
 
@@ -821,20 +852,14 @@ export default function Layout() {
 
   useHotkeys(hotkeys);
 
-  // Auto-exit split mode when window is too narrow
-  const MIN_SPLIT_WIDTH = 900;
   useEffect(() => {
     function handleResize() {
-      if (window.innerWidth < MIN_SPLIT_WIDTH && useWorkspaceStore.getState().splitMode) {
-        const store = useWorkspaceStore.getState();
-        navigate(paneViewToPath(store.panes.primary.view, store.panes.primary.chatSessionId));
-        store.exitSplitMode();
-      }
+      setWindowWidth(window.innerWidth);
     }
     window.addEventListener("resize", handleResize);
     handleResize();
     return () => window.removeEventListener("resize", handleResize);
-  }, [navigate]);
+  }, []);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
@@ -857,7 +882,7 @@ export default function Layout() {
       {!splitMode && sectionNavigation === "top-dropdown" && <NavigationDropdown />}
 
       {splitMode ? (
-        <SplitPaneLayout />
+        <SplitPaneLayout collapsed={isSplitCollapsed} />
       ) : !sidebarEnabled ? (
         <div className="flex-1 overflow-hidden min-h-0">
           <MainRoutes />

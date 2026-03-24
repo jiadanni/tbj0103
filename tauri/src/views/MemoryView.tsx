@@ -53,8 +53,8 @@ export default function MemoryView() {
   }), [memories]);
 
   async function createMemory() {
-    if (!newContent.trim()) return;
-    if (scopeTab === "workspace" && !activeWorkspaceId) return;
+    if (!newContent.trim()) {return;}
+    if (scopeTab === "workspace" && !activeWorkspaceId) {return;}
 
     setSubmitting(true);
     try {

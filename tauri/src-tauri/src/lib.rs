@@ -59,6 +59,7 @@ pub fn run() {
                 if should_open_in_background {
                     let _ = window.hide();
                 } else {
+                    let _ = window.set_focus();
                     let _ = window.maximize();
                 }
             }
