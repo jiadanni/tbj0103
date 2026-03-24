@@ -17,7 +17,7 @@ import { WorkspacePaneProvider, useScopedWorkspace } from "../lib/workspacePane"
 import { useSettingsStore } from "../stores/settingsStore";
 
 import {
-  MessageSquare, Network, CreditCard,
+  MessageSquare, Network,
   ChevronDown, FileText, Settings,
   BarChart2, LucideIcon,
   FileEdit, Trash2, Brain, Pencil, Archive,
@@ -30,7 +30,6 @@ const NAV_ITEMS: { path: string; icon: LucideIcon; label: string; key?: string }
   { path: "/notes",         icon: FileEdit,               label: "Notes",           key: "N" },
   { path: "/sources",       icon: FileText,               label: "Sources",         key: "O" },
   { path: "/graph",         icon: Network,                label: "Knowledge Graph", key: "G" },
-  { path: "/flashcards",    icon: CreditCard,             label: "Flashcards",      key: "F" },
   { path: "/recycle-bin",   icon: Trash2,                 label: "Recycle Bin",     key: "R" },
   { path: "/settings",      icon: Settings,               label: "Settings",        key: "," },
 ];
@@ -43,7 +42,6 @@ const PANE_NAV_ITEMS: { view: PaneView; icon: LucideIcon; label: string }[] = NA
 import ChatView from "../views/ChatView";
 import MemoryView from "../views/MemoryView";
 import KnowledgeGraphView from "../views/KnowledgeGraphView";
-import FlashcardReviewView from "../views/FlashcardReviewView";
 import ProjectDashboardView from "../views/ProjectDashboardView";
 import SettingsView from "../views/SettingsView";
 import NoteEditorView from "../views/NoteEditorView";
@@ -68,7 +66,7 @@ function pathToPaneView(pathname: string): PaneView {
     case "graph":
       return "graph";
     case "flashcards":
-      return "flashcards";
+      return "graph";
     case "settings":
       return "settings";
     case "recycle-bin":
@@ -102,7 +100,7 @@ function MainRoutes() {
       <Route path="/documents" element={<Navigate to="/sources" replace />} />
       <Route path="/webcapture" element={<Navigate to="/sources" replace />} />
       <Route path="/graph" element={<KnowledgeGraphView />} />
-      <Route path="/flashcards" element={<FlashcardReviewView />} />
+      <Route path="/flashcards" element={<Navigate to="/graph" replace />} />
       <Route path="/settings" element={<SettingsView />} />
       <Route path="/recycle-bin" element={<RecycleBinView />} />
     </Routes>
@@ -124,9 +122,8 @@ function PaneViewRenderer({ view }: { view: PaneView }) {
     case "sources":
       return <SourceBrowserView />;
     case "graph":
-      return <KnowledgeGraphView />;
     case "flashcards":
-      return <FlashcardReviewView />;
+      return <KnowledgeGraphView />;
     case "settings":
       return <SettingsView />;
     case "recycle-bin":
