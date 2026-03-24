@@ -26,7 +26,7 @@ pub struct Workspace {
     pub prompt_instructions: String,
     pub topic_signature: TopicSignature,
     pub signature_updated_at: Option<String>,
-    pub is_archived: bool,
+    pub is_hidden: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -55,7 +55,7 @@ impl Workspace {
             prompt_instructions: String::new(),
             topic_signature: TopicSignature::default(),
             signature_updated_at: None,
-            is_archived: false,
+            is_hidden: false,
             created_at: now.clone(),
             updated_at: now,
         }

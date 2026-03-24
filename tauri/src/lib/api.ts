@@ -302,12 +302,12 @@ export const api = {
   workspace: {
     create: (name: string, description?: string) => invoke<Workspace>("create_workspace", { req: { name, description } }),
     list: () => invoke<Workspace[]>("list_workspaces"),
-    listArchived: () => invoke<Workspace[]>("list_archived_workspaces"),
+    listHidden: () => invoke<Workspace[]>("list_hidden_workspaces"),
     get: (id: string) => invoke<Workspace | null>("get_workspace", { id }),
     update: (id: string, name: string, description?: string, promptInstructions?: string) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions } }),
     delete: (id: string) => invoke<void>("delete_workspace", { id }),
-    archive: (id: string) => invoke<void>("archive_workspace", { id }),
-    unarchive: (id: string) => invoke<void>("unarchive_workspace", { id }),
+    hide: (id: string) => invoke<void>("hide_workspace", { id }),
+    unhide: (id: string) => invoke<void>("unhide_workspace", { id }),
   },
 
   project: {
