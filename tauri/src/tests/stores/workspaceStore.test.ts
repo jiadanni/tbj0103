@@ -85,10 +85,10 @@ function makeProject(overrides: Partial<Project> = {}): Project {
 // ─── navigation initialisation ────────────────────────────────────────────
 
 describe("navigation settings", () => {
-  it("defaults to sidebar/sidebar when localStorage is empty", () => {
+  it("defaults to top-tabs/top-tabs when localStorage is empty", () => {
     const state = useWorkspaceStore.getState();
-    expect(state.workspaceNavigation).toBe("sidebar");
-    expect(state.sectionNavigation).toBe("sidebar");
+    expect(state.workspaceNavigation).toBe("top-tabs");
+    expect(state.sectionNavigation).toBe("top-tabs");
   });
 
   it("reads independent navigation settings from localStorage on module init", async () => {
