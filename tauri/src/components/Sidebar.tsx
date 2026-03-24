@@ -38,9 +38,10 @@ export default function Sidebar({
 }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { activeProjectId, activeWorkspaceId, projects, setActiveProjectId, setActiveWorkspaceId, workspaces, setWorkspaces, setProjects, setWorkspaceTopicSignature } = useWorkspaceStore();
+  const { activeProjectId, activeWorkspaceId, setActiveProjectId, setActiveWorkspaceId, workspaces, projectsByWorkspace, projects: fallbackProjects, setWorkspaces, setProjectsForWorkspace, setWorkspaceTopicSignature } = useWorkspaceStore();
   const { sessions, messages, setActiveChatId } = useChatStore();
   const { immediateDelete, confirmMoveToTrash } = useSettingsStore();
+  const projects = activeWorkspaceId ? (projectsByWorkspace[activeWorkspaceId] ?? fallbackProjects) : fallbackProjects;
 
   const activeSegment = "/" + location.pathname.split("/")[1];
   const activeChatId = location.pathname.startsWith("/chat/") ? location.pathname.split("/")[2] : null;
@@ -104,7 +105,7 @@ export default function Sidebar({
       api.workspace.list(),
     ]);
     setAllSessions(refreshedSessions);
-    setProjects(refreshedProjects);
+    setProjectsForWorkspace(workspaceId, refreshedProjects);
     setWorkspaceTopicSignature(workspaceId, refreshedSignature);
     setWorkspaces(refreshedWorkspaces);
   }
@@ -147,18 +148,25 @@ export default function Sidebar({
 
   async function handleCreateFolder(nameOverride?: string) {
     const folderName = (nameOverride ?? newFolderName).trim();
+    const previousProjectId = activeProjectId;
     if (!folderName || !activeWorkspaceId) {
       setCreatingFolder(false);
       setNewFolderName("");
       return;
     }
     try {
-      const p = await api.project.create(activeWorkspaceId, folderName);
-      useWorkspaceStore.getState().addProject(p);
-      setActiveProjectId(p.id);
+      await api.project.create(activeWorkspaceId, folderName);
+      const refreshedProjects = await api.project.list(activeWorkspaceId);
+      setProjectsForWorkspace(activeWorkspaceId, refreshedProjects);
+      setActiveProjectId(previousProjectId);
     } catch (e) {
       console.error(e);
     }
+    setCreatingFolder(false);
+    setNewFolderName("");
+  }
+
+  function cancelCreateFolder() {
     setCreatingFolder(false);
     setNewFolderName("");
   }
@@ -332,7 +340,7 @@ export default function Sidebar({
           </button>
         )}
         <div
-          className={`w-full flex items-center justify-between ${selectMode ? "pl-1" : "pl-7"} pr-2 py-1.5 rounded-lg text-xs transition-colors ${
+          className={`w-full flex items-start justify-between gap-2 ${selectMode ? "pl-1" : "pl-7"} pr-2 py-1.5 rounded-lg text-xs transition-colors ${
             isSelected
               ? "bg-[var(--accent-color)]/10 text-[var(--accent-color)]"
               : activeChatId === s.id
@@ -364,19 +372,28 @@ export default function Sidebar({
             ) : (
               <button
                 onClick={() => selectMode ? toggleSelect(s.id) : openSession(s.id)}
-                className="min-w-0 flex-1 truncate text-left"
+                className="min-w-0 flex-1 text-left"
               >
-              <span className="truncate">{s.title || "New Chat"}</span>
+                <span
+                  className="block overflow-hidden text-ellipsis leading-4"
+                  style={{
+                    display: "-webkit-box",
+                    WebkitBoxOrient: "vertical",
+                    WebkitLineClamp: 2,
+                  }}
+                >
+                  {s.title || "New Chat"}
+                </span>
               </button>
             )}
             {s.is_incognito && <Ghost size={11} className="text-purple-400 flex-shrink-0" />}
             {!s.is_incognito && s.exclude_from_analytics && <Shield size={11} className="text-sky-400 flex-shrink-0" />}
           </div>
-          <span className="flex items-center gap-1.5 flex-shrink-0 text-[10px] text-[var(--text-muted)]">
+          <span className="mt-0.5 flex items-center gap-1.5 flex-shrink-0 text-[10px] text-[var(--text-muted)]">
             {msgCount > 0 && <span>{msgCount}</span>}
             <button
               onClick={(e) => openContextMenu(e, s)}
-              className="rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[var(--bg-hover)]"
+              className="rounded p-0.5 opacity-70 transition-opacity hover:bg-[var(--bg-hover)] hover:opacity-100"
               title="Thread actions"
             >
               <MoreHorizontal size={11} />
@@ -610,18 +627,33 @@ export default function Sidebar({
                 e.stopPropagation();
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  handleCreateFolder(e.currentTarget.value);
+                  void handleCreateFolder(e.currentTarget.value);
                 }
                 if (e.key === "Escape") {
                   e.preventDefault();
-                  setCreatingFolder(false);
-                  setNewFolderName("");
+                  cancelCreateFolder();
                 }
               }}
               onClick={(e) => e.stopPropagation()}
               placeholder="Folder name…"
               className="flex-1 text-xs bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-1 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void handleCreateFolder(folderInputRef.current?.value)}
+              className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+              title="Create folder"
+            >
+              <Check size={12} />
+            </button>
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={cancelCreateFolder}
+              className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+              title="Cancel folder creation"
+            >
+              <X size={12} />
+            </button>
           </div>
         )}
 

@@ -1375,24 +1375,24 @@ export default function SettingsView() {
                       className="accent-[var(--accent-color)]"
                     />
                     <span className="text-[var(--text-secondary)]">Lock after</span>
+                    {dbSettings.auto_lock_minutes > 0 && (
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={1440}
+                          value={dbSettings.auto_lock_minutes}
+                          disabled={!anyLockEnabled}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (val > 0) {set("auto_lock_minutes", val);}
+                          }}
+                          className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                        />
+                        <span className="text-xs text-[var(--text-secondary)]">minutes</span>
+                      </span>
+                    )}
                   </label>
-                  {dbSettings.auto_lock_minutes > 0 && (
-                    <div className="ml-5 flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={1440}
-                        value={dbSettings.auto_lock_minutes}
-                        disabled={!anyLockEnabled}
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          if (val > 0) {set("auto_lock_minutes", val);}
-                        }}
-                        className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                      />
-                      <span className="text-xs text-[var(--text-secondary)]">minutes</span>
-                    </div>
-                  )}
                 </div>
               </div>
             </>

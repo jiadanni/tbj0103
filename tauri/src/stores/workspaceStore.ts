@@ -163,6 +163,7 @@ interface WorkspaceStore {
   setActiveWorkspaceId: (id: string | null) => void;
   setActiveProjectId: (id: string | null) => void;
   setProjects: (ps: Project[]) => void;
+  setProjectsForWorkspace: (workspaceId: string, projects: Project[]) => void;
   setDemo: (active: boolean, workspaceId?: string) => void;
   addWorkspace: (ws: Workspace) => void;
   addProject: (p: Project) => void;
@@ -209,7 +210,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         ? "top-tabs"
         : legacyNavLayout === "top-dropdown"
         ? "top-dropdown"
-        : "sidebar"
+        : "top-tabs"
     );
     const sectionNavigation = readNavigationSetting(
       "sectionNavigation",
@@ -217,7 +218,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         ? "top-tabs"
         : legacyNavLayout === "top-dropdown"
         ? "top-tabs"
-        : "sidebar"
+        : "top-tabs"
     );
     return { workspaceNavigation, sectionNavigation };
   })();
@@ -301,6 +302,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         : state.projectsByWorkspace;
       return { projects, projectsByWorkspace };
     }),
+    setProjectsForWorkspace: (workspaceId, projects) => set((state) => ({
+      projects: workspaceId === state.activeWorkspaceId ? projects : state.projects,
+      projectsByWorkspace: {
+        ...state.projectsByWorkspace,
+        [workspaceId]: projects,
+      },
+    })),
     setDemo: (isDemoMode, workspaceId) => set((state) => {
       const nextWorkspaceId = workspaceId ?? null;
       const panes = {
