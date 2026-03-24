@@ -247,7 +247,9 @@ body {
    Chat message bubbles
    ===================================================== */
 .message-user {
-  @apply bg-blue-600 text-white rounded-2xl rounded-tr-sm;
+  background-color: var(--accent-color);
+  color: white;
+  @apply rounded-2xl rounded-tr-sm;
 }
 .message-assistant {
   background-color: var(--bg-secondary);

@@ -32,6 +32,7 @@ pub struct ChatResponse {
     pub message: OllamaMessage,
     pub done: bool,
     pub total_duration: Option<i64>,
+    pub eval_duration: Option<i64>,
     pub eval_count: Option<i64>,
 }
 
@@ -41,6 +42,7 @@ pub struct StreamChunk {
     pub message: OllamaMessage,
     pub done: bool,
     pub eval_count: Option<i64>,
+    pub eval_duration: Option<i64>,
     pub total_duration: Option<i64>,
 }
 
@@ -247,7 +249,10 @@ impl OllamaClient {
 
                     let event_name = format!("{event_prefix}{session_id}");
                     if parsed.done {
-                        let duration_ms = parsed.total_duration.map(|ns| ns / 1_000_000);
+                        let duration_ms = parsed
+                            .eval_duration
+                            .or(parsed.total_duration)
+                            .map(|ns| ns / 1_000_000);
                         let _ = app.emit(&event_name, StreamEvent {
                             session_id: session_id.to_string(),
                             chunk: content,
