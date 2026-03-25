@@ -1,11 +1,21 @@
 import { Command } from "cmdk";
+import { useNavigate } from "react-router-dom";
+import type { ChatSubView, GraphSubView, PreferencesSection } from "./navigationItems";
 
 interface Props {
   onClose: () => void;
-  onNavigate: (path: string) => void;
+  onNavigate?: (path: string) => void; // Optional if we want to bypass default navigate
 }
 
-const COMMANDS = [
+interface CommandItem {
+  label: string;
+  value: string;
+  path: string;
+  state?: unknown;
+}
+
+
+const COMMANDS: CommandItem[] = [
   { label: "Go to Dashboard",          value: "dashboard",      path: "/project"       },
   { label: "Go to Chat",               value: "chat",           path: "/chat"          },
   { label: "Chat Sessions",            value: "chat-sessions",  path: "/chat-sessions" },
@@ -16,18 +26,24 @@ const COMMANDS = [
   { label: "Go to Knowledge Graph",    value: "graph",          path: "/graph"         },
   { label: "Go to Flashcards",         value: "flashcards",     path: "/flashcards"    },
   { label: "Go to Learning Paths",     value: "learning",       path: "/learning"      },
-  { label: "Compare Models",           value: "compare",        path: "/compare"       },
-  { label: "Grounded Chat",            value: "grounded",       path: "/grounded"      },
-  { label: "Backlinks",                value: "backlinks",      path: "/backlinks"     },
-  { label: "Concept Deduplication",    value: "dedup",          path: "/dedup"         },
-  { label: "Manage Workspaces",        value: "workspaces",     path: "/workspaces"    },
-  { label: "Go to Backups",            value: "backup",         path: "/backup"        },
+  { label: "Compare Models",           value: "compare",        path: "/chat",         state: { subView: "compare" as ChatSubView } },
+  { label: "Grounded Chat",            value: "grounded",       path: "/chat",         state: { subView: "grounded" as ChatSubView } },
+  { label: "Backlinks",                value: "backlinks",      path: "/graph",        state: { subView: "backlinks" as GraphSubView } },
+  { label: "Concept Deduplication",    value: "dedup",          path: "/graph",        state: { subView: "dedup" as GraphSubView } },
+  { label: "Manage Workspaces",        value: "workspaces",     path: "/preferences",  state: { settingsTab: "workspaces" as PreferencesSection } },
+  { label: "Go to Backups",            value: "backup",         path: "/preferences",  state: { settingsTab: "backup" as PreferencesSection } },
   { label: "Plugins",                  value: "plugins",        path: "/plugins"       },
-  { label: "Open Settings",            value: "settings",       path: "/settings"      },
+  { label: "Open Preferences",         value: "settings",       path: "/preferences"   },
 ];
 
-export default function CommandPalette({ onClose, onNavigate }: Props) {
-  // Close on backdrop click
+export default function CommandPalette({ onClose }: Props) {
+  const navigate = useNavigate();
+
+  const handleSelect = (cmd: CommandItem) => {
+    navigate(cmd.path, { state: cmd.state });
+    onClose();
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
@@ -54,7 +70,7 @@ export default function CommandPalette({ onClose, onNavigate }: Props) {
               <Command.Item
                 key={cmd.value}
                 value={cmd.value}
-                onSelect={() => onNavigate(cmd.path)}
+                onSelect={() => handleSelect(cmd)}
                 className="flex items-center px-3 py-2.5 text-sm rounded-lg cursor-default text-[var(--text-primary)] aria-selected:bg-[var(--accent-color)]/20 aria-selected:text-[var(--accent-color)] transition-colors"
               >
                 {cmd.label}
