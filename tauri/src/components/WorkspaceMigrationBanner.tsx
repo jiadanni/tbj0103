@@ -23,7 +23,9 @@ export const WorkspaceMigrationBanner: React.FC = () => {
   if (!visible || !migrationSuggestion?.suggestion) {return null;}
 
   const handleSwitch = () => {
-    setActiveWorkspaceId(migrationSuggestion.suggestion!.workspace_id);
+    if (migrationSuggestion.suggestion) {
+      setActiveWorkspaceId(migrationSuggestion.suggestion.workspace_id);
+    }
     dismissMigrationSuggestion();
     setVisible(false);
   };

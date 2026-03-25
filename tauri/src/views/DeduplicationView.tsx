@@ -2,7 +2,7 @@
  * DeduplicationView — find and merge duplicate/similar concept nodes.
  * Mirrors DeduplicationView.swift: shows candidate pairs, lets user merge or dismiss.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { GitMerge, X, Check, Search, RefreshCw, Network } from "lucide-react";
 import { api, type ConceptNode } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -17,8 +17,8 @@ interface DuplicatePair {
 function nameSimilarity(a: string, b: string): number {
   const na = a.toLowerCase().trim();
   const nb = b.toLowerCase().trim();
-  if (na === nb) return 1;
-  if (na.includes(nb) || nb.includes(na)) return 0.85;
+  if (na === nb) {return 1;}
+  if (na.includes(nb) || nb.includes(na)) {return 0.85;}
   // Levenshtein-inspired: count common chars
   const la = na.split("");
   let common = 0;
@@ -38,8 +38,8 @@ export default function DeduplicationView() {
   const [merging, setMerging] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
-  async function scan() {
-    if (!activeWorkspaceId) return;
+  const scan = useCallback(async () => {
+    if (!activeWorkspaceId) {return;}
     setLoading(true);
     try {
       const all = await api.graph.listConcepts(activeWorkspaceId);
@@ -58,11 +58,11 @@ export default function DeduplicationView() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [activeWorkspaceId, threshold]);
 
   useEffect(() => {
-    if (activeWorkspaceId) scan();
-  }, [activeWorkspaceId]);
+    if (activeWorkspaceId) {scan();}
+  }, [activeWorkspaceId, scan]);
 
   function dismiss(idx: number) {
     setPairs((prev) => prev.map((p, i) => i === idx ? { ...p, dismissed: true } : p));

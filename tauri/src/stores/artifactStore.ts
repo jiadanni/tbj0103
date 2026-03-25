@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api, type ArtifactSummary, type Artifact } from '../lib/api';
+import { api, type ArtifactSummary, type Artifact, type CreateArtifactRequest } from '../lib/api';
 
 interface ArtifactState {
   artifacts: ArtifactSummary[];
@@ -12,7 +12,7 @@ interface ArtifactState {
   setActiveArtifact: (artifact: Artifact | null) => void;
   loadArtifacts: (workspaceId: string) => Promise<void>;
   loadArtifact: (id: string) => Promise<void>;
-  createArtifact: (req: any) => Promise<Artifact>;
+  createArtifact: (req: CreateArtifactRequest) => Promise<Artifact>;
   deleteArtifact: (id: string) => Promise<void>;
   togglePin: (id: string) => Promise<void>;
 }

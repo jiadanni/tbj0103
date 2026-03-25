@@ -2,8 +2,8 @@
  * DocumentBrowserView — upload, list and view project documents.
  * Mirrors DocumentBrowserView.swift.
  */
-import { useEffect, useRef, useState } from "react";
-import { Upload, File, Trash2, Cpu, ChevronRight, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Upload, File, Trash2, Cpu, X } from "lucide-react";
 import { api, type UploadedDocument } from "../lib/api";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
