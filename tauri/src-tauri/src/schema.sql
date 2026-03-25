@@ -348,7 +348,8 @@ CREATE TABLE IF NOT EXISTS ai_models (
     is_paid INTEGER NOT NULL DEFAULT 0,
     enabled INTEGER NOT NULL DEFAULT 1,
     tokens_used_total INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(model_id, provider)
 );
 
 -- Default web AI provider entries (disabled until user opts in)

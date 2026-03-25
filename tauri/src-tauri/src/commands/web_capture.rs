@@ -5,7 +5,7 @@ use crate::models::source::WebCapture;
 #[tauri::command]
 pub fn create_web_capture(
     state: State<DbState>,
-    workspace_id: String,
+    project_id: String,
     url: String,
     title: String,
     content: String,
@@ -15,7 +15,7 @@ pub fn create_web_capture(
     let now = chrono::Utc::now().to_rfc3339();
     let capture = WebCapture {
         id: uuid::Uuid::new_v4().to_string(),
-        workspace_id,
+        project_id,
         url,
         title,
         content,
@@ -25,10 +25,10 @@ pub fn create_web_capture(
         created_at: now.clone(),
     };
     conn.execute(
-        "INSERT INTO web_captures (id, workspace_id, url, title, content, summary, favicon_data, is_processed, created_at)
+        "INSERT INTO web_captures (id, project_id, url, title, content, summary, favicon_data, is_processed, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
-            capture.id, capture.workspace_id, capture.url, capture.title,
+            capture.id, capture.project_id, capture.url, capture.title,
             capture.content, capture.summary, capture.favicon_data,
             capture.is_processed as i32, capture.created_at
         ],
@@ -37,16 +37,16 @@ pub fn create_web_capture(
 }
 
 #[tauri::command]
-pub fn list_web_captures(state: State<DbState>, workspace_id: String) -> Result<Vec<WebCapture>, String> {
+pub fn list_web_captures(state: State<DbState>, project_id: String) -> Result<Vec<WebCapture>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, url, title, content, summary, favicon_data, is_processed, created_at
-         FROM web_captures WHERE workspace_id = ?1 ORDER BY created_at DESC"
+        "SELECT id, project_id, url, title, content, summary, favicon_data, is_processed, created_at
+         FROM web_captures WHERE project_id = ?1 ORDER BY created_at DESC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], |row| {
+    let items = stmt.query_map(rusqlite::params![project_id], |row| {
         Ok(WebCapture {
             id: row.get(0)?,
-            workspace_id: row.get(1)?,
+            project_id: row.get(1)?,
             url: row.get(2)?,
             title: row.get(3)?,
             content: row.get(4)?,
@@ -65,12 +65,12 @@ pub fn list_web_captures(state: State<DbState>, workspace_id: String) -> Result<
 pub fn get_web_capture(state: State<DbState>, id: String) -> Result<Option<WebCapture>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, workspace_id, url, title, content, summary, favicon_data, is_processed, created_at
+        "SELECT id, project_id, url, title, content, summary, favicon_data, is_processed, created_at
          FROM web_captures WHERE id = ?1",
         rusqlite::params![id],
         |row| Ok(WebCapture {
             id: row.get(0)?,
-            workspace_id: row.get(1)?,
+            project_id: row.get(1)?,
             url: row.get(2)?,
             title: row.get(3)?,
             content: row.get(4)?,
