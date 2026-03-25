@@ -108,31 +108,15 @@ pub struct ProjectStats {
 #[tauri::command]
 pub fn get_project_stats(state: State<DbState>, id: String) -> Result<ProjectStats, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let note_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM project_notes WHERE project_id = ?1",
-        rusqlite::params![id], |r| r.get(0)
-    ).unwrap_or(0);
-    let document_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM uploaded_documents WHERE project_id = ?1",
-        rusqlite::params![id], |r| r.get(0)
-    ).unwrap_or(0);
     let chat_session_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM chat_sessions WHERE project_id = ?1",
         rusqlite::params![id], |r| r.get(0)
     ).unwrap_or(0);
-    let flashcard_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM learning_cards WHERE project_id = ?1",
-        rusqlite::params![id], |r| r.get(0)
-    ).unwrap_or(0);
-    let web_capture_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM web_captures WHERE project_id = ?1",
-        rusqlite::params![id], |r| r.get(0)
-    ).unwrap_or(0);
     Ok(ProjectStats {
-        note_count,
-        document_count,
+        note_count: 0,
+        document_count: 0,
         chat_session_count,
-        flashcard_count,
-        web_capture_count,
+        flashcard_count: 0,
+        web_capture_count: 0,
     })
 }

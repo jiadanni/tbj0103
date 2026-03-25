@@ -1,19 +1,27 @@
-use tauri::{State};
-use std::sync::Mutex;
-use std::collections::HashMap;
-use crate::llamacpp::worker::{LlamacppWorkerState, InferenceRequest, ChatMessage};
 use serde::Deserialize;
+#[cfg(feature = "llamacpp")]
+use std::collections::HashMap;
+#[cfg(feature = "llamacpp")]
+use std::sync::Mutex;
+#[cfg(feature = "llamacpp")]
+use tauri::State;
+#[cfg(feature = "llamacpp")]
 use tokio::sync::oneshot;
+#[cfg(feature = "llamacpp")]
+use crate::llamacpp::worker::{ChatMessage, InferenceRequest, LlamacppWorkerState};
 
+#[cfg(feature = "llamacpp")]
 pub struct LlamacppCancelState(pub Mutex<HashMap<String, oneshot::Sender<()>>>);
 
 #[derive(Deserialize)]
 pub struct SendLlamacppRequest {
     pub session_id: String,
     pub model_path: String,
+    #[cfg(feature = "llamacpp")]
     pub messages: Vec<ChatMessage>,
 }
 
+#[cfg(feature = "llamacpp")]
 #[tauri::command]
 pub async fn send_llamacpp_message(
     state: State<'_, LlamacppWorkerState>,
@@ -37,6 +45,14 @@ pub async fn send_llamacpp_message(
     }).map_err(|e| e.to_string())
 }
 
+#[cfg(not(feature = "llamacpp"))]
+#[tauri::command]
+pub async fn send_llamacpp_message(req: SendLlamacppRequest) -> Result<(), String> {
+    let _ = req;
+    Err("llama.cpp support is disabled in this build".to_string())
+}
+
+#[cfg(feature = "llamacpp")]
 #[tauri::command]
 pub fn stop_llamacpp_stream(
     session_id: String,
@@ -46,6 +62,13 @@ pub fn stop_llamacpp_stream(
     if let Some(tx) = map.remove(&session_id) {
         let _ = tx.send(());
     }
+    Ok(())
+}
+
+#[cfg(not(feature = "llamacpp"))]
+#[tauri::command]
+pub fn stop_llamacpp_stream(session_id: String) -> Result<(), String> {
+    let _ = session_id;
     Ok(())
 }
 

@@ -58,7 +58,7 @@ pub fn review_flashcard(state: State<DbState>, req: ReviewRequest) -> Result<Lea
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     // Fetch current card
     let card = conn.query_row(
-        "SELECT id, project_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+        "SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
          FROM learning_cards WHERE id = ?1",
         rusqlite::params![req.card_id],
         row_to_card,
