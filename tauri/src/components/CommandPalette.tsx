@@ -1,6 +1,4 @@
 import { Command } from "cmdk";
-import { useEffect } from "react";
-import { useWorkspaceStore } from "../stores/workspaceStore";
 
 interface Props {
   onClose: () => void;
@@ -33,14 +31,14 @@ export default function CommandPalette({ onClose, onNavigate }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) {onClose();} }}
     >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
 
       <Command
         className="relative z-10 w-full max-w-[560px] mx-4 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl shadow-2xl overflow-hidden"
-        onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+        onKeyDown={(e) => { if (e.key === "Escape") {onClose();} }}
       >
         <Command.Input
           autoFocus

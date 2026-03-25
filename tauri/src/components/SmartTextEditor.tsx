@@ -3,10 +3,9 @@
  * and autocomplete for concept names.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import CodeMirror, { ReactCodeMirrorRef } from "@uiw/react-codemirror";
+import CodeMirror from "@uiw/react-codemirror";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
-import { keymap } from "@codemirror/view";
 import {
   autocompletion, CompletionContext, CompletionResult,
 } from "@codemirror/autocomplete";

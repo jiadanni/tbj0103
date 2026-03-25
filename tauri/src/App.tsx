@@ -8,7 +8,7 @@ import AuthenticationView from "./views/AuthenticationView";
 
 export default function App() {
   const { theme, accentColor, fontSize } = useSettingsStore();
-  const { setWorkspaces, setProjects, isDemoMode, setDemo } = useWorkspaceStore();
+  const { setWorkspaces, setProjects } = useWorkspaceStore();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -16,10 +16,10 @@ export default function App() {
   useEffect(() => {
     const root = document.documentElement;
     root.classList.forEach((cls) => {
-      if (cls.startsWith("theme-")) root.classList.remove(cls);
+      if (cls.startsWith("theme-")) {root.classList.remove(cls);}
     });
     root.classList.add(`theme-${theme}`);
-    if (accentColor) root.style.setProperty("--accent-color", accentColor);
+    if (accentColor) {root.style.setProperty("--accent-color", accentColor);}
     root.style.setProperty("--font-size-base", `${fontSize}px`);
     root.style.fontSize = `${fontSize}px`;
   }, [theme, accentColor, fontSize]);
@@ -32,7 +32,7 @@ export default function App() {
         setWorkspaces(workspaces);
         // Auto-authenticate if no touch ID required (settings check)
         const settings = await api.settings.get();
-        if (!settings.touch_id_enabled) setIsAuthenticated(true);
+        if (!settings.touch_id_enabled) {setIsAuthenticated(true);}
       } catch {
         // First run or Ollama not available — still OK
         setIsAuthenticated(true);
@@ -46,7 +46,7 @@ export default function App() {
   // Reload projects whenever active workspace changes
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {return;}
     api.project.list(activeWorkspaceId).then(setProjects).catch(() => {});
   }, [activeWorkspaceId, setProjects]);
 

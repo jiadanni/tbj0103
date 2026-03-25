@@ -2,7 +2,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, Network, BookOpen, Calendar, CreditCard,
-  FolderOpen, FileText, Map, Settings, Archive, Zap, Link2,
+  FileText, Map, Settings, Archive, Zap, Link2,
   BarChart2, PuzzleIcon, SplitSquareHorizontal,
   Globe, GitMerge, LayoutGrid, FileEdit, MessagesSquare,
 } from "lucide-react";

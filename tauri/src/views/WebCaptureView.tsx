@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Globe, Search, ExternalLink, RefreshCw } from "lucide-react";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
@@ -19,7 +20,7 @@ interface WebCapture {
 }
 
 export default function WebCaptureView() {
-  const { activeProjectId, projects } = useWorkspaceStore();
+  const { activeProjectId } = useWorkspaceStore();
   const [captures, setCaptures] = useState<WebCapture[]>([]);
   const [selected, setSelected] = useState<WebCapture | null>(null);
   const [query, setQuery] = useState("");
@@ -30,7 +31,7 @@ export default function WebCaptureView() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!activeProjectId) return;
+    if (!activeProjectId) {return;}
     api.webCapture.list(activeProjectId).then(setCaptures).catch(() => {});
   }, [activeProjectId]);
 
@@ -42,7 +43,7 @@ export default function WebCaptureView() {
   );
 
   async function addCapture() {
-    if (!activeProjectId || !newUrl.trim()) return;
+    if (!activeProjectId || !newUrl.trim()) {return;}
     setSaving(true);
     setError(null);
     try {
@@ -54,18 +55,23 @@ export default function WebCaptureView() {
       setAdding(false);
       setNewUrl("");
       setNewTitle("");
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to save");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg || "Failed to save");
     } finally {
       setSaving(false);
     }
   }
 
   async function deleteCapture(id: string) {
-    if (!confirm("Delete this web capture?")) return;
+    const confirmed = await ask("Delete this web capture?", {
+      title: "Confirm Deletion",
+      kind: "warning",
+    });
+    if (!confirmed) { return; }
     await api.webCapture.delete(id);
     setCaptures((prev) => prev.filter((c) => c.id !== id));
-    if (selected?.id === id) setSelected(null);
+    if (selected?.id === id) { setSelected(null); }
   }
 
   function formatDate(iso: string) {
@@ -73,8 +79,6 @@ export default function WebCaptureView() {
       month: "short", day: "numeric", year: "numeric",
     });
   }
-
-  const projectName = projects.find((p) => p.id === activeProjectId)?.name;
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -113,7 +117,7 @@ export default function WebCaptureView() {
             <input
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") addCapture(); if (e.key === "Escape") setAdding(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") {addCapture();} if (e.key === "Escape") {setAdding(false);} }}
               placeholder="Title (optional)"
               className="w-full text-xs px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />

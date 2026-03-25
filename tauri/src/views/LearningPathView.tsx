@@ -34,7 +34,7 @@ export default function LearningPathView() {
     await api.learningGoal.update(goal.id, {
       is_completed: !goal.is_completed,
       progress: goal.is_completed ? goal.progress : 1.0,
-    } as any);
+    });
     setGoals((prev) =>
       prev.map((g) =>
         g.id === goal.id ? { ...g, is_completed: !g.is_completed } : g
@@ -43,7 +43,7 @@ export default function LearningPathView() {
   }
 
   async function updateProgress(goal: LearningGoal, progress: number) {
-    await api.learningGoal.update(goal.id, { progress } as any);
+    await api.learningGoal.update(goal.id, { progress });
     setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, progress } : g));
   }
 

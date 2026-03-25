@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  Plus, Trash2, Play, Clock, CheckCircle2, Loader2,
+  Plus, Trash2, Clock, CheckCircle2, Loader2,
   ChevronDown, ChevronRight, Calendar, Inbox, Zap, RefreshCw,
 } from "lucide-react";
 import { api, type ThoughtItem } from "../lib/api";

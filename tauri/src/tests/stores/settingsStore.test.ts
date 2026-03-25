@@ -156,7 +156,7 @@ describe("zustand/persist", () => {
     useSettingsStore.getState().setFontSize(20);
     const raw = localStorage.getItem("aetherium-settings");
     expect(raw).not.toBeNull();
-    const parsed = JSON.parse(raw!);
+    const parsed = JSON.parse(raw || "{}");
     expect(parsed.state.fontSize).toBe(20);
   });
 
