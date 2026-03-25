@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Send, Plus, Trash2, Copy, ChevronDown, ChevronRight, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
@@ -24,7 +24,8 @@ import {
 } from "../lib/composerSuggestions";
 import { resolveChatTitle } from "../lib/chatTitles";
 
-type ChatMode = "chat" | "compare";
+import type { ChatSubView } from "../components/navigationItems";
+
 const MIN_SESSION_SIDEBAR_WIDTH = 220;
 const MAX_SESSION_SIDEBAR_WIDTH = 420;
 
@@ -974,6 +975,7 @@ function splitAssistantMessage(content: string) {
 
 export default function ChatView() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { sessionId: routeSessionId } = useParams();
 
   const {
@@ -1012,8 +1014,7 @@ export default function ChatView() {
   const [selectedModel, setSelectedModel] = useState(preferredModel || "");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [activeContextSources, setActiveContextSources] = useState<Record<string, any>>({});
+  const [activeContextSources, setActiveContextSources] = useState<Record<string, unknown>>({});
   const [loadedSessionScopeKey, setLoadedSessionScopeKey] = useState<string | null>(null);
   const [sessionSidebarDragActive, setSessionSidebarDragActive] = useState(false);
   const chatViewRef = useRef<HTMLDivElement | null>(null);
@@ -1107,8 +1108,27 @@ export default function ChatView() {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [expandedThoughtIds, setExpandedThoughtIds] = useState<Set<string>>(new Set());
 
-  // Chat mode: normal chat vs model comparison
-  const [chatMode, setChatMode] = useState<ChatMode>("chat");
+  // Integrated subview state (Standard Chat, Grounded, Compare)
+  const [activeSubView, setActiveSubView] = useState<ChatSubView>("chat");
+
+  // Handle external subview switching via router state
+  useEffect(() => {
+    const state = location.state as { subView?: ChatSubView } | null;
+    if (state?.subView) {
+      setActiveSubView(state.subView);
+      // Clear state so it doesn't persist on manual refreshes
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, setActiveSubView]);  
+
+  // Sync grounded mode with activeSubView
+  useEffect(() => {
+    if (activeSubView === "grounded") {
+      setGroundedEnabled(true);
+    } else {
+      setGroundedEnabled(false);
+    }
+  }, [activeSubView]);
 
   // Session list features
   const [sessionQuery, setSessionQuery] = useState("");
@@ -2435,7 +2455,7 @@ export default function ChatView() {
 
   // Load models for comparison mode
   useEffect(() => {
-    if (chatMode !== "compare") {return;}
+    if (activeSubView !== "compare") {return;}
     api.ollama.listModels(ollamaUrl || undefined).then((list) => {
       setCompareModels(list);
       if (list.length > 0) {
@@ -2447,7 +2467,7 @@ export default function ChatView() {
         setCompareModelB((current) => current || list[0].name);
       }
     }).catch(() => {});
-  }, [chatMode, ollamaUrl]);
+  }, [activeSubView, ollamaUrl]);
 
   async function runComparison() {
     if (!comparePrompt.trim() || compareLoading) {return;}
@@ -2571,26 +2591,34 @@ export default function ChatView() {
         <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--border-color)] transition-colors group-hover:bg-[var(--accent-color)]" />
       </div>
 
-      {/* Compare mode */}
-      {chatMode === "compare" ? (
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
-            <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
-              <SplitSquareHorizontal size={14} className="text-[var(--text-muted)]" />
-              Compare Models
-            </div>
+      {/* Main content area */}
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0">
+        {/* Unified Subview Tabs */}
+        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)] flex-shrink-0 overflow-x-auto">
+          {[
+            { id: "chat", label: "Standard", Icon: MessageSquare },
+            { id: "grounded", label: "Grounded (RAG)", Icon: BookOpen },
+            { id: "compare", label: "Compare Models", Icon: SplitSquareHorizontal },
+          ].map(({ id, label, Icon }) => (
             <button
-              onClick={() => setChatMode("chat")}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
-              title="Return to chat"
+              key={id}
+              onClick={() => setActiveSubView(id as ChatSubView)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
+                activeSubView === id
+                  ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                  : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+              }`}
             >
-              <MessageSquare size={12} />
-              Chat
+              <Icon size={14} />
+              {label}
             </button>
-          </div>
+          ))}
+        </div>
 
-          {/* Model selectors header */}
-          <div className="flex items-stretch border-b border-[var(--border-color)] flex-shrink-0 bg-[var(--bg-elevated)]">
+        {activeSubView === "compare" ? (
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0">
+            {/* Model selectors header */}
+            <div className="flex items-stretch border-b border-[var(--border-color)] flex-shrink-0 bg-[var(--bg-elevated)]">
             <div className="flex-1 px-4 py-3 flex flex-col gap-1 border-r border-[var(--border-color)]">
               <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Model A</label>
               {compareModels.length === 0 ? (
@@ -3230,7 +3258,7 @@ export default function ChatView() {
               </button>
 
               <button
-                onClick={() => setChatMode("compare")}
+                onClick={() => setActiveSubView("compare")}
                 title="Compare two models side by side"
                 className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
               >
@@ -3428,6 +3456,7 @@ export default function ChatView() {
           </div>
         </div>
       )}
+      </div>
       {confirmDialog && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"

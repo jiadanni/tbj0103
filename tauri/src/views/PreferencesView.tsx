@@ -1,6 +1,6 @@
 /**
- * SettingsView — tabbed sections: Appearance, AI, Security, Backup.
- * Mirrors SettingsView.swift.
+ * PreferencesView — tabbed sections: Appearance, AI, Security, Backup, Workspaces.
+ * Integrated preferences hub.
  */
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
@@ -15,13 +15,12 @@ import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import PluginManagerView from "./PluginManagerView";
 import { MOD_KEY } from "../lib/platform";
+import type { PreferencesSection } from "../components/navigationItems";
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
 
-type Tab = "general" | "appearance" | "chat" | "ai" | "webai" | "security" | "workspaces" | "backup" | "plugins" | "mcp" | "sync";
-
-const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
+const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[] = [
   { id: "general",     label: "General",     Icon: SettingsIcon },
   { id: "appearance",  label: "Appearance",  Icon: Palette },
   { id: "chat",        label: "Chat",        Icon: MessageSquare },
@@ -57,7 +56,7 @@ function Toggle({ on, onToggle, disabled = false }: { on: boolean; onToggle: () 
   );
 }
 
-export default function SettingsView() {
+export default function PreferencesView() {
   const pillSelectClassName = "h-10 w-full appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-9 text-sm text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
   const zustandSettings = useSettingsStore();
   const { settingsNavLayout, setSettingsNavLayout } = useSettingsStore();
@@ -76,11 +75,11 @@ export default function SettingsView() {
   } = useWorkspaceStore();
 
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<Tab>("general");
+  const [activeTab, setActiveTab] = useState<PreferencesSection>("general");
 
   // Handle external tab switching via router state
   useEffect(() => {
-    const state = location.state as { settingsTab?: Tab } | null;
+    const state = location.state as { settingsTab?: PreferencesSection } | null;
     if (state?.settingsTab) {
       setActiveTab(state.settingsTab);
       // Clear state so it doesn't persist on manual refreshes
@@ -371,7 +370,7 @@ export default function SettingsView() {
   if (!dbSettings) {
     return (
       <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
-        Loading settings…
+        Loading preferences…
       </div>
     );
   }
@@ -433,8 +432,8 @@ export default function SettingsView() {
       ) : (
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-color)] flex-shrink-0">
           <div>
-            <h1 className="text-sm font-semibold text-[var(--text-primary)]">Settings</h1>
-            <p className="text-[11px] text-[var(--text-muted)]">App configuration and workspace preferences</p>
+            <h1 className="text-sm font-semibold text-[var(--text-primary)]">Preferences</h1>
+            <p className="text-[11px] text-[var(--text-muted)]">App configuration and workspace management</p>
           </div>
           <div className={`text-xs ${autosaveStatusClassName}`}>{autosaveStatus}</div>
         </div>

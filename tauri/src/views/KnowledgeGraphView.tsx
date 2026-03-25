@@ -5,6 +5,7 @@
  * Deduplication inline in Graph tab toolbar.
  */
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useLocation } from "react-router-dom";
 import * as d3 from "d3";
 import {
   Plus, Search, X, Trash2, ZoomIn, ZoomOut,
@@ -25,6 +26,7 @@ import {
 } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace } from "../lib/workspacePane";
+import type { GraphSubView } from "../components/navigationItems";
 
 // ─── D3 types ──────────────────────────────────────────────────────────────
 
@@ -99,11 +101,12 @@ function buildDupPairs(concepts: ConceptNode[], threshold: number): DupPair[] {
 
 // ─── Main component ────────────────────────────────────────────────────────
 
-type Tab = "graph" | "backlinks" | "insights" | "flashcards";
+type Tab = "graph" | "backlinks" | "dedup" | "insights" | "flashcards";
 
 export default function KnowledgeGraphView() {
   const { activeWorkspaceId } = useScopedWorkspace();
   const { preferredModel, ollamaUrl } = useSettingsStore();
+  const location = useLocation();
 
   // Graph data
   const [nodes, setNodes] = useState<ConceptNode[]>([]);
@@ -111,6 +114,19 @@ export default function KnowledgeGraphView() {
 
   // Active tab
   const [tab, setTab] = useState<Tab>("graph");
+
+  // Dedup settings
+  const [dupThreshold, setDupThreshold] = useState(0.75);
+
+  // Handle external tab switching via router state
+  useEffect(() => {
+    const state = location.state as { subView?: GraphSubView } | null;
+    if (state?.subView) {
+      setTab(state.subView as Tab);
+      // Clear state so it doesn't persist on manual refreshes
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   // Sidebar AI analysis
   const [focusTopic, setFocusTopic] = useState("");
@@ -137,7 +153,6 @@ export default function KnowledgeGraphView() {
 
   // Dedup
   const [dupPairs, setDupPairs] = useState<DupPair[]>([]);
-  const [showDupPanel, setShowDupPanel] = useState(false);
   const [dupLoading, setDupLoading] = useState(false);
   const [mergingPair, setMergingPair] = useState<string | null>(null);
 
@@ -452,8 +467,7 @@ export default function KnowledgeGraphView() {
     setDupLoading(true);
     try {
       const all = await api.graph.listConcepts(activeWorkspaceId);
-      setDupPairs(buildDupPairs(all, 0.75));
-      setShowDupPanel(true);
+      setDupPairs(buildDupPairs(all, dupThreshold));
     } finally {
       setDupLoading(false);
     }
@@ -756,7 +770,7 @@ export default function KnowledgeGraphView() {
 
         {/* Tab bar */}
         <div className="flex items-center gap-1 px-3 py-2 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] flex-shrink-0">
-          {(["graph", "backlinks", "insights", "flashcards"] as Tab[]).map((t) => (
+          {(["graph", "backlinks", "dedup", "insights", "flashcards"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -766,7 +780,7 @@ export default function KnowledgeGraphView() {
                   : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
               }`}
             >
-              {t === "backlinks" ? "Backlinks" : t === "insights" ? "Insights" : t === "flashcards" ? "Flashcards" : "Graph"}
+              {t === "backlinks" ? "Backlinks" : t === "dedup" ? "Deduplication" : t === "insights" ? "Insights" : t === "flashcards" ? "Flashcards" : "Graph"}
             </button>
           ))}
         </div>
@@ -787,14 +801,6 @@ export default function KnowledgeGraphView() {
               </div>
               <button onClick={zoomIn}  className="p-1.5 rounded-lg bg-[var(--bg-elevated)]/90 border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-primary)] backdrop-blur"><ZoomIn size={14} /></button>
               <button onClick={zoomOut} className="p-1.5 rounded-lg bg-[var(--bg-elevated)]/90 border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-primary)] backdrop-blur"><ZoomOut size={14} /></button>
-              <button
-                onClick={runDedup}
-                disabled={dupLoading}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-[var(--bg-elevated)]/90 border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-primary)] backdrop-blur disabled:opacity-50"
-              >
-                {dupLoading ? <Loader2 size={13} className="animate-spin" /> : <GitMerge size={13} />}
-                Duplicates
-              </button>
             </div>
 
             {/* Empty state */}
@@ -819,48 +825,6 @@ export default function KnowledgeGraphView() {
             )}
 
             <svg ref={svgRef} className="w-full h-full bg-[var(--bg-primary)]" />
-
-            {/* Dedup panel */}
-            {showDupPanel && (
-              <div className="absolute bottom-0 left-0 right-0 max-h-64 bg-[var(--bg-elevated)] border-t border-[var(--border-color)] overflow-y-auto z-20">
-                <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-color)] sticky top-0 bg-[var(--bg-elevated)]">
-                  <span className="text-xs font-semibold text-[var(--text-primary)]">
-                    Duplicate Candidates ({dupPairs.filter((p) => !p.dismissed).length})
-                  </span>
-                  <button onClick={() => setShowDupPanel(false)}><X size={14} className="text-[var(--text-muted)]" /></button>
-                </div>
-                {dupPairs.filter((p) => !p.dismissed).length === 0 ? (
-                  <p className="text-xs text-[var(--text-muted)] p-4 text-center">No duplicates found above 75% similarity.</p>
-                ) : (
-                  dupPairs.filter((p) => !p.dismissed).map((pair, i) => (
-                    <div key={pair.a.id + pair.b.id} className="flex items-center gap-3 px-4 py-2 border-b border-[var(--border-color)]/50">
-                      <span className="text-xs text-[var(--text-muted)] w-8">{Math.round(pair.score * 100)}%</span>
-                      <button
-                        onClick={() => mergePair(pair, 0)}
-                        disabled={mergingPair === pair.a.id + pair.b.id}
-                        className="flex-1 text-left text-xs px-2 py-1 rounded bg-[var(--bg-input)] hover:bg-[var(--accent-color)]/20 hover:text-[var(--accent-color)] transition-colors"
-                      >
-                        Keep: {pair.a.name}
-                      </button>
-                      <span className="text-[var(--text-muted)] text-xs">vs</span>
-                      <button
-                        onClick={() => mergePair(pair, 1)}
-                        disabled={mergingPair === pair.a.id + pair.b.id}
-                        className="flex-1 text-left text-xs px-2 py-1 rounded bg-[var(--bg-input)] hover:bg-[var(--accent-color)]/20 hover:text-[var(--accent-color)] transition-colors"
-                      >
-                        Keep: {pair.b.name}
-                      </button>
-                      <button
-                        onClick={() => setDupPairs((prev) => prev.map((p, pi) => pi === i ? { ...p, dismissed: true } : p))}
-                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
 
             {/* Create concept overlay */}
             {showCreateForm && (
@@ -894,6 +858,120 @@ export default function KnowledgeGraphView() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── DEDUPLICATION TAB ────────────────────────────────────── */}
+        {tab === "dedup" && (
+          <div className="flex-1 flex flex-col overflow-hidden bg-[var(--bg-primary)]">
+            <div className="p-4 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] flex items-center justify-between shrink-0">
+              <div>
+                <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                  <GitMerge size={16} className="text-[var(--accent-color)]" />
+                  Deduplication
+                </h2>
+                <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Identify and merge duplicate concepts across the workspace</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+                  <span>Similarity: {Math.round(dupThreshold * 100)}%</span>
+                  <input
+                    type="range" min={0.5} max={0.99} step={0.05}
+                    value={dupThreshold}
+                    onChange={(e) => setDupThreshold(Number(e.target.value))}
+                    className="w-24 accent-[var(--accent-color)]"
+                  />
+                </div>
+                <button
+                  onClick={runDedup}
+                  disabled={dupLoading}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--accent-color)] text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-all"
+                >
+                  {dupLoading ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                  {dupPairs.length > 0 ? "Re-scan" : "Scan for Duplicates"}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {dupLoading && dupPairs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                  <Loader2 size={32} className="animate-spin text-[var(--accent-color)]" />
+                  <p className="text-sm text-[var(--text-muted)]">Analyzing concept similarity…</p>
+                </div>
+              ) : dupPairs.filter((p) => !p.dismissed).length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                    <CheckCircle size={32} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-[var(--text-primary)]">All Clear</h3>
+                    <p className="text-xs text-[var(--text-muted)] mt-1 max-w-xs mx-auto">
+                      No duplicate concept candidates found above 75% similarity. Your knowledge graph is nice and clean.
+                    </p>
+                  </div>
+                  {dupPairs.length === 0 && !dupLoading && (
+                    <button
+                      onClick={runDedup}
+                      className="mt-2 text-xs text-[var(--accent-color)] hover:underline"
+                    >
+                      Run a fresh scan
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="max-w-4xl mx-auto space-y-3">
+                  <p className="text-xs text-[var(--text-muted)] mb-4">
+                    The following pairs have high name similarity. Select which name to keep for the merged concept.
+                    Merging will combine all backlinks and links.
+                  </p>
+                  {dupPairs.filter((p) => !p.dismissed).map((pair, i) => (
+                    <div key={pair.a.id + pair.b.id} className="group rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 hover:border-[var(--accent-color)]/30 transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="flex flex-col items-center shrink-0">
+                          <span className="text-[10px] font-bold text-[var(--accent-color)] tabular-nums">{Math.round(pair.score * 100)}%</span>
+                          <span className="text-[9px] uppercase tracking-tighter text-[var(--text-muted)]">Match</span>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 flex-1 gap-4">
+                          <button
+                            onClick={() => mergePair(pair, 0)}
+                            disabled={mergingPair === pair.a.id + pair.b.id}
+                            className={`relative text-left p-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] hover:border-[var(--accent-color)] hover:ring-1 hover:ring-[var(--accent-color)] transition-all ${
+                              mergingPair === pair.a.id + pair.b.id ? "opacity-50 cursor-wait" : ""
+                            }`}
+                          >
+                            <span className="block text-[10px] text-[var(--text-muted)] mb-1 uppercase tracking-wide">Keep this name</span>
+                            <span className="text-sm font-medium text-[var(--text-primary)]">{pair.a.name}</span>
+                            <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[9px] text-[var(--text-muted)]">{pair.a.concept_type}</span>
+                          </button>
+
+                          <button
+                            onClick={() => mergePair(pair, 1)}
+                            disabled={mergingPair === pair.a.id + pair.b.id}
+                            className={`relative text-left p-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] hover:border-[var(--accent-color)] hover:ring-1 hover:ring-[var(--accent-color)] transition-all ${
+                              mergingPair === pair.a.id + pair.b.id ? "opacity-50 cursor-wait" : ""
+                            }`}
+                          >
+                            <span className="block text-[10px] text-[var(--text-muted)] mb-1 uppercase tracking-wide">Keep this name</span>
+                            <span className="text-sm font-medium text-[var(--text-primary)]">{pair.b.name}</span>
+                            <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[9px] text-[var(--text-muted)]">{pair.b.concept_type}</span>
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={() => setDupPairs((prev) => prev.map((p, pi) => pi === i ? { ...p, dismissed: true } : p))}
+                          className="p-2 rounded-lg text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                          title="Dismiss"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
