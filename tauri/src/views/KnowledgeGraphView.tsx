@@ -1,8 +1,7 @@
 /**
  * KnowledgeGraphView — AI-first tabbed knowledge hub.
  * Sidebar: AI analysis + stats + concept list.
- * Tabs: Graph | Backlinks | Insights
- * Deduplication inline in Graph tab toolbar.
+ * Tabs: Graph | Backlinks | Dedup | Insights | Flashcards | Learning
  */
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useLocation } from "react-router-dom";
@@ -27,6 +26,7 @@ import {
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace } from "../lib/workspacePane";
 import type { GraphSubView } from "../components/navigationItems";
+import LearningPathView from "./LearningPathView";
 
 // ─── D3 types ──────────────────────────────────────────────────────────────
 
@@ -101,7 +101,7 @@ function buildDupPairs(concepts: ConceptNode[], threshold: number): DupPair[] {
 
 // ─── Main component ────────────────────────────────────────────────────────
 
-type Tab = "graph" | "backlinks" | "dedup" | "insights" | "flashcards";
+type Tab = "graph" | "backlinks" | "dedup" | "insights" | "flashcards" | "learning";
 
 export default function KnowledgeGraphView() {
   const { activeWorkspaceId } = useScopedWorkspace();
@@ -770,7 +770,7 @@ export default function KnowledgeGraphView() {
 
         {/* Tab bar */}
         <div className="flex items-center gap-1 px-3 py-2 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] flex-shrink-0">
-          {(["graph", "backlinks", "dedup", "insights", "flashcards"] as Tab[]).map((t) => (
+          {(["graph", "backlinks", "dedup", "insights", "flashcards", "learning"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -780,7 +780,7 @@ export default function KnowledgeGraphView() {
                   : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
               }`}
             >
-              {t === "backlinks" ? "Backlinks" : t === "dedup" ? "Deduplication" : t === "insights" ? "Insights" : t === "flashcards" ? "Flashcards" : "Graph"}
+              {t === "backlinks" ? "Backlinks" : t === "dedup" ? "Deduplication" : t === "insights" ? "Insights" : t === "flashcards" ? "Flashcards" : t === "learning" ? "Learning" : "Graph"}
             </button>
           ))}
         </div>
@@ -1461,6 +1461,13 @@ export default function KnowledgeGraphView() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── LEARNING TAB ─────────────────────────────────────────── */}
+        {tab === "learning" && (
+          <div className="flex-1 overflow-hidden">
+            <LearningPathView />
           </div>
         )}
       </div>

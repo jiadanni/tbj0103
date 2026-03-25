@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { confirm, message, open } from "@tauri-apps/plugin-dialog";
+import { useNavigate } from "react-router-dom";
 import { Upload, Trash2, Archive, RefreshCw, FolderInput } from "lucide-react";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -16,7 +17,8 @@ interface BackupMeta {
 }
 
 export default function BackupSettingsSection() {
-  const { activeWorkspaceId, setActiveWorkspaceId, setProjectsForWorkspace, setWorkspaces } = useWorkspaceStore();
+  const navigate = useNavigate();
+  const { activeWorkspaceId, setActiveWorkspaceId, setActiveProjectId, setProjectsForWorkspace, setWorkspaces } = useWorkspaceStore();
   const [backups, setBackups] = useState<BackupMeta[]>([]);
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState<string | null>(null);
@@ -76,20 +78,31 @@ export default function BackupSettingsSection() {
       if (!folderPath) {return;}
 
       const result = await api.chatFile.importLmStudioFolder(folderPath);
-      const [workspaces, importedProjects] = await Promise.all([
+      if (result.imported < 1) {
+        throw new Error("LM Studio import completed without importing any conversations.");
+      }
+
+      const [workspaces, importedProjects, importedSessions] = await Promise.all([
         api.workspace.list(),
         api.project.list(result.workspace_id),
+        api.chat.listSessions(result.workspace_id, null, { limit: 200, offset: 0 }),
       ]);
+      if (importedSessions.length < 1) {
+        throw new Error("LM Studio import reported success, but no chat sessions were found in the imported workspace.");
+      }
       setWorkspaces(workspaces);
       setProjectsForWorkspace(result.workspace_id, importedProjects);
       setActiveWorkspaceId(result.workspace_id);
+      setActiveProjectId(null);
 
       const summary = [
         `Imported ${result.imported} conversation${result.imported === 1 ? "" : "s"} into "${result.workspace_name}".`,
         `${result.projects_created} project${result.projects_created === 1 ? "" : "s"} created.`,
         result.errors > 0 ? `${result.errors} file${result.errors === 1 ? "" : "s"} could not be imported.` : "No import errors reported.",
+        result.error_messages.length > 0 ? `Examples: ${result.error_messages.slice(0, 3).join(" | ")}` : "",
       ].join(" ");
 
+      navigate(`/chat/${importedSessions[0].id}`);
       await message(summary, { title: "LM Studio import complete", kind: result.errors > 0 ? "warning" : "info" });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "LM Studio import failed";

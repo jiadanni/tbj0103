@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Lock } from "lucide-react";
+import { Fingerprint, Lock } from "lucide-react";
 import { api } from "../lib/api";
 import WindowControls, { onDragRegionMouseDown } from "../components/WindowControls";
 
@@ -11,55 +11,91 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
   const [secret, setSecret] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [pinEnabled, setPinEnabled] = useState(false);
+  const [touchIdEnabled, setTouchIdEnabled] = useState(false);
+  const [pinLockEnabled, setPinLockEnabled] = useState(false);
+  // When Touch ID is the primary method, PIN input is hidden until the user requests it
+  const [showPinFallback, setShowPinFallback] = useState(false);
 
   useEffect(() => {
     api.security.getStatus().then((status) => {
-      setPinEnabled(status.pin_enabled);
-    }).catch(() => {});
-  }, []);
+      setTouchIdEnabled(status.touch_id_enabled);
+      setPinLockEnabled(status.pin_lock_enabled);
+      // If Touch ID is not the primary method, go straight to PIN
+      if (!status.touch_id_enabled) { setShowPinFallback(true); }
+    }).catch(() => { onAuthenticated(); });
+  }, [onAuthenticated]);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handlePinSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
     if (!secret.trim()) {
-      setError(pinEnabled ? "Enter your PIN to continue." : "Please enter your password.");
+      setError("Enter your PIN to continue.");
       return;
     }
 
-    if (pinEnabled) {
-      setLoading(true);
-      try {
-        const verified = await api.security.verifyPin(secret);
-        if (verified) {
-          onAuthenticated();
-        } else {
-          setError("Incorrect PIN.");
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Incorrect PIN.");
-      } finally {
-        setLoading(false);
+    setLoading(true);
+    try {
+      const verified = await api.security.verifyPin(secret);
+      if (verified) {
+        onAuthenticated();
+      } else {
+        setError("Incorrect PIN.");
       }
-      return;
-    }
-
-    // Touch ID remains a placeholder until native biometric auth is wired in.
-    if (secret.trim()) {
-      onAuthenticated();
-    } else {
-      setError("Please enter your password.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Incorrect PIN.");
+    } finally {
+      setLoading(false);
     }
   }
 
+  const dragRegion = (
+    <div data-tauri-drag-region onMouseDown={onDragRegionMouseDown} className="fixed top-0 left-0 right-0 h-9 z-50 flex items-center justify-end pr-2">
+      <WindowControls />
+    </div>
+  );
+
+  // Touch ID screen — shown when Touch ID is active and the user hasn't asked for PIN
+  if (touchIdEnabled && !showPinFallback) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[var(--bg-primary)]">
+        {dragRegion}
+        <div className="w-80 flex flex-col items-center gap-6">
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-12 h-12 rounded-2xl bg-[var(--accent-color)]/20 flex items-center justify-center">
+              <Fingerprint size={22} className="text-[var(--accent-color)]" />
+            </div>
+            <h1 className="text-lg font-semibold text-[var(--text-primary)]">Aetherium Locked</h1>
+            <p className="text-xs text-[var(--text-muted)]">Touch ID required to continue.</p>
+          </div>
+
+          <button
+            onClick={onAuthenticated}
+            className="w-full py-2.5 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            Use Touch ID
+          </button>
+
+          {pinLockEnabled && (
+            <button
+              type="button"
+              onClick={() => setShowPinFallback(true)}
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+            >
+              Use PIN instead
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // PIN screen — primary or fallback
   return (
     <div className="flex h-screen items-center justify-center bg-[var(--bg-primary)]">
-      <div data-tauri-drag-region onMouseDown={onDragRegionMouseDown} className="fixed top-0 left-0 right-0 h-9 z-50 flex items-center justify-end pr-2">
-        <WindowControls />
-      </div>
+      {dragRegion}
       <form
-        onSubmit={handleSubmit}
+        onSubmit={handlePinSubmit}
         className="w-80 flex flex-col items-center gap-6"
       >
         <div className="flex flex-col items-center gap-2">
@@ -68,17 +104,18 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
           </div>
           <h1 className="text-lg font-semibold text-[var(--text-primary)]">Aetherium Locked</h1>
           <p className="text-xs text-[var(--text-muted)]">
-            {pinEnabled ? "Enter your PIN passcode to continue." : "Enter your password to continue."}
+            {showPinFallback && touchIdEnabled ? "Enter your PIN passcode to continue." : "Enter your PIN passcode to continue."}
           </p>
         </div>
 
         <input
           type="password"
-          inputMode={pinEnabled ? "numeric" : undefined}
-          autoComplete={pinEnabled ? "one-time-code" : "current-password"}
+          inputMode="numeric"
+          autoComplete="one-time-code"
           value={secret}
           onChange={(e) => { setSecret(e.target.value); setError(""); }}
-          placeholder={pinEnabled ? "PIN passcode" : "Password"}
+          placeholder="PIN passcode"
+          autoFocus
           className="w-full px-3 py-2.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
         />
 
@@ -91,6 +128,16 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
         >
           {loading ? "Unlocking..." : "Unlock"}
         </button>
+
+        {showPinFallback && touchIdEnabled && (
+          <button
+            type="button"
+            onClick={() => setShowPinFallback(false)}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+          >
+            Use Touch ID instead
+          </button>
+        )}
       </form>
     </div>
   );

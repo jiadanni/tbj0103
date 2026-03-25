@@ -155,7 +155,7 @@ impl OllamaClient {
     pub async fn resolve_model(&self, requested: &str) -> Result<String, String> {
         let models = self.list_models().await?;
         if models.is_empty() {
-            return Err("No Ollama models found. Please install a model using 'ollama pull llama3' or 'ollama pull qwen2.5' and ensure Ollama is running.".to_string());
+            return Err("No Ollama models found. Install a model with `ollama pull <model-name>` and ensure Ollama is running.".to_string());
         }
 
         // 1. Exact match
@@ -187,7 +187,7 @@ impl OllamaClient {
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
-        let resolved_model = model.to_string();
+        let resolved_model = self.resolve_model(model).await?;
         let url = format!("{}/api/chat", self.base_url);
         let body = json!({
             "model": resolved_model,
@@ -230,7 +230,7 @@ impl OllamaClient {
         if manage_abort_flag {
             Self::clear_abort_flag(app, session_id)?;
         }
-        let resolved_model = model.to_string();
+        let resolved_model = self.resolve_model(model).await?;
         let url = format!("{}/api/chat", self.base_url);
         let body = json!({
             "model": resolved_model,

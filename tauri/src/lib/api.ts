@@ -357,7 +357,14 @@ export const api = {
       invoke<ChatSession>("import_chat_from_json", { path, workspaceId, projectId: projectId ?? null, passphrase }),
     syncAll: () => invoke<number>("sync_all_chats_to_files"),
     importLmStudioFolder: (folderPath: string) =>
-      invoke<{ imported: number; workspace_id: string; workspace_name: string; projects_created: number; errors: number }>("import_lmstudio_folder", { folderPath }),
+      invoke<{
+        imported: number;
+        workspace_id: string;
+        workspace_name: string;
+        projects_created: number;
+        errors: number;
+        error_messages: string[];
+      }>("import_lmstudio_folder", { folderPath }),
   },
 
   security: {

@@ -1,0 +1,493 @@
+{
+  "name": "Extracting Attachment Extension",
+  "pinned": false,
+  "createdAt": 1763039700195,
+  "preset": "",
+  "tokenCount": 2726,
+  "userLastMessagedAt": 1763039872504,
+  "assistantLastMessagedAt": 1763040058493,
+  "systemPrompt": "",
+  "messages": [
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "<!--\n  --\n  -- Email message template\n  --\n  -->\n\n<div id=\"cte-mail\">\n  <div class=\"cte-section cte-body\">\n    <div class=\"cte-para\" style=\"margin: 0px 0px 0.7em;\">A new support request has been submitted:</div>\n\n        \n    <table id=\"cte-secondary-properties\" class=\"cte-para\" style=\"border-collapse: collapse; width: 100%; margin: 0px 0px 0.7em;\">\n      <tbody><tr class=\"cte-property cte-from\"><td class=\"cte-key cte-emphasis\" style=\"margin: 0px; padding: 0px; font-weight: bold; width: 15em; display: inline-block;\">From</td><td class=\"cte-value\" style=\"margin: 0px; padding: 0px; display: inline-block;\">Tahir Furkan GOSKER</td></tr>\n      <tr class=\"cte-property cte-userName\"><td class=\"cte-key cte-emphasis\" style=\"margin: 0px; padding: 0px; font-weight: bold; width: 15em; display: inline-block;\">Username</td><td class=\"cte-value\" style=\"margin: 0px; padding: 0px; display: inline-block;\">4656053</td></tr>\n      <tr class=\"cte-property cte-email\"><td class=\"cte-key cte-emphasis\" style=\"margin: 0px; padding: 0px; font-weight: bold; width: 15em; display: inline-block;\">Email</td><td class=\"cte-value\" style=\"margin: 0px; padding: 0px; display: inline-block;\">tahirfurkangosker@yahoo.com</td></tr>\n      <tr class=\"cte-property cte-url\"><td class=\"cte-key cte-emphasis\" style=\"margin: 0px; padding: 0px; font-weight: bold; width: 15em; display: inline-block;\">Message Triggered From</td><td class=\"cte-value\" style=\"margin: 0px; padding: 0px; display: inline-block;\">https://umd.instructure.com/courses/1392525/pages/module-4-ai-and-supply-chain</td></tr>\n    </tbody></table>\n\n      \n        \n    <table id=\"cte-secondary-properties\" class=\"cte-para\" style=\"border-collapse: collapse; width: 100%; margin: 0px 0px 0.7em;\">\n      <tbody><tr class=\"cte-property cte-field-id-290939\"><td class=\"cte-key cte-emphasis\" style=\"margin: 0px; padding: 0px; font-weight: bold; width: 15em; display: inline-block;\">Subject</td><td class=\"cte-value\" style=\"margin: 0px; padding: 0px; display: inline-block;\">I couldn't view the videos</td></tr>\n    </tbody></table>\n          <h2>Message</h2>\n    <div class=\"cte-para cte-property cte-message-body\" style=\"margin: 0px 0px 0.7em; white-space: pre-line;\">\n      <div class=\"cte-value\" style=\"display: inline-block;\">I want to start lessons but I get an error when viewing videos. </div>\n    </div>\n\n          <h2></h2>\n      <div class=\"cte-property cte-attachments\">\n        <div class=\"cte-value\" style=\"display: inline-block;\">\n          <a href=\"https://umd.eesysoft.com/loadFile?fileid=47264456-9e7b-401a-8c07-032e6c07c652\">image_2025-05-29_021041507.png</a>\n        </div>\n      </div>\n\n        <h2>System Information</h2>\n    <table id=\"cte-secondary-properties\" class=\"cte-para\" style=\"border-collapse: collapse; width: 100%; margin: 0px 0px 0.7em;\">\n      <tbody><tr class=\"cte-property cte-os\"><td class=\"cte-key cte-emphasis\" style=\"margin: 0px; padding: 0px; font-weight: bold; width: 15em; display: inline-block;\">OS</td><td class=\"cte-value\" style=\"margin: 0px; padding: 0px; display: inline-block;\">Windows 11</td></tr>\n      <tr class=\"cte-property cte-browser\"><td class=\"cte-key cte-emphasis\" style=\"margin: 0px; padding: 0px; font-weight: bold; width: 15em; display: inline-block;\">Browser</td><td class=\"cte-value\" style=\"margin: 0px; padding: 0px; display: inline-block;\">Opera GX 118.0.5461.133</td></tr>\n      <tr class=\"cte-property cte-cookies\"><td class=\"cte-key cte-emphasis\" style=\"margin: 0px; padding: 0px; font-weight: bold; width: 15em; display: inline-block;\">Cookies</td><td class=\"cte-value\" style=\"margin: 0px; padding: 0px; display: inline-block;\">true</td></tr>\n      <tr class=\"cte-property cte-screenSize\"><td class=\"cte-key cte-emphasis\" style=\"margin: 0px; padding: 0px; font-weight: bold; width: 15em; display: inline-block;\">Screen size</td><td class=\"cte-value\" style=\"margin: 0px; padding: 0px; display: inline-block;\">1920 x 1080</td></tr>\n    </tbody></table>\n\n\n  </div>\n</div>\n\nselect * from emails\n         where stamp > 20250101000000\n         and text like '%cte-attachments%loadFile%'\n         limit 10\n\nTrying to extract the file extension for attachments. Using MySQL. "
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "openai/gpt-oss-20b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1763039754318-0.6898198911618324",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Need regex to extract extension from URL. Use SUBSTRING_INDEX or REGEXP_SUBSTR. Provide query: SELECT id, REGEXP_SUBSTR(url, '\\\\.[^/]+$') as ext.",
+                  "fromDraftModel": false,
+                  "tokensCount": 40,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "prefix": "<|channel|>analysis<|message|>",
+              "suffix": "<|end|>",
+              "style": {
+                "type": "thinking",
+                "ended": true,
+                "title": "Thought for a brief moment"
+              }
+            },
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1763039755230-0.7200332781558729",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<|start|>assistant<|channel|>final<|message|>",
+                  "fromDraftModel": false,
+                  "tokensCount": 6,
+                  "isStructural": true
+                },
+                {
+                  "type": "text",
+                  "text": "Here’s a quick way to pull the file‑extension out of the *loadFile* URL that is stored in the `text` column.  \nThe example assumes you have a table called **emails** with at least two columns:\n\n| Column | Description |\n|--------|-------------|\n| `id`   | Primary key (or any unique identifier) |\n| `text` | The raw e‑mail body that contains the attachment link |\n\n```sql\n-- 1️⃣ Get the attachment URL (the part that starts with “loadFile”)\nSELECT\n    id,\n    -- 2️⃣ Pull everything from the first dot after “loadFile” up to the end of the string\n    REGEXP_SUBSTR(\n        text,\n        'loadFile[^\\\\?]*\\\\.([a-zA-Z0-9]+)'\n    )          AS full_url,            -- the whole URL (optional)\n    REGEXP_SUBSTR(\n        text,\n        '\\\\.([a-zA-Z0-9]+)$'\n    )          AS file_ext              -- just the extension\nFROM emails\nWHERE stamp > 20250101000000\n  AND text LIKE '%cte-attachments%loadFile%'\nLIMIT 10;\n```\n\n### What the query does\n\n| Step | Explanation |\n|------|-------------|\n| `REGEXP_SUBSTR(text, 'loadFile[^\\\\?]*\\\\.([a-zA-Z0-9]+)')` | Finds the first `loadFile…` URL in the e‑mail body. The pattern looks for “loadFile”, then any characters that are not a `?` (to skip query string parameters), and finally the dot + extension. |\n| `REGEXP_SUBSTR(text, '\\\\.([a-zA-Z0-9]+)$')` | Extracts the part after the last dot that appears before the string ends. This is the file extension (`png`, `jpg`, `pdf`, etc.). |\n| `WHERE stamp > …` & `AND text LIKE …` | Keeps only the rows you already filtered for. |\n| `LIMIT 10` | Returns at most ten rows (adjust as needed). |\n\n### Result format\n\n| id | full_url | file_ext |\n|----|----------|----------|\n| 1  | `https://umd.eesysoft.com/loadFile?fileid=47264456-9e7b-401a-8c07-032e6c07c652` | `png` |\n\nIf you only need the extension, drop the first `REGEXP_SUBSTR` and keep just the second one.\n\n```sql\nSELECT id,\n       REGEXP_SUBSTR(text, '\\\\.([a-zA-Z0-9]+)$') AS file_ext\nFROM emails\nWHERE stamp > 20250101000000\n  AND text LIKE '%cte-attachments%loadFile%'\nLIMIT 10;\n```\n\nThat will give you a clean list of the attachment extensions for the selected e‑mails.",
+                  "fromDraftModel": false,
+                  "tokensCount": 611,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "openai/gpt-oss-20b",
+                "identifier": "openai/gpt-oss-20b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{#-\n  In addition to the normal inputs of `messages` and `tools`, this template also accepts the\n  following kwargs:\n  - \"builtin_tools\": A list, can contain \"browser\" and/or \"python\".\n  - \"model_identity\": A string that optionally describes the model identity.\n  - \"reasoning_effort\": A string that describes the reasoning effort, defaults to \"medium\".\n #}\n\n{#- Tool Definition Rendering ============================================== #}\n{%- macro render_typescript_type(param_spec, required_params, is_nullable=false) -%}\n    {%- if param_spec.type == \"array\" -%}\n        {%- if param_spec['items'] -%}\n            {%- if param_spec['items']['type'] == \"string\" -%}\n                {{- \"string[]\" }}\n            {%- elif param_spec['items']['type'] == \"number\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"integer\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"boolean\" -%}\n                {{- \"boolean[]\" }}\n            {%- else -%}\n                {%- set inner_type = render_typescript_type(param_spec['items'], required_params) -%}\n                {%- if inner_type == \"object | object\" or inner_type|length > 50 -%}\n                    {{- \"any[]\" }}\n                {%- else -%}\n                    {{- inner_type + \"[]\" }}\n                {%- endif -%}\n            {%- endif -%}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- else -%}\n            {{- \"any[]\" }}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type is defined and param_spec.type is iterable and param_spec.type is not string and param_spec.type is not mapping and param_spec.type[0] is defined -%}\n        {#- Handle array of types like [\"object\", \"object\"] from Union[dict, list] #}\n        {%- if param_spec.type | length > 1 -%}\n            {{- param_spec.type | join(\" | \") }}\n        {%- else -%}\n            {{- param_spec.type[0] }}\n        {%- endif -%}\n    {%- elif param_spec.oneOf -%}\n        {#- Handle oneOf schemas - check for complex unions and fallback to any #}\n        {%- set has_object_variants = false -%}\n        {%- for variant in param_spec.oneOf -%}\n            {%- if variant.type == \"object\" -%}\n                {%- set has_object_variants = true -%}\n            {%- endif -%}\n        {%- endfor -%}\n        {%- if has_object_variants and param_spec.oneOf|length > 1 -%}\n            {{- \"any\" }}\n        {%- else -%}\n            {%- for variant in param_spec.oneOf -%}\n                {{- render_typescript_type(variant, required_params) -}}\n                {%- if variant.description %}\n                    {{- \"// \" + variant.description }}\n                {%- endif -%}\n                {%- if variant.default is defined %}\n                    {{ \"// default: \" + variant.default|tojson }}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \" | \" }}\n                {% endif -%}\n            {%- endfor -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"string\" -%}\n        {%- if param_spec.enum -%}\n            {{- '\"' + param_spec.enum|join('\" | \"') + '\"' -}}\n        {%- else -%}\n            {{- \"string\" }}\n            {%- if param_spec.nullable %}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"number\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"integer\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"boolean\" -%}\n        {{- \"boolean\" }}\n\n    {%- elif param_spec.type == \"object\" -%}\n        {%- if param_spec.properties -%}\n            {{- \"{\\n\" }}\n            {%- for prop_name, prop_spec in param_spec.properties.items() -%}\n                {{- prop_name -}}\n                {%- if prop_name not in (param_spec.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{ render_typescript_type(prop_spec, param_spec.required or []) }}\n                {%- if not loop.last -%}\n                    {{-\", \" }}\n                {%- endif -%}\n            {%- endfor -%}\n            {{- \"}\" }}\n        {%- else -%}\n            {{- \"object\" }}\n        {%- endif -%}\n    {%- else -%}\n        {{- \"any\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro render_tool_namespace(namespace_name, tools) -%}\n    {{- \"## \" + namespace_name + \"\\n\\n\" }}\n    {{- \"namespace \" + namespace_name + \" {\\n\\n\" }}\n    {%- for tool in tools %}\n        {%- set tool = tool.function %}\n        {{- \"// \" + tool.description + \"\\n\" }}\n        {{- \"type \"+ tool.name + \" = \" }}\n        {%- if tool.parameters and tool.parameters.properties %}\n            {{- \"(_: {\\n\" }}\n            {%- for param_name, param_spec in tool.parameters.properties.items() %}\n                {%- if param_spec.description %}\n                    {{- \"// \" + param_spec.description + \"\\n\" }}\n                {%- endif %}\n                {{- param_name }}\n                {%- if param_name not in (tool.parameters.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{- render_typescript_type(param_spec, tool.parameters.required or []) }}\n                {%- if param_spec.default is defined -%}\n                    {%- if param_spec.enum %}\n                        {{- \", // default: \" + param_spec.default }}\n                    {%- elif param_spec.oneOf %}\n                        {{- \"// default: \" + param_spec.default }}\n                    {%- else %}\n                        {{- \", // default: \" + param_spec.default|tojson }}\n                    {%- endif -%}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \",\\n\" }}\n                {%- else %}\n                    {{- \",\\n\" }}\n                {%- endif -%}\n            {%- endfor %}\n            {{- \"}) => any;\\n\\n\" }}\n        {%- else -%}\n            {{- \"() => any;\\n\\n\" }}\n        {%- endif -%}\n    {%- endfor %}\n    {{- \"} // namespace \" + namespace_name }}\n{%- endmacro -%}\n\n{%- macro render_builtin_tools(browser_tool, python_tool) -%}\n    {%- if browser_tool %}\n        {{- \"## browser\\n\\n\" }}\n        {{- \"// Tool for browsing.\\n\" }}\n        {{- \"// The `cursor` appears in brackets before each browsing display: `[{cursor}]`.\\n\" }}\n        {{- \"// Cite information from the tool using the following format:\\n\" }}\n        {{- \"// `【{cursor}†L{line_start}(-L{line_end})?】`, for example: `【6†L9-L11】` or `【8†L3】`.\\n\" }}\n        {{- \"// Do not quote more than 10 words directly from the tool output.\\n\" }}\n        {{- \"// sources=web (default: web)\\n\" }}\n        {{- \"namespace browser {\\n\\n\" }}\n        {{- \"// Searches for information related to `query` and displays `topn` results.\\n\" }}\n        {{- \"type search = (_: {\\n\" }}\n        {{- \"query: string,\\n\" }}\n        {{- \"topn?: number, // default: 10\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Opens the link `id` from the page indicated by `cursor` starting at line number `loc`, showing `num_lines` lines.\\n\" }}\n        {{- \"// Valid link ids are displayed with the formatting: `【{id}†.*】`.\\n\" }}\n        {{- \"// If `cursor` is not provided, the most recent page is implied.\\n\" }}\n        {{- \"// If `id` is a string, it is treated as a fully qualified URL associated with `source`.\\n\" }}\n        {{- \"// If `loc` is not provided, the viewport will be positioned at the beginning of the document or centered on the most relevant passage, if available.\\n\" }}\n        {{- \"// Use this function without `id` to scroll to a new location of an opened page.\\n\" }}\n        {{- \"type open = (_: {\\n\" }}\n        {{- \"id?: number | string, // default: -1\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"loc?: number, // default: -1\\n\" }}\n        {{- \"num_lines?: number, // default: -1\\n\" }}\n        {{- \"view_source?: boolean, // default: false\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Finds exact matches of `pattern` in the current page, or the page given by `cursor`.\\n\" }}\n        {{- \"type find = (_: {\\n\" }}\n        {{- \"pattern: string,\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"} // namespace browser\\n\\n\" }}\n    {%- endif -%}\n\n    {%- if python_tool %}\n        {{- \"## python\\n\\n\" }}\n        {{- \"Use this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).\\n\\n\" }}\n        {{- \"When you send a message containing Python code to python, it will be executed in a stateful Jupyter notebook environment. python will respond with the output of the execution or time out after 120.0 seconds. The drive at '/mnt/data' can be used to save and persist user files. Internet access for this session is UNKNOWN. Depends on the cluster.\\n\\n\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- System Message Construction ============================================ #}\n{%- macro build_system_message() -%}\n    {%- if model_identity is not defined %}\n        {%- set model_identity = \"You are ChatGPT, a large language model trained by OpenAI.\" %}\n    {%- endif %}\n    {{- model_identity + \"\\n\" }}\n    {{- \"Knowledge cutoff: 2024-06\\n\" }}\n    {{- \"Current date: \" + strftime_now(\"%Y-%m-%d\") + \"\\n\\n\" }}\n    {%- if reasoning_effort is not defined %}\n        {%- set reasoning_effort = \"medium\" %}\n    {%- endif %}\n    {{- \"Reasoning: \" + reasoning_effort + \"\\n\\n\" }}\n    {%- if builtin_tools %}\n        {{- \"# Tools\\n\\n\" }}\n        {%- set available_builtin_tools = namespace(browser=false, python=false) %}\n        {%- for tool in builtin_tools %}\n            {%- if tool == \"browser\" %}\n                {%- set available_builtin_tools.browser = true %}\n            {%- elif tool == \"python\" %}\n                {%- set available_builtin_tools.python = true %}\n            {%- endif %}\n        {%- endfor %}\n        {{- render_builtin_tools(available_builtin_tools.browser, available_builtin_tools.python) }}\n    {%- endif -%}\n    {{- \"# Valid channels: analysis, commentary, final. Channel must be included for every message.\" }}\n    {%- if tools -%}\n        {{- \"\\nCalls to these tools must go to the commentary channel: 'functions'.\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- Main Template Logic ================================================= #}\n{#- Set defaults #}\n\n{#- Render system message #}\n{{- \"<|start|>system<|message|>\" }}\n{{- build_system_message() }}\n{{- \"<|end|>\" }}\n\n{#- Extract developer message #}\n{%- if messages[0].role == \"developer\" or messages[0].role == \"system\" %}\n    {%- set developer_message = messages[0].content %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set developer_message = \"\" %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n\n{#- Render developer message #}\n{%- if developer_message or tools %}\n    {{- \"<|start|>developer<|message|>\" }}\n    {%- if developer_message %}\n        {{- \"# Instructions\\n\\n\" }}\n        {{- developer_message }}\n        {{- \"\\n\\n\" }}\n    {%- endif %}\n    {%- if tools -%}\n        {{- \"# Tools\\n\\n\" }}\n        {{- render_tool_namespace(\"functions\", tools) }}\n    {%- endif -%}\n    {{- \"<|end|>\" }}\n{%- endif %}\n\n{#- Render messages #}\n{%- set last_tool_call = namespace(name=none) %}\n{%- for message in loop_messages -%}\n    {#- At this point only assistant/user/tool messages should remain #}\n    {%- if message.role == 'assistant' -%}\n        {#- Checks to ensure the messages are being passed in the format we expect #}\n        {%- if \"content\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.content or \"<|channel|>final<|message|>\" in message.content %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the content field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"thinking\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.thinking or \"<|channel|>final<|message|>\" in message.thinking %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the thinking field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"tool_calls\" in message %}\n            {#- We need very careful handling here - we want to drop the tool call analysis message if the model #}\n            {#- has output a later <|final|> message, but otherwise we want to retain it. This is the only case #}\n            {#- when we render CoT/analysis messages in inference. #}\n            {%- set future_final_message = namespace(found=false) %}\n            {%- for future_message in loop_messages[loop.index:] %}\n                {%- if future_message.role == 'assistant' and \"tool_calls\" not in future_message %}\n                    {%- set future_final_message.found = true %}\n                {%- endif %}\n            {%- endfor %}\n            {#- We assume max 1 tool call per message, and so we infer the tool call name #}\n            {#- in \"tool\" messages from the most recent assistant tool call name #}\n            {%- set tool_call = message.tool_calls[0] %}\n            {%- if tool_call.function %}\n                {%- set tool_call = tool_call.function %}\n            {%- endif %}\n            {%- if message.content and message.thinking %}\n                {{- raise_exception(\"Cannot pass both content and thinking in an assistant message with tool calls! Put the analysis message in one or the other, but not both.\") }}\n            {%- elif message.content and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.content + \"<|end|>\" }}\n            {%- elif message.thinking and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {{- \"<|start|>assistant to=\" }}\n            {{- \"functions.\" + tool_call.name + \"<|channel|>commentary \" }}\n            {{- (tool_call.content_type if tool_call.content_type is defined else \"json\") + \"<|message|>\" }}\n            {{- tool_call.arguments|tojson }}\n            {{- \"<|call|>\" }}\n            {%- set last_tool_call.name = tool_call.name %}\n        {%- elif loop.last and not add_generation_prompt %}\n            {#- Only render the CoT if the final turn is an assistant turn and add_generation_prompt is false #}\n            {#- This is a situation that should only occur in training, never in inference. #}\n            {%- if \"thinking\" in message %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {#- <|return|> indicates the end of generation, but <|end|> does not #}\n            {#- <|return|> should never be an input to the model, but we include it as the final token #}\n            {#- when training, so the model learns to emit it. #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|return|>\" }}\n        {%- else %}\n            {#- CoT is dropped during all previous turns, so we never render it for inference #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|end|>\" }}\n            {%- set last_tool_call.name = none %}\n        {%- endif %}\n    {%- elif message.role == 'tool' -%}\n        {%- if last_tool_call.name is none %}\n            {{- raise_exception(\"Message has tool role, but there was no previous assistant message with a tool call!\") }}\n        {%- endif %}\n        {{- \"<|start|>functions.\" + last_tool_call.name }}\n        {{- \" to=assistant<|channel|>commentary<|message|>\" + message.content|tojson + \"<|end|>\" }}\n    {%- elif message.role == 'user' -%}\n        {{- \"<|start|>user<|message|>\" + message.content + \"<|end|>\" }}\n    {%- endif -%}\n{%- endfor -%}\n\n{#- Generation prompt #}\n{%- if add_generation_prompt -%}\n<|start|>assistant\n{%- endif -%}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.8
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 40
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.8
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 40.6267619017707,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 5.809,
+                  "totalTimeSec": 16.295,
+                  "promptTokensCount": 1374,
+                  "predictedTokensCount": 662,
+                  "totalTokensCount": 2036
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1763039770299-0.2237689725679436",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Returns null, plus there is no ID column. "
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "openai/gpt-oss-20b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1763039832117-0.007948316081412776",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "We need to adjust: use substring_index? Use regexp_substr with capturing group. MySQL 8 supports regex functions. We can use substring_index to get part after last dot. Use locate? Approach: extract URL, then take rightmost extension: use substring_index(reverse?) maybe:\n\nSELECT id? no id. So just return file_ext. Use regexp_substr(text, '\\\\.([a-zA-Z0-9]+)(?:\\\\?|$)') capturing group but regexp_substr returns whole match. To get group, use REGEXP_SUBSTR with subexpression parameter? MySQL 8 supports REGEXP_SUBSTR(str, pattern, pos, occurrence, match_type, subexpr). So we can use subexpr=1. Provide pattern: '\\\\.([a-zA-Z0-9]+)(?:\\\\?|$)'. Then subexpr=1 returns the captured group. So:\n\nSELECT REGEXP_SUBSTR(text, '\\\\.([a-zA-Z0-9]+)(?:\\\\?|$)', 1, 1, NULL, 1) AS file_ext FROM emails WHERE ...\n\nAlso no id. So just that.",
+                  "fromDraftModel": false,
+                  "tokensCount": 233,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "prefix": "<|channel|>analysis<|message|>",
+              "suffix": "<|end|>",
+              "style": {
+                "type": "thinking",
+                "ended": true,
+                "title": "Thought for 5.48 seconds"
+              }
+            },
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1763039837819-0.13262235456642257",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<|start|>assistant<|channel|>final<|message|>",
+                  "fromDraftModel": false,
+                  "tokensCount": 6,
+                  "isStructural": true
+                },
+                {
+                  "type": "text",
+                  "text": "`REGEXP_SUBSTR()` in MySQL 8 can return a **captured group** if you give it the *subexpression* argument.  \nBelow is a minimal query that pulls only the file‑extension from every `loadFile…` URL that appears in your e‑mail body.\n\n```sql\n/* 1️⃣ Find the first dot (.) after “loadFile” and capture everything up to\n    a “?” or the end of the string.  The `1` at the end tells MySQL to return\n    only that captured group (the extension). */\nSELECT\n       REGEXP_SUBSTR(\n           text,\n           '\\\\.([a-zA-Z0-9]+)(?:\\\\?|$)',   -- pattern\n           1,                              -- start position\n           1,                              -- first occurrence\n           NULL,                           -- default match type (case‑sensitive)\n           1                               -- subexpression #1 (the extension)\n       ) AS file_ext\nFROM   emails\nWHERE  stamp > 20250101000000\n  AND  text LIKE '%cte-attachments%loadFile%'\nLIMIT 10;\n```\n\n### What each part does\n\n| Part | Purpose |\n|------|---------|\n| `\\\\.([a-zA-Z0-9]+)` | Looks for a dot followed by one or more alphanumeric characters (the extension). |\n| `(?:\\\\?|$)` | Makes sure the match stops before a query‑string (`?`) or at the end of the string. |\n| `1` (after pattern) | Start searching from the first character. |\n| `1` (occurrence) | Return the first match only. |\n| `NULL` (match type) | Use default case‑sensitive matching. |\n| `1` (subexpression) | Return only the first captured group – i.e., the extension itself. |\n\n### Result\n\n| file_ext |\n|----------|\n| png |\n| jpg |\n| mp4 |\n| … |\n\nIf you want the full URL as well, add another `REGEXP_SUBSTR()` call (without the subexpression argument) and keep both columns in the `SELECT` list.",
+                  "fromDraftModel": false,
+                  "tokensCount": 447,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "openai/gpt-oss-20b",
+                "identifier": "openai/gpt-oss-20b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{#-\n  In addition to the normal inputs of `messages` and `tools`, this template also accepts the\n  following kwargs:\n  - \"builtin_tools\": A list, can contain \"browser\" and/or \"python\".\n  - \"model_identity\": A string that optionally describes the model identity.\n  - \"reasoning_effort\": A string that describes the reasoning effort, defaults to \"medium\".\n #}\n\n{#- Tool Definition Rendering ============================================== #}\n{%- macro render_typescript_type(param_spec, required_params, is_nullable=false) -%}\n    {%- if param_spec.type == \"array\" -%}\n        {%- if param_spec['items'] -%}\n            {%- if param_spec['items']['type'] == \"string\" -%}\n                {{- \"string[]\" }}\n            {%- elif param_spec['items']['type'] == \"number\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"integer\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"boolean\" -%}\n                {{- \"boolean[]\" }}\n            {%- else -%}\n                {%- set inner_type = render_typescript_type(param_spec['items'], required_params) -%}\n                {%- if inner_type == \"object | object\" or inner_type|length > 50 -%}\n                    {{- \"any[]\" }}\n                {%- else -%}\n                    {{- inner_type + \"[]\" }}\n                {%- endif -%}\n            {%- endif -%}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- else -%}\n            {{- \"any[]\" }}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type is defined and param_spec.type is iterable and param_spec.type is not string and param_spec.type is not mapping and param_spec.type[0] is defined -%}\n        {#- Handle array of types like [\"object\", \"object\"] from Union[dict, list] #}\n        {%- if param_spec.type | length > 1 -%}\n            {{- param_spec.type | join(\" | \") }}\n        {%- else -%}\n            {{- param_spec.type[0] }}\n        {%- endif -%}\n    {%- elif param_spec.oneOf -%}\n        {#- Handle oneOf schemas - check for complex unions and fallback to any #}\n        {%- set has_object_variants = false -%}\n        {%- for variant in param_spec.oneOf -%}\n            {%- if variant.type == \"object\" -%}\n                {%- set has_object_variants = true -%}\n            {%- endif -%}\n        {%- endfor -%}\n        {%- if has_object_variants and param_spec.oneOf|length > 1 -%}\n            {{- \"any\" }}\n        {%- else -%}\n            {%- for variant in param_spec.oneOf -%}\n                {{- render_typescript_type(variant, required_params) -}}\n                {%- if variant.description %}\n                    {{- \"// \" + variant.description }}\n                {%- endif -%}\n                {%- if variant.default is defined %}\n                    {{ \"// default: \" + variant.default|tojson }}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \" | \" }}\n                {% endif -%}\n            {%- endfor -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"string\" -%}\n        {%- if param_spec.enum -%}\n            {{- '\"' + param_spec.enum|join('\" | \"') + '\"' -}}\n        {%- else -%}\n            {{- \"string\" }}\n            {%- if param_spec.nullable %}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"number\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"integer\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"boolean\" -%}\n        {{- \"boolean\" }}\n\n    {%- elif param_spec.type == \"object\" -%}\n        {%- if param_spec.properties -%}\n            {{- \"{\\n\" }}\n            {%- for prop_name, prop_spec in param_spec.properties.items() -%}\n                {{- prop_name -}}\n                {%- if prop_name not in (param_spec.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{ render_typescript_type(prop_spec, param_spec.required or []) }}\n                {%- if not loop.last -%}\n                    {{-\", \" }}\n                {%- endif -%}\n            {%- endfor -%}\n            {{- \"}\" }}\n        {%- else -%}\n            {{- \"object\" }}\n        {%- endif -%}\n    {%- else -%}\n        {{- \"any\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro render_tool_namespace(namespace_name, tools) -%}\n    {{- \"## \" + namespace_name + \"\\n\\n\" }}\n    {{- \"namespace \" + namespace_name + \" {\\n\\n\" }}\n    {%- for tool in tools %}\n        {%- set tool = tool.function %}\n        {{- \"// \" + tool.description + \"\\n\" }}\n        {{- \"type \"+ tool.name + \" = \" }}\n        {%- if tool.parameters and tool.parameters.properties %}\n            {{- \"(_: {\\n\" }}\n            {%- for param_name, param_spec in tool.parameters.properties.items() %}\n                {%- if param_spec.description %}\n                    {{- \"// \" + param_spec.description + \"\\n\" }}\n                {%- endif %}\n                {{- param_name }}\n                {%- if param_name not in (tool.parameters.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{- render_typescript_type(param_spec, tool.parameters.required or []) }}\n                {%- if param_spec.default is defined -%}\n                    {%- if param_spec.enum %}\n                        {{- \", // default: \" + param_spec.default }}\n                    {%- elif param_spec.oneOf %}\n                        {{- \"// default: \" + param_spec.default }}\n                    {%- else %}\n                        {{- \", // default: \" + param_spec.default|tojson }}\n                    {%- endif -%}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \",\\n\" }}\n                {%- else %}\n                    {{- \",\\n\" }}\n                {%- endif -%}\n            {%- endfor %}\n            {{- \"}) => any;\\n\\n\" }}\n        {%- else -%}\n            {{- \"() => any;\\n\\n\" }}\n        {%- endif -%}\n    {%- endfor %}\n    {{- \"} // namespace \" + namespace_name }}\n{%- endmacro -%}\n\n{%- macro render_builtin_tools(browser_tool, python_tool) -%}\n    {%- if browser_tool %}\n        {{- \"## browser\\n\\n\" }}\n        {{- \"// Tool for browsing.\\n\" }}\n        {{- \"// The `cursor` appears in brackets before each browsing display: `[{cursor}]`.\\n\" }}\n        {{- \"// Cite information from the tool using the following format:\\n\" }}\n        {{- \"// `【{cursor}†L{line_start}(-L{line_end})?】`, for example: `【6†L9-L11】` or `【8†L3】`.\\n\" }}\n        {{- \"// Do not quote more than 10 words directly from the tool output.\\n\" }}\n        {{- \"// sources=web (default: web)\\n\" }}\n        {{- \"namespace browser {\\n\\n\" }}\n        {{- \"// Searches for information related to `query` and displays `topn` results.\\n\" }}\n        {{- \"type search = (_: {\\n\" }}\n        {{- \"query: string,\\n\" }}\n        {{- \"topn?: number, // default: 10\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Opens the link `id` from the page indicated by `cursor` starting at line number `loc`, showing `num_lines` lines.\\n\" }}\n        {{- \"// Valid link ids are displayed with the formatting: `【{id}†.*】`.\\n\" }}\n        {{- \"// If `cursor` is not provided, the most recent page is implied.\\n\" }}\n        {{- \"// If `id` is a string, it is treated as a fully qualified URL associated with `source`.\\n\" }}\n        {{- \"// If `loc` is not provided, the viewport will be positioned at the beginning of the document or centered on the most relevant passage, if available.\\n\" }}\n        {{- \"// Use this function without `id` to scroll to a new location of an opened page.\\n\" }}\n        {{- \"type open = (_: {\\n\" }}\n        {{- \"id?: number | string, // default: -1\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"loc?: number, // default: -1\\n\" }}\n        {{- \"num_lines?: number, // default: -1\\n\" }}\n        {{- \"view_source?: boolean, // default: false\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Finds exact matches of `pattern` in the current page, or the page given by `cursor`.\\n\" }}\n        {{- \"type find = (_: {\\n\" }}\n        {{- \"pattern: string,\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"} // namespace browser\\n\\n\" }}\n    {%- endif -%}\n\n    {%- if python_tool %}\n        {{- \"## python\\n\\n\" }}\n        {{- \"Use this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).\\n\\n\" }}\n        {{- \"When you send a message containing Python code to python, it will be executed in a stateful Jupyter notebook environment. python will respond with the output of the execution or time out after 120.0 seconds. The drive at '/mnt/data' can be used to save and persist user files. Internet access for this session is UNKNOWN. Depends on the cluster.\\n\\n\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- System Message Construction ============================================ #}\n{%- macro build_system_message() -%}\n    {%- if model_identity is not defined %}\n        {%- set model_identity = \"You are ChatGPT, a large language model trained by OpenAI.\" %}\n    {%- endif %}\n    {{- model_identity + \"\\n\" }}\n    {{- \"Knowledge cutoff: 2024-06\\n\" }}\n    {{- \"Current date: \" + strftime_now(\"%Y-%m-%d\") + \"\\n\\n\" }}\n    {%- if reasoning_effort is not defined %}\n        {%- set reasoning_effort = \"medium\" %}\n    {%- endif %}\n    {{- \"Reasoning: \" + reasoning_effort + \"\\n\\n\" }}\n    {%- if builtin_tools %}\n        {{- \"# Tools\\n\\n\" }}\n        {%- set available_builtin_tools = namespace(browser=false, python=false) %}\n        {%- for tool in builtin_tools %}\n            {%- if tool == \"browser\" %}\n                {%- set available_builtin_tools.browser = true %}\n            {%- elif tool == \"python\" %}\n                {%- set available_builtin_tools.python = true %}\n            {%- endif %}\n        {%- endfor %}\n        {{- render_builtin_tools(available_builtin_tools.browser, available_builtin_tools.python) }}\n    {%- endif -%}\n    {{- \"# Valid channels: analysis, commentary, final. Channel must be included for every message.\" }}\n    {%- if tools -%}\n        {{- \"\\nCalls to these tools must go to the commentary channel: 'functions'.\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- Main Template Logic ================================================= #}\n{#- Set defaults #}\n\n{#- Render system message #}\n{{- \"<|start|>system<|message|>\" }}\n{{- build_system_message() }}\n{{- \"<|end|>\" }}\n\n{#- Extract developer message #}\n{%- if messages[0].role == \"developer\" or messages[0].role == \"system\" %}\n    {%- set developer_message = messages[0].content %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set developer_message = \"\" %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n\n{#- Render developer message #}\n{%- if developer_message or tools %}\n    {{- \"<|start|>developer<|message|>\" }}\n    {%- if developer_message %}\n        {{- \"# Instructions\\n\\n\" }}\n        {{- developer_message }}\n        {{- \"\\n\\n\" }}\n    {%- endif %}\n    {%- if tools -%}\n        {{- \"# Tools\\n\\n\" }}\n        {{- render_tool_namespace(\"functions\", tools) }}\n    {%- endif -%}\n    {{- \"<|end|>\" }}\n{%- endif %}\n\n{#- Render messages #}\n{%- set last_tool_call = namespace(name=none) %}\n{%- for message in loop_messages -%}\n    {#- At this point only assistant/user/tool messages should remain #}\n    {%- if message.role == 'assistant' -%}\n        {#- Checks to ensure the messages are being passed in the format we expect #}\n        {%- if \"content\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.content or \"<|channel|>final<|message|>\" in message.content %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the content field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"thinking\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.thinking or \"<|channel|>final<|message|>\" in message.thinking %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the thinking field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"tool_calls\" in message %}\n            {#- We need very careful handling here - we want to drop the tool call analysis message if the model #}\n            {#- has output a later <|final|> message, but otherwise we want to retain it. This is the only case #}\n            {#- when we render CoT/analysis messages in inference. #}\n            {%- set future_final_message = namespace(found=false) %}\n            {%- for future_message in loop_messages[loop.index:] %}\n                {%- if future_message.role == 'assistant' and \"tool_calls\" not in future_message %}\n                    {%- set future_final_message.found = true %}\n                {%- endif %}\n            {%- endfor %}\n            {#- We assume max 1 tool call per message, and so we infer the tool call name #}\n            {#- in \"tool\" messages from the most recent assistant tool call name #}\n            {%- set tool_call = message.tool_calls[0] %}\n            {%- if tool_call.function %}\n                {%- set tool_call = tool_call.function %}\n            {%- endif %}\n            {%- if message.content and message.thinking %}\n                {{- raise_exception(\"Cannot pass both content and thinking in an assistant message with tool calls! Put the analysis message in one or the other, but not both.\") }}\n            {%- elif message.content and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.content + \"<|end|>\" }}\n            {%- elif message.thinking and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {{- \"<|start|>assistant to=\" }}\n            {{- \"functions.\" + tool_call.name + \"<|channel|>commentary \" }}\n            {{- (tool_call.content_type if tool_call.content_type is defined else \"json\") + \"<|message|>\" }}\n            {{- tool_call.arguments|tojson }}\n            {{- \"<|call|>\" }}\n            {%- set last_tool_call.name = tool_call.name %}\n        {%- elif loop.last and not add_generation_prompt %}\n            {#- Only render the CoT if the final turn is an assistant turn and add_generation_prompt is false #}\n            {#- This is a situation that should only occur in training, never in inference. #}\n            {%- if \"thinking\" in message %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {#- <|return|> indicates the end of generation, but <|end|> does not #}\n            {#- <|return|> should never be an input to the model, but we include it as the final token #}\n            {#- when training, so the model learns to emit it. #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|return|>\" }}\n        {%- else %}\n            {#- CoT is dropped during all previous turns, so we never render it for inference #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|end|>\" }}\n            {%- set last_tool_call.name = none %}\n        {%- endif %}\n    {%- elif message.role == 'tool' -%}\n        {%- if last_tool_call.name is none %}\n            {{- raise_exception(\"Message has tool role, but there was no previous assistant message with a tool call!\") }}\n        {%- endif %}\n        {{- \"<|start|>functions.\" + last_tool_call.name }}\n        {{- \" to=assistant<|channel|>commentary<|message|>\" + message.content|tojson + \"<|end|>\" }}\n    {%- elif message.role == 'user' -%}\n        {{- \"<|start|>user<|message|>\" + message.content + \"<|end|>\" }}\n    {%- endif -%}\n{%- endfor -%}\n\n{#- Generation prompt #}\n{%- if add_generation_prompt -%}\n<|start|>assistant\n{%- endif -%}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.8
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 40
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.8
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 40.83086627438681,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 8.107,
+                  "totalTimeSec": 16.924,
+                  "promptTokensCount": 2007,
+                  "predictedTokensCount": 691,
+                  "totalTokensCount": 2698
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1763039848690-0.6660102054099439",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "[42000][1582] Incorrect parameter count in the call to native function 'REGEXP_SUBSTR'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1763039895340-0.003735206764380994",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "MySQL REGEXP_SUBSTR syntax: regexp_substr(str, pattern[, pos[, occurrence[, match_type[, subexpr]]]]) 6 arguments optional. We used 5? we had 5 plus subexpr => 6. But error says incorrect parameter count. Maybe using MySQL version earlier than 8.0.19? Check. In MySQL 8, signature is: REGEXP_SUBSTR(str, pattern[, pos[, occurrence[, match_type[, subexpr]]]]) – yes 6 optional. We passed 6? we gave pattern,1,1,NULL,1 – that's 5 after pattern. Wait: pattern is second arg; we gave: pattern,1,1,NULL,1 – that's 5. Need match_type argument before subexpr: we gave NULL as match_type, then 1 as subexpr – that's correct. So 6 args total? Actually list: str, pattern, pos, occurrence, match_type, subexpr. We gave 5 after pattern: 1 (pos), 1 (occurrence), NULL (match_type), 1 (subexpr) => that's 4 after pattern? Wait count: pattern is second arg; we have args: str (1), pattern(2), 1(pos)(3), 1(occurrence)(4), NULL(match_type)(5), 1(subexpr)(6). That's 6 args. But we omitted maybe the default for pos? We did provide all. So why error? Maybe MySQL version doesn't support subexpr argument until 8.0.17? Actually subexpression added in 8.0.13? But error indicates wrong param count, maybe MySQL version < 8.0.19 where subexpr not supported. In that case we can use SUBSTRING_INDEX after extracting URL.\n\nAlternative: extract extension using substring_index(reverse...). Approach:\n\n1. Extract URL with regexp_substr without subexpr.\n2. Reverse string and get part before first '.' then reverse back.\n\nSimpler: use substring_index on the URL to get last part after '/'. Then take rightmost part. Let's craft:\n\nSELECT\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) as url_part\nFROM ...\n\nBut we need extension: use substring_index(url_part, '.', -1). Let's compose:\n\nSELECT\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS url_part,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS full_url,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp2,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp3,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp4,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp5,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp6,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp7,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp8,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp9,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp10,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp11,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp12,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp13,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp14,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp15,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp16,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp17,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp18,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp19,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp20,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp21,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp22,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp23,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp24,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp25,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp26,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp27,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp28,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp29,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp30,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp31,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp32,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp33,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp34,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp35,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp36,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp37,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp38,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp39,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp40,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp41,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp42,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp43,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp44,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp45,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp46,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp47,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp48,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp49,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp50,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp51,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp52,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp53,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp54,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp55,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp56,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp57,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp58,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp59,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp60,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp61,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp62,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp63,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp64,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp65,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp66,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp67,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp68,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp69,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp70,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp71,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp72,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp73,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp74,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp75,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp76,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp77,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp78,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp79,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp80,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp81,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp82,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp83,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp84,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp85,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp86,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp87,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp88,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp89,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp90,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp91,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp92,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp93,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp94,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp95,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp96,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp97,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp98,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp99,\n  SUBSTRING_INDEX(SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp100;\n```\n\nThat is obviously wrong. Let's provide correct solution.\n\nUse `SUBSTRING_INDEX` twice: first get part after last '?' then get part after last '.'.\n\n```sql\nSELECT\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS url_part,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS full_url,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp2,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp3,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp4,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp5,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp6,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp7,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp8,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp9,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp10,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp11,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp12,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp13,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp14,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp15,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp16,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp17,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp18,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp19,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp20,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp21,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp22,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp23,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp24,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp25,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp26,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp27,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp28,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp29,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp30,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp31,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp32,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp33,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp34,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp35,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp36,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp37,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp38,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp39,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp40,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp41,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp42,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp43,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp44,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp45,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp46,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp47,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp48,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp49,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp50,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp51,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp52,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp53,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp54,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp55,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp56,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp57,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp58,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp59,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp60,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp61,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp62,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp63,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp64,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp65,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp66,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp67,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp68,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp69,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp70,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp71,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp72,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp73,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp74,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), '?', 1) AS tmp75,\n  SUBSTRING_INDEX(\n    SUBSTRING_INDEX(text, 'loadFile', -1), ... etc\n\n```\n\nStop. This is going nowhere.\n\nLet's craft correct minimal solution using standard functions: `SUBSTRING_INDEX` and `REVERSE`.\n\n```\nSELECT\n  REVERSE(SUBSTRING_INDEX(REVERSE(\n        SUBSTRING_INDEX(text, 'loadFile', -1)), '.', 1)) AS file_ext\nFROM emails\nWHERE stamp > 20250101000000\n  AND text LIKE '%cte-attachments%loadFile%'\nLIMIT 10;\n```\n\nExplanation: `SUBSTRING_INDEX(text, 'loadFile', -1)` gets the part after last occurrence of \"loadFile\". Then reverse it, take substring up to first '.', giving reversed extension; reverse back.\n\nLet's provide that.",
+                  "fromDraftModel": false,
+                  "tokensCount": 5410,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "style": {
+                "type": "thinking",
+                "ended": true,
+                "title": "Thought for 2 minutes 31 seconds"
+              },
+              "prefix": "<|channel|>analysis<|message|>",
+              "suffix": "<|end|>"
+            },
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1763040047169-0.7227122236930363",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<|start|>assistant<|channel|>final<|message|>",
+                  "fromDraftModel": false,
+                  "tokensCount": 6,
+                  "isStructural": true
+                },
+                {
+                  "type": "text",
+                  "text": "`REGEXP_SUBSTR()` with a sub‑expression is only available in MySQL 8.0.17+.  \nIf you’re on an earlier release (or just want a portable solution) you can\nextract the file‑extension with ordinary string functions:\n\n```sql\n/* 1️⃣ Grab everything that follows the last “loadFile” in the text   */\nSELECT\n    /* 2️⃣ Reverse that part, take everything up to the first '.'      */\n    REVERSE(\n        SUBSTRING_INDEX(\n            REVERSE(\n                /* part after the last “loadFile” */\n                SUBSTRING_INDEX(text, 'loadFile', -1)\n            ),\n            '.', 1\n        )\n    )   AS file_ext          /* the extension (png, jpg …)           */\nFROM   emails\nWHERE  stamp > 20250101000000\n  AND  text LIKE '%cte-attachments%loadFile%'\nLIMIT 10;\n```\n\n### How it works\n\n| Step | Function | What it does |\n|------|----------|--------------|\n| `SUBSTRING_INDEX(text, 'loadFile', -1)` | Takes the substring that comes **after** the last occurrence of “loadFile”. |\n| `REVERSE(...)` | Reverses that substring so the extension is now at the **start**. |\n| `SUBSTRING_INDEX(..., '.', 1)` | Keeps everything up to the first dot – i.e., the reversed extension. |\n| `REVERSE(...)` | Reverses it back to its original order, giving you just the extension. |\n\nThis returns a single column (`file_ext`) with values such as `png`, `jpg`, `mp4`, etc.  \nNo need for a `REGEXP_SUBSTR()` sub‑expression, and it works on all MySQL 5.7+ releases.",
+                  "fromDraftModel": false,
+                  "tokensCount": 375,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "genInfo": {
+                "indexedModelIdentifier": "openai/gpt-oss-20b",
+                "identifier": "openai/gpt-oss-20b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{#-\n  In addition to the normal inputs of `messages` and `tools`, this template also accepts the\n  following kwargs:\n  - \"builtin_tools\": A list, can contain \"browser\" and/or \"python\".\n  - \"model_identity\": A string that optionally describes the model identity.\n  - \"reasoning_effort\": A string that describes the reasoning effort, defaults to \"medium\".\n #}\n\n{#- Tool Definition Rendering ============================================== #}\n{%- macro render_typescript_type(param_spec, required_params, is_nullable=false) -%}\n    {%- if param_spec.type == \"array\" -%}\n        {%- if param_spec['items'] -%}\n            {%- if param_spec['items']['type'] == \"string\" -%}\n                {{- \"string[]\" }}\n            {%- elif param_spec['items']['type'] == \"number\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"integer\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"boolean\" -%}\n                {{- \"boolean[]\" }}\n            {%- else -%}\n                {%- set inner_type = render_typescript_type(param_spec['items'], required_params) -%}\n                {%- if inner_type == \"object | object\" or inner_type|length > 50 -%}\n                    {{- \"any[]\" }}\n                {%- else -%}\n                    {{- inner_type + \"[]\" }}\n                {%- endif -%}\n            {%- endif -%}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- else -%}\n            {{- \"any[]\" }}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type is defined and param_spec.type is iterable and param_spec.type is not string and param_spec.type is not mapping and param_spec.type[0] is defined -%}\n        {#- Handle array of types like [\"object\", \"object\"] from Union[dict, list] #}\n        {%- if param_spec.type | length > 1 -%}\n            {{- param_spec.type | join(\" | \") }}\n        {%- else -%}\n            {{- param_spec.type[0] }}\n        {%- endif -%}\n    {%- elif param_spec.oneOf -%}\n        {#- Handle oneOf schemas - check for complex unions and fallback to any #}\n        {%- set has_object_variants = false -%}\n        {%- for variant in param_spec.oneOf -%}\n            {%- if variant.type == \"object\" -%}\n                {%- set has_object_variants = true -%}\n            {%- endif -%}\n        {%- endfor -%}\n        {%- if has_object_variants and param_spec.oneOf|length > 1 -%}\n            {{- \"any\" }}\n        {%- else -%}\n            {%- for variant in param_spec.oneOf -%}\n                {{- render_typescript_type(variant, required_params) -}}\n                {%- if variant.description %}\n                    {{- \"// \" + variant.description }}\n                {%- endif -%}\n                {%- if variant.default is defined %}\n                    {{ \"// default: \" + variant.default|tojson }}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \" | \" }}\n                {% endif -%}\n            {%- endfor -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"string\" -%}\n        {%- if param_spec.enum -%}\n            {{- '\"' + param_spec.enum|join('\" | \"') + '\"' -}}\n        {%- else -%}\n            {{- \"string\" }}\n            {%- if param_spec.nullable %}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"number\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"integer\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"boolean\" -%}\n        {{- \"boolean\" }}\n\n    {%- elif param_spec.type == \"object\" -%}\n        {%- if param_spec.properties -%}\n            {{- \"{\\n\" }}\n            {%- for prop_name, prop_spec in param_spec.properties.items() -%}\n                {{- prop_name -}}\n                {%- if prop_name not in (param_spec.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{ render_typescript_type(prop_spec, param_spec.required or []) }}\n                {%- if not loop.last -%}\n                    {{-\", \" }}\n                {%- endif -%}\n            {%- endfor -%}\n            {{- \"}\" }}\n        {%- else -%}\n            {{- \"object\" }}\n        {%- endif -%}\n    {%- else -%}\n        {{- \"any\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro render_tool_namespace(namespace_name, tools) -%}\n    {{- \"## \" + namespace_name + \"\\n\\n\" }}\n    {{- \"namespace \" + namespace_name + \" {\\n\\n\" }}\n    {%- for tool in tools %}\n        {%- set tool = tool.function %}\n        {{- \"// \" + tool.description + \"\\n\" }}\n        {{- \"type \"+ tool.name + \" = \" }}\n        {%- if tool.parameters and tool.parameters.properties %}\n            {{- \"(_: {\\n\" }}\n            {%- for param_name, param_spec in tool.parameters.properties.items() %}\n                {%- if param_spec.description %}\n                    {{- \"// \" + param_spec.description + \"\\n\" }}\n                {%- endif %}\n                {{- param_name }}\n                {%- if param_name not in (tool.parameters.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{- render_typescript_type(param_spec, tool.parameters.required or []) }}\n                {%- if param_spec.default is defined -%}\n                    {%- if param_spec.enum %}\n                        {{- \", // default: \" + param_spec.default }}\n                    {%- elif param_spec.oneOf %}\n                        {{- \"// default: \" + param_spec.default }}\n                    {%- else %}\n                        {{- \", // default: \" + param_spec.default|tojson }}\n                    {%- endif -%}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \",\\n\" }}\n                {%- else %}\n                    {{- \",\\n\" }}\n                {%- endif -%}\n            {%- endfor %}\n            {{- \"}) => any;\\n\\n\" }}\n        {%- else -%}\n            {{- \"() => any;\\n\\n\" }}\n        {%- endif -%}\n    {%- endfor %}\n    {{- \"} // namespace \" + namespace_name }}\n{%- endmacro -%}\n\n{%- macro render_builtin_tools(browser_tool, python_tool) -%}\n    {%- if browser_tool %}\n        {{- \"## browser\\n\\n\" }}\n        {{- \"// Tool for browsing.\\n\" }}\n        {{- \"// The `cursor` appears in brackets before each browsing display: `[{cursor}]`.\\n\" }}\n        {{- \"// Cite information from the tool using the following format:\\n\" }}\n        {{- \"// `【{cursor}†L{line_start}(-L{line_end})?】`, for example: `【6†L9-L11】` or `【8†L3】`.\\n\" }}\n        {{- \"// Do not quote more than 10 words directly from the tool output.\\n\" }}\n        {{- \"// sources=web (default: web)\\n\" }}\n        {{- \"namespace browser {\\n\\n\" }}\n        {{- \"// Searches for information related to `query` and displays `topn` results.\\n\" }}\n        {{- \"type search = (_: {\\n\" }}\n        {{- \"query: string,\\n\" }}\n        {{- \"topn?: number, // default: 10\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Opens the link `id` from the page indicated by `cursor` starting at line number `loc`, showing `num_lines` lines.\\n\" }}\n        {{- \"// Valid link ids are displayed with the formatting: `【{id}†.*】`.\\n\" }}\n        {{- \"// If `cursor` is not provided, the most recent page is implied.\\n\" }}\n        {{- \"// If `id` is a string, it is treated as a fully qualified URL associated with `source`.\\n\" }}\n        {{- \"// If `loc` is not provided, the viewport will be positioned at the beginning of the document or centered on the most relevant passage, if available.\\n\" }}\n        {{- \"// Use this function without `id` to scroll to a new location of an opened page.\\n\" }}\n        {{- \"type open = (_: {\\n\" }}\n        {{- \"id?: number | string, // default: -1\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"loc?: number, // default: -1\\n\" }}\n        {{- \"num_lines?: number, // default: -1\\n\" }}\n        {{- \"view_source?: boolean, // default: false\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Finds exact matches of `pattern` in the current page, or the page given by `cursor`.\\n\" }}\n        {{- \"type find = (_: {\\n\" }}\n        {{- \"pattern: string,\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"} // namespace browser\\n\\n\" }}\n    {%- endif -%}\n\n    {%- if python_tool %}\n        {{- \"## python\\n\\n\" }}\n        {{- \"Use this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).\\n\\n\" }}\n        {{- \"When you send a message containing Python code to python, it will be executed in a stateful Jupyter notebook environment. python will respond with the output of the execution or time out after 120.0 seconds. The drive at '/mnt/data' can be used to save and persist user files. Internet access for this session is UNKNOWN. Depends on the cluster.\\n\\n\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- System Message Construction ============================================ #}\n{%- macro build_system_message() -%}\n    {%- if model_identity is not defined %}\n        {%- set model_identity = \"You are ChatGPT, a large language model trained by OpenAI.\" %}\n    {%- endif %}\n    {{- model_identity + \"\\n\" }}\n    {{- \"Knowledge cutoff: 2024-06\\n\" }}\n    {{- \"Current date: \" + strftime_now(\"%Y-%m-%d\") + \"\\n\\n\" }}\n    {%- if reasoning_effort is not defined %}\n        {%- set reasoning_effort = \"medium\" %}\n    {%- endif %}\n    {{- \"Reasoning: \" + reasoning_effort + \"\\n\\n\" }}\n    {%- if builtin_tools %}\n        {{- \"# Tools\\n\\n\" }}\n        {%- set available_builtin_tools = namespace(browser=false, python=false) %}\n        {%- for tool in builtin_tools %}\n            {%- if tool == \"browser\" %}\n                {%- set available_builtin_tools.browser = true %}\n            {%- elif tool == \"python\" %}\n                {%- set available_builtin_tools.python = true %}\n            {%- endif %}\n        {%- endfor %}\n        {{- render_builtin_tools(available_builtin_tools.browser, available_builtin_tools.python) }}\n    {%- endif -%}\n    {{- \"# Valid channels: analysis, commentary, final. Channel must be included for every message.\" }}\n    {%- if tools -%}\n        {{- \"\\nCalls to these tools must go to the commentary channel: 'functions'.\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- Main Template Logic ================================================= #}\n{#- Set defaults #}\n\n{#- Render system message #}\n{{- \"<|start|>system<|message|>\" }}\n{{- build_system_message() }}\n{{- \"<|end|>\" }}\n\n{#- Extract developer message #}\n{%- if messages[0].role == \"developer\" or messages[0].role == \"system\" %}\n    {%- set developer_message = messages[0].content %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set developer_message = \"\" %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n\n{#- Render developer message #}\n{%- if developer_message or tools %}\n    {{- \"<|start|>developer<|message|>\" }}\n    {%- if developer_message %}\n        {{- \"# Instructions\\n\\n\" }}\n        {{- developer_message }}\n        {{- \"\\n\\n\" }}\n    {%- endif %}\n    {%- if tools -%}\n        {{- \"# Tools\\n\\n\" }}\n        {{- render_tool_namespace(\"functions\", tools) }}\n    {%- endif -%}\n    {{- \"<|end|>\" }}\n{%- endif %}\n\n{#- Render messages #}\n{%- set last_tool_call = namespace(name=none) %}\n{%- for message in loop_messages -%}\n    {#- At this point only assistant/user/tool messages should remain #}\n    {%- if message.role == 'assistant' -%}\n        {#- Checks to ensure the messages are being passed in the format we expect #}\n        {%- if \"content\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.content or \"<|channel|>final<|message|>\" in message.content %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the content field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"thinking\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.thinking or \"<|channel|>final<|message|>\" in message.thinking %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the thinking field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"tool_calls\" in message %}\n            {#- We need very careful handling here - we want to drop the tool call analysis message if the model #}\n            {#- has output a later <|final|> message, but otherwise we want to retain it. This is the only case #}\n            {#- when we render CoT/analysis messages in inference. #}\n            {%- set future_final_message = namespace(found=false) %}\n            {%- for future_message in loop_messages[loop.index:] %}\n                {%- if future_message.role == 'assistant' and \"tool_calls\" not in future_message %}\n                    {%- set future_final_message.found = true %}\n                {%- endif %}\n            {%- endfor %}\n            {#- We assume max 1 tool call per message, and so we infer the tool call name #}\n            {#- in \"tool\" messages from the most recent assistant tool call name #}\n            {%- set tool_call = message.tool_calls[0] %}\n            {%- if tool_call.function %}\n                {%- set tool_call = tool_call.function %}\n            {%- endif %}\n            {%- if message.content and message.thinking %}\n                {{- raise_exception(\"Cannot pass both content and thinking in an assistant message with tool calls! Put the analysis message in one or the other, but not both.\") }}\n            {%- elif message.content and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.content + \"<|end|>\" }}\n            {%- elif message.thinking and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {{- \"<|start|>assistant to=\" }}\n            {{- \"functions.\" + tool_call.name + \"<|channel|>commentary \" }}\n            {{- (tool_call.content_type if tool_call.content_type is defined else \"json\") + \"<|message|>\" }}\n            {{- tool_call.arguments|tojson }}\n            {{- \"<|call|>\" }}\n            {%- set last_tool_call.name = tool_call.name %}\n        {%- elif loop.last and not add_generation_prompt %}\n            {#- Only render the CoT if the final turn is an assistant turn and add_generation_prompt is false #}\n            {#- This is a situation that should only occur in training, never in inference. #}\n            {%- if \"thinking\" in message %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {#- <|return|> indicates the end of generation, but <|end|> does not #}\n            {#- <|return|> should never be an input to the model, but we include it as the final token #}\n            {#- when training, so the model learns to emit it. #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|return|>\" }}\n        {%- else %}\n            {#- CoT is dropped during all previous turns, so we never render it for inference #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|end|>\" }}\n            {%- set last_tool_call.name = none %}\n        {%- endif %}\n    {%- elif message.role == 'tool' -%}\n        {%- if last_tool_call.name is none %}\n            {{- raise_exception(\"Message has tool role, but there was no previous assistant message with a tool call!\") }}\n        {%- endif %}\n        {{- \"<|start|>functions.\" + last_tool_call.name }}\n        {{- \" to=assistant<|channel|>commentary<|message|>\" + message.content|tojson + \"<|end|>\" }}\n    {%- elif message.role == 'user' -%}\n        {{- \"<|start|>user<|message|>\" + message.content + \"<|end|>\" }}\n    {%- endif -%}\n{%- endfor -%}\n\n{#- Generation prompt #}\n{%- if add_generation_prompt -%}\n<|start|>assistant\n{%- endif -%}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.8
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 40
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.8
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 35.43016764617311,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 22.315,
+                  "totalTimeSec": 163.59,
+                  "promptTokensCount": 2726,
+                  "predictedTokensCount": 5796,
+                  "totalTokensCount": 8522
+                }
+              }
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1763040058491-0.5952080644941863",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ],
+          "senderInfo": {
+            "senderName": "openai/gpt-oss-20b"
+          }
+        }
+      ],
+      "currentlySelected": 0
+    }
+  ],
+  "usePerChatPredictionConfig": true,
+  "perChatPredictionConfig": {
+    "fields": []
+  },
+  "clientInput": "",
+  "clientInputFiles": [],
+  "userFilesSizeBytes": 0,
+  "lastUsedModel": {
+    "identifier": "openai/gpt-oss-20b",
+    "indexedModelIdentifier": "openai/gpt-oss-20b",
+    "instanceLoadTimeConfig": {
+      "fields": []
+    },
+    "instanceOperationTimeConfig": {
+      "fields": []
+    }
+  },
+  "notes": [],
+  "plugins": [],
+  "pluginConfigs": {},
+  "disabledPluginTools": [],
+  "looseFiles": []
+}

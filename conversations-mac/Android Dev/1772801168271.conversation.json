@@ -1,0 +1,296 @@
+{
+  "name": "Semantic Versioning Explained",
+  "pinned": false,
+  "createdAt": 1772801168271,
+  "preset": "",
+  "tokenCount": 989,
+  "userLastMessagedAt": 1772801207925,
+  "assistantLastMessagedAt": 1772801215735,
+  "systemPrompt": "",
+  "messages": [
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Explain semantic versioning. "
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "liquid/lfm2-1.2b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1772801181526-0.08113622716558178",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Semantic Versioning (SemVer) is a widely used versioning scheme for software that provides a standardized way to communicate changes in software between different versions. It uses a three-part number format: MAJOR.MINOR.PATCH.\n\n1. MAJOR version: Incremented when there are incompatible API changes, meaning that existing code that relies on previous versions may break after upgrading to a new version. This typically includes changes to the API, data structures, or underlying implementation.\n\n2. MINOR version: Incremented when new functionality is added in a backward-compatible manner. This means that existing code should continue to work after upgrading, but new features may break compatibility with older versions.\n\n3. PATCH version: Incremented when backward-compatible bug fixes are made. This means that changes do not affect the API, but they may introduce issues for users who rely on specific behaviors or implementations.\n\nSemantic Versioning follows these rules:\n- MAJOR version increments only when breaking changes are introduced.\n- MINOR version increments when new functionality is added without breaking compatibility.\n- PATCH version increments only for bug fixes that do not affect the API.\n\nThis system helps developers and users understand the nature of changes in a software release, allowing them to make informed decisions about upgrading or maintaining their software.",
+                  "fromDraftModel": false,
+                  "tokensCount": 276,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "liquid/lfm2-1.2b",
+                "identifier": "liquid/lfm2-1.2b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{{bos_token}}{% if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content'] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = 'You are a helpful assistant trained by Liquid AI.' %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{%- if tools %}\n    {%- set system_message = system_message + '\\nList of tools: <|tool_list_start|>' + (tools | tojson) + '<|tool_list_end|>' %}\n{%- endif %}\n{{- '<|im_start|>system\\n' + system_message + '<|im_end|>\\n'}}\n{%- for message in loop_messages %}\n    {%- if message['role'] == 'user' %}\n        {{- '<|im_start|>user\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- elif message['role'] == 'assistant' %}\n        {{- '<|im_start|>assistant\\n'}}\n        {%- if message.get('tool_calls') %}\n            {# ───── create a list to append tool calls to ───── #}\n            {%- set tool_calls_ns = namespace(tool_calls=[])%}\n            {%- for tool_call in message['tool_calls'] %}\n                {%- set func_name = tool_call['function']['name'] %}\n                {%- set func_args = tool_call['function']['arguments'] %}\n                {# ───── create a list of func_arg strings to accumulate for each tool call ───── #}\n                {%- set args_ns = namespace(arg_strings=[])%}\n                {%- for arg_name, arg_value in func_args.items() %}\n                    {%- set formatted_arg_value = arg_value %}\n                    {%- if arg_value is string %}\n                      {%- set formatted_arg_value = '\"' + arg_value + '\"' %}\n                    {%- elif arg_value is mapping %}\n                      {%- set formatted_arg_value = arg_value | tojson %}\n                    {%- elif arg_value is iterable %}\n                      {%- set formatted_arg_value = '[' + arg_value + ']' %}\n                    {%- endif %}\n                    {# ───── format each argument key,value pair ───── #}\n                    {%- set args_ns.arg_strings =  args_ns.arg_strings + [(arg_name + '=' + formatted_arg_value)] %}\n                {%- endfor %}\n                {# ───── append each formatted tool call ───── #}\n                {%- set tool_calls_ns.tool_calls = tool_calls_ns.tool_calls + [(func_name + '(' + (args_ns.arg_strings | join(\",\")) + ')' )]%}\n            {%- endfor %}\n            {# ───── format the final tool calls ───── #}\n            {{-'<|tool_call_start|>[' + (tool_calls_ns.tool_calls | join(\",\")) + ']<|tool_call_end|>'}}\n            {%- if message['content'] %}\n                {{-message['content']}}\n            {%- endif %}\n        {%- else %}\n            {{-message['content']}}\n        {%- endif %}\n        {{-'<|im_end|>\\n'}}\n    {%- elif message['role'] == 'tool' %}\n        {{-'<|im_start|>tool\\n<|tool_response_start|>' + message['content'] + '<|tool_response_end|><|im_end|>\\n'}}\n    {%- elif message['role'] == 'system' %}\n        {{-'<|im_start|>system\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{-'<|im_start|>assistant\\n'}}\n{%- endif %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.15
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 100
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.3
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 107.99177295125993,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 7.44,
+                  "totalTimeSec": 2.563,
+                  "promptTokensCount": 31,
+                  "predictedTokensCount": 277,
+                  "totalTokensCount": 308
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1772801184055-0.6563106644186321",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "examples"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1772801209084-0.5741037408722713",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Certainly! Here are some examples to illustrate how Semantic Versioning works:\n\n### Example 1: Simple Increment\n- **Version:** `1.0.0`\n- **Description:** This is the initial release with no breaking changes.\n- **Changes:** No new features, no bug fixes, and no API changes.\n\n### Example 2: Minor Version\n- **Version:** `1.0.1`\n- **Description:** Added a new feature.\n- **Changes:** The new feature is backward-compatible, so existing code should work without issues.\n\n### Example 3: Patch Version\n- **Version:** `1.0.2`\n- **Description:** Fixed a bug in the previous version.\n- **Changes:** The bug fix is backward-compatible, so existing code continues to work as expected.\n\n### Example 4: Major Version\n- **Version:** `2.0.0`\n- **Description:** Significant changes, including a new API.\n- **Changes:** Breaking changes were introduced, so existing code may need to be updated.\n\n### Example 5: Multiple Releases\n- **Version:** `1.0.0.alpha.1`\n- **Description:** Alpha version with minor changes.\n- **Alpha 1:** Minor bug fixes and improvements.\n- **Patch 1.0.1:** New feature added.\n- **Release Candidate 1.0.2:** Finalized for production, with no breaking changes.\n\n### Example 6: Deprecation\n- **Version:** `1.0.3`\n- **Description:** Deprecated feature will be removed in the next major release.\n- **Changes:** The deprecated feature is still available but should not be used in new code.\n\n### Example 7: Multiple Major Versions\n- **Version:** `2.1.0`\n- **Description:** Two separate releases with different changes.\n- **Version 2.1.0.alpha.1:** New API changes and a minor bug fix.\n- **Version 2.1.0:** Stable release with no breaking changes, but includes the new API changes.\n\n### Example 8: Multiple Minor Versions\n- **Version:** `1.0.10`\n- **Description:** Multiple minor updates.\n- **Version 1.0.11:** Added a new feature.\n- **Version 1.0.12:** Fixed a bug introduced in version 1.0.11.\n\n### Example 9: Multiple Patch Versions\n- **Version:** `1.0.20`\n- **Description:** Multiple patch updates.\n- **Version 1.0.21:** Fixed a bug introduced in version 1.0.20.\n- **Version 1.0.22:** Minor bug fix.\n\n### Example 10: Combined Version\n- **Version:** `1.0.0.alpha.0`\n- **Description:** Initial release with alpha changes.\n- **Alpha 0.1:** Minor feature additions.\n- **Patch 1.0.1:** Bug fixes.\n\nSemantic Versioning helps developers and users understand the nature of changes in a release, making it easier to manage dependencies and plan for updates.",
+                  "fromDraftModel": false,
+                  "tokensCount": 670,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "genInfo": {
+                "indexedModelIdentifier": "liquid/lfm2-1.2b",
+                "identifier": "liquid/lfm2-1.2b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{{bos_token}}{% if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content'] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = 'You are a helpful assistant trained by Liquid AI.' %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{%- if tools %}\n    {%- set system_message = system_message + '\\nList of tools: <|tool_list_start|>' + (tools | tojson) + '<|tool_list_end|>' %}\n{%- endif %}\n{{- '<|im_start|>system\\n' + system_message + '<|im_end|>\\n'}}\n{%- for message in loop_messages %}\n    {%- if message['role'] == 'user' %}\n        {{- '<|im_start|>user\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- elif message['role'] == 'assistant' %}\n        {{- '<|im_start|>assistant\\n'}}\n        {%- if message.get('tool_calls') %}\n            {# ───── create a list to append tool calls to ───── #}\n            {%- set tool_calls_ns = namespace(tool_calls=[])%}\n            {%- for tool_call in message['tool_calls'] %}\n                {%- set func_name = tool_call['function']['name'] %}\n                {%- set func_args = tool_call['function']['arguments'] %}\n                {# ───── create a list of func_arg strings to accumulate for each tool call ───── #}\n                {%- set args_ns = namespace(arg_strings=[])%}\n                {%- for arg_name, arg_value in func_args.items() %}\n                    {%- set formatted_arg_value = arg_value %}\n                    {%- if arg_value is string %}\n                      {%- set formatted_arg_value = '\"' + arg_value + '\"' %}\n                    {%- elif arg_value is mapping %}\n                      {%- set formatted_arg_value = arg_value | tojson %}\n                    {%- elif arg_value is iterable %}\n                      {%- set formatted_arg_value = '[' + arg_value + ']' %}\n                    {%- endif %}\n                    {# ───── format each argument key,value pair ───── #}\n                    {%- set args_ns.arg_strings =  args_ns.arg_strings + [(arg_name + '=' + formatted_arg_value)] %}\n                {%- endfor %}\n                {# ───── append each formatted tool call ───── #}\n                {%- set tool_calls_ns.tool_calls = tool_calls_ns.tool_calls + [(func_name + '(' + (args_ns.arg_strings | join(\",\")) + ')' )]%}\n            {%- endfor %}\n            {# ───── format the final tool calls ───── #}\n            {{-'<|tool_call_start|>[' + (tool_calls_ns.tool_calls | join(\",\")) + ']<|tool_call_end|>'}}\n            {%- if message['content'] %}\n                {{-message['content']}}\n            {%- endif %}\n        {%- else %}\n            {{-message['content']}}\n        {%- endif %}\n        {{-'<|im_end|>\\n'}}\n    {%- elif message['role'] == 'tool' %}\n        {{-'<|im_start|>tool\\n<|tool_response_start|>' + message['content'] + '<|tool_response_end|><|im_end|>\\n'}}\n    {%- elif message['role'] == 'system' %}\n        {{-'<|im_start|>system\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{-'<|im_start|>assistant\\n'}}\n{%- endif %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.15
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 100
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.3
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 100.15824492204095,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 1.074,
+                  "totalTimeSec": 6.699,
+                  "promptTokensCount": 319,
+                  "predictedTokensCount": 671,
+                  "totalTokensCount": 990
+                }
+              }
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1772801215734-0.09411326487496707",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ],
+          "senderInfo": {
+            "senderName": "liquid/lfm2-1.2b"
+          }
+        }
+      ],
+      "currentlySelected": 0
+    }
+  ],
+  "usePerChatPredictionConfig": true,
+  "perChatPredictionConfig": {
+    "fields": [
+      {
+        "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  "clientInput": "",
+  "clientInputFiles": [],
+  "userFilesSizeBytes": 0,
+  "lastUsedModel": {
+    "identifier": "liquid/lfm2-1.2b",
+    "indexedModelIdentifier": "liquid/lfm2-1.2b",
+    "instanceLoadTimeConfig": {
+      "fields": [
+        {
+          "key": "llm.load.llama.cpuThreadPoolSize",
+          "value": 7
+        },
+        {
+          "key": "llm.load.contextLength",
+          "value": 4096
+        }
+      ]
+    },
+    "instanceOperationTimeConfig": {
+      "fields": []
+    }
+  },
+  "notes": [],
+  "plugins": [],
+  "pluginConfigs": {},
+  "disabledPluginTools": [],
+  "looseFiles": []
+}

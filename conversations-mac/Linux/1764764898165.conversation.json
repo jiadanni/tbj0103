@@ -1,0 +1,146 @@
+{
+  "name": "Bash Cursor Deletion",
+  "pinned": false,
+  "createdAt": 1764764898170,
+  "preset": "",
+  "tokenCount": 288,
+  "userLastMessagedAt": 1764764913024,
+  "systemPrompt": "",
+  "messages": [
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "delete cursor to end of line bash"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1764764916002-0.7865883042798665",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In Bash, you can delete the text from the current cursor position to the end of the line using a specific keyboard shortcut. If you're using `bash` in an interactive shell, such as when you're working in the terminal or within a command-line interface like `tmux` or `screen`, you can typically use:\n\n- **Delete key**: On many keyboards, pressing the `Delete` key (or `Backspace` on some systems) will delete characters from the cursor position to the end of the line.\n\nHowever, if your keyboard doesn't have a dedicated `Delete` key that performs this action directly in Bash or you want more control over these shortcuts, you can configure key bindings using shell options. For example, in many terminal emulators:\n\n- **Ctrl + K**: This combination deletes from the cursor to the end of the line.\n\nIf you find yourself frequently needing custom shortcuts and your default keyboard configuration doesn't support it natively, consider configuring your terminal emulator or checking its documentation for additional keybinding configurations.\n\nIn case these don't work directly due to different terminal emulators (like `gnome-terminal`, `konsole`, etc.), you may need to adjust settings in the preferences of the terminal application itself. Each terminal might have a slightly different way of handling keyboard shortcuts, so consulting your specific terminal emulator’s documentation could provide additional guidance.",
+                  "fromDraftModel": false,
+                  "tokensCount": 274,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "genInfo": {
+                "indexedModelIdentifier": "microsoft/phi-4",
+                "identifier": "microsoft/phi-4",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.llama.cpuThreadPoolSize",
+                      "value": 7
+                    },
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    },
+                    {
+                      "key": "llm.load.llama.acceleration.offloadRatio",
+                      "value": 1
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{% for message in messages %}{% if (message['role'] == 'system') %}{{'<|im_start|>system<|im_sep|>' + message['content'] + '<|im_end|>'}}{% elif (message['role'] == 'user') %}{{'<|im_start|>user<|im_sep|>' + message['content'] + '<|im_end|>'}}{% elif (message['role'] == 'assistant') %}{{'<|im_start|>assistant<|im_sep|>' + message['content'] + '<|im_end|>'}}{% endif %}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant<|im_sep|>' }}{% endif %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.llama.cpuThreads",
+                      "value": 7
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 12.650709046940662,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 2.468,
+                  "totalTimeSec": 21.738,
+                  "promptTokensCount": 14,
+                  "predictedTokensCount": 275,
+                  "totalTokensCount": 289
+                }
+              }
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1764764937372-0.8730858158197599",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ],
+          "senderInfo": {
+            "senderName": "microsoft/phi-4"
+          }
+        }
+      ],
+      "currentlySelected": 0
+    }
+  ],
+  "usePerChatPredictionConfig": true,
+  "perChatPredictionConfig": {
+    "fields": [
+      {
+        "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  "clientInput": "",
+  "clientInputFiles": [],
+  "userFilesSizeBytes": 0,
+  "lastUsedModel": {
+    "identifier": "microsoft/phi-4",
+    "indexedModelIdentifier": "microsoft/phi-4",
+    "instanceLoadTimeConfig": {
+      "fields": []
+    },
+    "instanceOperationTimeConfig": {
+      "fields": []
+    }
+  },
+  "notes": [],
+  "plugins": [],
+  "pluginConfigs": {},
+  "disabledPluginTools": [],
+  "looseFiles": [],
+  "assistantLastMessagedAt": 1764764939199
+}

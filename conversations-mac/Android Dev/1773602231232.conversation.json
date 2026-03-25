@@ -1,0 +1,180 @@
+{
+  "name": "Conditional Statements Explained",
+  "pinned": false,
+  "createdAt": 1773602231232,
+  "preset": "",
+  "tokenCount": 381,
+  "userLastMessagedAt": 1773602240149,
+  "assistantLastMessagedAt": 1773602251699,
+  "systemPrompt": "",
+  "messages": [
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "python else elif"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "liquid/lfm2-1.2b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1773602247525-0.5594515398043056",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Certainly! The `else elif` statement in Python is used to execute a block of code if the preceding conditions (`if`, `elif (condition1)`, etc.) are false. Here's a simple example to illustrate its usage:\n\n```python\nx = 10\n\nif x > 5:\n    print(\"x is greater than 5\")\nelif x == 5:\n    print(\"x is equal to 5\")\nelse:\n    print(\"x is less than 5\")\n```\n\nIn this example, if `x` is greater than 5, the first block will be executed. Since `x` is indeed 10, it will print \"x is greater than 5\". Because this condition is true, the `else` block is skipped.\n\nHere's an expanded version with more conditions:\n\n```python\nx = 7\n\nif x > 10:\n    print(\"x is greater than 10\")\nelif x > 5 and x < 15:\n    print(\"x is between 5 and 15\")\nelif x == 5:\n    print(\"x is equal to 5\")\nelif x == 7:\n    print(\"x is equal to 7\")\nelse:\n    print(\"x is less than 5 or not in the specified range\")\n```\n\nIn this case, since `x` is 7, it will print \"x is between 5 and 15\" because it satisfies the second condition (`x > 5 and x < 15`).\n\nYou can add as many `elif` statements as needed to cover more conditions, and use the `else` block to handle cases where none of the preceding conditions are met.",
+                  "fromDraftModel": false,
+                  "tokensCount": 354,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "liquid/lfm2-1.2b",
+                "identifier": "liquid/lfm2-1.2b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{{bos_token}}{% if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content'] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = 'You are a helpful assistant trained by Liquid AI.' %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{%- if tools %}\n    {%- set system_message = system_message + '\\nList of tools: <|tool_list_start|>' + (tools | tojson) + '<|tool_list_end|>' %}\n{%- endif %}\n{{- '<|im_start|>system\\n' + system_message + '<|im_end|>\\n'}}\n{%- for message in loop_messages %}\n    {%- if message['role'] == 'user' %}\n        {{- '<|im_start|>user\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- elif message['role'] == 'assistant' %}\n        {{- '<|im_start|>assistant\\n'}}\n        {%- if message.get('tool_calls') %}\n            {# ───── create a list to append tool calls to ───── #}\n            {%- set tool_calls_ns = namespace(tool_calls=[])%}\n            {%- for tool_call in message['tool_calls'] %}\n                {%- set func_name = tool_call['function']['name'] %}\n                {%- set func_args = tool_call['function']['arguments'] %}\n                {# ───── create a list of func_arg strings to accumulate for each tool call ───── #}\n                {%- set args_ns = namespace(arg_strings=[])%}\n                {%- for arg_name, arg_value in func_args.items() %}\n                    {%- set formatted_arg_value = arg_value %}\n                    {%- if arg_value is string %}\n                      {%- set formatted_arg_value = '\"' + arg_value + '\"' %}\n                    {%- elif arg_value is mapping %}\n                      {%- set formatted_arg_value = arg_value | tojson %}\n                    {%- elif arg_value is iterable %}\n                      {%- set formatted_arg_value = '[' + arg_value + ']' %}\n                    {%- endif %}\n                    {# ───── format each argument key,value pair ───── #}\n                    {%- set args_ns.arg_strings =  args_ns.arg_strings + [(arg_name + '=' + formatted_arg_value)] %}\n                {%- endfor %}\n                {# ───── append each formatted tool call ───── #}\n                {%- set tool_calls_ns.tool_calls = tool_calls_ns.tool_calls + [(func_name + '(' + (args_ns.arg_strings | join(\",\")) + ')' )]%}\n            {%- endfor %}\n            {# ───── format the final tool calls ───── #}\n            {{-'<|tool_call_start|>[' + (tool_calls_ns.tool_calls | join(\",\")) + ']<|tool_call_end|>'}}\n            {%- if message['content'] %}\n                {{-message['content']}}\n            {%- endif %}\n        {%- else %}\n            {{-message['content']}}\n        {%- endif %}\n        {{-'<|im_end|>\\n'}}\n    {%- elif message['role'] == 'tool' %}\n        {{-'<|im_start|>tool\\n<|tool_response_start|>' + message['content'] + '<|tool_response_end|><|im_end|>\\n'}}\n    {%- elif message['role'] == 'system' %}\n        {{-'<|im_start|>system\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{-'<|im_start|>assistant\\n'}}\n{%- endif %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.15
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 100
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.3
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 98.2703699861686,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 7.197,
+                  "totalTimeSec": 3.611,
+                  "promptTokensCount": 27,
+                  "predictedTokensCount": 355,
+                  "totalTokensCount": 382
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1773602251077-0.49011420396953276",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    }
+  ],
+  "usePerChatPredictionConfig": true,
+  "perChatPredictionConfig": {
+    "fields": [
+      {
+        "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  "clientInput": "f",
+  "clientInputFiles": [],
+  "userFilesSizeBytes": 0,
+  "lastUsedModel": {
+    "identifier": "microsoft/phi-4",
+    "indexedModelIdentifier": "microsoft/phi-4",
+    "instanceLoadTimeConfig": {
+      "fields": [
+        {
+          "key": "llm.load.llama.cpuThreadPoolSize",
+          "value": 7
+        },
+        {
+          "key": "llm.load.contextLength",
+          "value": 4096
+        },
+        {
+          "key": "llm.load.llama.flashAttention",
+          "value": true
+        },
+        {
+          "key": "llm.load.llama.acceleration.offloadRatio",
+          "value": 1
+        }
+      ]
+    },
+    "instanceOperationTimeConfig": {
+      "fields": []
+    }
+  },
+  "notes": [],
+  "plugins": [],
+  "pluginConfigs": {},
+  "disabledPluginTools": [],
+  "looseFiles": []
+}
