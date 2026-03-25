@@ -4,10 +4,12 @@ import {
   Panel, PanelGroup, PanelResizeHandle,
 } from "react-resizable-panels";
 import { Plus, PanelLeft, LayoutList } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { api } from "../lib/api";
+import { isMac } from "../lib/platform";
 
 import {
   MessageSquare, Network, BookOpen, Calendar, CreditCard,
@@ -69,7 +71,11 @@ function WorkspaceTabBar() {
   }
 
   return (
-    <div className="flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 overflow-x-auto">
+    <div
+      data-tauri-drag-region
+      onDoubleClick={() => getCurrentWindow().toggleMaximize()}
+      className={`flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 overflow-x-auto ${isMac ? "pl-[72px]" : ""}`}
+    >
       {workspaces.map((ws) => (
         <button
           key={ws.id}
