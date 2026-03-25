@@ -1823,6 +1823,8 @@ export default function ChatView() {
 
     const modelMeta = aiModelList.find((m) => m.model_id === modelId);
     const isOneOffWebProvider = modelMeta?.provider.startsWith("web_") ?? false;
+    const isLlamacppProvider = modelMeta?.provider === "llamacpp";
+    const isMlxProvider = modelMeta?.provider === "mlx";
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const oneOffWebProviderKey = isOneOffWebProvider ? modelMeta!.provider.replace("web_", "") : "";
 
@@ -1914,6 +1916,58 @@ export default function ChatView() {
           }
         });
         await api.webAI.sendMessage(sid, oneOffWebProviderKey, finalUserContent, preserveWebSession);
+      } catch (err) {
+        setIsStreaming(false);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
+        finalizeStream(sid, modelId);
+      }
+    } else if (isLlamacppProvider) {
+      try {
+        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
+          if (done) {
+            const assembled = useChatStore.getState().streamingContent;
+            finalizeStream(sid!, modelId, tokensUsed, durationMs);
+            setIsStreaming(false);
+            unlisten();
+            api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
+              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
+              .catch(() => {});
+            if (tokensUsed && tokensUsed > 0) {
+              api.aiModel.recordTokenUsage(modelId, tokensUsed).catch(() => {});
+            }
+            maybeExtractFlashcards(assembled, sid!, modelId);
+          } else {
+            appendStreamChunk(sid!, chunk);
+          }
+        });
+        await api.llamacpp.sendMessage(sid, modelId, history);
+      } catch (err) {
+        setIsStreaming(false);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
+        finalizeStream(sid, modelId);
+      }
+    } else if (isMlxProvider) {
+      try {
+        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
+          if (done) {
+            const assembled = useChatStore.getState().streamingContent;
+            finalizeStream(sid!, modelId, tokensUsed, durationMs);
+            setIsStreaming(false);
+            unlisten();
+            api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
+              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
+              .catch(() => {});
+            if (tokensUsed && tokensUsed > 0) {
+              api.aiModel.recordTokenUsage(modelId, tokensUsed).catch(() => {});
+            }
+            maybeExtractFlashcards(assembled, sid!, modelId);
+          } else {
+            appendStreamChunk(sid!, chunk);
+          }
+        });
+        await api.mlx.sendMessage(sid, modelId, history, useSettingsStore.getState().mlxUrl);
       } catch (err) {
         setIsStreaming(false);
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -3012,9 +3066,14 @@ export default function ChatView() {
                 />
                 {isStreaming ? (
                   <button
-                    onClick={() => { if (activeChatId) {api.ollama.stopStream(activeChatId).catch(() => {});} }}
-                    className="flex-shrink-0 rounded-full w-8 h-8 flex items-center justify-center bg-red-500 text-white hover:opacity-90 transition-opacity mb-1 mr-1"
-                    title="Stop generation"
+                    onClick={() => {
+                      if (activeChatId) {
+                        api.ollama.stopStream(activeChatId).catch(() => {});
+                        api.llamacpp.stopStream(activeChatId).catch(() => {});
+                        api.webAI.stopStream(activeChatId).catch(() => {});
+                      }
+                    }}
+                    className="flex-shrink-0 rounded-full w-8 h-8 flex items-center justify-center bg-red-500 text-white hover:opacity-90 transition-opacity mb-1 mr-1"                    title="Stop generation"
                   >
                     <X size={16} />
                   </button>

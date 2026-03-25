@@ -4,7 +4,8 @@
  */
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus } from "../lib/api";
 import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
 import { ACCENT_COLORS, THEMES } from "../lib/theme";
@@ -73,6 +74,7 @@ export default function SettingsView() {
     setSplitSectionNavigation,
     setWorkspaceSortOrder,
   } = useWorkspaceStore();
+
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>("general");
 
@@ -91,6 +93,11 @@ export default function SettingsView() {
   const [_saveError, setSaveError] = useState<string | null>(null);
   const [testingOllama, setTestingOllama] = useState(false);
   const [ollamaTestResult, setOllamaTestResult] = useState<{ success: boolean; msg: string } | null>(null);
+  const [testingMlx, setTestingMlx] = useState(false);
+  const [mlxTestResult, setMlxTestResult] = useState<{ success: boolean; msg: string } | null>(null);
+  const [mlxModels, setMlxModels] = useState<string[]>([]);
+  const [llamacppModels, setLlamacppModels] = useState<string[]>([]);
+  const [_refreshingLlamacpp, setRefreshingLlamacpp] = useState(false);
   const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
   const [hasLoadedOllamaModels, setHasLoadedOllamaModels] = useState(false);
   const dbSettingsRef = useRef<AppSettings | null>(null);
@@ -107,6 +114,28 @@ export default function SettingsView() {
   const [newModelRoles, setNewModelRoles] = useState<ModelRole[]>(["chat"]);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+
+  async function refreshLlamacppModels(paths: string[]) {
+    if (paths.length === 0) {
+      setLlamacppModels([]);
+      return;
+    }
+    setRefreshingLlamacpp(true);
+    try {
+      const models = await api.llamacpp.listModels(paths);
+      setLlamacppModels(models);
+    } catch (e) {
+      console.error("Failed to refresh llama.cpp models:", e);
+    } finally {
+      setRefreshingLlamacpp(false);
+    }
+  }
+
+  useEffect(() => {
+    if (dbSettings?.llamacpp_model_paths) {
+      refreshLlamacppModels(dbSettings.llamacpp_model_paths);
+    }
+  }, [dbSettings?.llamacpp_model_paths]);
 
   // MCP state
   const [mcpServers, setMcpServers] = useState<MCPServerConfig[]>([]);
@@ -145,6 +174,8 @@ export default function SettingsView() {
     zustandSettings.setBackgroundModel(settings.background_model);
     zustandSettings.setQuickSearchModels(settings.quick_search_models);
     zustandSettings.setOllamaUrl(settings.ollama_base_url);
+    zustandSettings.setMlxUrl(settings.mlx_base_url);
+    zustandSettings.setLlamacppModelPaths(settings.llamacpp_model_paths);
     zustandSettings.setDualModelEnabled(settings.dual_model_enabled);
     zustandSettings.setDraftModel(settings.draft_model);
     zustandSettings.setDualModelExecutionMode(settings.dual_model_execution_mode);
@@ -757,6 +788,104 @@ export default function SettingsView() {
                 )}
               </div>
 
+              {/* MLX Section */}
+              <div className="pt-4 border-t border-[var(--border-color)]">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-[var(--text-secondary)]">MLX Server URL</label>
+                  <button
+                    onClick={async () => {
+                      setTestingMlx(true);
+                      setMlxTestResult(null);
+                      try {
+                        const m = await api.mlx.listModels(dbSettings.mlx_base_url || undefined);
+                        setMlxTestResult({ success: true, msg: `Success! ${m.length} models found.` });
+                        setMlxModels(m.map((model) => model.id));
+                      } catch {
+                        setMlxTestResult({ success: false, msg: `Connection failed. Is MLX server running?` });
+                      } finally {
+                        setTestingMlx(false);
+                      }
+                    }}
+                    disabled={testingMlx}
+                    className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
+                  >
+                    {testingMlx ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
+                    Test Connection
+                  </button>
+                </div>
+                <input
+                  value={dbSettings.mlx_base_url}
+                  onChange={(e) => {
+                    set("mlx_base_url", e.target.value);
+                  }}
+                  placeholder="http://localhost:8080"
+                  className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                />
+                {mlxTestResult && (
+                  <p className={`text-[10px] mt-1.5 font-medium ${mlxTestResult.success ? "text-green-400" : "text-red-400"}`}>
+                    {mlxTestResult.msg}
+                  </p>
+                )}
+                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
+                  Local Apple Silicon acceleration. Run via: <code className="bg-[var(--bg-primary)] px-1 rounded">mlx_lm.server --model ...</code>
+                </p>
+              </div>
+
+              {/* llama.cpp Section */}
+              <div className="pt-4 border-t border-[var(--border-color)]">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs text-[var(--text-secondary)]">llama.cpp (GGUF) Local Inference</label>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const selected = await openDialog({
+                          multiple: true,
+                          filters: [{ name: "GGUF Model", extensions: ["gguf"] }],
+                        });
+                        if (selected && Array.isArray(selected)) {
+                          const currentPaths = dbSettings.llamacpp_model_paths || [];
+                          const newPaths = [...new Set([...currentPaths, ...selected])];
+                          updateSettings({ llamacpp_model_paths: newPaths });
+                        }
+                      } catch (err) {
+                        console.error("Failed to open file picker:", err);
+                      }
+                    }}
+                    className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
+                  >
+                    <Plus size={10} /> Add GGUF File
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  {(dbSettings.llamacpp_model_paths || []).map((path) => (
+                    <div key={path} className="flex items-center justify-between gap-2 p-2 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] group">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText size={12} className="text-[var(--text-muted)] shrink-0" />
+                        <span className="text-[11px] text-[var(--text-primary)] truncate" title={path}>
+                          {path.split("/").pop()}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const next = dbSettings.llamacpp_model_paths.filter((p) => p !== path);
+                          updateSettings({ llamacpp_model_paths: next });
+                        }}
+                        className="p-1 rounded hover:bg-red-400/10 text-[var(--text-muted)] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  ))}
+                  {(dbSettings.llamacpp_model_paths || []).length === 0 && (
+                    <p className="text-[10px] text-[var(--text-muted)] italic">No GGUF models added yet.</p>
+                  )}
+                </div>
+                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
+                  Embedded inference via llama.cpp with Metal acceleration. No external server required.
+                </p>
+              </div>
+
               <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-1 block">Background Task Model</label>
                 <div className="relative">
@@ -862,21 +991,39 @@ export default function SettingsView() {
                     <div className="relative">
                       <select
                         value={newModelId}
-                        onChange={(e) => { setNewModelId(e.target.value); if (!newModelName) {setNewModelName(e.target.value.split(":")[0]);} }}
+                        onChange={(e) => {
+                          setNewModelId(e.target.value);
+                          if (!newModelName) {
+                            const name = e.target.value.split(":")[0];
+                            setNewModelName(name);
+                          }
+                        }}
                         className="h-9 w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-9 text-xs text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
                       >
-                        <option value="">Select Ollama model...</option>
-                        {ollamaModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                        <option value="">Select model...</option>
+                        <optgroup label="Ollama">
+                          {ollamaModels.map((m) => <option key={`ollama-${m}`} value={m}>{m}</option>)}
+                        </optgroup>
+                        {mlxModels.length > 0 && (
+                          <optgroup label="MLX">
+                            {mlxModels.map((m) => <option key={`mlx-${m}`} value={`mlx:${m}`}>{m}</option>)}
+                          </optgroup>
+                        )}
+                        {llamacppModels.length > 0 && (
+                          <optgroup label="llama.cpp (GGUF)">
+                            {llamacppModels.map((p) => <option key={`llamacpp-${p}`} value={`llamacpp:${p}`}>{p.split("/").pop()}</option>)}
+                          </optgroup>
+                        )}
                       </select>
                       <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                    </div>
-                    <input
+                      </div>
+                      <input
                       value={newModelName}
                       onChange={(e) => setNewModelName(e.target.value)}
                       placeholder="Display name"
                       className="w-full px-2 py-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
-                    />
-                    <div>
+                      />
+                      <div>
                       <p className="mb-1 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Roles</p>
                       <div className="flex flex-wrap gap-1.5">
                         {MODEL_ROLE_OPTIONS.map((role) => {
@@ -897,8 +1044,8 @@ export default function SettingsView() {
                           );
                         })}
                       </div>
-                    </div>
-                    <div className="flex items-center justify-between">
+                      </div>
+                      <div className="flex items-center justify-between">
                       <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
                         <input type="checkbox" checked={newModelIsPaid} onChange={(e) => setNewModelIsPaid(e.target.checked)} className="accent-[var(--accent-color)]" />
                         Paid model
@@ -908,15 +1055,18 @@ export default function SettingsView() {
                         <button
                           disabled={!newModelId || !newModelName}
                           onClick={async () => {
-                            await api.aiModel.add(newModelName, newModelId, { is_paid: newModelIsPaid, role_tags: newModelRoles });
+                            const isMlx = newModelId.startsWith("mlx:");
+                            const isLlamacpp = newModelId.startsWith("llamacpp:");
+                            const modelId = isMlx ? newModelId.replace("mlx:", "") : isLlamacpp ? newModelId.replace("llamacpp:", "") : newModelId;
+                            const provider = isMlx ? "mlx" : isLlamacpp ? "llamacpp" : "ollama";
+                            await api.aiModel.add(newModelName, modelId, { provider, is_paid: newModelIsPaid, role_tags: newModelRoles });
                             loadAiModels();
                             setShowAddModel(false); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); setNewModelRoles(["chat"]);
                           }}
                           className="px-2 py-1 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
                         >
                           Add
-                        </button>
-                      </div>
+                        </button>                      </div>
                     </div>
                   </div>
                 )}

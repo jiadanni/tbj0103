@@ -193,6 +193,8 @@ export interface AppSettings {
   preferred_model: string; backup_enabled: boolean; touch_id_enabled: boolean; pin_lock_enabled: boolean;
   auto_lock_minutes: number; theme: string; accent_color: string;
   font_size: number; sidebar_width: number; ollama_base_url: string;
+  mlx_base_url: string;
+  llamacpp_model_paths: string[];
   background_model: string;
   quick_search_models: string[];
   embedding_model: string;
@@ -525,6 +527,23 @@ export const api = {
     stopStream: (sessionId: string) => invoke<void>("stop_stream", { sessionId }),
   },
 
+  mlx: {
+    sendMessage: (sessionId: string, model: string, messages: { role: string; content: string }[], mlxUrl?: string) =>
+      invoke<string>("send_mlx_message", { req: { session_id: sessionId, model, messages, mlx_url: mlxUrl } }),
+    listModels: (mlxUrl?: string) =>
+      invoke<{ id: string }[]>("list_mlx_models", { mlx_url: mlxUrl }),
+    stopStream: (sessionId: string) => invoke<void>("stop_stream", { sessionId }),
+  },
+
+  llamacpp: {
+    sendMessage: (sessionId: string, modelPath: string, messages: { role: string; content: string }[]) =>
+      invoke<void>("send_llamacpp_message", { req: { session_id: sessionId, model_path: modelPath, messages } }),
+    listModels: (modelPaths: string[]) =>
+      invoke<string[]>("list_llamacpp_models", { modelPaths }),
+    stopStream: (sessionId: string) =>
+      invoke<void>("stop_llamacpp_stream", { sessionId }),
+  },
+
   export: {
     markdown: (workspaceId: string) => invoke<string>("export_markdown", { req: { workspace_id: workspaceId } }),
     json: (workspaceId: string) => invoke<string>("export_json", { req: { workspace_id: workspaceId } }),
@@ -653,6 +672,8 @@ export const api = {
     /** Send a query to a web AI provider via the Playwright bridge. */
     sendMessage: (sessionId: string, provider: string, query: string, preserveSession: boolean) =>
       invoke<string>("send_web_message", { sessionId: sessionId, provider, query, preserveSession }),
+    stopStream: (sessionId: string) =>
+      invoke<void>("stop_web_stream", { sessionId }),
   },
 
   // Streaming: listen to Ollama stream events for a session
