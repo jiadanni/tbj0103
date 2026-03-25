@@ -1,6 +1,6 @@
 import { Command } from "cmdk";
+import { useEffect } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
-import { MOD_KEY } from "../lib/platform";
 
 interface Props {
   onClose: () => void;
@@ -8,18 +8,24 @@ interface Props {
 }
 
 const COMMANDS = [
-  { label: "Go to Dashboard",          value: "dashboard",      path: "/project",    shortcut: `${MOD_KEY}⇧D` },
-  { label: "Go to Chat",               value: "chat",           path: "/chat",       shortcut: `${MOD_KEY}⇧C` },
-  { label: "Go to Notes",              value: "notes",          path: "/notes",      shortcut: `${MOD_KEY}⇧N` },
-  { label: "Go to Documents",          value: "documents",      path: "/documents",  shortcut: `${MOD_KEY}⇧O` },
-  { label: "Web Captures",             value: "webcapture",     path: "/webcapture", shortcut: `${MOD_KEY}⇧W` },
-  { label: "Go to Knowledge Graph",    value: "graph",          path: "/graph",      shortcut: `${MOD_KEY}⇧G` },
-  { label: "Analyze Workspace (AI)",    value: "analyze",        path: "/graph"                            },
-  { label: "Go to Flashcards",         value: "flashcards",     path: "/flashcards", shortcut: `${MOD_KEY}⇧F` },
-  { label: "Manage Workspaces",        value: "workspaces",     path: "/settings",   shortcut: `${MOD_KEY}⇧5` },
-  { label: "Go to Backups",            value: "backup",         path: "/settings",   shortcut: `${MOD_KEY}⇧6` },
-  { label: "Plugins",                  value: "plugins",        path: "/settings",   shortcut: `${MOD_KEY}⇧7` },
-  { label: "Open Settings",            value: "settings",       path: "/settings",   shortcut: `${MOD_KEY},`  },
+  { label: "Go to Dashboard",          value: "dashboard",      path: "/project"       },
+  { label: "Go to Chat",               value: "chat",           path: "/chat"          },
+  { label: "Chat Sessions",            value: "chat-sessions",  path: "/chat-sessions" },
+  { label: "Go to Notes",              value: "notes",          path: "/notes"         },
+  { label: "Go to Daily Notes",        value: "daily",          path: "/daily"         },
+  { label: "Go to Documents",          value: "documents",      path: "/documents"     },
+  { label: "Web Captures",             value: "webcapture",     path: "/webcapture"    },
+  { label: "Go to Knowledge Graph",    value: "graph",          path: "/graph"         },
+  { label: "Go to Flashcards",         value: "flashcards",     path: "/flashcards"    },
+  { label: "Go to Learning Paths",     value: "learning",       path: "/learning"      },
+  { label: "Compare Models",           value: "compare",        path: "/compare"       },
+  { label: "Grounded Chat",            value: "grounded",       path: "/grounded"      },
+  { label: "Backlinks",                value: "backlinks",      path: "/backlinks"     },
+  { label: "Concept Deduplication",    value: "dedup",          path: "/dedup"         },
+  { label: "Manage Workspaces",        value: "workspaces",     path: "/workspaces"    },
+  { label: "Go to Backups",            value: "backup",         path: "/backup"        },
+  { label: "Plugins",                  value: "plugins",        path: "/plugins"       },
+  { label: "Open Settings",            value: "settings",       path: "/settings"      },
 ];
 
 export default function CommandPalette({ onClose, onNavigate }: Props) {
@@ -27,14 +33,14 @@ export default function CommandPalette({ onClose, onNavigate }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) {onClose();} }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
 
       <Command
         className="relative z-10 w-full max-w-[560px] mx-4 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl shadow-2xl overflow-hidden"
-        onKeyDown={(e) => { if (e.key === "Escape") {onClose();} }}
+        onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
       >
         <Command.Input
           autoFocus
@@ -51,14 +57,9 @@ export default function CommandPalette({ onClose, onNavigate }: Props) {
                 key={cmd.value}
                 value={cmd.value}
                 onSelect={() => onNavigate(cmd.path)}
-                className="flex items-center justify-between px-3 py-2.5 text-sm rounded-lg cursor-default text-[var(--text-primary)] aria-selected:bg-[var(--accent-color)]/20 aria-selected:text-[var(--accent-color)] transition-colors group"
+                className="flex items-center px-3 py-2.5 text-sm rounded-lg cursor-default text-[var(--text-primary)] aria-selected:bg-[var(--accent-color)]/20 aria-selected:text-[var(--accent-color)] transition-colors"
               >
-                <span>{cmd.label}</span>
-                {cmd.shortcut && (
-                  <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border border-[var(--border-color)] bg-[var(--bg-sidebar)] px-1.5 font-mono text-[10px] font-medium text-[var(--text-muted)] group-aria-selected:border-[var(--accent-color)] group-aria-selected:text-[var(--accent-color)] opacity-80">
-                    {cmd.shortcut}
-                  </kbd>
-                )}
+                {cmd.label}
               </Command.Item>
             ))}
           </Command.Group>

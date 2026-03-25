@@ -224,7 +224,6 @@ impl OllamaClient {
 
         loop {
             if Self::should_abort(app, session_id)? {
-                stream_done = true;
                 break;
             }
 

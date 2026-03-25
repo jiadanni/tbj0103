@@ -616,8 +616,8 @@ export const api = {
       invoke<AiModel>("update_ai_model", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_ai_model", { id }),
     getDefault: () => invoke<AiModel>("get_default_model"),
-    recordTokenUsage: (modelId: string, tokens: number) =>
-      invoke<void>("record_model_token_usage", { modelId, tokens }),
+    recordTokenUsage: (modelId: string, provider: string, tokens: number) =>
+      invoke<void>("record_model_token_usage", { modelId, provider, tokens }),
   },
 
   knowledge: {

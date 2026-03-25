@@ -1901,15 +1901,18 @@ export default function ChatView() {
     /* eslint-disable @typescript-eslint/no-non-null-assertion */
     if (isOneOffWebProvider && oneOffWebProviderKey) {
       try {
-        const unlisten = await api.listenStream(sid, (chunk, done) => {
+        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
-            finalizeStream(sid!, modelId);
+            finalizeStream(sid!, modelId, tokensUsed, durationMs);
             setIsStreaming(false);
             unlisten();
-            api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId)
+            api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
+            if (tokensUsed && tokensUsed > 0) {
+              api.aiModel.recordTokenUsage(modelId, `web_${oneOffWebProviderKey}`, tokensUsed).catch(() => {});
+            }
             maybeExtractFlashcards(assembled, sid!, modelId);
           } else {
             appendStreamChunk(sid!, chunk);
@@ -1934,7 +1937,7 @@ export default function ChatView() {
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
             if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(modelId, tokensUsed).catch(() => {});
+              api.aiModel.recordTokenUsage(modelId, "llamacpp", tokensUsed).catch(() => {});
             }
             maybeExtractFlashcards(assembled, sid!, modelId);
           } else {
@@ -1960,7 +1963,7 @@ export default function ChatView() {
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
             if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(modelId, tokensUsed).catch(() => {});
+              api.aiModel.recordTokenUsage(modelId, "mlx", tokensUsed).catch(() => {});
             }
             maybeExtractFlashcards(assembled, sid!, modelId);
           } else {
@@ -2041,7 +2044,7 @@ export default function ChatView() {
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
             if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(modelId, tokensUsed).catch(() => {});
+              api.aiModel.recordTokenUsage(modelId, "ollama", tokensUsed).catch(() => {});
             }
             maybeExtractFlashcards(assembled, sid!, modelId);
           } else {

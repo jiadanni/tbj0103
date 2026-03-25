@@ -154,11 +154,11 @@ pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
 }
 
 #[tauri::command]
-pub fn record_model_token_usage(state: State<DbState>, model_id: String, tokens: i64) -> Result<(), String> {
+pub fn record_model_token_usage(state: State<DbState>, model_id: String, provider: String, tokens: i64) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
-        "UPDATE ai_models SET tokens_used_total = tokens_used_total + ?1 WHERE model_id = ?2",
-        rusqlite::params![tokens, model_id],
+        "UPDATE ai_models SET tokens_used_total = tokens_used_total + ?1 WHERE model_id = ?2 AND provider = ?3",
+        rusqlite::params![tokens, model_id, provider],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }
