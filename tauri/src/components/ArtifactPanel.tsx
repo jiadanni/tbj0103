@@ -4,13 +4,12 @@ import { api } from '../lib/api';
 import type { ArtifactSummary } from '../lib/api';
 import { 
   X, Pin, PinOff, Copy, Check, Trash2, 
-  History, Code, FileText, Settings, Share,
-  ChevronLeft, ChevronRight
+  History, Code, FileText
 } from 'lucide-react';
 
 export default function ArtifactPanel() {
   const { 
-    isPanelOpen, setPanelOpen, activeArtifact, setActiveArtifact,
+    isPanelOpen, setPanelOpen, activeArtifact,
     deleteArtifact, togglePin, loadArtifact
   } = useArtifactStore();
   const [copied, setCopied] = useState(false);

@@ -33,7 +33,6 @@ export default function GroundedChatView() {
   const [loading, setLoading] = useState(false);
   const [topK, setTopK] = useState(5);
   const [showSources, setShowSources] = useState<string | null>(null);
-  const [documents, setDocuments] = useState<{ id: string; filename: string }[]>([]);
   const [docCount, setDocCount] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -43,7 +42,6 @@ export default function GroundedChatView() {
     if (!activeWorkspaceId) {return;}
     api.document.list(activeWorkspaceId).then((docs) => {
       const processed = docs.filter((d) => d.is_processed);
-      setDocuments(processed);
       setDocCount(processed.length);
     });
   }, [activeWorkspaceId]);

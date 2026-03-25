@@ -8,8 +8,6 @@ import { api, type ProjectNote } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import SmartTextEditor from "../components/SmartTextEditor";
 
-const NOTE_TYPES = ["manual", "ai_generated", "quiz"] as const;
-
 export default function NoteEditorView() {
   const { activeProjectId } = useWorkspaceStore();
   const [notes, setNotes] = useState<ProjectNote[]>([]);
@@ -29,20 +27,20 @@ export default function NoteEditorView() {
   );
 
   useEffect(() => {
-    if (!activeProjectId) return;
+    if (!activeProjectId) {return;}
     api.note.list(activeProjectId).then(setNotes).catch(() => {});
   }, [activeProjectId]);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {return;}
     setTitle(selected.title);
     setContent(selected.content);
     setTags(selected.tags ?? []);
-  }, [selected?.id]);
+  }, [selected]);
 
   // Auto-save with 1.5s debounce
   const autoSave = useCallback(() => {
-    if (!selected) return;
+    if (!selected) {return;}
     setSaving(true);
     api.note
       .update(selected.id, { title, content, tags })
@@ -57,13 +55,13 @@ export default function NoteEditorView() {
   }, [selected, title, content, tags]);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {return;}
     const t = setTimeout(autoSave, 1500);
     return () => clearTimeout(t);
-  }, [title, content, tags]);
+  }, [title, content, tags, autoSave, selected]);
 
   async function createNote() {
-    if (!activeProjectId || creating) return;
+    if (!activeProjectId || creating) {return;}
     setCreating(true);
     try {
       const note = await api.note.create(activeProjectId, "Untitled Note");
@@ -75,15 +73,15 @@ export default function NoteEditorView() {
   }
 
   async function deleteNote(id: string) {
-    if (!confirm("Delete this note?")) return;
+    if (!confirm("Delete this note?")) {return;}
     await api.note.delete(id);
     setNotes((prev) => prev.filter((n) => n.id !== id));
-    if (selected?.id === id) setSelected(null);
+    if (selected?.id === id) {setSelected(null);}
   }
 
   function addTag() {
     const t = tagInput.trim();
-    if (!t || tags.includes(t)) return;
+    if (!t || tags.includes(t)) {return;}
     setTags((prev) => [...prev, t]);
     setTagInput("");
   }

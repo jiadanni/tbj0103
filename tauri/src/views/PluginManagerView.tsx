@@ -5,7 +5,7 @@
  * persisted in component state only (same as a feature-flag toggle).
  */
 import React, { useState } from "react";
-import { PuzzleIcon, RefreshCw, FileText, FolderOpen, Youtube, BookOpen, CalendarDays, ArrowDownCircle, StopCircle, PlayCircle } from "lucide-react";
+import { PuzzleIcon, RefreshCw, FileText, CalendarDays, ArrowDownCircle, StopCircle, PlayCircle } from "lucide-react";
 
 type PluginType = "exporter" | "importer" | "automation";
 

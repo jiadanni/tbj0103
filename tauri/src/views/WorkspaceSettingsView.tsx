@@ -3,6 +3,7 @@
  * Mirrors WorkspaceListView.swift + workspace picker behaviour.
  */
 import { useState } from "react";
+import { message, ask } from "@tauri-apps/plugin-dialog";
 import { Plus, Trash2, Pencil, Check, X, LayoutGrid } from "lucide-react";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -17,7 +18,7 @@ export default function WorkspaceSettingsView() {
   const [showNew, setShowNew] = useState(false);
 
   async function createWorkspace() {
-    if (!newName.trim()) return;
+    if (!newName.trim()) {return;}
     setCreating(true);
     try {
       const ws = await api.workspace.create(newName.trim());
@@ -39,10 +40,14 @@ export default function WorkspaceSettingsView() {
 
   async function deleteWorkspace(ws: Workspace) {
     if (workspaces.length === 1) {
-      alert("Cannot delete the last workspace.");
+      await message("Cannot delete the last workspace.", { title: "Aetherium", kind: "error" });
       return;
     }
-    if (!confirm(`Delete "${ws.name}" and all its projects, notes, and data? This cannot be undone.`)) return;
+    const confirmed = await ask(`Delete "${ws.name}" and all its projects, notes, and data? This cannot be undone.`, {
+      title: "Confirm Deletion",
+      kind: "warning",
+    });
+    if (!confirmed) { return; }
     await api.workspace.delete(ws.id);
     const remaining = workspaces.filter((w) => w.id !== ws.id);
     setWorkspaces(remaining);
@@ -79,7 +84,7 @@ export default function WorkspaceSettingsView() {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") createWorkspace();
+              if (e.key === "Enter") {createWorkspace();}
               if (e.key === "Escape") { setShowNew(false); setNewName(""); }
             }}
             placeholder="Workspace name…"
@@ -133,8 +138,8 @@ export default function WorkspaceSettingsView() {
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") renameWorkspace(ws.id);
-                            if (e.key === "Escape") setEditingId(null);
+                            if (e.key === "Enter") {renameWorkspace(ws.id);}
+                            if (e.key === "Escape") {setEditingId(null);}
                           }}
                           className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
                         />

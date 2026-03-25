@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   Panel, PanelGroup, PanelResizeHandle,
@@ -90,8 +90,8 @@ function WorkspaceTabBar() {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") createWorkspace();
-              if (e.key === "Escape") setCreating(false);
+              if (e.key === "Enter") {createWorkspace();}
+              if (e.key === "Escape") {setCreating(false);}
             }}
             placeholder="Workspace name"
             className="text-xs px-2 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none w-36"
@@ -150,7 +150,6 @@ function NavigationTabBar() {
 export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const navigate = useNavigate();
-  const location = useLocation();
   const { workspaceNavigation } = useWorkspaceStore();
 
   // Global Cmd+K shortcut
