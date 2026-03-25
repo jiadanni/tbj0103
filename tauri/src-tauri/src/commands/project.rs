@@ -76,15 +76,14 @@ pub fn update_project(state: State<DbState>, req: UpdateProjectRequest) -> Resul
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE projects SET
-            workspace_id = COALESCE(?1, workspace_id),
-            name = COALESCE(?2, name),
-            project_description = COALESCE(?3, project_description),
-            custom_instructions = COALESCE(?4, custom_instructions),
-            color = COALESCE(?5, color),
-            icon = COALESCE(?6, icon),
-            updated_at = ?7
-         WHERE id = ?8",
-        rusqlite::params![req.workspace_id, req.name, req.project_description, req.custom_instructions, req.color, req.icon, now, req.id],
+            name = COALESCE(?1, name),
+            project_description = COALESCE(?2, project_description),
+            custom_instructions = COALESCE(?3, custom_instructions),
+            color = COALESCE(?4, color),
+            icon = COALESCE(?5, icon),
+            updated_at = ?6
+         WHERE id = ?7",
+        rusqlite::params![req.name, req.project_description, req.custom_instructions, req.color, req.icon, now, req.id],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -109,40 +108,26 @@ pub struct ProjectStats {
 #[tauri::command]
 pub fn get_project_stats(state: State<DbState>, id: String) -> Result<ProjectStats, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    // Look up the workspace this project belongs to
-    let workspace_id: String = conn.query_row(
-        "SELECT workspace_id FROM projects WHERE id = ?1",
-        rusqlite::params![id],
-        |r| r.get(0),
-    ).map_err(|e| e.to_string())?;
-    // Notes, documents, flashcards, web captures are workspace-scoped
     let note_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM project_notes WHERE workspace_id = ?1",
-        rusqlite::params![workspace_id], |r| r.get(0)
+        "SELECT COUNT(*) FROM project_notes WHERE project_id = ?1",
+        rusqlite::params![id], |r| r.get(0)
     ).unwrap_or(0);
     let document_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM sources WHERE workspace_id = ?1 AND source_type = 'document'",
-        rusqlite::params![workspace_id], |r| r.get(0)
-    ).unwrap_or_else(|_| conn.query_row(
-        "SELECT COUNT(*) FROM uploaded_documents WHERE workspace_id = ?1",
-        rusqlite::params![workspace_id], |r| r.get(0)
-    ).unwrap_or(0));
-    // Chat sessions are still project-scoped (project = optional chat container)
+        "SELECT COUNT(*) FROM uploaded_documents WHERE project_id = ?1",
+        rusqlite::params![id], |r| r.get(0)
+    ).unwrap_or(0);
     let chat_session_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM chat_sessions WHERE project_id = ?1",
         rusqlite::params![id], |r| r.get(0)
     ).unwrap_or(0);
     let flashcard_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1",
-        rusqlite::params![workspace_id], |r| r.get(0)
+        "SELECT COUNT(*) FROM learning_cards WHERE project_id = ?1",
+        rusqlite::params![id], |r| r.get(0)
     ).unwrap_or(0);
     let web_capture_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM sources WHERE workspace_id = ?1 AND source_type = 'web_capture'",
-        rusqlite::params![workspace_id], |r| r.get(0)
-    ).unwrap_or_else(|_| conn.query_row(
-        "SELECT COUNT(*) FROM web_captures WHERE workspace_id = ?1",
-        rusqlite::params![workspace_id], |r| r.get(0)
-    ).unwrap_or(0));
+        "SELECT COUNT(*) FROM web_captures WHERE project_id = ?1",
+        rusqlite::params![id], |r| r.get(0)
+    ).unwrap_or(0);
     Ok(ProjectStats {
         note_count,
         document_count,

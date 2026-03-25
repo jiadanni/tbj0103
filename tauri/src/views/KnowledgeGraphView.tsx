@@ -4,7 +4,7 @@
  * Tabs: Graph | Backlinks | Insights
  * Deduplication inline in Graph tab toolbar.
  */
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import * as d3 from "d3";
 import {
   Plus, Search, X, Trash2, ZoomIn, ZoomOut,
@@ -316,9 +316,12 @@ export default function KnowledgeGraphView() {
   }, [tab, activeWorkspaceId]);
 
   // ── D3 force simulation ───────────────────────────────────────────────────
-  const filteredD3Nodes = graphSearch
-    ? nodes.filter((n) => n.name.toLowerCase().includes(graphSearch.toLowerCase()))
-    : nodes;
+  const filteredD3Nodes = useMemo(
+    () => graphSearch
+      ? nodes.filter((n) => n.name.toLowerCase().includes(graphSearch.toLowerCase()))
+      : nodes,
+    [nodes, graphSearch],
+  );
 
   useEffect(() => {
     if (!svgRef.current || !containerRef.current) {return;}

@@ -9,7 +9,12 @@
       "Bash(~/.cargo/bin/cargo check:*)",
       "Bash(~/.nvm/versions/node/v20.19.5/bin/npx tsc:*)",
       "Bash(ls ~/.nvm/versions/node/*/bin/npx)",
-      "Bash(PATH=\"$HOME/.nvm/versions/node/v22.22.1/bin:$PATH\" npx tsc --noEmit)"
+      "Bash(PATH=\"$HOME/.nvm/versions/node/v22.22.1/bin:$PATH\" npx tsc --noEmit)",
+      "WebSearch",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:medium.com)"
     ]
   }
 }
