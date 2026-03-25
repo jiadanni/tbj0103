@@ -778,9 +778,9 @@ export default function PreferencesView() {
                       <span className="text-xs font-semibold">No models found</span>
                     </div>
                     <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                      Ollama is connected but no models are installed. To use the AI features, please run:
+                      Ollama is connected but no models are installed yet. Pull any model you want to use, then refresh the connection.
                       <code className="block mt-1.5 p-1.5 rounded bg-[var(--bg-primary)] font-mono text-[10px] text-[var(--text-secondary)]">
-                        ollama pull qwen2.5
+                        ollama pull &lt;model-name&gt;
                       </code>
                     </p>
                   </div>
@@ -1205,7 +1205,7 @@ export default function PreferencesView() {
               {/* Custom Model Labels */}
               <div className="pt-2">
                 <label className="text-xs text-[var(--text-secondary)] mb-2 block">Custom Model Labels (Global)</label>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                <div className="space-y-1.5">
                   {ollamaModels.length === 0 ? (
                     <p className="text-[10px] text-[var(--text-muted)]">No Ollama models found to label.</p>
                   ) : (
@@ -1382,24 +1382,58 @@ export default function PreferencesView() {
           {/* ── Security ── */}
           {activeTab === "security" && (
             <>
-              {biometricAvailable && (
-                <div className="flex items-center justify-between py-1">
+              {/* ── App Lock ── */}
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] divide-y divide-[var(--border-color)]">
+                <div className="flex items-center justify-between px-4 py-3">
                   <div>
-                    <p className="text-sm text-[var(--text-secondary)]">{biometricLabel}</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Require {biometricLabel} before opening the app.
+                    <p className="text-sm text-[var(--text-secondary)]">Require PIN on launch</p>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                      {pinConfigured ? "Lock the app at startup. Touch ID can be used as a shortcut when enabled below." : "Save a PIN first to enable app lock."}
                     </p>
                   </div>
-                  <Toggle on={dbSettings.touch_id_enabled} onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)} />
+                  <Toggle
+                    on={dbSettings.pin_lock_enabled}
+                    disabled={!pinConfigured}
+                    onToggle={() => {
+                      if (!pinConfigured) {return;}
+                      const next = !dbSettings.pin_lock_enabled;
+                      set("pin_lock_enabled", next);
+                      // Touch ID requires PIN as its fallback — disable it together
+                      if (!next && dbSettings.touch_id_enabled) {
+                        set("touch_id_enabled", false);
+                      }
+                    }}
+                  />
                 </div>
-              )}
+                {biometricAvailable && (
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <p className="text-sm text-[var(--text-secondary)]">{biometricLabel}</p>
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                        {dbSettings.pin_lock_enabled
+                          ? `Use ${biometricLabel} as a quick unlock. PIN is always available as a fallback.`
+                          : `Enable PIN lock first to use ${biometricLabel}.`}
+                      </p>
+                    </div>
+                    <Toggle
+                      on={dbSettings.touch_id_enabled}
+                      disabled={!dbSettings.pin_lock_enabled}
+                      onToggle={() => {
+                        if (!dbSettings.pin_lock_enabled) {return;}
+                        set("touch_id_enabled", !dbSettings.touch_id_enabled);
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
 
+              {/* ── PIN Passcode ── */}
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm text-[var(--text-secondary)]">PIN passcode</p>
                     <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-sm">
-                      Save a 4 to 8 digit PIN, then choose whether app lock should require it on launch. The PIN is stored as a hash, not plaintext.
+                      4 to 8 digits. Stored as a hash, never plaintext.
                     </p>
                   </div>
                   <span className={`text-[11px] px-2 py-1 rounded-full border ${
@@ -1463,23 +1497,6 @@ export default function PreferencesView() {
                   </p>
                 )}
 
-                <div className="rounded-lg border border-[var(--border-color)]/80 bg-[var(--bg-primary)] px-3 py-2.5 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-medium text-[var(--text-secondary)]">Require PIN on launch</p>
-                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                      {pinConfigured ? "Turn this on when you want the app to lock at startup." : "Save a PIN first to make app lock available."}
-                    </p>
-                  </div>
-                  <Toggle
-                    on={dbSettings.pin_lock_enabled}
-                    disabled={!pinConfigured}
-                    onToggle={() => {
-                      if (!pinConfigured) {return;}
-                      set("pin_lock_enabled", !dbSettings.pin_lock_enabled);
-                    }}
-                  />
-                </div>
-
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={handleSetPin}
@@ -1500,6 +1517,7 @@ export default function PreferencesView() {
                 </div>
               </div>
 
+              {/* ── Auto-lock ── */}
               <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-2 block">Auto-lock</label>
                 <p className="text-[11px] text-[var(--text-muted)] mb-2">Auto-lock becomes active once a launch lock is enabled.</p>

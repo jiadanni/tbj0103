@@ -1,15 +1,29 @@
 /**
  * NoteEditorView — browse and edit project notes with full CRUD.
- * Mirrors NoteEditorView.swift: list pane on left, editor on right.
+ * Includes internal tabs for Project Notes and Daily Notes.
  */
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Trash2, Tag, Search, FileText, Save } from "lucide-react";
+import { useLocation } from "react-router-dom";
+import { Plus, Trash2, Tag, Search, FileText, Save, Calendar } from "lucide-react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { api, type ProjectNote } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import SmartTextEditor from "../components/SmartTextEditor";
+import DailyNotesView from "./DailyNotesView";
+import type { NotesSubView } from "../components/navigationItems";
 
 export default function NoteEditorView() {
+  const location = useLocation();
+  const [activeSubView, setActiveSubView] = useState<NotesSubView>("notes");
+
+  // Handle external subview switching via router state
+  useEffect(() => {
+    const state = location.state as { subView?: NotesSubView } | null;
+    if (state?.subView) {
+      setActiveSubView(state.subView);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
   const { activeProjectId } = useWorkspaceStore();
   const [notes, setNotes] = useState<ProjectNote[]>([]);
   const [selected, setSelected] = useState<ProjectNote | null>(null);
@@ -91,7 +105,34 @@ export default function NoteEditorView() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Subview tabs */}
+      <div className="flex items-center gap-1.5 px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)] flex-shrink-0">
+        {[
+          { id: "notes" as NotesSubView, label: "Project Notes", Icon: FileText },
+          { id: "daily" as NotesSubView, label: "Daily Notes", Icon: Calendar },
+        ].map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveSubView(id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
+              activeSubView === id
+                ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+            }`}
+          >
+            <Icon size={14} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeSubView === "daily" ? (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <DailyNotesView />
+        </div>
+      ) : (
+    <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* Left pane: note list */}
       <div className="w-64 flex flex-col border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] shrink-0">
         <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--border-color)]">
@@ -236,6 +277,8 @@ export default function NoteEditorView() {
             )}
           </div>
         </div>
+      )}
+    </div>
       )}
     </div>
   );

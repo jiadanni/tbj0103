@@ -1014,7 +1014,8 @@ export default function ChatView() {
   const [selectedModel, setSelectedModel] = useState(preferredModel || "");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
-  const [activeContextSources, setActiveContextSources] = useState<Record<string, unknown>>({});
+  type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
+  const [activeContextSources, setActiveContextSources] = useState<Record<string, ContextSources>>({});
   const [loadedSessionScopeKey, setLoadedSessionScopeKey] = useState<string | null>(null);
   const [sessionSidebarDragActive, setSessionSidebarDragActive] = useState(false);
   const chatViewRef = useRef<HTMLDivElement | null>(null);
@@ -1028,7 +1029,7 @@ export default function ChatView() {
   useEffect(() => {
     if (!currentSessionId) { return; }
     const unlistenPromise = api.context.listenContextSources(currentSessionId, (sources) => {
-      setActiveContextSources(prev => ({ ...prev, [currentSessionId]: sources }));
+      setActiveContextSources(prev => ({ ...prev, [currentSessionId]: sources as ContextSources }));
     });
     return () => {
       unlistenPromise.then(fn => fn());
@@ -1702,34 +1703,52 @@ export default function ChatView() {
 
   // Load AI model priority list + fallback to raw Ollama models
   useEffect(() => {
-    api.aiModel.list().then((models) => {
-      setAiModelList(models);
-      const enabled = models.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
-      if (enabled.length > 0) {
-        const modelIds = enabled.map((m) => m.model_id);
-        setAvailableModels(modelIds);
-        setSelectedModel((current) => (modelIds.includes(current) ? current : modelIds[0]));
-        return;
-      }
-      // Fallback to raw Ollama models
-      api.ollama.listModels(ollamaUrl).then((m) => {
-        if (m.length > 0) {
-          const names = m.map((x) => x.name);
-          setAvailableModels(names);
-          setSelectedModel((current) => (names.includes(current) ? current : names[0]));
-        }
-      }).catch(() => {});
+    const sessionModel = activeSession?.model_name?.trim() ?? "";
+    Promise.allSettled([
+      api.aiModel.list(),
+      api.ollama.listModelsFresh(ollamaUrl),
+    ]).then(([aiModelsResult, ollamaModelsResult]) => {
+      const aiModels = aiModelsResult.status === "fulfilled" ? aiModelsResult.value : [];
+      const installedOllamaModels = ollamaModelsResult.status === "fulfilled"
+        ? ollamaModelsResult.value.map((model) => model.name)
+        : [];
+
+      setAiModelList(aiModels);
+
+      const enabledModels = aiModels
+        .filter((model) => model.enabled)
+        .sort((a, b) => a.priority - b.priority);
+      const enabledInstalledOllamaModels = enabledModels
+        .filter((model) => model.provider === "ollama" && installedOllamaModels.includes(model.model_id))
+        .map((model) => model.model_id);
+      const enabledNonOllamaModels = enabledModels
+        .filter((model) => model.provider !== "ollama")
+        .map((model) => model.model_id);
+      const unmanagedInstalledModels = installedOllamaModels
+        .filter((modelId) => !enabledInstalledOllamaModels.includes(modelId));
+
+      const nextAvailableModels = [
+        ...enabledInstalledOllamaModels,
+        ...enabledNonOllamaModels,
+        ...unmanagedInstalledModels,
+      ];
+
+      const withSessionModel = sessionModel && !nextAvailableModels.includes(sessionModel)
+        ? [sessionModel, ...nextAvailableModels]
+        : nextAvailableModels;
+
+      setAvailableModels(withSessionModel);
+      setSelectedModel((current) => {
+        if (sessionModel) {return sessionModel;}
+        if (withSessionModel.includes(current)) {return current;}
+        if (preferredModel && withSessionModel.includes(preferredModel)) {return preferredModel;}
+        return withSessionModel[0] ?? "";
+      });
     }).catch(() => {
-      // If ai_model list fails, fallback to Ollama
-      api.ollama.listModels(ollamaUrl).then((m) => {
-        if (m.length > 0) {
-          const names = m.map((x) => x.name);
-          setAvailableModels(names);
-          setSelectedModel((current) => (names.includes(current) ? current : names[0]));
-        }
-      }).catch(() => {});
+      setAvailableModels(sessionModel ? [sessionModel] : []);
+      setSelectedModel((current) => sessionModel || current);
     });
-  }, [ollamaUrl]);
+  }, [ollamaUrl, activeSession?.model_name, preferredModel]);
 
   // Scroll to bottom on new messages — use instant scroll during streaming
   // so rapid content updates don't cause smooth-scroll to fall behind

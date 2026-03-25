@@ -1,10 +1,49 @@
-import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useWorkspaceStore } from "./stores/workspaceStore";
 import { api } from "./lib/api";
 import Layout from "./components/Layout";
 import AuthenticationView from "./views/AuthenticationView";
+
+/** Listens for native menu-bar events and translates them into navigation/actions. */
+function MenuEventHandler() {
+  const navigate = useNavigate();
+  // Keep a stable ref to avoid re-subscribing on every render
+  const navigateRef = useRef(navigate);
+  useEffect(() => { navigateRef.current = navigate; }, [navigate]);
+
+  useEffect(() => {
+    const unlistenNav = listen<string>("menu-navigate", (event) => {
+      navigateRef.current(event.payload);
+    });
+
+    const unlistenAction = listen<string>("menu-action", (event) => {
+      switch (event.payload) {
+        case "new-chat":
+          navigateRef.current("/chat");
+          // Dispatch a custom DOM event so ChatView can open a new session
+          window.dispatchEvent(new CustomEvent("aetherium:new-chat"));
+          break;
+        case "new-note":
+          navigateRef.current("/notes");
+          window.dispatchEvent(new CustomEvent("aetherium:new-note"));
+          break;
+        case "cmd-palette":
+          window.dispatchEvent(new CustomEvent("aetherium:open-command-palette"));
+          break;
+      }
+    });
+
+    return () => {
+      unlistenNav.then((fn) => fn());
+      unlistenAction.then((fn) => fn());
+    };
+  }, []);
+
+  return null;
+}
 
 export default function App() {
   const { theme, accentColor, fontSize } = useSettingsStore();
@@ -30,9 +69,9 @@ export default function App() {
       try {
         const workspaces = await api.workspace.list();
         setWorkspaces(workspaces);
-        // Auto-authenticate if no touch ID required (settings check)
+        // Auto-authenticate if neither lock method is active
         const settings = await api.settings.get();
-        if (!settings.touch_id_enabled) {setIsAuthenticated(true);}
+        if (!settings.touch_id_enabled && !settings.pin_lock_enabled) {setIsAuthenticated(true);}
       } catch {
         // First run or Ollama not available — still OK
         setIsAuthenticated(true);
@@ -66,6 +105,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <MenuEventHandler />
       <Routes>
         <Route path="/*" element={<Layout />} />
         <Route path="/" element={<Navigate to="/chat" replace />} />

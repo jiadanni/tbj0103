@@ -1,0 +1,271 @@
+{
+  "name": "Understanding Debounce Technique",
+  "pinned": false,
+  "createdAt": 1767208477689,
+  "preset": "",
+  "tokenCount": 1244,
+  "userLastMessagedAt": 1767208590450,
+  "assistantLastMessagedAt": 1767208630488,
+  "systemPrompt": "",
+  "messages": [
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "debounce"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "devstral-small-2505-mlx"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1767208523124-0.42730268427744234",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Debouncing is a technique used to limit the rate at which a function gets invoked. It is commonly employed in scenarios where an event (like typing into a search box, scrolling through a webpage, or clicking a button) can trigger multiple function calls in rapid succession. By debouncing the event handler, you ensure that it only gets called after a specified amount of time has passed since the last event.\n\nHere's a typical use case for debouncing:\n\n### Use Case: Search Input Debounce\n\nImagine you have a search input field, and as the user types into it, you want to call a function that fetches search results from an API. Without debouncing, every keystroke would trigger an API call. This is inefficient and can lead to performance issues.\n\nInstead, using debouncing ensures that the API call only happens after the user has stopped typing for a certain period (e.g., 300 milliseconds). This way, you avoid making a lot of unnecessary API calls.\n\n### Basic Debounce Implementation in JavaScript\n\nHere's an example implementation for debouncing in JavaScript:\n\n```javascript\nfunction debounce(func, delay) {\n    let timeoutId;\n    return function(...args) {\n        const context = this;\n        clearTimeout(timeoutId);\n        timeoutId = setTimeout(() => {\n            func.apply(context, args);\n        }, delay);\n    };\n}\n\n// Example usage with a search function\nfunction fetchSearchResults(query) {\n    console.log('Fetching results for:', query);\n    // Code to fetch search results from API\n}\n\nconst debouncedFetchSearchResults = debounce(fetchSearchResults, 300);\n\n// Assuming you have an input field\nconst searchInput = document.getElementById('searchInput');\nsearchInput.addEventListener('input', function(event) {\n    debouncedFetchSearchResults(event.target.value);\n});\n```\n\nIn this example, `debounce` is a higher-order function that takes the original function (`func`) and a delay in milliseconds. It returns a new function that, when called, will only invoke the original function after the specified delay has passed since it was last called.\n\n### Another Example: Window Resize Event\n\nDebouncing can also be useful for events like window resize:\n\n```javascript\nfunction handleResize() {\n    console.log('Window resized');\n}\n\nconst debouncedHandleResize = debounce(handleResize, 200);\n\nwindow.addEventListener('resize', debouncedHandleResize);\n```\n\nIn this example, the `handleResize` function will only be called once 200 milliseconds have passed since the last resize event.\n\n### Conclusion\n\nDebouncing is a powerful technique for improving performance and reducing unnecessary function calls in scenarios where events are triggered rapidly. It's especially useful for optimizing user interactions like search inputs, scrolls, and window resizes.",
+                  "fromDraftModel": false,
+                  "tokensCount": 571,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "lmstudio-community/Devstral-Small-2505-MLX-4bit",
+                "identifier": "devstral-small-2505-mlx",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{%- set today = strftime_now(\"%Y-%m-%d\") %}\n{%- set default_system_message = \"You are Devstral, a Large Language Model (LLM) created by Mistral AI, a French startup headquartered in Paris.\\nYour knowledge base was last updated on 2023-10-01. The current date is \" + today + \".\\n\\nWhen you're not sure about some information, you say that you don't have the information and don't make up anything.\\nIf the user's question is not clear, ambiguous, or does not provide enough context for you to accurately answer the question, you do not try to answer it right away and you rather ask the user to clarify their request (e.g. \\\"What are some good restaurants around me?\\\" => \\\"Where are you?\\\" or \\\"When is the next flight to Tokyo\\\" => \\\"Where do you travel from?\\\")\" %}\n\n{{- bos_token }}\n\n{%- if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content'] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = default_system_message %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{{- '[SYSTEM_PROMPT]' + system_message + '[/SYSTEM_PROMPT]' }}\n\n{%- for message in loop_messages %}\n    {%- if message['role'] == 'user' %}\n        {{- '[INST]' + message['content'] + '[/INST]' }}\n    {%- elif message['role'] == 'system' %}\n        {{- '[SYSTEM_PROMPT]' + message['content'] + '[/SYSTEM_PROMPT]' }}\n    {%- elif message['role'] == 'assistant' %}\n        {{- message['content'] + eos_token }}\n    {%- else %}\n        {{- raise_exception('Only user, system and assistant roles are supported!') }}\n    {%- endif %}\n{%- endfor %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 0
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 100
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 12.369717758830749,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 5.395,
+                  "totalTimeSec": 46.243,
+                  "promptTokensCount": 176,
+                  "predictedTokensCount": 572,
+                  "totalTokensCount": 748
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1767208569057-0.682506706254426",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "What would handle size do in this context? Redraw the window to the new size? "
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "devstral-small-2505-mlx"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1767208591726-0.14963474377706343",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In the provided example, `handleResize` is a placeholder function that you would define to perform actions when the window size changes. The exact functionality it performs depends on your specific use case, but common tasks that might be triggered by a window resize event include:\n\n1. **Redrawing or Repositioning Elements**: Adjust the layout or position of elements on the page to accommodate the new window size.\n2. **Recalculating Dimensions**: Update widths, heights, or other dimensions of elements to ensure they fit properly within the new window size.\n3. **Triggering Animations**: Initiate animations or transitions that are dependent on the window size.\n4. **Lazy Loading Content**: Fetch and display additional content if the new window size makes more space available.\n5. **Responsive Design Adjustments**: Apply responsive design adjustments to ensure the UI remains usable and aesthetically pleasing at different window sizes.\n\nHere's a more concrete example to illustrate what `handleResize` might do:\n\n```javascript\nfunction handleResize() {\n    console.log('Window resized to:', window.innerWidth, 'x', window.innerHeight);\n\n    // Example: Adjust a sidebar width to take up a percentage of the viewport\n    const sidebar = document.getElementById('sidebar');\n    if (window.innerWidth < 768) {\n        sidebar.style.width = '100%';\n    } else {\n        sidebar.style.width = '25%';\n    }\n\n    // Example: Trigger a redraw of some content\n    redrawContent();\n}\n\nfunction redrawContent() {\n    // Code to trigger a redraw or recalculation of elements\n    console.log('Content redrawn');\n}\n\nconst debouncedHandleResize = debounce(handleResize, 200);\n\nwindow.addEventListener('resize', debouncedHandleResize);\n```\n\nIn this example:\n- `handleResize` logs the new window dimensions.\n- It adjusts the width of an element with the ID `sidebar` based on the new window dimensions.\n- It calls another function `redrawContent`, which could contain code to redraw or recalculate elements on the page.\n\nBy debouncing the `handleResize` function, you ensure that these adjustments only occur if there is a pause in resizing for 200 milliseconds, preventing performance issues from frequent resize events.",
+                  "fromDraftModel": false,
+                  "tokensCount": 473,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "genInfo": {
+                "indexedModelIdentifier": "lmstudio-community/Devstral-Small-2505-MLX-4bit",
+                "identifier": "devstral-small-2505-mlx",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{%- set today = strftime_now(\"%Y-%m-%d\") %}\n{%- set default_system_message = \"You are Devstral, a Large Language Model (LLM) created by Mistral AI, a French startup headquartered in Paris.\\nYour knowledge base was last updated on 2023-10-01. The current date is \" + today + \".\\n\\nWhen you're not sure about some information, you say that you don't have the information and don't make up anything.\\nIf the user's question is not clear, ambiguous, or does not provide enough context for you to accurately answer the question, you do not try to answer it right away and you rather ask the user to clarify their request (e.g. \\\"What are some good restaurants around me?\\\" => \\\"Where are you?\\\" or \\\"When is the next flight to Tokyo\\\" => \\\"Where do you travel from?\\\")\" %}\n\n{{- bos_token }}\n\n{%- if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content'] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = default_system_message %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{{- '[SYSTEM_PROMPT]' + system_message + '[/SYSTEM_PROMPT]' }}\n\n{%- for message in loop_messages %}\n    {%- if message['role'] == 'user' %}\n        {{- '[INST]' + message['content'] + '[/INST]' }}\n    {%- elif message['role'] == 'system' %}\n        {{- '[SYSTEM_PROMPT]' + message['content'] + '[/SYSTEM_PROMPT]' }}\n    {%- elif message['role'] == 'assistant' %}\n        {{- message['content'] + eos_token }}\n    {%- else %}\n        {{- raise_exception('Only user, system and assistant roles are supported!') }}\n    {%- endif %}\n{%- endfor %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 0
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 100
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 12.153964252358593,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 1.014,
+                  "totalTimeSec": 38.999,
+                  "promptTokensCount": 770,
+                  "predictedTokensCount": 474,
+                  "totalTokensCount": 1244
+                }
+              }
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1767208630484-0.5177248968302062",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    }
+  ],
+  "usePerChatPredictionConfig": true,
+  "perChatPredictionConfig": {
+    "fields": [
+      {
+        "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  "clientInput": "",
+  "clientInputFiles": [],
+  "userFilesSizeBytes": 0,
+  "lastUsedModel": {
+    "indexedModelIdentifier": "lmstudio-community/Devstral-Small-2505-MLX-4bit",
+    "identifier": "devstral-small-2505-mlx",
+    "instanceLoadTimeConfig": {
+      "fields": []
+    },
+    "instanceOperationTimeConfig": {
+      "fields": []
+    }
+  },
+  "notes": [],
+  "plugins": [],
+  "pluginConfigs": {},
+  "disabledPluginTools": [],
+  "looseFiles": []
+}

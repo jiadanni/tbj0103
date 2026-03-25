@@ -1,0 +1,824 @@
+{
+  "name": "n+1",
+  "pinned": false,
+  "createdAt": 1762886598008,
+  "preset": "",
+  "tokenCount": 5344,
+  "userLastMessagedAt": 1762892416672,
+  "assistantLastMessagedAt": 1762892463900,
+  "systemPrompt": "",
+  "messages": [
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "n+1 problem"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "openai/gpt-oss-20b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1762886609431-0.4639020554991896",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "They ask \"n+1 problem\". Likely referring to combinatorics puzzle: given n+1 people, there's a handshake or birthday paradox? Maybe \"n+1 problem\" refers to Pigeonhole principle: n+1 items into n boxes. Provide explanation. I'll answer about pigeonhole principle.",
+                  "fromDraftModel": false,
+                  "tokensCount": 62,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "prefix": "<|channel|>analysis<|message|>",
+              "suffix": "<|end|>",
+              "style": {
+                "type": "thinking",
+                "ended": true,
+                "title": "Thought for 1.13 seconds"
+              }
+            },
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1762886610751-0.02525794014791738",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<|start|>assistant<|channel|>final<|message|>",
+                  "fromDraftModel": false,
+                  "tokensCount": 6,
+                  "isStructural": true
+                },
+                {
+                  "type": "text",
+                  "text": "## The “n + 1 Problem” – A Quick Primer on the Pigeonhole Principle\n\nThe phrase **“n + 1 problem”** is a shorthand way of describing the classic pigeonhole principle in combinatorics and probability. It’s the simplest example that shows why, if you have one more object than containers, at least one container must hold more than one object.\n\n---\n\n### 1. Statement of the Principle\n\n> **Pigeonhole Principle (simple form)**  \n> If you place \\(n+1\\) objects into \\(n\\) boxes, then at least one box contains **two or more** objects.\n\nIt’s sometimes called the “Dirichlet box principle” after Johann Peter Gustav Lejeune Dirichlet.\n\n---\n\n### 2. Why It Holds\n\nSuppose, for contradiction, that each of the \\(n\\) boxes contained at most one object.  \nThen you could place **at most** \\(n\\) objects in total (one per box).  \nBut we actually have \\(n+1\\) objects—more than the maximum possible if every box were single‑occupied.  \nHence, at least one box must contain **two or more** objects.\n\n---\n\n### 3. Common Variations\n\n| Scenario | Application of “n + 1” |\n|----------|------------------------|\n| **Birthday paradox** | 23 people → \\(23 > \\sqrt{365}\\) leads to >50% chance of shared birthday. |\n| **Sock drawer** | 13 pairs of socks (26 individual socks) → 27 socks guarantee a pair. |\n| **Coloring problem** | In any graph with more edges than vertices, at least one vertex has degree ≥ 2. |\n| **Number theory** | Among any \\(n+1\\) integers, two have the same remainder modulo \\(n\\). |\n\n---\n\n### 4. Quick Proofs of Familiar Results\n\n1. **Two people share a birthday (within 365 days)**  \n   *People* \\(= n+1 = 23\\).  \n   *Boxes* (possible birthdays) \\(= n = 365\\).  \n   Since \\(23 \\ll 365\\), the pigeonhole principle doesn’t directly apply, but a more refined counting argument (inclusion‑exclusion or probability) shows the >50% chance.\n\n2. **Among any 10 integers, two are congruent mod 9**  \n   *Integers* \\(= n+1 = 10\\).  \n   *Remainders modulo 9* \\(= n = 9\\).  \n   By pigeonhole, two integers share a remainder.\n\n3. **In any set of 5 distinct points in the plane, at least one angle is ≤ 72°**  \n   (Using 5 angles around a point, the sum is \\(360^\\circ\\); by pigeonhole at least one ≤ \\(360/5 = 72^\\circ\\).)\n\n---\n\n### 5. Why It’s Useful\n\n- **Simplicity**: The principle is a one‑sentence argument that often resolves seemingly complex problems.  \n- **Universality**: It applies to integers, graphs, geometry, probability, computer science (hashing), and more.  \n- **Intuition**: It teaches that “more items than containers” forces overlap, a powerful idea in proofs and algorithm design.\n\n---\n\n### 6. A Quick Exercise\n\n> **Exercise**: Show that among any \\(n+1\\) integers, there exist two whose difference is divisible by \\(n\\).\n\n*Solution*: Consider the remainders of each integer modulo \\(n\\). There are only \\(n\\) possible remainders, but we have \\(n+1\\) integers. By pigeonhole, two share the same remainder; their difference is thus a multiple of \\(n\\).\n\n---\n\n### 7. Take‑away\n\nWhenever you see “\\(n+1\\)” in a problem, ask: *“What are the \\(n\\) containers?”*  \nIf you can identify them, the pigeonhole principle is often your first tool. It turns a potentially messy counting or probability problem into an almost instant proof.\n\nHappy pigeon‑holing!",
+                  "fromDraftModel": false,
+                  "tokensCount": 872,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "openai/gpt-oss-20b",
+                "identifier": "openai/gpt-oss-20b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{#-\n  In addition to the normal inputs of `messages` and `tools`, this template also accepts the\n  following kwargs:\n  - \"builtin_tools\": A list, can contain \"browser\" and/or \"python\".\n  - \"model_identity\": A string that optionally describes the model identity.\n  - \"reasoning_effort\": A string that describes the reasoning effort, defaults to \"medium\".\n #}\n\n{#- Tool Definition Rendering ============================================== #}\n{%- macro render_typescript_type(param_spec, required_params, is_nullable=false) -%}\n    {%- if param_spec.type == \"array\" -%}\n        {%- if param_spec['items'] -%}\n            {%- if param_spec['items']['type'] == \"string\" -%}\n                {{- \"string[]\" }}\n            {%- elif param_spec['items']['type'] == \"number\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"integer\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"boolean\" -%}\n                {{- \"boolean[]\" }}\n            {%- else -%}\n                {%- set inner_type = render_typescript_type(param_spec['items'], required_params) -%}\n                {%- if inner_type == \"object | object\" or inner_type|length > 50 -%}\n                    {{- \"any[]\" }}\n                {%- else -%}\n                    {{- inner_type + \"[]\" }}\n                {%- endif -%}\n            {%- endif -%}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- else -%}\n            {{- \"any[]\" }}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type is defined and param_spec.type is iterable and param_spec.type is not string and param_spec.type is not mapping and param_spec.type[0] is defined -%}\n        {#- Handle array of types like [\"object\", \"object\"] from Union[dict, list] #}\n        {%- if param_spec.type | length > 1 -%}\n            {{- param_spec.type | join(\" | \") }}\n        {%- else -%}\n            {{- param_spec.type[0] }}\n        {%- endif -%}\n    {%- elif param_spec.oneOf -%}\n        {#- Handle oneOf schemas - check for complex unions and fallback to any #}\n        {%- set has_object_variants = false -%}\n        {%- for variant in param_spec.oneOf -%}\n            {%- if variant.type == \"object\" -%}\n                {%- set has_object_variants = true -%}\n            {%- endif -%}\n        {%- endfor -%}\n        {%- if has_object_variants and param_spec.oneOf|length > 1 -%}\n            {{- \"any\" }}\n        {%- else -%}\n            {%- for variant in param_spec.oneOf -%}\n                {{- render_typescript_type(variant, required_params) -}}\n                {%- if variant.description %}\n                    {{- \"// \" + variant.description }}\n                {%- endif -%}\n                {%- if variant.default is defined %}\n                    {{ \"// default: \" + variant.default|tojson }}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \" | \" }}\n                {% endif -%}\n            {%- endfor -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"string\" -%}\n        {%- if param_spec.enum -%}\n            {{- '\"' + param_spec.enum|join('\" | \"') + '\"' -}}\n        {%- else -%}\n            {{- \"string\" }}\n            {%- if param_spec.nullable %}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"number\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"integer\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"boolean\" -%}\n        {{- \"boolean\" }}\n\n    {%- elif param_spec.type == \"object\" -%}\n        {%- if param_spec.properties -%}\n            {{- \"{\\n\" }}\n            {%- for prop_name, prop_spec in param_spec.properties.items() -%}\n                {{- prop_name -}}\n                {%- if prop_name not in (param_spec.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{ render_typescript_type(prop_spec, param_spec.required or []) }}\n                {%- if not loop.last -%}\n                    {{-\", \" }}\n                {%- endif -%}\n            {%- endfor -%}\n            {{- \"}\" }}\n        {%- else -%}\n            {{- \"object\" }}\n        {%- endif -%}\n    {%- else -%}\n        {{- \"any\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro render_tool_namespace(namespace_name, tools) -%}\n    {{- \"## \" + namespace_name + \"\\n\\n\" }}\n    {{- \"namespace \" + namespace_name + \" {\\n\\n\" }}\n    {%- for tool in tools %}\n        {%- set tool = tool.function %}\n        {{- \"// \" + tool.description + \"\\n\" }}\n        {{- \"type \"+ tool.name + \" = \" }}\n        {%- if tool.parameters and tool.parameters.properties %}\n            {{- \"(_: {\\n\" }}\n            {%- for param_name, param_spec in tool.parameters.properties.items() %}\n                {%- if param_spec.description %}\n                    {{- \"// \" + param_spec.description + \"\\n\" }}\n                {%- endif %}\n                {{- param_name }}\n                {%- if param_name not in (tool.parameters.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{- render_typescript_type(param_spec, tool.parameters.required or []) }}\n                {%- if param_spec.default is defined -%}\n                    {%- if param_spec.enum %}\n                        {{- \", // default: \" + param_spec.default }}\n                    {%- elif param_spec.oneOf %}\n                        {{- \"// default: \" + param_spec.default }}\n                    {%- else %}\n                        {{- \", // default: \" + param_spec.default|tojson }}\n                    {%- endif -%}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \",\\n\" }}\n                {%- else %}\n                    {{- \",\\n\" }}\n                {%- endif -%}\n            {%- endfor %}\n            {{- \"}) => any;\\n\\n\" }}\n        {%- else -%}\n            {{- \"() => any;\\n\\n\" }}\n        {%- endif -%}\n    {%- endfor %}\n    {{- \"} // namespace \" + namespace_name }}\n{%- endmacro -%}\n\n{%- macro render_builtin_tools(browser_tool, python_tool) -%}\n    {%- if browser_tool %}\n        {{- \"## browser\\n\\n\" }}\n        {{- \"// Tool for browsing.\\n\" }}\n        {{- \"// The `cursor` appears in brackets before each browsing display: `[{cursor}]`.\\n\" }}\n        {{- \"// Cite information from the tool using the following format:\\n\" }}\n        {{- \"// `【{cursor}†L{line_start}(-L{line_end})?】`, for example: `【6†L9-L11】` or `【8†L3】`.\\n\" }}\n        {{- \"// Do not quote more than 10 words directly from the tool output.\\n\" }}\n        {{- \"// sources=web (default: web)\\n\" }}\n        {{- \"namespace browser {\\n\\n\" }}\n        {{- \"// Searches for information related to `query` and displays `topn` results.\\n\" }}\n        {{- \"type search = (_: {\\n\" }}\n        {{- \"query: string,\\n\" }}\n        {{- \"topn?: number, // default: 10\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Opens the link `id` from the page indicated by `cursor` starting at line number `loc`, showing `num_lines` lines.\\n\" }}\n        {{- \"// Valid link ids are displayed with the formatting: `【{id}†.*】`.\\n\" }}\n        {{- \"// If `cursor` is not provided, the most recent page is implied.\\n\" }}\n        {{- \"// If `id` is a string, it is treated as a fully qualified URL associated with `source`.\\n\" }}\n        {{- \"// If `loc` is not provided, the viewport will be positioned at the beginning of the document or centered on the most relevant passage, if available.\\n\" }}\n        {{- \"// Use this function without `id` to scroll to a new location of an opened page.\\n\" }}\n        {{- \"type open = (_: {\\n\" }}\n        {{- \"id?: number | string, // default: -1\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"loc?: number, // default: -1\\n\" }}\n        {{- \"num_lines?: number, // default: -1\\n\" }}\n        {{- \"view_source?: boolean, // default: false\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Finds exact matches of `pattern` in the current page, or the page given by `cursor`.\\n\" }}\n        {{- \"type find = (_: {\\n\" }}\n        {{- \"pattern: string,\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"} // namespace browser\\n\\n\" }}\n    {%- endif -%}\n\n    {%- if python_tool %}\n        {{- \"## python\\n\\n\" }}\n        {{- \"Use this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).\\n\\n\" }}\n        {{- \"When you send a message containing Python code to python, it will be executed in a stateful Jupyter notebook environment. python will respond with the output of the execution or time out after 120.0 seconds. The drive at '/mnt/data' can be used to save and persist user files. Internet access for this session is UNKNOWN. Depends on the cluster.\\n\\n\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- System Message Construction ============================================ #}\n{%- macro build_system_message() -%}\n    {%- if model_identity is not defined %}\n        {%- set model_identity = \"You are ChatGPT, a large language model trained by OpenAI.\" %}\n    {%- endif %}\n    {{- model_identity + \"\\n\" }}\n    {{- \"Knowledge cutoff: 2024-06\\n\" }}\n    {{- \"Current date: \" + strftime_now(\"%Y-%m-%d\") + \"\\n\\n\" }}\n    {%- if reasoning_effort is not defined %}\n        {%- set reasoning_effort = \"medium\" %}\n    {%- endif %}\n    {{- \"Reasoning: \" + reasoning_effort + \"\\n\\n\" }}\n    {%- if builtin_tools %}\n        {{- \"# Tools\\n\\n\" }}\n        {%- set available_builtin_tools = namespace(browser=false, python=false) %}\n        {%- for tool in builtin_tools %}\n            {%- if tool == \"browser\" %}\n                {%- set available_builtin_tools.browser = true %}\n            {%- elif tool == \"python\" %}\n                {%- set available_builtin_tools.python = true %}\n            {%- endif %}\n        {%- endfor %}\n        {{- render_builtin_tools(available_builtin_tools.browser, available_builtin_tools.python) }}\n    {%- endif -%}\n    {{- \"# Valid channels: analysis, commentary, final. Channel must be included for every message.\" }}\n    {%- if tools -%}\n        {{- \"\\nCalls to these tools must go to the commentary channel: 'functions'.\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- Main Template Logic ================================================= #}\n{#- Set defaults #}\n\n{#- Render system message #}\n{{- \"<|start|>system<|message|>\" }}\n{{- build_system_message() }}\n{{- \"<|end|>\" }}\n\n{#- Extract developer message #}\n{%- if messages[0].role == \"developer\" or messages[0].role == \"system\" %}\n    {%- set developer_message = messages[0].content %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set developer_message = \"\" %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n\n{#- Render developer message #}\n{%- if developer_message or tools %}\n    {{- \"<|start|>developer<|message|>\" }}\n    {%- if developer_message %}\n        {{- \"# Instructions\\n\\n\" }}\n        {{- developer_message }}\n        {{- \"\\n\\n\" }}\n    {%- endif %}\n    {%- if tools -%}\n        {{- \"# Tools\\n\\n\" }}\n        {{- render_tool_namespace(\"functions\", tools) }}\n    {%- endif -%}\n    {{- \"<|end|>\" }}\n{%- endif %}\n\n{#- Render messages #}\n{%- set last_tool_call = namespace(name=none) %}\n{%- for message in loop_messages -%}\n    {#- At this point only assistant/user/tool messages should remain #}\n    {%- if message.role == 'assistant' -%}\n        {#- Checks to ensure the messages are being passed in the format we expect #}\n        {%- if \"content\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.content or \"<|channel|>final<|message|>\" in message.content %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the content field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"thinking\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.thinking or \"<|channel|>final<|message|>\" in message.thinking %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the thinking field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"tool_calls\" in message %}\n            {#- We need very careful handling here - we want to drop the tool call analysis message if the model #}\n            {#- has output a later <|final|> message, but otherwise we want to retain it. This is the only case #}\n            {#- when we render CoT/analysis messages in inference. #}\n            {%- set future_final_message = namespace(found=false) %}\n            {%- for future_message in loop_messages[loop.index:] %}\n                {%- if future_message.role == 'assistant' and \"tool_calls\" not in future_message %}\n                    {%- set future_final_message.found = true %}\n                {%- endif %}\n            {%- endfor %}\n            {#- We assume max 1 tool call per message, and so we infer the tool call name #}\n            {#- in \"tool\" messages from the most recent assistant tool call name #}\n            {%- set tool_call = message.tool_calls[0] %}\n            {%- if tool_call.function %}\n                {%- set tool_call = tool_call.function %}\n            {%- endif %}\n            {%- if message.content and message.thinking %}\n                {{- raise_exception(\"Cannot pass both content and thinking in an assistant message with tool calls! Put the analysis message in one or the other, but not both.\") }}\n            {%- elif message.content and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.content + \"<|end|>\" }}\n            {%- elif message.thinking and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {{- \"<|start|>assistant to=\" }}\n            {{- \"functions.\" + tool_call.name + \"<|channel|>commentary \" }}\n            {{- (tool_call.content_type if tool_call.content_type is defined else \"json\") + \"<|message|>\" }}\n            {{- tool_call.arguments|tojson }}\n            {{- \"<|call|>\" }}\n            {%- set last_tool_call.name = tool_call.name %}\n        {%- elif loop.last and not add_generation_prompt %}\n            {#- Only render the CoT if the final turn is an assistant turn and add_generation_prompt is false #}\n            {#- This is a situation that should only occur in training, never in inference. #}\n            {%- if \"thinking\" in message %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {#- <|return|> indicates the end of generation, but <|end|> does not #}\n            {#- <|return|> should never be an input to the model, but we include it as the final token #}\n            {#- when training, so the model learns to emit it. #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|return|>\" }}\n        {%- else %}\n            {#- CoT is dropped during all previous turns, so we never render it for inference #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|end|>\" }}\n            {%- set last_tool_call.name = none %}\n        {%- endif %}\n    {%- elif message.role == 'tool' -%}\n        {%- if last_tool_call.name is none %}\n            {{- raise_exception(\"Message has tool role, but there was no previous assistant message with a tool call!\") }}\n        {%- endif %}\n        {{- \"<|start|>functions.\" + last_tool_call.name }}\n        {{- \" to=assistant<|channel|>commentary<|message|>\" + message.content|tojson + \"<|end|>\" }}\n    {%- elif message.role == 'user' -%}\n        {{- \"<|start|>user<|message|>\" + message.content + \"<|end|>\" }}\n    {%- endif -%}\n{%- endfor -%}\n\n{#- Generation prompt #}\n{%- if add_generation_prompt -%}\n<|start|>assistant\n{%- endif -%}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.8
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 40
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.8
+                    },
+                    {
+                      "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+                      "value": "low"
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 42.955215165400084,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 3.16,
+                  "totalTimeSec": 22.007,
+                  "promptTokensCount": 71,
+                  "predictedTokensCount": 945,
+                  "totalTokensCount": 1016
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1762886631050-0.8278487489312172",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "n+1 in software"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "openai/gpt-oss-20b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1762886657150-0.5131830169926198",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "We need explain n+1 problem in software: e.g., off-by-one errors, array indexing. Provide explanation.",
+                  "fromDraftModel": false,
+                  "tokensCount": 24,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "prefix": "<|channel|>analysis<|message|>",
+              "suffix": "<|end|>",
+              "style": {
+                "type": "thinking",
+                "ended": true,
+                "title": "Thought for a brief moment"
+              }
+            },
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1762886657571-0.43959298318169127",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<|start|>assistant<|channel|>final<|message|>",
+                  "fromDraftModel": false,
+                  "tokensCount": 6,
+                  "isStructural": true
+                },
+                {
+                  "type": "text",
+                  "text": "## The “n + 1” Problem in Software – What It Is, Why It Happens, and How to Fix It\n\n| Context | What “n + 1” Looks Like | Typical Symptoms |\n|---------|------------------------|------------------|\n| **Array / list indexing** | Off‑by‑one (use `array[n]` instead of `array[n-1]`) | Crash, “index out of bounds”, wrong data |\n| **Loop boundaries** | Loop runs `i = 0; i <= n; ++i` instead of `< n` | Extra iteration, duplicate work |\n| **SQL / database queries** | “N+1 selects” problem (one query per row) | Performance hit, many round‑trips |\n| **File I/O** | Reading `n+1` bytes when you only need `n` | Corrupted data, buffer overrun |\n| **API design** | Returning `n+1` items when the contract says `n` | Client bugs, confusion |\n\nBelow is a quick tour of each area with the cause, symptom, and fix.\n\n---\n\n### 1. Off‑by‑One Errors in Code\n\n#### What It Is\nWhen a loop or array access goes one step too far (or too short).  \nCommon patterns:\n\n```c\n// Wrong: accesses element n (past the end)\nfor (int i = 0; i <= n; ++i) { ... }\n\n// Wrong: reads array[n] (past the end)\nint val = arr[n];\n```\n\n#### Why It Happens\n- Confusing “<” vs. “<=”.\n- Mixing 0‑based and 1‑based indexing.\n- Misreading API docs that say “size” vs. “count”.\n\n#### Symptoms\n- `ArrayIndexOutOfBoundsException` (Java) / segmentation fault (C/C++).\n- Wrong results (e.g., last element duplicated).\n- Silent corruption if the out‑of‑bounds access writes to a benign location.\n\n#### Fixes\n1. **Use `<` for 0‑based loops**  \n   ```c\n   for (int i = 0; i < n; ++i) { … }\n   ```\n2. **Prefer language‑provided bounds checks** – e.g., `std::vector::at()` in C++.\n3. **Write tests that hit the edge** – last element, empty container.\n\n---\n\n### 2. The “N+1 Query” Problem (Database)\n\n#### What It Is\nWhen an application performs one query to fetch a list of `n` records, then executes another query per record (total `n+1` queries) instead of a single join or batch fetch.\n\n```sql\nSELECT * FROM orders WHERE user_id = 42;   -- n rows\n\n-- In code:\nfor (order in orders) {\n    SELECT * FROM items WHERE order_id = order.id;  -- one per row\n}\n```\n\n#### Why It Happens\n- ORM “lazy loading” of related entities.\n- Forgetting to eager‑load associations.\n- Writing ad‑hoc queries inside loops.\n\n#### Symptoms\n- HTTP latency spikes in web apps.\n- Database connection exhaustion.\n- Poor scalability when `n` grows.\n\n#### Fixes\n1. **Eager load / join**  \n   ```sql\n   SELECT o.*, i.* FROM orders o\n   JOIN items i ON i.order_id = o.id\n   WHERE o.user_id = 42;\n   ```\n2. **Batch fetch** – retrieve all related rows in a single query and map them manually.\n3. **Profile queries** (e.g., `EXPLAIN`, SQL log) to spot the pattern.\n\n---\n\n### 3. File I/O Off‑by‑One\n\n#### What It Is\nReading or writing one byte too many, e.g., using `n+1` when you only need `n`.\n\n```c\nchar buffer[100];\nfread(buffer, 1, sizeof(buffer)+1, file);   // reads 101 bytes\n```\n\n#### Why It Happens\n- Misunderstanding `sizeof` vs. actual file size.\n- Mixing signed/unsigned types.\n\n#### Symptoms\n- Corrupted files, stray null bytes.\n- Buffer overrun if the underlying API doesn’t guard.\n\n#### Fixes\n1. **Use precise lengths** – `fread(buffer, 1, n, file);`\n2. **Check return value** – ensure the number of items read matches expectation.\n3. **Prefer higher‑level APIs** that handle lengths automatically (e.g., `std::ifstream.read()`).\n\n---\n\n### 4. API Contracts and Off‑by‑One\n\n#### What It Is\nReturning `n+1` items where the spec says “at most n”, or expecting callers to provide a buffer of size `n+1` when only `n` is needed.\n\n#### Why It Happens\n- Misreading documentation.\n- Over‑exposing internal data structures.\n- Legacy code that grew without updating docs.\n\n#### Symptoms\n- Client crashes due to buffer overruns.\n- Unused trailing element that confuses logic.\n\n#### Fixes\n1. **Update docs** – clearly state “size” vs. “capacity”.\n2. **Add validation** in the API to reject buffers that are too small.\n3. **Deprecate old signatures** and migrate.\n\n---\n\n## Quick Checklist for “n + 1” Problems\n\n| Area | Check |\n|------|-------|\n| **Loops** | `i < n` vs. `<=` |\n| **Arrays/Lists** | Index range `[0, size-1]` |\n| **Database** | One query per record? |\n| **File I/O** | Size vs. buffer length |\n| **API** | Contract size matches implementation |\n\n---\n\n### TL;DR\n\nThe “n + 1” problem is any scenario where you have **one more operation, element, or query than the data set actually needs**. It often manifests as an off‑by‑one bug or a performance bottleneck. Spotting it requires:\n\n1. **Understanding the domain** (arrays are 0‑based, SQL joins, file lengths).\n2. **Checking boundaries** (`<` vs. `<=`, size vs. capacity).\n3. **Profiling** (latency, queries, crash logs).\n\nOnce identified, the fix is usually a small code change: adjust loop limits, use eager loading, or correct buffer sizes. Keep the checklist handy and you’ll catch most “n + 1” issues before they become production headaches.",
+                  "fromDraftModel": false,
+                  "tokensCount": 1365,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "openai/gpt-oss-20b",
+                "identifier": "openai/gpt-oss-20b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{#-\n  In addition to the normal inputs of `messages` and `tools`, this template also accepts the\n  following kwargs:\n  - \"builtin_tools\": A list, can contain \"browser\" and/or \"python\".\n  - \"model_identity\": A string that optionally describes the model identity.\n  - \"reasoning_effort\": A string that describes the reasoning effort, defaults to \"medium\".\n #}\n\n{#- Tool Definition Rendering ============================================== #}\n{%- macro render_typescript_type(param_spec, required_params, is_nullable=false) -%}\n    {%- if param_spec.type == \"array\" -%}\n        {%- if param_spec['items'] -%}\n            {%- if param_spec['items']['type'] == \"string\" -%}\n                {{- \"string[]\" }}\n            {%- elif param_spec['items']['type'] == \"number\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"integer\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"boolean\" -%}\n                {{- \"boolean[]\" }}\n            {%- else -%}\n                {%- set inner_type = render_typescript_type(param_spec['items'], required_params) -%}\n                {%- if inner_type == \"object | object\" or inner_type|length > 50 -%}\n                    {{- \"any[]\" }}\n                {%- else -%}\n                    {{- inner_type + \"[]\" }}\n                {%- endif -%}\n            {%- endif -%}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- else -%}\n            {{- \"any[]\" }}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type is defined and param_spec.type is iterable and param_spec.type is not string and param_spec.type is not mapping and param_spec.type[0] is defined -%}\n        {#- Handle array of types like [\"object\", \"object\"] from Union[dict, list] #}\n        {%- if param_spec.type | length > 1 -%}\n            {{- param_spec.type | join(\" | \") }}\n        {%- else -%}\n            {{- param_spec.type[0] }}\n        {%- endif -%}\n    {%- elif param_spec.oneOf -%}\n        {#- Handle oneOf schemas - check for complex unions and fallback to any #}\n        {%- set has_object_variants = false -%}\n        {%- for variant in param_spec.oneOf -%}\n            {%- if variant.type == \"object\" -%}\n                {%- set has_object_variants = true -%}\n            {%- endif -%}\n        {%- endfor -%}\n        {%- if has_object_variants and param_spec.oneOf|length > 1 -%}\n            {{- \"any\" }}\n        {%- else -%}\n            {%- for variant in param_spec.oneOf -%}\n                {{- render_typescript_type(variant, required_params) -}}\n                {%- if variant.description %}\n                    {{- \"// \" + variant.description }}\n                {%- endif -%}\n                {%- if variant.default is defined %}\n                    {{ \"// default: \" + variant.default|tojson }}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \" | \" }}\n                {% endif -%}\n            {%- endfor -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"string\" -%}\n        {%- if param_spec.enum -%}\n            {{- '\"' + param_spec.enum|join('\" | \"') + '\"' -}}\n        {%- else -%}\n            {{- \"string\" }}\n            {%- if param_spec.nullable %}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"number\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"integer\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"boolean\" -%}\n        {{- \"boolean\" }}\n\n    {%- elif param_spec.type == \"object\" -%}\n        {%- if param_spec.properties -%}\n            {{- \"{\\n\" }}\n            {%- for prop_name, prop_spec in param_spec.properties.items() -%}\n                {{- prop_name -}}\n                {%- if prop_name not in (param_spec.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{ render_typescript_type(prop_spec, param_spec.required or []) }}\n                {%- if not loop.last -%}\n                    {{-\", \" }}\n                {%- endif -%}\n            {%- endfor -%}\n            {{- \"}\" }}\n        {%- else -%}\n            {{- \"object\" }}\n        {%- endif -%}\n    {%- else -%}\n        {{- \"any\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro render_tool_namespace(namespace_name, tools) -%}\n    {{- \"## \" + namespace_name + \"\\n\\n\" }}\n    {{- \"namespace \" + namespace_name + \" {\\n\\n\" }}\n    {%- for tool in tools %}\n        {%- set tool = tool.function %}\n        {{- \"// \" + tool.description + \"\\n\" }}\n        {{- \"type \"+ tool.name + \" = \" }}\n        {%- if tool.parameters and tool.parameters.properties %}\n            {{- \"(_: {\\n\" }}\n            {%- for param_name, param_spec in tool.parameters.properties.items() %}\n                {%- if param_spec.description %}\n                    {{- \"// \" + param_spec.description + \"\\n\" }}\n                {%- endif %}\n                {{- param_name }}\n                {%- if param_name not in (tool.parameters.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{- render_typescript_type(param_spec, tool.parameters.required or []) }}\n                {%- if param_spec.default is defined -%}\n                    {%- if param_spec.enum %}\n                        {{- \", // default: \" + param_spec.default }}\n                    {%- elif param_spec.oneOf %}\n                        {{- \"// default: \" + param_spec.default }}\n                    {%- else %}\n                        {{- \", // default: \" + param_spec.default|tojson }}\n                    {%- endif -%}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \",\\n\" }}\n                {%- else %}\n                    {{- \",\\n\" }}\n                {%- endif -%}\n            {%- endfor %}\n            {{- \"}) => any;\\n\\n\" }}\n        {%- else -%}\n            {{- \"() => any;\\n\\n\" }}\n        {%- endif -%}\n    {%- endfor %}\n    {{- \"} // namespace \" + namespace_name }}\n{%- endmacro -%}\n\n{%- macro render_builtin_tools(browser_tool, python_tool) -%}\n    {%- if browser_tool %}\n        {{- \"## browser\\n\\n\" }}\n        {{- \"// Tool for browsing.\\n\" }}\n        {{- \"// The `cursor` appears in brackets before each browsing display: `[{cursor}]`.\\n\" }}\n        {{- \"// Cite information from the tool using the following format:\\n\" }}\n        {{- \"// `【{cursor}†L{line_start}(-L{line_end})?】`, for example: `【6†L9-L11】` or `【8†L3】`.\\n\" }}\n        {{- \"// Do not quote more than 10 words directly from the tool output.\\n\" }}\n        {{- \"// sources=web (default: web)\\n\" }}\n        {{- \"namespace browser {\\n\\n\" }}\n        {{- \"// Searches for information related to `query` and displays `topn` results.\\n\" }}\n        {{- \"type search = (_: {\\n\" }}\n        {{- \"query: string,\\n\" }}\n        {{- \"topn?: number, // default: 10\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Opens the link `id` from the page indicated by `cursor` starting at line number `loc`, showing `num_lines` lines.\\n\" }}\n        {{- \"// Valid link ids are displayed with the formatting: `【{id}†.*】`.\\n\" }}\n        {{- \"// If `cursor` is not provided, the most recent page is implied.\\n\" }}\n        {{- \"// If `id` is a string, it is treated as a fully qualified URL associated with `source`.\\n\" }}\n        {{- \"// If `loc` is not provided, the viewport will be positioned at the beginning of the document or centered on the most relevant passage, if available.\\n\" }}\n        {{- \"// Use this function without `id` to scroll to a new location of an opened page.\\n\" }}\n        {{- \"type open = (_: {\\n\" }}\n        {{- \"id?: number | string, // default: -1\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"loc?: number, // default: -1\\n\" }}\n        {{- \"num_lines?: number, // default: -1\\n\" }}\n        {{- \"view_source?: boolean, // default: false\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Finds exact matches of `pattern` in the current page, or the page given by `cursor`.\\n\" }}\n        {{- \"type find = (_: {\\n\" }}\n        {{- \"pattern: string,\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"} // namespace browser\\n\\n\" }}\n    {%- endif -%}\n\n    {%- if python_tool %}\n        {{- \"## python\\n\\n\" }}\n        {{- \"Use this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).\\n\\n\" }}\n        {{- \"When you send a message containing Python code to python, it will be executed in a stateful Jupyter notebook environment. python will respond with the output of the execution or time out after 120.0 seconds. The drive at '/mnt/data' can be used to save and persist user files. Internet access for this session is UNKNOWN. Depends on the cluster.\\n\\n\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- System Message Construction ============================================ #}\n{%- macro build_system_message() -%}\n    {%- if model_identity is not defined %}\n        {%- set model_identity = \"You are ChatGPT, a large language model trained by OpenAI.\" %}\n    {%- endif %}\n    {{- model_identity + \"\\n\" }}\n    {{- \"Knowledge cutoff: 2024-06\\n\" }}\n    {{- \"Current date: \" + strftime_now(\"%Y-%m-%d\") + \"\\n\\n\" }}\n    {%- if reasoning_effort is not defined %}\n        {%- set reasoning_effort = \"medium\" %}\n    {%- endif %}\n    {{- \"Reasoning: \" + reasoning_effort + \"\\n\\n\" }}\n    {%- if builtin_tools %}\n        {{- \"# Tools\\n\\n\" }}\n        {%- set available_builtin_tools = namespace(browser=false, python=false) %}\n        {%- for tool in builtin_tools %}\n            {%- if tool == \"browser\" %}\n                {%- set available_builtin_tools.browser = true %}\n            {%- elif tool == \"python\" %}\n                {%- set available_builtin_tools.python = true %}\n            {%- endif %}\n        {%- endfor %}\n        {{- render_builtin_tools(available_builtin_tools.browser, available_builtin_tools.python) }}\n    {%- endif -%}\n    {{- \"# Valid channels: analysis, commentary, final. Channel must be included for every message.\" }}\n    {%- if tools -%}\n        {{- \"\\nCalls to these tools must go to the commentary channel: 'functions'.\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- Main Template Logic ================================================= #}\n{#- Set defaults #}\n\n{#- Render system message #}\n{{- \"<|start|>system<|message|>\" }}\n{{- build_system_message() }}\n{{- \"<|end|>\" }}\n\n{#- Extract developer message #}\n{%- if messages[0].role == \"developer\" or messages[0].role == \"system\" %}\n    {%- set developer_message = messages[0].content %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set developer_message = \"\" %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n\n{#- Render developer message #}\n{%- if developer_message or tools %}\n    {{- \"<|start|>developer<|message|>\" }}\n    {%- if developer_message %}\n        {{- \"# Instructions\\n\\n\" }}\n        {{- developer_message }}\n        {{- \"\\n\\n\" }}\n    {%- endif %}\n    {%- if tools -%}\n        {{- \"# Tools\\n\\n\" }}\n        {{- render_tool_namespace(\"functions\", tools) }}\n    {%- endif -%}\n    {{- \"<|end|>\" }}\n{%- endif %}\n\n{#- Render messages #}\n{%- set last_tool_call = namespace(name=none) %}\n{%- for message in loop_messages -%}\n    {#- At this point only assistant/user/tool messages should remain #}\n    {%- if message.role == 'assistant' -%}\n        {#- Checks to ensure the messages are being passed in the format we expect #}\n        {%- if \"content\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.content or \"<|channel|>final<|message|>\" in message.content %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the content field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"thinking\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.thinking or \"<|channel|>final<|message|>\" in message.thinking %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the thinking field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"tool_calls\" in message %}\n            {#- We need very careful handling here - we want to drop the tool call analysis message if the model #}\n            {#- has output a later <|final|> message, but otherwise we want to retain it. This is the only case #}\n            {#- when we render CoT/analysis messages in inference. #}\n            {%- set future_final_message = namespace(found=false) %}\n            {%- for future_message in loop_messages[loop.index:] %}\n                {%- if future_message.role == 'assistant' and \"tool_calls\" not in future_message %}\n                    {%- set future_final_message.found = true %}\n                {%- endif %}\n            {%- endfor %}\n            {#- We assume max 1 tool call per message, and so we infer the tool call name #}\n            {#- in \"tool\" messages from the most recent assistant tool call name #}\n            {%- set tool_call = message.tool_calls[0] %}\n            {%- if tool_call.function %}\n                {%- set tool_call = tool_call.function %}\n            {%- endif %}\n            {%- if message.content and message.thinking %}\n                {{- raise_exception(\"Cannot pass both content and thinking in an assistant message with tool calls! Put the analysis message in one or the other, but not both.\") }}\n            {%- elif message.content and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.content + \"<|end|>\" }}\n            {%- elif message.thinking and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {{- \"<|start|>assistant to=\" }}\n            {{- \"functions.\" + tool_call.name + \"<|channel|>commentary \" }}\n            {{- (tool_call.content_type if tool_call.content_type is defined else \"json\") + \"<|message|>\" }}\n            {{- tool_call.arguments|tojson }}\n            {{- \"<|call|>\" }}\n            {%- set last_tool_call.name = tool_call.name %}\n        {%- elif loop.last and not add_generation_prompt %}\n            {#- Only render the CoT if the final turn is an assistant turn and add_generation_prompt is false #}\n            {#- This is a situation that should only occur in training, never in inference. #}\n            {%- if \"thinking\" in message %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {#- <|return|> indicates the end of generation, but <|end|> does not #}\n            {#- <|return|> should never be an input to the model, but we include it as the final token #}\n            {#- when training, so the model learns to emit it. #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|return|>\" }}\n        {%- else %}\n            {#- CoT is dropped during all previous turns, so we never render it for inference #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|end|>\" }}\n            {%- set last_tool_call.name = none %}\n        {%- endif %}\n    {%- elif message.role == 'tool' -%}\n        {%- if last_tool_call.name is none %}\n            {{- raise_exception(\"Message has tool role, but there was no previous assistant message with a tool call!\") }}\n        {%- endif %}\n        {{- \"<|start|>functions.\" + last_tool_call.name }}\n        {{- \" to=assistant<|channel|>commentary<|message|>\" + message.content|tojson + \"<|end|>\" }}\n    {%- elif message.role == 'user' -%}\n        {{- \"<|start|>user<|message|>\" + message.content + \"<|end|>\" }}\n    {%- endif -%}\n{%- endfor -%}\n\n{#- Generation prompt #}\n{%- if add_generation_prompt -%}\n<|start|>assistant\n{%- endif -%}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.8
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 40
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.8
+                    },
+                    {
+                      "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+                      "value": "low"
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 41.80612836483623,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 3.834,
+                  "totalTimeSec": 33.488,
+                  "promptTokensCount": 959,
+                  "predictedTokensCount": 1400,
+                  "totalTokensCount": 2359
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1762886690227-0.18539748928845112",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "he “N+1 Query” Problem (Database)"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "openai/gpt-oss-20b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1762886703554-0.20481708005537558",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Need explain problem, examples, causes, solutions. Provide detailed answer.",
+                  "fromDraftModel": false,
+                  "tokensCount": 14,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "prefix": "<|channel|>analysis<|message|>",
+              "suffix": "<|end|>",
+              "style": {
+                "type": "thinking",
+                "ended": true,
+                "title": "Thought for a brief moment"
+              }
+            },
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1762886703853-0.9335626171220393",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<|start|>assistant<|channel|>final<|message|>",
+                  "fromDraftModel": false,
+                  "tokensCount": 6,
+                  "isStructural": true
+                },
+                {
+                  "type": "text",
+                  "text": "## The “N+1 Query” Problem – A Deep‑Dive into Database Performance\n\n| What it looks like | Why it matters |\n|--------------------|----------------|\n| **One “master” query + n “detail” queries** | Turns a single round‑trip into **n+1** round‑trips, blowing up latency and load |\n| **Lazy loading in ORMs** | Each entity’s association is fetched lazily, leading to many small queries |\n| **Missing `JOIN`s or batch fetches** | Simple SQL can be written to retrieve everything at once |\n\n---\n\n### 1. Anatomy of the Problem\n\n```sql\n-- Master query: get all orders for a user (n rows)\nSELECT id, total FROM orders WHERE user_id = 42;\n\n-- Detail query: for each order, get its line items\nSELECT * FROM items WHERE order_id = :orderId;\n```\n\nIf a user has 200 orders, the client will execute **201** queries:\n\n- 1 master query\n- 200 detail queries (one per order)\n\nThis is the classic “N+1” pattern.\n\n---\n\n### 2. Why It Happens\n\n| Cause | Typical Scenario |\n|-------|------------------|\n| **Lazy Loading** | ORM lazily loads a collection (`order.items`) when accessed for the first time. |\n| **N+1 in loops** | Developers write code that iterates over a result set and fires another query inside the loop. |\n| **Poorly designed APIs** | A service returns a list of IDs and forces the caller to query each ID separately. |\n| **Lack of awareness** | Developers think “one more query” is negligible, but in high‑traffic systems it compounds. |\n\n---\n\n### 3. Symptoms\n\n| Symptom | What to look for |\n|---------|-----------------|\n| **Slow page loads** | Users wait seconds instead of milliseconds. |\n| **High database CPU/IO** | The DB shows many short queries, each doing a small scan. |\n| **Connection pool exhaustion** | Each request opens a new connection that never returns because of the many round‑trips. |\n| **Unexpected spikes** | When a user has many related records, the response time suddenly jumps. |\n\n---\n\n### 4. Detecting the Problem\n\n| Tool / Technique | How to use it |\n|------------------|---------------|\n| **SQL logs** (`slow_query_log`, `general_log`) | Search for patterns like “SELECT … WHERE id = ?” repeated many times. |\n| **ORM profiling** (`Hibernate Statistics`, `Entity Framework Logging`) | Look at “query count” vs. “entity fetches”. |\n| **Database EXPLAIN** | Identify queries that are executed per row. |\n| **Application monitoring** (Apm: New Relic, Datadog) | Look at “Database Calls” vs. “Requests”. |\n\n---\n\n### 5. Fixing the Problem\n\n#### A. **Eager Loading / JOINs**\n\n```sql\nSELECT o.id, o.total,\n       i.id AS item_id, i.product_name, i.quantity\nFROM orders o\nLEFT JOIN items i ON i.order_id = o.id\nWHERE o.user_id = 42;\n```\n\n- One round‑trip, all data in one result set.\n- Use `GROUP BY` or application logic to rebuild the parent/child hierarchy.\n\n#### B. **Batch / IN‑Queries**\n\n```sql\n-- Get all item IDs for the orders in one query\nSELECT * FROM items WHERE order_id IN (:orderIds);\n```\n\n- `:orderIds` is a comma‑separated list of the 200 order IDs.\n- The DB does one scan instead of 200.\n\n#### C. **ORM Features**\n\n| ORM | Feature |\n|-----|---------|\n| Hibernate | `@BatchSize`, `fetch = FetchType.EAGER` |\n| Entity Framework | `.Include(...)`, `.ThenInclude(...)` |\n| Django ORM | `select_related()`, `prefetch_related()` |\n\nUse them judiciously; eager loading too much can lead to huge result sets.\n\n#### D. **Cache Frequently‑Used Data**\n\n- Cache the order–item mapping in Redis or Memcached.\n- For read‑heavy workloads, this removes DB load entirely.\n\n#### E. **Pagination / Streaming**\n\nIf you need to display thousands of orders, paginate them first and load the items for each page only.\n\n```sql\n-- Get 20 orders per page\nSELECT * FROM orders WHERE user_id = 42 LIMIT 20 OFFSET :offset;\n```\n\nThen batch load items for those 20 orders.\n\n---\n\n### 6. Practical Example: Fixing a Spring/Hibernate Service\n\n```java\n// Problematic code (N+1)\nList<Order> orders = orderRepo.findByUserId(userId);\nfor (Order o : orders) {\n    List<Item> items = itemRepo.findByOrderId(o.getId()); // one query per order\n    o.setItems(items);\n}\n```\n\n```java\n// Fixed with eager loading (JOIN)\nList<Order> orders = orderRepo.findByUserIdWithItems(userId);\n// or\n@Query(\"SELECT o FROM Order o LEFT JOIN FETCH o.items WHERE o.user.id = :userId\")\nList<Order> findByUserIdWithItems(@Param(\"userId\") Long userId);\n```\n\nNow the ORM issues **one** SQL statement that pulls both orders and items.\n\n---\n\n### 7. When Eager Loading Is *Not* the Right Solution\n\n| Situation | Alternative |\n|-----------|-------------|\n| Orders have millions of items | Stream the items in batches (`LIMIT/OFFSET` or cursor) |\n| Items are rarely needed | Keep lazy loading but use a **fetch profile** that loads items only when accessed |\n| Memory constraints | Use DTOs or projection queries to fetch only needed columns |\n\n---\n\n### 8. Quick Reference Checklist\n\n| Step | Action |\n|------|--------|\n| **1** | Identify the master query (list of parents). |\n| **2** | Count the number of detail queries executed. |\n| **3** | Replace per‑row queries with a `JOIN` or an `IN` clause. |\n| **4** | Verify that the resulting query is efficient (`EXPLAIN`). |\n| **5** | Profile again to ensure round‑trip count dropped to 1. |\n\n---\n\n## Bottom Line\n\nThe **N+1 query problem** turns a single database round‑trip into dozens or hundreds, dramatically hurting performance. It’s usually caused by lazy loading or ad‑hoc queries inside loops. The cure is to **fetch related data in bulk**—via `JOIN`s, batch `IN` queries, or ORM eager‑loading features—and to cache where appropriate. Once you spot the pattern and refactor, your application’s latency drops from seconds to milliseconds and your database scales with the load.",
+                  "fromDraftModel": false,
+                  "tokensCount": 1424,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "openai/gpt-oss-20b",
+                "identifier": "openai/gpt-oss-20b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{#-\n  In addition to the normal inputs of `messages` and `tools`, this template also accepts the\n  following kwargs:\n  - \"builtin_tools\": A list, can contain \"browser\" and/or \"python\".\n  - \"model_identity\": A string that optionally describes the model identity.\n  - \"reasoning_effort\": A string that describes the reasoning effort, defaults to \"medium\".\n #}\n\n{#- Tool Definition Rendering ============================================== #}\n{%- macro render_typescript_type(param_spec, required_params, is_nullable=false) -%}\n    {%- if param_spec.type == \"array\" -%}\n        {%- if param_spec['items'] -%}\n            {%- if param_spec['items']['type'] == \"string\" -%}\n                {{- \"string[]\" }}\n            {%- elif param_spec['items']['type'] == \"number\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"integer\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"boolean\" -%}\n                {{- \"boolean[]\" }}\n            {%- else -%}\n                {%- set inner_type = render_typescript_type(param_spec['items'], required_params) -%}\n                {%- if inner_type == \"object | object\" or inner_type|length > 50 -%}\n                    {{- \"any[]\" }}\n                {%- else -%}\n                    {{- inner_type + \"[]\" }}\n                {%- endif -%}\n            {%- endif -%}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- else -%}\n            {{- \"any[]\" }}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type is defined and param_spec.type is iterable and param_spec.type is not string and param_spec.type is not mapping and param_spec.type[0] is defined -%}\n        {#- Handle array of types like [\"object\", \"object\"] from Union[dict, list] #}\n        {%- if param_spec.type | length > 1 -%}\n            {{- param_spec.type | join(\" | \") }}\n        {%- else -%}\n            {{- param_spec.type[0] }}\n        {%- endif -%}\n    {%- elif param_spec.oneOf -%}\n        {#- Handle oneOf schemas - check for complex unions and fallback to any #}\n        {%- set has_object_variants = false -%}\n        {%- for variant in param_spec.oneOf -%}\n            {%- if variant.type == \"object\" -%}\n                {%- set has_object_variants = true -%}\n            {%- endif -%}\n        {%- endfor -%}\n        {%- if has_object_variants and param_spec.oneOf|length > 1 -%}\n            {{- \"any\" }}\n        {%- else -%}\n            {%- for variant in param_spec.oneOf -%}\n                {{- render_typescript_type(variant, required_params) -}}\n                {%- if variant.description %}\n                    {{- \"// \" + variant.description }}\n                {%- endif -%}\n                {%- if variant.default is defined %}\n                    {{ \"// default: \" + variant.default|tojson }}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \" | \" }}\n                {% endif -%}\n            {%- endfor -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"string\" -%}\n        {%- if param_spec.enum -%}\n            {{- '\"' + param_spec.enum|join('\" | \"') + '\"' -}}\n        {%- else -%}\n            {{- \"string\" }}\n            {%- if param_spec.nullable %}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"number\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"integer\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"boolean\" -%}\n        {{- \"boolean\" }}\n\n    {%- elif param_spec.type == \"object\" -%}\n        {%- if param_spec.properties -%}\n            {{- \"{\\n\" }}\n            {%- for prop_name, prop_spec in param_spec.properties.items() -%}\n                {{- prop_name -}}\n                {%- if prop_name not in (param_spec.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{ render_typescript_type(prop_spec, param_spec.required or []) }}\n                {%- if not loop.last -%}\n                    {{-\", \" }}\n                {%- endif -%}\n            {%- endfor -%}\n            {{- \"}\" }}\n        {%- else -%}\n            {{- \"object\" }}\n        {%- endif -%}\n    {%- else -%}\n        {{- \"any\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro render_tool_namespace(namespace_name, tools) -%}\n    {{- \"## \" + namespace_name + \"\\n\\n\" }}\n    {{- \"namespace \" + namespace_name + \" {\\n\\n\" }}\n    {%- for tool in tools %}\n        {%- set tool = tool.function %}\n        {{- \"// \" + tool.description + \"\\n\" }}\n        {{- \"type \"+ tool.name + \" = \" }}\n        {%- if tool.parameters and tool.parameters.properties %}\n            {{- \"(_: {\\n\" }}\n            {%- for param_name, param_spec in tool.parameters.properties.items() %}\n                {%- if param_spec.description %}\n                    {{- \"// \" + param_spec.description + \"\\n\" }}\n                {%- endif %}\n                {{- param_name }}\n                {%- if param_name not in (tool.parameters.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{- render_typescript_type(param_spec, tool.parameters.required or []) }}\n                {%- if param_spec.default is defined -%}\n                    {%- if param_spec.enum %}\n                        {{- \", // default: \" + param_spec.default }}\n                    {%- elif param_spec.oneOf %}\n                        {{- \"// default: \" + param_spec.default }}\n                    {%- else %}\n                        {{- \", // default: \" + param_spec.default|tojson }}\n                    {%- endif -%}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \",\\n\" }}\n                {%- else %}\n                    {{- \",\\n\" }}\n                {%- endif -%}\n            {%- endfor %}\n            {{- \"}) => any;\\n\\n\" }}\n        {%- else -%}\n            {{- \"() => any;\\n\\n\" }}\n        {%- endif -%}\n    {%- endfor %}\n    {{- \"} // namespace \" + namespace_name }}\n{%- endmacro -%}\n\n{%- macro render_builtin_tools(browser_tool, python_tool) -%}\n    {%- if browser_tool %}\n        {{- \"## browser\\n\\n\" }}\n        {{- \"// Tool for browsing.\\n\" }}\n        {{- \"// The `cursor` appears in brackets before each browsing display: `[{cursor}]`.\\n\" }}\n        {{- \"// Cite information from the tool using the following format:\\n\" }}\n        {{- \"// `【{cursor}†L{line_start}(-L{line_end})?】`, for example: `【6†L9-L11】` or `【8†L3】`.\\n\" }}\n        {{- \"// Do not quote more than 10 words directly from the tool output.\\n\" }}\n        {{- \"// sources=web (default: web)\\n\" }}\n        {{- \"namespace browser {\\n\\n\" }}\n        {{- \"// Searches for information related to `query` and displays `topn` results.\\n\" }}\n        {{- \"type search = (_: {\\n\" }}\n        {{- \"query: string,\\n\" }}\n        {{- \"topn?: number, // default: 10\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Opens the link `id` from the page indicated by `cursor` starting at line number `loc`, showing `num_lines` lines.\\n\" }}\n        {{- \"// Valid link ids are displayed with the formatting: `【{id}†.*】`.\\n\" }}\n        {{- \"// If `cursor` is not provided, the most recent page is implied.\\n\" }}\n        {{- \"// If `id` is a string, it is treated as a fully qualified URL associated with `source`.\\n\" }}\n        {{- \"// If `loc` is not provided, the viewport will be positioned at the beginning of the document or centered on the most relevant passage, if available.\\n\" }}\n        {{- \"// Use this function without `id` to scroll to a new location of an opened page.\\n\" }}\n        {{- \"type open = (_: {\\n\" }}\n        {{- \"id?: number | string, // default: -1\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"loc?: number, // default: -1\\n\" }}\n        {{- \"num_lines?: number, // default: -1\\n\" }}\n        {{- \"view_source?: boolean, // default: false\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Finds exact matches of `pattern` in the current page, or the page given by `cursor`.\\n\" }}\n        {{- \"type find = (_: {\\n\" }}\n        {{- \"pattern: string,\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"} // namespace browser\\n\\n\" }}\n    {%- endif -%}\n\n    {%- if python_tool %}\n        {{- \"## python\\n\\n\" }}\n        {{- \"Use this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).\\n\\n\" }}\n        {{- \"When you send a message containing Python code to python, it will be executed in a stateful Jupyter notebook environment. python will respond with the output of the execution or time out after 120.0 seconds. The drive at '/mnt/data' can be used to save and persist user files. Internet access for this session is UNKNOWN. Depends on the cluster.\\n\\n\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- System Message Construction ============================================ #}\n{%- macro build_system_message() -%}\n    {%- if model_identity is not defined %}\n        {%- set model_identity = \"You are ChatGPT, a large language model trained by OpenAI.\" %}\n    {%- endif %}\n    {{- model_identity + \"\\n\" }}\n    {{- \"Knowledge cutoff: 2024-06\\n\" }}\n    {{- \"Current date: \" + strftime_now(\"%Y-%m-%d\") + \"\\n\\n\" }}\n    {%- if reasoning_effort is not defined %}\n        {%- set reasoning_effort = \"medium\" %}\n    {%- endif %}\n    {{- \"Reasoning: \" + reasoning_effort + \"\\n\\n\" }}\n    {%- if builtin_tools %}\n        {{- \"# Tools\\n\\n\" }}\n        {%- set available_builtin_tools = namespace(browser=false, python=false) %}\n        {%- for tool in builtin_tools %}\n            {%- if tool == \"browser\" %}\n                {%- set available_builtin_tools.browser = true %}\n            {%- elif tool == \"python\" %}\n                {%- set available_builtin_tools.python = true %}\n            {%- endif %}\n        {%- endfor %}\n        {{- render_builtin_tools(available_builtin_tools.browser, available_builtin_tools.python) }}\n    {%- endif -%}\n    {{- \"# Valid channels: analysis, commentary, final. Channel must be included for every message.\" }}\n    {%- if tools -%}\n        {{- \"\\nCalls to these tools must go to the commentary channel: 'functions'.\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- Main Template Logic ================================================= #}\n{#- Set defaults #}\n\n{#- Render system message #}\n{{- \"<|start|>system<|message|>\" }}\n{{- build_system_message() }}\n{{- \"<|end|>\" }}\n\n{#- Extract developer message #}\n{%- if messages[0].role == \"developer\" or messages[0].role == \"system\" %}\n    {%- set developer_message = messages[0].content %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set developer_message = \"\" %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n\n{#- Render developer message #}\n{%- if developer_message or tools %}\n    {{- \"<|start|>developer<|message|>\" }}\n    {%- if developer_message %}\n        {{- \"# Instructions\\n\\n\" }}\n        {{- developer_message }}\n        {{- \"\\n\\n\" }}\n    {%- endif %}\n    {%- if tools -%}\n        {{- \"# Tools\\n\\n\" }}\n        {{- render_tool_namespace(\"functions\", tools) }}\n    {%- endif -%}\n    {{- \"<|end|>\" }}\n{%- endif %}\n\n{#- Render messages #}\n{%- set last_tool_call = namespace(name=none) %}\n{%- for message in loop_messages -%}\n    {#- At this point only assistant/user/tool messages should remain #}\n    {%- if message.role == 'assistant' -%}\n        {#- Checks to ensure the messages are being passed in the format we expect #}\n        {%- if \"content\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.content or \"<|channel|>final<|message|>\" in message.content %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the content field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"thinking\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.thinking or \"<|channel|>final<|message|>\" in message.thinking %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the thinking field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"tool_calls\" in message %}\n            {#- We need very careful handling here - we want to drop the tool call analysis message if the model #}\n            {#- has output a later <|final|> message, but otherwise we want to retain it. This is the only case #}\n            {#- when we render CoT/analysis messages in inference. #}\n            {%- set future_final_message = namespace(found=false) %}\n            {%- for future_message in loop_messages[loop.index:] %}\n                {%- if future_message.role == 'assistant' and \"tool_calls\" not in future_message %}\n                    {%- set future_final_message.found = true %}\n                {%- endif %}\n            {%- endfor %}\n            {#- We assume max 1 tool call per message, and so we infer the tool call name #}\n            {#- in \"tool\" messages from the most recent assistant tool call name #}\n            {%- set tool_call = message.tool_calls[0] %}\n            {%- if tool_call.function %}\n                {%- set tool_call = tool_call.function %}\n            {%- endif %}\n            {%- if message.content and message.thinking %}\n                {{- raise_exception(\"Cannot pass both content and thinking in an assistant message with tool calls! Put the analysis message in one or the other, but not both.\") }}\n            {%- elif message.content and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.content + \"<|end|>\" }}\n            {%- elif message.thinking and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {{- \"<|start|>assistant to=\" }}\n            {{- \"functions.\" + tool_call.name + \"<|channel|>commentary \" }}\n            {{- (tool_call.content_type if tool_call.content_type is defined else \"json\") + \"<|message|>\" }}\n            {{- tool_call.arguments|tojson }}\n            {{- \"<|call|>\" }}\n            {%- set last_tool_call.name = tool_call.name %}\n        {%- elif loop.last and not add_generation_prompt %}\n            {#- Only render the CoT if the final turn is an assistant turn and add_generation_prompt is false #}\n            {#- This is a situation that should only occur in training, never in inference. #}\n            {%- if \"thinking\" in message %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {#- <|return|> indicates the end of generation, but <|end|> does not #}\n            {#- <|return|> should never be an input to the model, but we include it as the final token #}\n            {#- when training, so the model learns to emit it. #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|return|>\" }}\n        {%- else %}\n            {#- CoT is dropped during all previous turns, so we never render it for inference #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|end|>\" }}\n            {%- set last_tool_call.name = none %}\n        {%- endif %}\n    {%- elif message.role == 'tool' -%}\n        {%- if last_tool_call.name is none %}\n            {{- raise_exception(\"Message has tool role, but there was no previous assistant message with a tool call!\") }}\n        {%- endif %}\n        {{- \"<|start|>functions.\" + last_tool_call.name }}\n        {{- \" to=assistant<|channel|>commentary<|message|>\" + message.content|tojson + \"<|end|>\" }}\n    {%- elif message.role == 'user' -%}\n        {{- \"<|start|>user<|message|>\" + message.content + \"<|end|>\" }}\n    {%- endif -%}\n{%- endfor -%}\n\n{#- Generation prompt #}\n{%- if add_generation_prompt -%}\n<|start|>assistant\n{%- endif -%}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.8
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 40
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.8
+                    },
+                    {
+                      "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+                      "value": "low"
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 40.33737776325218,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 8.968,
+                  "totalTimeSec": 35.922,
+                  "promptTokensCount": 2376,
+                  "predictedTokensCount": 1449,
+                  "totalTokensCount": 3825
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1762886739168-0.22756932714133504",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Can you elaborate on ORM lazy loading? "
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "openai/gpt-oss-20b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1762887226136-0.018000555265826113",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Explain lazy loading, how it works, pitfalls, configurations, benefits. Provide examples.",
+                  "fromDraftModel": false,
+                  "tokensCount": 17,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "prefix": "<|channel|>analysis<|message|>",
+              "suffix": "<|end|>",
+              "style": {
+                "type": "thinking",
+                "ended": true,
+                "title": "Thought for a brief moment"
+              }
+            },
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1762887226537-0.9087215720289539",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<|start|>assistant<|channel|>final<|message|>",
+                  "fromDraftModel": false,
+                  "tokensCount": 6,
+                  "isStructural": true
+                },
+                {
+                  "type": "text",
+                  "text": "## ORM Lazy Loading – A Detailed Walk‑through\n\n### 1. What is Lazy Loading?\n\nLazy loading (also called “deferred” or “on‑demand” loading) is a design pattern used by Object‑Relational Mappers (ORMs) to postpone the retrieval of related data until it is actually needed.\n\n- **Eager loading**: All related entities are fetched in the same query (or immediately after).\n- **Lazy loading**: Related entities are not loaded until you access them. The ORM issues a separate SQL query at that moment.\n\n---\n\n### 2. Why ORMs Use Lazy Loading\n\n| Reason | Benefit |\n|--------|---------|\n| **Performance** – avoid pulling huge object graphs you may never use. | Less memory, fewer I/O operations per request. |\n| **Flexibility** – let the developer decide when to load data. | Fine‑grained control over fetch strategy. |\n| **Complex relationships** – avoid circular joins that could explode the result set. | Simpler queries, smaller data transfer. |\n\n---\n\n### 3. How Lazy Loading Works (In a Nutshell)\n\n1. **Entity is materialized** from the database (e.g., `Order` row).\n2. The collection or association field (`order.items`) is set to a **proxy** object (often an empty list or a special `LazyList`).\n3. When you call `order.getItems()` (or iterate over it), the proxy checks if data is loaded:\n   - If not, it **executes a new SQL query** to fetch the related rows.\n   - The result is cached in the proxy for subsequent accesses.\n\n---\n\n### 4. Common ORM Implementations\n\n| Framework | Annotation / Setting | Default Lazy? |\n|-----------|----------------------|---------------|\n| **Hibernate** (`JPA`) | `@OneToMany(fetch = FetchType.LAZY)` (default) | Yes |\n| **Entity Framework Core** | `LazyLoadingProxies` + navigation properties as virtual | No (must enable) |\n| **Django ORM** | `select_related()` / `prefetch_related()` | No (default) |\n| **SQLAlchemy** | `lazy='select'` / `joinedload()` | Yes (default) |\n\n---\n\n### 5. The “N+1” Trap with Lazy Loading\n\n```java\n// Hibernate example\nList<Order> orders = orderRepo.findByUserId(userId); // 1 query\n\nfor (Order o : orders) {\n    List<Item> items = o.getItems(); // 1 query per order (N+1)\n}\n```\n\n- **Master query**: `SELECT * FROM orders WHERE user_id = ?`\n- **Detail queries**: `SELECT * FROM items WHERE order_id = ?` executed once per order.\n\nIf a user has 100 orders, you end up with **101** round‑trips instead of one.\n\n---\n\n### 6. How to Turn Lazy Loading into Eager (or “Smart”) Loading\n\n| Strategy | Example | Pros / Cons |\n|----------|---------|-------------|\n| **JOIN FETCH** (Hibernate) | `SELECT o FROM Order o LEFT JOIN FETCH o.items WHERE o.userId = :uid` | One query, but may return duplicate `Order` rows (needs grouping). |\n| **Batch Fetch** | Configure `hibernate.default_batch_fetch_size = 25` | Hibernate will issue batched queries (`IN (…)`) instead of one per row. |\n| **Entity Graphs** | `@NamedEntityGraph` in JPA | Explicit, reusable fetch plans. |\n| **Django prefetch_related** | `Order.objects.prefetch_related('items')` | Separate queries but optimized for Django. |\n| **EF Core LazyLoadingProxies** + `Include` | `.Include(o => o.Items)` | One query with JOIN. |\n| **SQLAlchemy joinedload** | `session.query(Order).options(joinedload(Order.items))` | One query, but careful with large collections. |\n\n---\n\n### 7. When Lazy Loading is *Correct* (and even advantageous)\n\n| Scenario | Why Lazy Works |\n|----------|----------------|\n| **Read‑heavy, write‑light** | You load many parents but rarely touch children. |\n| **Large collections** | Avoid pulling thousands of rows into memory for a single request. |\n| **Conditional access** | Only load children if the user explicitly requests them (e.g., on a “Show details” button). |\n| **Polymorphic associations** | Lazy loading can resolve the correct subtype at runtime. |\n\n---\n\n### 8. Common Pitfalls & How to Avoid Them\n\n| Pitfall | Symptoms | Fix |\n|---------|----------|-----|\n| **Lazy loading outside a session** (Hibernate) | `org.hibernate.LazyInitializationException` | Keep the session open, use DTO projections, or fetch eagerly. |\n| **Multiple proxies in a loop** | N+1 queries | Use `JOIN FETCH` or batch fetch. |\n| **Large collections loaded lazily** | Memory blow‑up after accessing the collection | Use pagination or stream results. |\n| **Circular references** | Infinite recursion when serializing to JSON | Use DTOs or configure Jackson/Hibernate to ignore certain properties. |\n| **Misunderstanding defaults** | Expecting eager when the default is lazy | Read framework docs, set fetch explicitly. |\n\n---\n\n### 9. A Minimal “Fix” Example (Hibernate)\n\n```java\n// Problematic DAO\npublic List<Order> findByUser(Long userId) {\n    return session.createQuery(\n        \"FROM Order o WHERE o.user.id = :uid\", Order.class)\n        .setParameter(\"uid\", userId)\n        .getResultList();\n}\n\n// Fixed with JOIN FETCH\npublic List<Order> findByUserWithItems(Long userId) {\n    return session.createQuery(\n        \"SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items \" +\n        \"WHERE o.user.id = :uid\", Order.class)\n        .setParameter(\"uid\", userId)\n        .getResultList();\n}\n```\n\n- `DISTINCT` prevents duplicate orders due to the JOIN.\n- Only **one** round‑trip.\n\n---\n\n### 10. Take‑away Cheat Sheet\n\n| Situation | Recommended Fetch Strategy |\n|-----------|----------------------------|\n| **Need all related data** | `JOIN FETCH` / eager |\n| **Avoid N+1 but can tolerate multiple queries** | Batch fetch (`IN (…)`) |\n| **Large child collections** | Pagination or streaming |\n| **Conditional child access** | Keep lazy, load on demand |\n| **Serialization to API** | Use DTOs / projection queries |\n\n---\n\n#### Bottom Line\n\nLazy loading is a powerful feature that, when used correctly, keeps your application efficient. But it can silently generate many small queries (the N+1 problem) if you access collections inside loops. Always be mindful of the fetch strategy your ORM uses, and consider eager or batched loading when you know you’ll need the related data. This awareness will keep your database traffic down and your response times predictable.",
+                  "fromDraftModel": false,
+                  "tokensCount": 1463,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "openai/gpt-oss-20b",
+                "identifier": "openai/gpt-oss-20b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{#-\n  In addition to the normal inputs of `messages` and `tools`, this template also accepts the\n  following kwargs:\n  - \"builtin_tools\": A list, can contain \"browser\" and/or \"python\".\n  - \"model_identity\": A string that optionally describes the model identity.\n  - \"reasoning_effort\": A string that describes the reasoning effort, defaults to \"medium\".\n #}\n\n{#- Tool Definition Rendering ============================================== #}\n{%- macro render_typescript_type(param_spec, required_params, is_nullable=false) -%}\n    {%- if param_spec.type == \"array\" -%}\n        {%- if param_spec['items'] -%}\n            {%- if param_spec['items']['type'] == \"string\" -%}\n                {{- \"string[]\" }}\n            {%- elif param_spec['items']['type'] == \"number\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"integer\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"boolean\" -%}\n                {{- \"boolean[]\" }}\n            {%- else -%}\n                {%- set inner_type = render_typescript_type(param_spec['items'], required_params) -%}\n                {%- if inner_type == \"object | object\" or inner_type|length > 50 -%}\n                    {{- \"any[]\" }}\n                {%- else -%}\n                    {{- inner_type + \"[]\" }}\n                {%- endif -%}\n            {%- endif -%}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- else -%}\n            {{- \"any[]\" }}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type is defined and param_spec.type is iterable and param_spec.type is not string and param_spec.type is not mapping and param_spec.type[0] is defined -%}\n        {#- Handle array of types like [\"object\", \"object\"] from Union[dict, list] #}\n        {%- if param_spec.type | length > 1 -%}\n            {{- param_spec.type | join(\" | \") }}\n        {%- else -%}\n            {{- param_spec.type[0] }}\n        {%- endif -%}\n    {%- elif param_spec.oneOf -%}\n        {#- Handle oneOf schemas - check for complex unions and fallback to any #}\n        {%- set has_object_variants = false -%}\n        {%- for variant in param_spec.oneOf -%}\n            {%- if variant.type == \"object\" -%}\n                {%- set has_object_variants = true -%}\n            {%- endif -%}\n        {%- endfor -%}\n        {%- if has_object_variants and param_spec.oneOf|length > 1 -%}\n            {{- \"any\" }}\n        {%- else -%}\n            {%- for variant in param_spec.oneOf -%}\n                {{- render_typescript_type(variant, required_params) -}}\n                {%- if variant.description %}\n                    {{- \"// \" + variant.description }}\n                {%- endif -%}\n                {%- if variant.default is defined %}\n                    {{ \"// default: \" + variant.default|tojson }}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \" | \" }}\n                {% endif -%}\n            {%- endfor -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"string\" -%}\n        {%- if param_spec.enum -%}\n            {{- '\"' + param_spec.enum|join('\" | \"') + '\"' -}}\n        {%- else -%}\n            {{- \"string\" }}\n            {%- if param_spec.nullable %}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"number\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"integer\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"boolean\" -%}\n        {{- \"boolean\" }}\n\n    {%- elif param_spec.type == \"object\" -%}\n        {%- if param_spec.properties -%}\n            {{- \"{\\n\" }}\n            {%- for prop_name, prop_spec in param_spec.properties.items() -%}\n                {{- prop_name -}}\n                {%- if prop_name not in (param_spec.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{ render_typescript_type(prop_spec, param_spec.required or []) }}\n                {%- if not loop.last -%}\n                    {{-\", \" }}\n                {%- endif -%}\n            {%- endfor -%}\n            {{- \"}\" }}\n        {%- else -%}\n            {{- \"object\" }}\n        {%- endif -%}\n    {%- else -%}\n        {{- \"any\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro render_tool_namespace(namespace_name, tools) -%}\n    {{- \"## \" + namespace_name + \"\\n\\n\" }}\n    {{- \"namespace \" + namespace_name + \" {\\n\\n\" }}\n    {%- for tool in tools %}\n        {%- set tool = tool.function %}\n        {{- \"// \" + tool.description + \"\\n\" }}\n        {{- \"type \"+ tool.name + \" = \" }}\n        {%- if tool.parameters and tool.parameters.properties %}\n            {{- \"(_: {\\n\" }}\n            {%- for param_name, param_spec in tool.parameters.properties.items() %}\n                {%- if param_spec.description %}\n                    {{- \"// \" + param_spec.description + \"\\n\" }}\n                {%- endif %}\n                {{- param_name }}\n                {%- if param_name not in (tool.parameters.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{- render_typescript_type(param_spec, tool.parameters.required or []) }}\n                {%- if param_spec.default is defined -%}\n                    {%- if param_spec.enum %}\n                        {{- \", // default: \" + param_spec.default }}\n                    {%- elif param_spec.oneOf %}\n                        {{- \"// default: \" + param_spec.default }}\n                    {%- else %}\n                        {{- \", // default: \" + param_spec.default|tojson }}\n                    {%- endif -%}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \",\\n\" }}\n                {%- else %}\n                    {{- \",\\n\" }}\n                {%- endif -%}\n            {%- endfor %}\n            {{- \"}) => any;\\n\\n\" }}\n        {%- else -%}\n            {{- \"() => any;\\n\\n\" }}\n        {%- endif -%}\n    {%- endfor %}\n    {{- \"} // namespace \" + namespace_name }}\n{%- endmacro -%}\n\n{%- macro render_builtin_tools(browser_tool, python_tool) -%}\n    {%- if browser_tool %}\n        {{- \"## browser\\n\\n\" }}\n        {{- \"// Tool for browsing.\\n\" }}\n        {{- \"// The `cursor` appears in brackets before each browsing display: `[{cursor}]`.\\n\" }}\n        {{- \"// Cite information from the tool using the following format:\\n\" }}\n        {{- \"// `【{cursor}†L{line_start}(-L{line_end})?】`, for example: `【6†L9-L11】` or `【8†L3】`.\\n\" }}\n        {{- \"// Do not quote more than 10 words directly from the tool output.\\n\" }}\n        {{- \"// sources=web (default: web)\\n\" }}\n        {{- \"namespace browser {\\n\\n\" }}\n        {{- \"// Searches for information related to `query` and displays `topn` results.\\n\" }}\n        {{- \"type search = (_: {\\n\" }}\n        {{- \"query: string,\\n\" }}\n        {{- \"topn?: number, // default: 10\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Opens the link `id` from the page indicated by `cursor` starting at line number `loc`, showing `num_lines` lines.\\n\" }}\n        {{- \"// Valid link ids are displayed with the formatting: `【{id}†.*】`.\\n\" }}\n        {{- \"// If `cursor` is not provided, the most recent page is implied.\\n\" }}\n        {{- \"// If `id` is a string, it is treated as a fully qualified URL associated with `source`.\\n\" }}\n        {{- \"// If `loc` is not provided, the viewport will be positioned at the beginning of the document or centered on the most relevant passage, if available.\\n\" }}\n        {{- \"// Use this function without `id` to scroll to a new location of an opened page.\\n\" }}\n        {{- \"type open = (_: {\\n\" }}\n        {{- \"id?: number | string, // default: -1\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"loc?: number, // default: -1\\n\" }}\n        {{- \"num_lines?: number, // default: -1\\n\" }}\n        {{- \"view_source?: boolean, // default: false\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Finds exact matches of `pattern` in the current page, or the page given by `cursor`.\\n\" }}\n        {{- \"type find = (_: {\\n\" }}\n        {{- \"pattern: string,\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"} // namespace browser\\n\\n\" }}\n    {%- endif -%}\n\n    {%- if python_tool %}\n        {{- \"## python\\n\\n\" }}\n        {{- \"Use this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).\\n\\n\" }}\n        {{- \"When you send a message containing Python code to python, it will be executed in a stateful Jupyter notebook environment. python will respond with the output of the execution or time out after 120.0 seconds. The drive at '/mnt/data' can be used to save and persist user files. Internet access for this session is UNKNOWN. Depends on the cluster.\\n\\n\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- System Message Construction ============================================ #}\n{%- macro build_system_message() -%}\n    {%- if model_identity is not defined %}\n        {%- set model_identity = \"You are ChatGPT, a large language model trained by OpenAI.\" %}\n    {%- endif %}\n    {{- model_identity + \"\\n\" }}\n    {{- \"Knowledge cutoff: 2024-06\\n\" }}\n    {{- \"Current date: \" + strftime_now(\"%Y-%m-%d\") + \"\\n\\n\" }}\n    {%- if reasoning_effort is not defined %}\n        {%- set reasoning_effort = \"medium\" %}\n    {%- endif %}\n    {{- \"Reasoning: \" + reasoning_effort + \"\\n\\n\" }}\n    {%- if builtin_tools %}\n        {{- \"# Tools\\n\\n\" }}\n        {%- set available_builtin_tools = namespace(browser=false, python=false) %}\n        {%- for tool in builtin_tools %}\n            {%- if tool == \"browser\" %}\n                {%- set available_builtin_tools.browser = true %}\n            {%- elif tool == \"python\" %}\n                {%- set available_builtin_tools.python = true %}\n            {%- endif %}\n        {%- endfor %}\n        {{- render_builtin_tools(available_builtin_tools.browser, available_builtin_tools.python) }}\n    {%- endif -%}\n    {{- \"# Valid channels: analysis, commentary, final. Channel must be included for every message.\" }}\n    {%- if tools -%}\n        {{- \"\\nCalls to these tools must go to the commentary channel: 'functions'.\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- Main Template Logic ================================================= #}\n{#- Set defaults #}\n\n{#- Render system message #}\n{{- \"<|start|>system<|message|>\" }}\n{{- build_system_message() }}\n{{- \"<|end|>\" }}\n\n{#- Extract developer message #}\n{%- if messages[0].role == \"developer\" or messages[0].role == \"system\" %}\n    {%- set developer_message = messages[0].content %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set developer_message = \"\" %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n\n{#- Render developer message #}\n{%- if developer_message or tools %}\n    {{- \"<|start|>developer<|message|>\" }}\n    {%- if developer_message %}\n        {{- \"# Instructions\\n\\n\" }}\n        {{- developer_message }}\n        {{- \"\\n\\n\" }}\n    {%- endif %}\n    {%- if tools -%}\n        {{- \"# Tools\\n\\n\" }}\n        {{- render_tool_namespace(\"functions\", tools) }}\n    {%- endif -%}\n    {{- \"<|end|>\" }}\n{%- endif %}\n\n{#- Render messages #}\n{%- set last_tool_call = namespace(name=none) %}\n{%- for message in loop_messages -%}\n    {#- At this point only assistant/user/tool messages should remain #}\n    {%- if message.role == 'assistant' -%}\n        {#- Checks to ensure the messages are being passed in the format we expect #}\n        {%- if \"content\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.content or \"<|channel|>final<|message|>\" in message.content %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the content field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"thinking\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.thinking or \"<|channel|>final<|message|>\" in message.thinking %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the thinking field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"tool_calls\" in message %}\n            {#- We need very careful handling here - we want to drop the tool call analysis message if the model #}\n            {#- has output a later <|final|> message, but otherwise we want to retain it. This is the only case #}\n            {#- when we render CoT/analysis messages in inference. #}\n            {%- set future_final_message = namespace(found=false) %}\n            {%- for future_message in loop_messages[loop.index:] %}\n                {%- if future_message.role == 'assistant' and \"tool_calls\" not in future_message %}\n                    {%- set future_final_message.found = true %}\n                {%- endif %}\n            {%- endfor %}\n            {#- We assume max 1 tool call per message, and so we infer the tool call name #}\n            {#- in \"tool\" messages from the most recent assistant tool call name #}\n            {%- set tool_call = message.tool_calls[0] %}\n            {%- if tool_call.function %}\n                {%- set tool_call = tool_call.function %}\n            {%- endif %}\n            {%- if message.content and message.thinking %}\n                {{- raise_exception(\"Cannot pass both content and thinking in an assistant message with tool calls! Put the analysis message in one or the other, but not both.\") }}\n            {%- elif message.content and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.content + \"<|end|>\" }}\n            {%- elif message.thinking and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {{- \"<|start|>assistant to=\" }}\n            {{- \"functions.\" + tool_call.name + \"<|channel|>commentary \" }}\n            {{- (tool_call.content_type if tool_call.content_type is defined else \"json\") + \"<|message|>\" }}\n            {{- tool_call.arguments|tojson }}\n            {{- \"<|call|>\" }}\n            {%- set last_tool_call.name = tool_call.name %}\n        {%- elif loop.last and not add_generation_prompt %}\n            {#- Only render the CoT if the final turn is an assistant turn and add_generation_prompt is false #}\n            {#- This is a situation that should only occur in training, never in inference. #}\n            {%- if \"thinking\" in message %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {#- <|return|> indicates the end of generation, but <|end|> does not #}\n            {#- <|return|> should never be an input to the model, but we include it as the final token #}\n            {#- when training, so the model learns to emit it. #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|return|>\" }}\n        {%- else %}\n            {#- CoT is dropped during all previous turns, so we never render it for inference #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|end|>\" }}\n            {%- set last_tool_call.name = none %}\n        {%- endif %}\n    {%- elif message.role == 'tool' -%}\n        {%- if last_tool_call.name is none %}\n            {{- raise_exception(\"Message has tool role, but there was no previous assistant message with a tool call!\") }}\n        {%- endif %}\n        {{- \"<|start|>functions.\" + last_tool_call.name }}\n        {{- \" to=assistant<|channel|>commentary<|message|>\" + message.content|tojson + \"<|end|>\" }}\n    {%- elif message.role == 'user' -%}\n        {{- \"<|start|>user<|message|>\" + message.content + \"<|end|>\" }}\n    {%- endif -%}\n{%- endfor -%}\n\n{#- Generation prompt #}\n{%- if add_generation_prompt -%}\n<|start|>assistant\n{%- endif -%}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.8
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 40
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.8
+                    },
+                    {
+                      "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+                      "value": "low"
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 37.20640166615479,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 18.367,
+                  "totalTimeSec": 40.074,
+                  "promptTokensCount": 3840,
+                  "predictedTokensCount": 1491,
+                  "totalTokensCount": 5331
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1762887265888-0.4755303363899097",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "GraphQL and n+1 "
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1762892425824-0.470277332316682",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Explain GraphQL N+1, DataLoader pattern, batching, resolver architecture.",
+                  "fromDraftModel": false,
+                  "tokensCount": 16,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "style": {
+                "type": "thinking",
+                "ended": true,
+                "title": "Thought for a brief moment"
+              },
+              "prefix": "<|channel|>analysis<|message|>",
+              "suffix": "<|end|>"
+            },
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1762892426096-0.42512456564377965",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<|start|>assistant<|channel|>final<|message|>",
+                  "fromDraftModel": false,
+                  "tokensCount": 6,
+                  "isStructural": true
+                },
+                {
+                  "type": "text",
+                  "text": "## GraphQL & the N+1 Problem\n\n> **GraphQL** lets a client request exactly the shape of data it needs.  \n> The *server* must then resolve every field in that shape – and if you’re not careful, each field can trigger its own database query.  \n> That’s the classic **N+1** problem, but it shows up in a slightly different way than with a traditional ORM.\n\n---\n\n### 1. Where the N+1 Comes From in GraphQL\n\n| Step | What Happens | Example |\n|------|--------------|---------|\n| **Query** | Client requests a list of posts and the author for each post. | `posts { id title author { name } }` |\n| **Resolver** | The *post* resolver fetches all posts in one query. | `SELECT * FROM posts` |\n| **Author Resolver** | For each post, the *author* resolver runs a separate query. | `SELECT * FROM users WHERE id = ?` (once per post) |\n| **Result** | If 50 posts → 1 + 50 = 51 round‑trips. |\n\nThe pattern repeats for any nested list/field that requires a separate lookup.\n\n---\n\n### 2. Why It’s Worse in GraphQL\n\n* **Resolvers are often tiny, per‑field functions** – you can easily have dozens of them.\n* **Clients can arbitrarily nest fields**, so a single query may drill deep into many relationships.\n* **No implicit “fetch all”** – you decide in the resolver what to load.\n\nThus, a single GraphQL request can easily turn into dozens of DB round‑trips if you naïvely load each relation separately.\n\n---\n\n### 3. The Classic Solution: DataLoader (or Batch Loader)\n\n> **DataLoader** is a generic utility that:\n> 1. **Collects** all requested keys during the same request cycle.\n> 2. **Batches** them into a single query (usually an `IN (…)`).\n> 3. **Caches** the results so repeated requests for the same key hit the cache instead of a new query.\n\n#### How It Works in Practice\n\n```graphql\n# GraphQL schema\ntype Post {\n  id: ID!\n  title: String!\n  author: User!\n}\n\ntype Query {\n  posts: [Post!]!\n}\n```\n\n```ts\n// resolvers.ts (TypeScript + Apollo Server)\nimport DataLoader from 'dataloader';\nimport { getPosts, getUsersByIds } from './db';\n\nconst userLoader = new DataLoader(async (userIds: readonly string[]) => {\n  const users = await getUsersByIds(userIds); // single IN query\n  return userIds.map(id => users.find(u => u.id === id));\n});\n\nexport const resolvers = {\n  Query: {\n    posts: () => getPosts(), // one query\n  },\n  Post: {\n    author: (post) => userLoader.load(post.authorId), // batched\n  },\n};\n```\n\n**Result:**  \nIf the client requests 100 posts, Apollo will:\n\n1. Execute `SELECT * FROM posts` (1 query).\n2. Collect 100 author IDs.\n3. Execute `SELECT * FROM users WHERE id IN (…)` (1 query).\n4. Return the full response with only **2** round‑trips.\n\n---\n\n### 4. Alternative / Complementary Approaches\n\n| Technique | When to Use | Example |\n|-----------|-------------|---------|\n| **Batching in the DB** (`IN (…)`) | Simple, no extra library | `SELECT * FROM users WHERE id IN (?,?,?)` |\n| **Join‑fetch / preloading** | When you already have an ORM or DB that can join | `SELECT p.*, u.* FROM posts p JOIN users u ON p.author_id = u.id` |\n| **GraphQL Subscriptions / Caching** | Repeated queries from many clients | Cache the result of a popular query in Redis |\n| **Declarative DataLoader** (e.g., `graphql-dataloader`) | Reduce boilerplate | Auto‑generate loaders from schema |\n| **SQL CTEs / window functions** | Complex aggregations that can be expressed in SQL | `WITH user_counts AS (...) SELECT ...` |\n\n---\n\n### 5. Common Pitfalls & How to Avoid Them\n\n| Issue | Symptoms | Fix |\n|-------|----------|-----|\n| **Not using a DataLoader per request** | Multiple loads of the same user trigger separate queries. | Create a new `DataLoader` instance per GraphQL request (e.g., in Apollo’s context). |\n| **Loading too much data** | One query returns a huge result set that isn’t needed. | Use pagination (`first`, `after`) or limit the fields in your schema. |\n| **Circular dependencies** | Resolvers keep referencing each other, causing infinite loops. | Break cycles with separate loaders or use `@skip`/`@include`. |\n| **Mismatched key types** | Loader expects string keys but receives numbers. | Normalize IDs to a single type (e.g., always use strings). |\n| **Over‑caching** | Loader cache lives beyond a request, leaking data. | Clear the loader’s cache at the end of each request or use request‑scoped loaders. |\n\n---\n\n### 6. Quick Reference: DataLoader Lifecycle\n\n```text\nClient sends query → Apollo Server receives request\n          ↓\nCreate a new DataLoader instance (per field or per request)\n          ↓\nResolvers are called, each loader.load() registers a key\n          ↓\nAt the end of the request cycle, DataLoader triggers the batch load\n          ↓\nBatch query runs → results are distributed back to each resolver\n```\n\n**Tip:** If you’re using a framework like Apollo Server, many starter templates already set up request‑scoped loaders in the context.\n\n---\n\n### 7. Performance Checklist for a GraphQL API\n\n| Check | Why it matters |\n|-------|----------------|\n| **Count resolver queries** (use `pg_stat_activity`, log `SELECT` statements) | Detect hidden N+1s |\n| **Add DataLoader** for every `@many-to-one` or `@one-to-many` relationship | Reduce round‑trips |\n| **Batch with `IN (…)`** if DataLoader isn’t feasible | Still reduces N+1 |\n| **Use `graphql-query-complexity`** to limit request depth | Prevent DoS via deep nesting |\n| **Cache hot queries** (e.g., in Redis) | Reduce DB load for popular data |\n| **Profile with a tool** (e.g., Apollo Engine, Grafana) | Measure latency before/after changes |\n\n---\n\n## Bottom Line\n\nGraphQL’s flexibility is a double‑edged sword: it can pull back *exactly* the data you need, but naïve resolver design will cause thousands of tiny database queries – a classic N+1 problem. The industry‑standard cure is **DataLoader** (or an equivalent batching strategy). By collecting keys, issuing a single batched query, and caching results per request, you turn dozens of round‑trips into one or two, dramatically improving latency and scaling your API.",
+                  "fromDraftModel": false,
+                  "tokensCount": 1496,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "genInfo": {
+                "indexedModelIdentifier": "openai/gpt-oss-20b",
+                "identifier": "openai/gpt-oss-20b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{#-\n  In addition to the normal inputs of `messages` and `tools`, this template also accepts the\n  following kwargs:\n  - \"builtin_tools\": A list, can contain \"browser\" and/or \"python\".\n  - \"model_identity\": A string that optionally describes the model identity.\n  - \"reasoning_effort\": A string that describes the reasoning effort, defaults to \"medium\".\n #}\n\n{#- Tool Definition Rendering ============================================== #}\n{%- macro render_typescript_type(param_spec, required_params, is_nullable=false) -%}\n    {%- if param_spec.type == \"array\" -%}\n        {%- if param_spec['items'] -%}\n            {%- if param_spec['items']['type'] == \"string\" -%}\n                {{- \"string[]\" }}\n            {%- elif param_spec['items']['type'] == \"number\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"integer\" -%}\n                {{- \"number[]\" }}\n            {%- elif param_spec['items']['type'] == \"boolean\" -%}\n                {{- \"boolean[]\" }}\n            {%- else -%}\n                {%- set inner_type = render_typescript_type(param_spec['items'], required_params) -%}\n                {%- if inner_type == \"object | object\" or inner_type|length > 50 -%}\n                    {{- \"any[]\" }}\n                {%- else -%}\n                    {{- inner_type + \"[]\" }}\n                {%- endif -%}\n            {%- endif -%}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- else -%}\n            {{- \"any[]\" }}\n            {%- if param_spec.nullable -%}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type is defined and param_spec.type is iterable and param_spec.type is not string and param_spec.type is not mapping and param_spec.type[0] is defined -%}\n        {#- Handle array of types like [\"object\", \"object\"] from Union[dict, list] #}\n        {%- if param_spec.type | length > 1 -%}\n            {{- param_spec.type | join(\" | \") }}\n        {%- else -%}\n            {{- param_spec.type[0] }}\n        {%- endif -%}\n    {%- elif param_spec.oneOf -%}\n        {#- Handle oneOf schemas - check for complex unions and fallback to any #}\n        {%- set has_object_variants = false -%}\n        {%- for variant in param_spec.oneOf -%}\n            {%- if variant.type == \"object\" -%}\n                {%- set has_object_variants = true -%}\n            {%- endif -%}\n        {%- endfor -%}\n        {%- if has_object_variants and param_spec.oneOf|length > 1 -%}\n            {{- \"any\" }}\n        {%- else -%}\n            {%- for variant in param_spec.oneOf -%}\n                {{- render_typescript_type(variant, required_params) -}}\n                {%- if variant.description %}\n                    {{- \"// \" + variant.description }}\n                {%- endif -%}\n                {%- if variant.default is defined %}\n                    {{ \"// default: \" + variant.default|tojson }}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \" | \" }}\n                {% endif -%}\n            {%- endfor -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"string\" -%}\n        {%- if param_spec.enum -%}\n            {{- '\"' + param_spec.enum|join('\" | \"') + '\"' -}}\n        {%- else -%}\n            {{- \"string\" }}\n            {%- if param_spec.nullable %}\n                {{- \" | null\" }}\n            {%- endif -%}\n        {%- endif -%}\n    {%- elif param_spec.type == \"number\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"integer\" -%}\n        {{- \"number\" }}\n    {%- elif param_spec.type == \"boolean\" -%}\n        {{- \"boolean\" }}\n\n    {%- elif param_spec.type == \"object\" -%}\n        {%- if param_spec.properties -%}\n            {{- \"{\\n\" }}\n            {%- for prop_name, prop_spec in param_spec.properties.items() -%}\n                {{- prop_name -}}\n                {%- if prop_name not in (param_spec.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{ render_typescript_type(prop_spec, param_spec.required or []) }}\n                {%- if not loop.last -%}\n                    {{-\", \" }}\n                {%- endif -%}\n            {%- endfor -%}\n            {{- \"}\" }}\n        {%- else -%}\n            {{- \"object\" }}\n        {%- endif -%}\n    {%- else -%}\n        {{- \"any\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro render_tool_namespace(namespace_name, tools) -%}\n    {{- \"## \" + namespace_name + \"\\n\\n\" }}\n    {{- \"namespace \" + namespace_name + \" {\\n\\n\" }}\n    {%- for tool in tools %}\n        {%- set tool = tool.function %}\n        {{- \"// \" + tool.description + \"\\n\" }}\n        {{- \"type \"+ tool.name + \" = \" }}\n        {%- if tool.parameters and tool.parameters.properties %}\n            {{- \"(_: {\\n\" }}\n            {%- for param_name, param_spec in tool.parameters.properties.items() %}\n                {%- if param_spec.description %}\n                    {{- \"// \" + param_spec.description + \"\\n\" }}\n                {%- endif %}\n                {{- param_name }}\n                {%- if param_name not in (tool.parameters.required or []) -%}\n                    {{- \"?\" }}\n                {%- endif -%}\n                {{- \": \" }}\n                {{- render_typescript_type(param_spec, tool.parameters.required or []) }}\n                {%- if param_spec.default is defined -%}\n                    {%- if param_spec.enum %}\n                        {{- \", // default: \" + param_spec.default }}\n                    {%- elif param_spec.oneOf %}\n                        {{- \"// default: \" + param_spec.default }}\n                    {%- else %}\n                        {{- \", // default: \" + param_spec.default|tojson }}\n                    {%- endif -%}\n                {%- endif -%}\n                {%- if not loop.last %}\n                    {{- \",\\n\" }}\n                {%- else %}\n                    {{- \",\\n\" }}\n                {%- endif -%}\n            {%- endfor %}\n            {{- \"}) => any;\\n\\n\" }}\n        {%- else -%}\n            {{- \"() => any;\\n\\n\" }}\n        {%- endif -%}\n    {%- endfor %}\n    {{- \"} // namespace \" + namespace_name }}\n{%- endmacro -%}\n\n{%- macro render_builtin_tools(browser_tool, python_tool) -%}\n    {%- if browser_tool %}\n        {{- \"## browser\\n\\n\" }}\n        {{- \"// Tool for browsing.\\n\" }}\n        {{- \"// The `cursor` appears in brackets before each browsing display: `[{cursor}]`.\\n\" }}\n        {{- \"// Cite information from the tool using the following format:\\n\" }}\n        {{- \"// `【{cursor}†L{line_start}(-L{line_end})?】`, for example: `【6†L9-L11】` or `【8†L3】`.\\n\" }}\n        {{- \"// Do not quote more than 10 words directly from the tool output.\\n\" }}\n        {{- \"// sources=web (default: web)\\n\" }}\n        {{- \"namespace browser {\\n\\n\" }}\n        {{- \"// Searches for information related to `query` and displays `topn` results.\\n\" }}\n        {{- \"type search = (_: {\\n\" }}\n        {{- \"query: string,\\n\" }}\n        {{- \"topn?: number, // default: 10\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Opens the link `id` from the page indicated by `cursor` starting at line number `loc`, showing `num_lines` lines.\\n\" }}\n        {{- \"// Valid link ids are displayed with the formatting: `【{id}†.*】`.\\n\" }}\n        {{- \"// If `cursor` is not provided, the most recent page is implied.\\n\" }}\n        {{- \"// If `id` is a string, it is treated as a fully qualified URL associated with `source`.\\n\" }}\n        {{- \"// If `loc` is not provided, the viewport will be positioned at the beginning of the document or centered on the most relevant passage, if available.\\n\" }}\n        {{- \"// Use this function without `id` to scroll to a new location of an opened page.\\n\" }}\n        {{- \"type open = (_: {\\n\" }}\n        {{- \"id?: number | string, // default: -1\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"loc?: number, // default: -1\\n\" }}\n        {{- \"num_lines?: number, // default: -1\\n\" }}\n        {{- \"view_source?: boolean, // default: false\\n\" }}\n        {{- \"source?: string,\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"// Finds exact matches of `pattern` in the current page, or the page given by `cursor`.\\n\" }}\n        {{- \"type find = (_: {\\n\" }}\n        {{- \"pattern: string,\\n\" }}\n        {{- \"cursor?: number, // default: -1\\n\" }}\n        {{- \"}) => any;\\n\\n\" }}\n        {{- \"} // namespace browser\\n\\n\" }}\n    {%- endif -%}\n\n    {%- if python_tool %}\n        {{- \"## python\\n\\n\" }}\n        {{- \"Use this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).\\n\\n\" }}\n        {{- \"When you send a message containing Python code to python, it will be executed in a stateful Jupyter notebook environment. python will respond with the output of the execution or time out after 120.0 seconds. The drive at '/mnt/data' can be used to save and persist user files. Internet access for this session is UNKNOWN. Depends on the cluster.\\n\\n\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- System Message Construction ============================================ #}\n{%- macro build_system_message() -%}\n    {%- if model_identity is not defined %}\n        {%- set model_identity = \"You are ChatGPT, a large language model trained by OpenAI.\" %}\n    {%- endif %}\n    {{- model_identity + \"\\n\" }}\n    {{- \"Knowledge cutoff: 2024-06\\n\" }}\n    {{- \"Current date: \" + strftime_now(\"%Y-%m-%d\") + \"\\n\\n\" }}\n    {%- if reasoning_effort is not defined %}\n        {%- set reasoning_effort = \"medium\" %}\n    {%- endif %}\n    {{- \"Reasoning: \" + reasoning_effort + \"\\n\\n\" }}\n    {%- if builtin_tools %}\n        {{- \"# Tools\\n\\n\" }}\n        {%- set available_builtin_tools = namespace(browser=false, python=false) %}\n        {%- for tool in builtin_tools %}\n            {%- if tool == \"browser\" %}\n                {%- set available_builtin_tools.browser = true %}\n            {%- elif tool == \"python\" %}\n                {%- set available_builtin_tools.python = true %}\n            {%- endif %}\n        {%- endfor %}\n        {{- render_builtin_tools(available_builtin_tools.browser, available_builtin_tools.python) }}\n    {%- endif -%}\n    {{- \"# Valid channels: analysis, commentary, final. Channel must be included for every message.\" }}\n    {%- if tools -%}\n        {{- \"\\nCalls to these tools must go to the commentary channel: 'functions'.\" }}\n    {%- endif -%}\n{%- endmacro -%}\n\n{#- Main Template Logic ================================================= #}\n{#- Set defaults #}\n\n{#- Render system message #}\n{{- \"<|start|>system<|message|>\" }}\n{{- build_system_message() }}\n{{- \"<|end|>\" }}\n\n{#- Extract developer message #}\n{%- if messages[0].role == \"developer\" or messages[0].role == \"system\" %}\n    {%- set developer_message = messages[0].content %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set developer_message = \"\" %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n\n{#- Render developer message #}\n{%- if developer_message or tools %}\n    {{- \"<|start|>developer<|message|>\" }}\n    {%- if developer_message %}\n        {{- \"# Instructions\\n\\n\" }}\n        {{- developer_message }}\n        {{- \"\\n\\n\" }}\n    {%- endif %}\n    {%- if tools -%}\n        {{- \"# Tools\\n\\n\" }}\n        {{- render_tool_namespace(\"functions\", tools) }}\n    {%- endif -%}\n    {{- \"<|end|>\" }}\n{%- endif %}\n\n{#- Render messages #}\n{%- set last_tool_call = namespace(name=none) %}\n{%- for message in loop_messages -%}\n    {#- At this point only assistant/user/tool messages should remain #}\n    {%- if message.role == 'assistant' -%}\n        {#- Checks to ensure the messages are being passed in the format we expect #}\n        {%- if \"content\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.content or \"<|channel|>final<|message|>\" in message.content %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the content field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"thinking\" in message %}\n            {%- if \"<|channel|>analysis<|message|>\" in message.thinking or \"<|channel|>final<|message|>\" in message.thinking %}\n                {{- raise_exception(\"You have passed a message containing <|channel|> tags in the thinking field. Instead of doing this, you should pass analysis messages (the string between '<|message|>' and '<|end|>') in the 'thinking' field, and final messages (the string between '<|message|>' and '<|end|>') in the 'content' field.\") }}\n            {%- endif %}\n        {%- endif %}\n        {%- if \"tool_calls\" in message %}\n            {#- We need very careful handling here - we want to drop the tool call analysis message if the model #}\n            {#- has output a later <|final|> message, but otherwise we want to retain it. This is the only case #}\n            {#- when we render CoT/analysis messages in inference. #}\n            {%- set future_final_message = namespace(found=false) %}\n            {%- for future_message in loop_messages[loop.index:] %}\n                {%- if future_message.role == 'assistant' and \"tool_calls\" not in future_message %}\n                    {%- set future_final_message.found = true %}\n                {%- endif %}\n            {%- endfor %}\n            {#- We assume max 1 tool call per message, and so we infer the tool call name #}\n            {#- in \"tool\" messages from the most recent assistant tool call name #}\n            {%- set tool_call = message.tool_calls[0] %}\n            {%- if tool_call.function %}\n                {%- set tool_call = tool_call.function %}\n            {%- endif %}\n            {%- if message.content and message.thinking %}\n                {{- raise_exception(\"Cannot pass both content and thinking in an assistant message with tool calls! Put the analysis message in one or the other, but not both.\") }}\n            {%- elif message.content and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.content + \"<|end|>\" }}\n            {%- elif message.thinking and not future_final_message.found %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {{- \"<|start|>assistant to=\" }}\n            {{- \"functions.\" + tool_call.name + \"<|channel|>commentary \" }}\n            {{- (tool_call.content_type if tool_call.content_type is defined else \"json\") + \"<|message|>\" }}\n            {{- tool_call.arguments|tojson }}\n            {{- \"<|call|>\" }}\n            {%- set last_tool_call.name = tool_call.name %}\n        {%- elif loop.last and not add_generation_prompt %}\n            {#- Only render the CoT if the final turn is an assistant turn and add_generation_prompt is false #}\n            {#- This is a situation that should only occur in training, never in inference. #}\n            {%- if \"thinking\" in message %}\n                {{- \"<|start|>assistant<|channel|>analysis<|message|>\" + message.thinking + \"<|end|>\" }}\n            {%- endif %}\n            {#- <|return|> indicates the end of generation, but <|end|> does not #}\n            {#- <|return|> should never be an input to the model, but we include it as the final token #}\n            {#- when training, so the model learns to emit it. #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|return|>\" }}\n        {%- else %}\n            {#- CoT is dropped during all previous turns, so we never render it for inference #}\n            {{- \"<|start|>assistant<|channel|>final<|message|>\" + message.content + \"<|end|>\" }}\n            {%- set last_tool_call.name = none %}\n        {%- endif %}\n    {%- elif message.role == 'tool' -%}\n        {%- if last_tool_call.name is none %}\n            {{- raise_exception(\"Message has tool role, but there was no previous assistant message with a tool call!\") }}\n        {%- endif %}\n        {{- \"<|start|>functions.\" + last_tool_call.name }}\n        {{- \" to=assistant<|channel|>commentary<|message|>\" + message.content|tojson + \"<|end|>\" }}\n    {%- elif message.role == 'user' -%}\n        {{- \"<|start|>user<|message|>\" + message.content + \"<|end|>\" }}\n    {%- endif -%}\n{%- endfor -%}\n\n{#- Generation prompt #}\n{%- if add_generation_prompt -%}\n<|start|>assistant\n{%- endif -%}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.8
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 40
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.8
+                    },
+                    {
+                      "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+                      "value": "low"
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 39.587290368549255,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 8.146,
+                  "totalTimeSec": 38.472,
+                  "promptTokensCount": 2012,
+                  "predictedTokensCount": 1523,
+                  "totalTokensCount": 3535
+                }
+              }
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1762892463896-0.07846891910309162",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ],
+          "senderInfo": {
+            "senderName": "openai/gpt-oss-20b"
+          }
+        }
+      ],
+      "currentlySelected": 0
+    }
+  ],
+  "usePerChatPredictionConfig": true,
+  "perChatPredictionConfig": {
+    "fields": [
+      {
+        "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  "clientInput": "",
+  "clientInputFiles": [],
+  "userFilesSizeBytes": 0,
+  "lastUsedModel": {
+    "identifier": "openai/gpt-oss-20b",
+    "indexedModelIdentifier": "openai/gpt-oss-20b",
+    "instanceLoadTimeConfig": {
+      "fields": []
+    },
+    "instanceOperationTimeConfig": {
+      "fields": []
+    }
+  },
+  "notes": [],
+  "plugins": [],
+  "pluginConfigs": {},
+  "disabledPluginTools": [],
+  "looseFiles": []
+}

@@ -1,0 +1,278 @@
+{
+  "name": "Words for Dealing With",
+  "pinned": false,
+  "createdAt": 1764166922003,
+  "preset": "",
+  "tokenCount": 565,
+  "userLastMessagedAt": 1764166965496,
+  "assistantLastMessagedAt": 1764166980602,
+  "systemPrompt": "",
+  "messages": [
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Embrace the weather, is that the phrase I'm looking for? Another word for dealing with"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "google/gemma-3-12b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1764166941702-0.4456724603217471",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "You're on the right track! \"Embrace the weather\" definitely conveys a sense of accepting and even enjoying something you might not be able to change.\n\nHere are some other words or phrases that could work as alternatives for \"dealing with,\" depending on the specific nuance you want:\n\n**General Alternatives:**\n\n*   **Accept:** A simple and direct option.\n*   **Cope with:** Suggests overcoming challenges.\n*   **Manage:** Implies control and organization.\n*   **Navigate:**  Suggests finding a way through something complex.\n*   **Handle:** Similar to manage, but can be more informal.\n\n**More Positive/Resilient Alternatives (like \"embrace\"):**\n\n*   **Adapt to:** Focuses on adjusting to new circumstances.\n*   **Work with:** Suggests collaboration or making the best of a situation.\n*   **Make the most of:**  Highlights finding opportunities within limitations.\n*   **Rise to the occasion:** Implies meeting a challenge bravely.\n\n\n\nTo help me narrow it down, could you tell me:\n\n*   What is the context where you want to use this phrase? (e.g., describing how someone handles difficult situations, talking about adapting to climate change, etc.)",
+                  "fromDraftModel": false,
+                  "tokensCount": 263,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "google/gemma-3-12b",
+                "identifier": "google/gemma-3-12b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.llama.cpuThreadPoolSize",
+                      "value": 7
+                    },
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    },
+                    {
+                      "key": "llm.load.llama.acceleration.offloadRatio",
+                      "value": 1
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.1
+                    },
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{{ bos_token }}\n{%- if messages[0]['role'] == 'system' -%}\n    {%- if messages[0]['content'] is string -%}\n        {%- set first_user_prefix = messages[0]['content'] + '\n\n' -%}\n    {%- else -%}\n        {%- set first_user_prefix = messages[0]['content'][0]['text'] + '\n\n' -%}\n    {%- endif -%}\n    {%- set loop_messages = messages[1:] -%}\n{%- else -%}\n    {%- set first_user_prefix = \"\" -%}\n    {%- set loop_messages = messages -%}\n{%- endif -%}\n{%- for message in loop_messages -%}\n    {%- if (message['role'] == 'user') != (loop.index0 % 2 == 0) -%}\n        {{ raise_exception(\"Conversation roles must alternate user/assistant/user/assistant/...\") }}\n    {%- endif -%}\n    {%- if (message['role'] == 'assistant') -%}\n        {%- set role = \"model\" -%}\n    {%- else -%}\n        {%- set role = message['role'] -%}\n    {%- endif -%}\n    {{ '<start_of_turn>' + role + '\n' + (first_user_prefix if loop.first else \"\") }}\n    {%- if message['content'] is string -%}\n        {{ message['content'] | trim }}\n    {%- elif message['content'] is iterable -%}\n        {%- for item in message['content'] -%}\n            {%- if item['type'] == 'image' -%}\n                {{ '<start_of_image>' }}\n            {%- elif item['type'] == 'text' -%}\n                {{ item['text'] | trim }}\n            {%- endif -%}\n        {%- endfor -%}\n    {%- else -%}\n        {{ raise_exception(\"Invalid content type\") }}\n    {%- endif -%}\n    {{ '<end_of_turn>\n' }}\n{%- endfor -%}\n{%- if add_generation_prompt -%}\n    {{'<start_of_turn>model\n'}}\n{%- endif -%}\n"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.llama.cpuThreads",
+                      "value": 7
+                    },
+                    {
+                      "key": "llm.prediction.vision.userMaxImageDimensionPixels",
+                      "value": {
+                        "checked": true,
+                        "value": 2048
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.vision.ignoreModelPreferredMaxImageDimension",
+                      "value": false
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 19.60583217066045,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 5.167,
+                  "totalTimeSec": 13.465,
+                  "promptTokensCount": 29,
+                  "predictedTokensCount": 264,
+                  "totalTokensCount": 293
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1764166954868-0.17910735201394223",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Yeah, stepping out into bad weather. negative"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "google/gemma-3-12b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1764166966820-0.363757316797675",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Okay, \"stepping out into bad weather\" and a *negative* connotation... that changes things! Here are some options that fit better than \"embrace,\" which is quite positive:\n\n**More Neutral/Resigned:**\n\n*   **Face:** \"Facing the rain.\" Simple and direct.\n*   **Brave:** \"Braving the wind and rain.\" Implies a bit of courage needed.\n*   **Endure:** \"Enduring the downpour.\" Suggests it's unpleasant but you're putting up with it.\n*   **Contend with:** \"Contending with the sleet.\" A more formal way to say dealing with something difficult.\n\n**More Negative/Reluctant:**\n\n*   **Plunge into:** \"Plunging into the cold rain.\" Suggests a somewhat unpleasant immersion.\n*   **Submit to:** \"Submitting to the storm.\" Implies giving in to an unwelcome force.\n*   **Steel yourself for:** \"Steeling yourself for the icy wind.\"  Highlights preparing for something difficult.\n\nI think **\"face,\" \"brave,\" or \"endure\"** are probably your best bets, depending on how much negativity you want to convey.",
+                  "fromDraftModel": false,
+                  "tokensCount": 254,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "genInfo": {
+                "indexedModelIdentifier": "google/gemma-3-12b",
+                "identifier": "google/gemma-3-12b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.llama.cpuThreadPoolSize",
+                      "value": 7
+                    },
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    },
+                    {
+                      "key": "llm.load.llama.acceleration.offloadRatio",
+                      "value": 1
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.1
+                    },
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{{ bos_token }}\n{%- if messages[0]['role'] == 'system' -%}\n    {%- if messages[0]['content'] is string -%}\n        {%- set first_user_prefix = messages[0]['content'] + '\n\n' -%}\n    {%- else -%}\n        {%- set first_user_prefix = messages[0]['content'][0]['text'] + '\n\n' -%}\n    {%- endif -%}\n    {%- set loop_messages = messages[1:] -%}\n{%- else -%}\n    {%- set first_user_prefix = \"\" -%}\n    {%- set loop_messages = messages -%}\n{%- endif -%}\n{%- for message in loop_messages -%}\n    {%- if (message['role'] == 'user') != (loop.index0 % 2 == 0) -%}\n        {{ raise_exception(\"Conversation roles must alternate user/assistant/user/assistant/...\") }}\n    {%- endif -%}\n    {%- if (message['role'] == 'assistant') -%}\n        {%- set role = \"model\" -%}\n    {%- else -%}\n        {%- set role = message['role'] -%}\n    {%- endif -%}\n    {{ '<start_of_turn>' + role + '\n' + (first_user_prefix if loop.first else \"\") }}\n    {%- if message['content'] is string -%}\n        {{ message['content'] | trim }}\n    {%- elif message['content'] is iterable -%}\n        {%- for item in message['content'] -%}\n            {%- if item['type'] == 'image' -%}\n                {{ '<start_of_image>' }}\n            {%- elif item['type'] == 'text' -%}\n                {{ item['text'] | trim }}\n            {%- endif -%}\n        {%- endfor -%}\n    {%- else -%}\n        {{ raise_exception(\"Invalid content type\") }}\n    {%- endif -%}\n    {{ '<end_of_turn>\n' }}\n{%- endfor -%}\n{%- if add_generation_prompt -%}\n    {{'<start_of_turn>model\n'}}\n{%- endif -%}\n"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.llama.cpuThreads",
+                      "value": 7
+                    },
+                    {
+                      "key": "llm.prediction.vision.userMaxImageDimensionPixels",
+                      "value": {
+                        "checked": true,
+                        "value": 2048
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.vision.ignoreModelPreferredMaxImageDimension",
+                      "value": false
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 18.15743866470623,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 1.043,
+                  "totalTimeSec": 14.043,
+                  "promptTokensCount": 311,
+                  "predictedTokensCount": 255,
+                  "totalTokensCount": 566
+                }
+              }
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1764166980601-0.836074610305358",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    }
+  ],
+  "usePerChatPredictionConfig": true,
+  "perChatPredictionConfig": {
+    "fields": []
+  },
+  "clientInput": "",
+  "clientInputFiles": [],
+  "userFilesSizeBytes": 0,
+  "lastUsedModel": {
+    "indexedModelIdentifier": "google/gemma-3-12b",
+    "identifier": "google/gemma-3-12b",
+    "instanceLoadTimeConfig": {
+      "fields": []
+    },
+    "instanceOperationTimeConfig": {
+      "fields": []
+    }
+  },
+  "notes": [],
+  "plugins": [],
+  "pluginConfigs": {},
+  "disabledPluginTools": [],
+  "looseFiles": []
+}

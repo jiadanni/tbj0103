@@ -1,6 +1,6 @@
 import { Command } from "cmdk";
 import { useNavigate } from "react-router-dom";
-import type { ChatSubView, GraphSubView, PreferencesSection } from "./navigationItems";
+import type { ChatSubView, NotesSubView, GraphSubView, PreferencesSection } from "./navigationItems";
 
 interface Props {
   onClose: () => void;
@@ -18,21 +18,21 @@ interface CommandItem {
 const COMMANDS: CommandItem[] = [
   { label: "Go to Dashboard",          value: "dashboard",      path: "/project"       },
   { label: "Go to Chat",               value: "chat",           path: "/chat"          },
-  { label: "Chat Sessions",            value: "chat-sessions",  path: "/chat-sessions" },
+  { label: "Chat Sessions",            value: "chat-sessions",  path: "/chat",         state: { subView: "sessions" as ChatSubView } },
   { label: "Go to Notes",              value: "notes",          path: "/notes"         },
-  { label: "Go to Daily Notes",        value: "daily",          path: "/daily"         },
+  { label: "Daily Notes",              value: "daily",          path: "/notes",        state: { subView: "daily" as NotesSubView } },
   { label: "Go to Documents",          value: "documents",      path: "/documents"     },
   { label: "Web Captures",             value: "webcapture",     path: "/webcapture"    },
   { label: "Go to Knowledge Graph",    value: "graph",          path: "/graph"         },
-  { label: "Go to Flashcards",         value: "flashcards",     path: "/flashcards"    },
-  { label: "Go to Learning Paths",     value: "learning",       path: "/learning"      },
+  { label: "Flashcards",               value: "flashcards",     path: "/graph",        state: { subView: "flashcards" as GraphSubView } },
+  { label: "Learning Paths",           value: "learning",       path: "/graph",        state: { subView: "learning" as GraphSubView } },
   { label: "Compare Models",           value: "compare",        path: "/chat",         state: { subView: "compare" as ChatSubView } },
   { label: "Grounded Chat",            value: "grounded",       path: "/chat",         state: { subView: "grounded" as ChatSubView } },
   { label: "Backlinks",                value: "backlinks",      path: "/graph",        state: { subView: "backlinks" as GraphSubView } },
   { label: "Concept Deduplication",    value: "dedup",          path: "/graph",        state: { subView: "dedup" as GraphSubView } },
   { label: "Manage Workspaces",        value: "workspaces",     path: "/preferences",  state: { settingsTab: "workspaces" as PreferencesSection } },
   { label: "Go to Backups",            value: "backup",         path: "/preferences",  state: { settingsTab: "backup" as PreferencesSection } },
-  { label: "Plugins",                  value: "plugins",        path: "/plugins"       },
+  { label: "Plugins",                  value: "plugins",        path: "/preferences",  state: { settingsTab: "plugins" as PreferencesSection } },
   { label: "Open Preferences",         value: "settings",       path: "/preferences"   },
 ];
 

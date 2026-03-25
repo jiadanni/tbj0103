@@ -1,0 +1,278 @@
+{
+  "name": "Customizing .zshrc File",
+  "pinned": false,
+  "createdAt": 1773910405398,
+  "preset": "",
+  "tokenCount": 256,
+  "userLastMessagedAt": 1773910431727,
+  "assistantLastMessagedAt": 1773910437481,
+  "systemPrompt": "",
+  "messages": [
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "zshrc"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "microsoft/phi-4"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1773910412461-0.015590792240190332",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The `.zshrc` file is a configuration script for the Zsh shell, which is used to customize your terminal environment when you start a new session. This file allows users to set various options and behaviors specific to their preferences or needs. Here's how you can create or modify a `.zshrc` file:\n\n### Creating or Editing `.zshrc`\n\n1. **Locate the File**: \n   - The `.zshrc` file is typically located in your home directory. You can open it with any text editor.\n\n2. **Open with a Text Editor**:\n   ```bash\n   nano ~/.zshrc\n   # or\n   vim ~/.zshrc\n   # or\n   code ~/.zshrc  # if you're using Visual Studio Code\n   ```\n\n### Common Customizations\n\nHere are some",
+                  "fromDraftModel": false,
+                  "tokensCount": 172,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "microsoft/phi-4",
+                "identifier": "microsoft/phi-4",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.llama.cpuThreadPoolSize",
+                      "value": 7
+                    },
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    },
+                    {
+                      "key": "llm.load.llama.flashAttention",
+                      "value": true
+                    },
+                    {
+                      "key": "llm.load.llama.acceleration.offloadRatio",
+                      "value": 1
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{% for message in messages %}{% if (message['role'] == 'system') %}{{'<|im_start|>system<|im_sep|>' + message['content'] + '<|im_end|>'}}{% elif (message['role'] == 'user') %}{{'<|im_start|>user<|im_sep|>' + message['content'] + '<|im_end|>'}}{% elif (message['role'] == 'assistant') %}{{'<|im_start|>assistant<|im_sep|>' + message['content'] + '<|im_end|>'}}{% endif %}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant<|im_sep|>' }}{% endif %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.llama.cpuThreads",
+                      "value": 7
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "userStopped",
+                  "tokensPerSecond": 12.360674478422405,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 2.307,
+                  "totalTimeSec": 13.996,
+                  "promptTokensCount": 0,
+                  "predictedTokensCount": 0,
+                  "totalTokensCount": 0
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1773910425835-0.06569826852310201",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "rc meaning?"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "microsoft/phi-4"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1773910432741-0.9345965464061157",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In the context of shell configuration files like `.bashrc`, `.zshrc`, and others, the term \"rc\" stands for \"run commands.\" These files contain scripts that set up your environment each time you start a new terminal session in the corresponding shell.\n\n### Key Points about RC Files:\n\n1. **",
+                  "fromDraftModel": false,
+                  "tokensCount": 63,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "genInfo": {
+                "indexedModelIdentifier": "microsoft/phi-4",
+                "identifier": "microsoft/phi-4",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.llama.cpuThreadPoolSize",
+                      "value": 7
+                    },
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    },
+                    {
+                      "key": "llm.load.llama.flashAttention",
+                      "value": true
+                    },
+                    {
+                      "key": "llm.load.llama.acceleration.offloadRatio",
+                      "value": 1
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{% for message in messages %}{% if (message['role'] == 'system') %}{{'<|im_start|>system<|im_sep|>' + message['content'] + '<|im_end|>'}}{% elif (message['role'] == 'user') %}{{'<|im_start|>user<|im_sep|>' + message['content'] + '<|im_end|>'}}{% elif (message['role'] == 'assistant') %}{{'<|im_start|>assistant<|im_sep|>' + message['content'] + '<|im_end|>'}}{% endif %}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant<|im_sep|>' }}{% endif %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.llama.cpuThreads",
+                      "value": 7
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "userStopped",
+                  "tokensPerSecond": 12.497520333267207,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 0.679,
+                  "totalTimeSec": 5.041,
+                  "promptTokensCount": 0,
+                  "predictedTokensCount": 0,
+                  "totalTokensCount": 0
+                }
+              }
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1773910437479-0.22616067710625887",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    }
+  ],
+  "usePerChatPredictionConfig": true,
+  "perChatPredictionConfig": {
+    "fields": [
+      {
+        "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  "clientInput": "",
+  "clientInputFiles": [],
+  "userFilesSizeBytes": 0,
+  "lastUsedModel": {
+    "indexedModelIdentifier": "microsoft/phi-4",
+    "identifier": "microsoft/phi-4",
+    "instanceLoadTimeConfig": {
+      "fields": [
+        {
+          "key": "llm.load.llama.cpuThreadPoolSize",
+          "value": 7
+        },
+        {
+          "key": "llm.load.contextLength",
+          "value": 4096
+        },
+        {
+          "key": "llm.load.llama.flashAttention",
+          "value": true
+        },
+        {
+          "key": "llm.load.llama.acceleration.offloadRatio",
+          "value": 1
+        }
+      ]
+    },
+    "instanceOperationTimeConfig": {
+      "fields": []
+    }
+  },
+  "notes": [],
+  "plugins": [],
+  "pluginConfigs": {},
+  "disabledPluginTools": [],
+  "looseFiles": []
+}

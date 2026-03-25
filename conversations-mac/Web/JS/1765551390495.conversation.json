@@ -1,0 +1,411 @@
+{
+  "name": "Selector Filtering Logic",
+  "pinned": false,
+  "createdAt": 1765551390497,
+  "preset": "",
+  "tokenCount": 1608,
+  "userLastMessagedAt": 1765551441612,
+  "assistantLastMessagedAt": 1765551449742,
+  "systemPrompt": "",
+  "messages": [
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "function getSelectors(external: ExternalData): { keptSelectors: string; deleteSelectors: string } {"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "liquid/lfm2-1.2b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1765551393067-0.04334972106215074",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "function getSelectors(external: ExternalData): { keptSelectors: string; deleteSelectors: string } {\n  const keptSelectors = [];\n  const deleteSelectors = [];\n\n  // Assuming ExternalData has properties like 'id', 'name', 'value', etc.\n  external.forEach(item => {\n    // Example logic to determine if a selector should be kept or deleted\n    if (item.value === 'critical') {\n      keptSelectors.push(item.id);\n    } else if (item.value === 'deprecated') {\n      deleteSelectors.push(item.id);\n    }\n  });\n\n  return { keptSelectors, deleteSelectors };\n}",
+                  "fromDraftModel": false,
+                  "tokensCount": 140,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "liquid/lfm2-1.2b",
+                "identifier": "liquid/lfm2-1.2b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{{bos_token}}{% if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content'] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = 'You are a helpful assistant trained by Liquid AI.' %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{%- if tools %}\n    {%- set system_message = system_message + '\\nList of tools: <|tool_list_start|>' + (tools | tojson) + '<|tool_list_end|>' %}\n{%- endif %}\n{{- '<|im_start|>system\\n' + system_message + '<|im_end|>\\n'}}\n{%- for message in loop_messages %}\n    {%- if message['role'] == 'user' %}\n        {{- '<|im_start|>user\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- elif message['role'] == 'assistant' %}\n        {{- '<|im_start|>assistant\\n'}}\n        {%- if message.get('tool_calls') %}\n            {# ───── create a list to append tool calls to ───── #}\n            {%- set tool_calls_ns = namespace(tool_calls=[])%}\n            {%- for tool_call in message['tool_calls'] %}\n                {%- set func_name = tool_call['function']['name'] %}\n                {%- set func_args = tool_call['function']['arguments'] %}\n                {# ───── create a list of func_arg strings to accumulate for each tool call ───── #}\n                {%- set args_ns = namespace(arg_strings=[])%}\n                {%- for arg_name, arg_value in func_args.items() %}\n                    {%- set formatted_arg_value = arg_value %}\n                    {%- if arg_value is string %}\n                      {%- set formatted_arg_value = '\"' + arg_value + '\"' %}\n                    {%- elif arg_value is mapping %}\n                      {%- set formatted_arg_value = arg_value | tojson %}\n                    {%- elif arg_value is iterable %}\n                      {%- set formatted_arg_value = '[' + arg_value + ']' %}\n                    {%- endif %}\n                    {# ───── format each argument key,value pair ───── #}\n                    {%- set args_ns.arg_strings =  args_ns.arg_strings + [(arg_name + '=' + formatted_arg_value)] %}\n                {%- endfor %}\n                {# ───── append each formatted tool call ───── #}\n                {%- set tool_calls_ns.tool_calls = tool_calls_ns.tool_calls + [(func_name + '(' + (args_ns.arg_strings | join(\",\")) + ')' )]%}\n            {%- endfor %}\n            {# ───── format the final tool calls ───── #}\n            {{-'<|tool_call_start|>[' + (tool_calls_ns.tool_calls | join(\",\")) + ']<|tool_call_end|>'}}\n            {%- if message['content'] %}\n                {{-message['content']}}\n            {%- endif %}\n        {%- else %}\n            {{-message['content']}}\n        {%- endif %}\n        {{-'<|im_end|>\\n'}}\n    {%- elif message['role'] == 'tool' %}\n        {{-'<|im_start|>tool\\n<|tool_response_start|>' + message['content'] + '<|tool_response_end|><|im_end|>\\n'}}\n    {%- elif message['role'] == 'system' %}\n        {{-'<|im_start|>system\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{-'<|im_start|>assistant\\n'}}\n{%- endif %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.15
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 100
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.3
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 112.28951685449998,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 0.181,
+                  "totalTimeSec": 1.257,
+                  "promptTokensCount": 48,
+                  "predictedTokensCount": 141,
+                  "totalTokensCount": 189
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1765551394282-0.43768273512069467",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Can you explain the signature? "
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "liquid/lfm2-1.2b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1765551412430-0.034956325995453064",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Certainly! The signature of the `getSelectors` function is:\n\n```typescript\nfunction getSelectors(external: ExternalData): { keptSelectors: string; deleteSelectors: string } {\n```\n\nLet's break it down:\n\n1. **Function Name**: `getSelectors`\n   - This is the name given to the function.\n\n2. **Parameter**: `external`\n   - This is a parameter of type `ExternalData`. The `ExternalData` type is assumed to be defined elsewhere in your codebase and likely represents some data structure containing information about selectors.\n\n3. **Return Type**: `{ keptSelectors: string; deleteSelectors: string }`\n   - This specifies that the function returns an object with two properties:\n     - `keptSelectors`: An array of strings representing the IDs of selectors that should be kept.\n     - `deleteSelectors`: An array of strings representing the IDs of selectors that should be deleted.\n\n### Explanation of Properties:\n- **keptSelectors**: This array holds the IDs of selectors that are deemed important and should not be removed from the system. These could be selectors that are currently active, essential for functionality, or have been validated as reliable.\n- **deleteSelectors**: This array contains the IDs of selectors that are considered obsolete, potentially harmful, or no longer needed. These could be selectors that have been deprecated, are broken, or have been removed from the system.\n\n### Example Usage:\nIf you call this function with an `ExternalData` object like this:\n\n```typescript\nconst externalData = [\n  { id: '1', name: 'Selector A', value: 'critical' },\n  { id: '2', name: 'Selector B', value: 'deprecated' },\n  { id: '3', name: 'Selector C', value: 'active' }\n];\n\nconst selectors = getSelectors(externalData);\nconsole.log(selectors.keptSelectors); // Output: ['1', '3']\nconsole.log(selectors.deleteSelectors); // Output: ['2']\n```\n\nIn this example:\n- `Selector A` is marked as critical and kept.\n- `Selector B` is marked as deprecated and deleted.\n- `Selector C` is active and kept.\n\nThis function helps in managing the lifecycle of selectors by categorizing them into keep and delete groups based on their values or other criteria defined in the `ExternalData` structure.",
+                  "fromDraftModel": false,
+                  "tokensCount": 541,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "liquid/lfm2-1.2b",
+                "identifier": "liquid/lfm2-1.2b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{{bos_token}}{% if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content'] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = 'You are a helpful assistant trained by Liquid AI.' %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{%- if tools %}\n    {%- set system_message = system_message + '\\nList of tools: <|tool_list_start|>' + (tools | tojson) + '<|tool_list_end|>' %}\n{%- endif %}\n{{- '<|im_start|>system\\n' + system_message + '<|im_end|>\\n'}}\n{%- for message in loop_messages %}\n    {%- if message['role'] == 'user' %}\n        {{- '<|im_start|>user\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- elif message['role'] == 'assistant' %}\n        {{- '<|im_start|>assistant\\n'}}\n        {%- if message.get('tool_calls') %}\n            {# ───── create a list to append tool calls to ───── #}\n            {%- set tool_calls_ns = namespace(tool_calls=[])%}\n            {%- for tool_call in message['tool_calls'] %}\n                {%- set func_name = tool_call['function']['name'] %}\n                {%- set func_args = tool_call['function']['arguments'] %}\n                {# ───── create a list of func_arg strings to accumulate for each tool call ───── #}\n                {%- set args_ns = namespace(arg_strings=[])%}\n                {%- for arg_name, arg_value in func_args.items() %}\n                    {%- set formatted_arg_value = arg_value %}\n                    {%- if arg_value is string %}\n                      {%- set formatted_arg_value = '\"' + arg_value + '\"' %}\n                    {%- elif arg_value is mapping %}\n                      {%- set formatted_arg_value = arg_value | tojson %}\n                    {%- elif arg_value is iterable %}\n                      {%- set formatted_arg_value = '[' + arg_value + ']' %}\n                    {%- endif %}\n                    {# ───── format each argument key,value pair ───── #}\n                    {%- set args_ns.arg_strings =  args_ns.arg_strings + [(arg_name + '=' + formatted_arg_value)] %}\n                {%- endfor %}\n                {# ───── append each formatted tool call ───── #}\n                {%- set tool_calls_ns.tool_calls = tool_calls_ns.tool_calls + [(func_name + '(' + (args_ns.arg_strings | join(\",\")) + ')' )]%}\n            {%- endfor %}\n            {# ───── format the final tool calls ───── #}\n            {{-'<|tool_call_start|>[' + (tool_calls_ns.tool_calls | join(\",\")) + ']<|tool_call_end|>'}}\n            {%- if message['content'] %}\n                {{-message['content']}}\n            {%- endif %}\n        {%- else %}\n            {{-message['content']}}\n        {%- endif %}\n        {{-'<|im_end|>\\n'}}\n    {%- elif message['role'] == 'tool' %}\n        {{-'<|im_start|>tool\\n<|tool_response_start|>' + message['content'] + '<|tool_response_end|><|im_end|>\\n'}}\n    {%- elif message['role'] == 'system' %}\n        {{-'<|im_start|>system\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{-'<|im_start|>assistant\\n'}}\n{%- endif %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.15
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 100
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.3
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 102.68797375810725,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 0.338,
+                  "totalTimeSec": 5.279,
+                  "promptTokensCount": 205,
+                  "predictedTokensCount": 542,
+                  "totalTokensCount": 747
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1765551417666-0.39258184875561386",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "What would be the Java equivalent? "
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1765551441789-0.851034926294783",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In Java, you can achieve a similar functionality using a combination of methods and collections. Here’s how you might define a method to categorize selectors into `keptSelectors` and `deleteSelectors` based on a similar logic:\n\n```java\nimport java.util.ArrayList;\nimport java.util.List;\n\npublic class SelectorManager {\n\n    public static class ExternalData {\n        private String id;\n        private String name;\n        private String value;\n\n        // Getters and setters\n        public String getId() {\n            return id;\n        }\n\n        public void setId(String id) {\n            this.id = id;\n        }\n\n        public String getName() {\n            return name;\n        }\n\n        public void setName(String name) {\n            this.name = name;\n        }\n\n        public String getValue() {\n            return value;\n        }\n\n        public void setValue(String value) {\n            this.value = value;\n        }\n    }\n\n    public static class Selector {\n        private String id;\n\n        // Getters and setters\n        public String getId() {\n            return id;\n        }\n\n        public void setId(String id) {\n            this.id = id;\n        }\n    }\n\n    public static Selector[] getSelectors(ExternalData external) {\n        List<Selector> allSelectors = new ArrayList<>();\n        \n        for (ExternalData item : external) {\n            Selector selector = new Selector();\n            selector.setId(item.getId());\n            if (\"critical\".equals(item.getValue())) {\n                allSelectors.add(selector);\n            } else if (\"deprecated\".equals(item.getValue())) {\n                allSelectors.add(new Selector(item.getId()));\n            }\n        }\n\n        // Assuming you want to return only the IDs for simplicity\n        return allSelectors.stream()\n               .map(Selector::getId)\n               .collect(Collectors.toList());\n    }\n\n    public static Selector[] getSelectorsToDelete(ExternalData external) {\n        List<Selector> allSelectors = getSelectors(external);\n        List<Selector> deleteSelectors = new ArrayList<>();\n        \n        for (Selector selector : allSelectors) {\n            if (\"deprecated\".equals(selector.getValue())) {\n                deleteSelectors.add(selector.getId());\n            }\n        }\n\n        return deleteSelectors.stream()\n               .collect(Collectors.toList());\n    }\n\n    public static void main(String[] args) {\n        ExternalData externalData = new ExternalData();\n        externalData.setId(\"1\");\n        externalData.setName(\"Selector A\");\n        externalData.setValue(\"critical\");\n\n        ExternalData deprecatedData = new ExternalData();\n        deprecatedData.setId(\"2\");\n        deprecatedData.setName(\"Selector B\");\n        deprecatedData.setValue(\"deprecated\");\n\n        Selector[] keptSelectors = getSelectors(externalData);\n        Selector[] deleteSelectors = getSelectorsToDelete(deprecatedData);\n\n        System.out.println(\"Kept Selectors: \" + java.util.Arrays.toString(keptSelectors));\n        System.out.println(\"Delete Selectors: \" + java.util.Arrays.toString(deleteSelectors));\n    }\n}\n```\n\n### Explanation:\n1. **ExternalData Class**: Represents the data structure containing selector information.\n2. **Selector Class**: A simple POJO (Plain Old Java Object) to hold selector details.\n3. **getSelectors Method**: Iterates over the `ExternalData` list, categorizing selectors into `keptSelectors` and `deleteSelectors` based on their values.\n4. **getSelectorsToDelete Method**: Extracts the IDs of selectors marked as deprecated.\n5. **Main Method**: Demonstrates how to use the `getSelectors` and `getSelectorsToDelete` methods with example data.\n\nThis Java implementation mirrors the functionality of the TypeScript version, categorizing selectors based on their values and returning them as arrays.",
+                  "fromDraftModel": false,
+                  "tokensCount": 844,
+                  "isStructural": false
+                }
+              ],
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true,
+              "genInfo": {
+                "indexedModelIdentifier": "liquid/lfm2-1.2b",
+                "identifier": "liquid/lfm2-1.2b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{{bos_token}}{% if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content'] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = 'You are a helpful assistant trained by Liquid AI.' %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{%- if tools %}\n    {%- set system_message = system_message + '\\nList of tools: <|tool_list_start|>' + (tools | tojson) + '<|tool_list_end|>' %}\n{%- endif %}\n{{- '<|im_start|>system\\n' + system_message + '<|im_end|>\\n'}}\n{%- for message in loop_messages %}\n    {%- if message['role'] == 'user' %}\n        {{- '<|im_start|>user\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- elif message['role'] == 'assistant' %}\n        {{- '<|im_start|>assistant\\n'}}\n        {%- if message.get('tool_calls') %}\n            {# ───── create a list to append tool calls to ───── #}\n            {%- set tool_calls_ns = namespace(tool_calls=[])%}\n            {%- for tool_call in message['tool_calls'] %}\n                {%- set func_name = tool_call['function']['name'] %}\n                {%- set func_args = tool_call['function']['arguments'] %}\n                {# ───── create a list of func_arg strings to accumulate for each tool call ───── #}\n                {%- set args_ns = namespace(arg_strings=[])%}\n                {%- for arg_name, arg_value in func_args.items() %}\n                    {%- set formatted_arg_value = arg_value %}\n                    {%- if arg_value is string %}\n                      {%- set formatted_arg_value = '\"' + arg_value + '\"' %}\n                    {%- elif arg_value is mapping %}\n                      {%- set formatted_arg_value = arg_value | tojson %}\n                    {%- elif arg_value is iterable %}\n                      {%- set formatted_arg_value = '[' + arg_value + ']' %}\n                    {%- endif %}\n                    {# ───── format each argument key,value pair ───── #}\n                    {%- set args_ns.arg_strings =  args_ns.arg_strings + [(arg_name + '=' + formatted_arg_value)] %}\n                {%- endfor %}\n                {# ───── append each formatted tool call ───── #}\n                {%- set tool_calls_ns.tool_calls = tool_calls_ns.tool_calls + [(func_name + '(' + (args_ns.arg_strings | join(\",\")) + ')' )]%}\n            {%- endfor %}\n            {# ───── format the final tool calls ───── #}\n            {{-'<|tool_call_start|>[' + (tool_calls_ns.tool_calls | join(\",\")) + ']<|tool_call_end|>'}}\n            {%- if message['content'] %}\n                {{-message['content']}}\n            {%- endif %}\n        {%- else %}\n            {{-message['content']}}\n        {%- endif %}\n        {{-'<|im_end|>\\n'}}\n    {%- elif message['role'] == 'tool' %}\n        {{-'<|im_start|>tool\\n<|tool_response_start|>' + message['content'] + '<|tool_response_end|><|im_end|>\\n'}}\n    {%- elif message['role'] == 'system' %}\n        {{-'<|im_start|>system\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{-'<|im_start|>assistant\\n'}}\n{%- endif %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.15
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 100
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.3
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 105.6796523378862,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 0.105,
+                  "totalTimeSec": 7.996,
+                  "promptTokensCount": 764,
+                  "predictedTokensCount": 845,
+                  "totalTokensCount": 1609
+                }
+              }
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1765551449741-0.5734297856204582",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ],
+          "senderInfo": {
+            "senderName": "liquid/lfm2-1.2b"
+          }
+        }
+      ],
+      "currentlySelected": 0
+    }
+  ],
+  "usePerChatPredictionConfig": true,
+  "perChatPredictionConfig": {
+    "fields": [
+      {
+        "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  "clientInput": "",
+  "clientInputFiles": [],
+  "userFilesSizeBytes": 0,
+  "lastUsedModel": {
+    "identifier": "liquid/lfm2-1.2b",
+    "indexedModelIdentifier": "liquid/lfm2-1.2b",
+    "instanceLoadTimeConfig": {
+      "fields": []
+    },
+    "instanceOperationTimeConfig": {
+      "fields": []
+    }
+  },
+  "notes": [],
+  "plugins": [],
+  "pluginConfigs": {},
+  "disabledPluginTools": [],
+  "looseFiles": []
+}

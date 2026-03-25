@@ -6,6 +6,8 @@ import { useWorkspaceStore } from "@/stores/workspaceStore";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   confirm: vi.fn(),
+  ask: vi.fn(),
+  message: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -97,6 +99,7 @@ describe("Layout", () => {
   beforeEach(() => {
     useWorkspaceStore.setState(INITIAL);
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1280 });
+    vi.restoreAllMocks();
   });
 
   it("marks the workspace tab bar as a drag region", () => {
@@ -143,4 +146,41 @@ describe("Layout", () => {
     fireEvent.click(screen.getByText("Rust"));
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
   });
+
+  it("opens a custom context menu for workspace tabs", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    fireEvent.contextMenu(screen.getByText("Agentic"));
+
+    expect(screen.getByText("Open workspace")).toBeInTheDocument();
+    expect(screen.getByText("Rename workspace")).toBeInTheDocument();
+    expect(screen.getByText("Manage workspaces")).toBeInTheDocument();
+  });
+
+  it("opens a custom context menu for top section tabs", () => {
+    useWorkspaceStore.setState({ workspaceNavigation: "top-tabs" });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    fireEvent.contextMenu(screen.getByText("Dashboard"));
+
+    expect(screen.getByText("Open section")).toBeInTheDocument();
+    expect(screen.getByText("Customize navigation")).toBeInTheDocument();
+  });
+
 });
