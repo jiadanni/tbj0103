@@ -32,7 +32,7 @@ export default function WebCaptureView() {
 
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
-    api.webCapture.list(activeWorkspaceId).then(setCaptures).catch(() => {});
+    api.webCapture.list(activeWorkspaceId, { limit: 200, offset: 0 }).then(setCaptures).catch(() => {});
   }, [activeWorkspaceId]);
 
   const filtered = captures.filter(

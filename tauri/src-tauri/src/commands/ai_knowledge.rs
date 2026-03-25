@@ -51,7 +51,7 @@ const GENERIC_CONCEPTS: &[&str] = &[
 
 fn is_specific_concept(name: &str) -> bool {
     let lower = name.trim().to_lowercase();
-    if lower.len() < 4 {
+    if lower.chars().count() < 4 {
         return false;
     }
     if GENERIC_CONCEPTS.contains(&lower.as_str()) {
@@ -123,7 +123,7 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
         if let Ok(mut stmt) = conn.prepare(
             "SELECT m.content FROM messages m \
              JOIN chat_sessions cs ON m.session_id = cs.id \
-             WHERE cs.workspace_id = ?1 AND m.role = 'user' AND cs.is_incognito = 0 AND cs.exclude_from_analytics = 0 \
+             WHERE cs.workspace_id = ?1 AND m.role = 'user' AND cs.is_incognito = 0 AND cs.exclude_from_analytics = 0 AND cs.is_deleted = 0 \
              ORDER BY m.created_at DESC LIMIT 40",
         ) {
             let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
@@ -169,31 +169,6 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
         }
     }
 
-    // --- legacy: fallback to uploaded_documents if sources table is empty ---
-    if total_len < CAP && source_items == 0 {
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT filename, content, summary FROM uploaded_documents WHERE workspace_id = ?1 \
-             ORDER BY updated_at DESC LIMIT 15",
-        ) {
-            let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
-                let filename: String = row.get(0)?;
-                let content: String = row.get(1)?;
-                let summary: Option<String> = row.get(2)?;
-                Ok((filename, content, summary))
-            }).map(|rows| {
-                for (name, content, summary) in rows.flatten() {
-                    if total_len >= CAP { return; }
-                    let text = summary.unwrap_or(content);
-                    let snippet = safe_truncate(&text, 500);
-                    let entry = format!("Document ({}): {}\n", name, snippet);
-                    total_len += entry.len();
-                    parts.push(entry);
-                    source_items += 1;
-                }
-            });
-        }
-    }
-
     WorkspaceContentSnapshot {
         text: parts.join(""),
         source_items,
@@ -206,23 +181,9 @@ pub async fn analyze_workspace(
     req: AnalyzeWorkspaceRequest,
 ) -> Result<AnalysisResult, String> {
     // 1. Gather content — acquire + release lock before async call
-    let (snapshot, existing_names) = {
+    let snapshot = {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
-        let snapshot = gather_workspace_content(&conn, &req.workspace_id);
-
-        // Load existing concept names (lowercase) for dedup
-        let mut names: Vec<String> = Vec::new();
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT LOWER(name) FROM concept_nodes WHERE workspace_id = ?1",
-        ) {
-            let _ = stmt.query_map(rusqlite::params![req.workspace_id], |row| {
-                let n: String = row.get(0)?;
-                Ok(n)
-            }).map(|rows| {
-                names = rows.flatten().collect();
-            });
-        }
-        (snapshot, names)
+        gather_workspace_content(&conn, &req.workspace_id)
     };
 
     if snapshot.text.trim().is_empty() {
@@ -254,7 +215,7 @@ pub async fn analyze_workspace(
     );
 
     // 3. Call Ollama (no DB lock held)
-    let client = OllamaClient::new(req.ollama_url);
+    let client = OllamaClient::new(req.ollama_url)?;
     let messages = vec![OllamaMessage { role: "user".to_string(), content: prompt }];
     let raw = client.send_message(&req.model, messages).await?;
 
@@ -313,7 +274,7 @@ pub async fn analyze_workspace(
         }
         let lower = name.to_lowercase();
 
-        if existing_names.contains(&lower) || name_to_id.contains_key(&lower) {
+        if name_to_id.contains_key(&lower) {
             concepts_skipped += 1;
         } else {
             let id = uuid::Uuid::new_v4().to_string();
@@ -422,7 +383,7 @@ pub async fn suggest_learning_goals(
         existing = existing_clause,
     );
 
-    let client = OllamaClient::new(req.ollama_url);
+    let client = OllamaClient::new(req.ollama_url)?;
     let messages = vec![OllamaMessage { role: "user".to_string(), content: prompt }];
     let raw = client.send_message(&req.model, messages).await?;
 

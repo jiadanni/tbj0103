@@ -84,6 +84,38 @@ pub struct OllamaClient {
 }
 
 impl OllamaClient {
+    fn validate_base_url(base_url: Option<String>) -> Result<String, String> {
+        let candidate = base_url
+            .map(|url| url.trim().to_string())
+            .filter(|url| !url.is_empty())
+            .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+
+        let parsed = reqwest::Url::parse(&candidate)
+            .map_err(|e| format!("Invalid Ollama base URL: {e}"))?;
+
+        match parsed.scheme() {
+            "http" | "https" => {}
+            other => {
+                return Err(format!(
+                    "Invalid Ollama base URL scheme: {other}. Only http and https are allowed."
+                ));
+            }
+        }
+
+        let Some(host) = parsed.host_str() else {
+            return Err("Invalid Ollama base URL: missing host".to_string());
+        };
+
+        let is_local_host = matches!(host, "localhost" | "127.0.0.1" | "::1");
+        if !is_local_host {
+            return Err(format!(
+                "Invalid Ollama base URL host: {host}. Only localhost, 127.0.0.1, or ::1 are allowed."
+            ));
+        }
+
+        Ok(parsed.to_string().trim_end_matches('/').to_string())
+    }
+
     pub(crate) fn clear_abort_flag(app: &AppHandle, session_id: &str) -> Result<(), String> {
         let abort_state = app.state::<StreamAbortState>();
         let mut abort_map = abort_state
@@ -107,15 +139,16 @@ impl OllamaClient {
         Ok(should_abort)
     }
 
-    pub fn new(base_url: Option<String>) -> Self {
+    pub fn new(base_url: Option<String>) -> Result<Self, String> {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(300))
             .build()
-            .expect("Failed to build HTTP client");
-        Self {
+            .map_err(|e| format!("Failed to build Ollama HTTP client: {e}"))?;
+
+        Ok(Self {
             client,
-            base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
-        }
+            base_url: Self::validate_base_url(base_url)?,
+        })
     }
 
     /// Resolves the requested model name to an available one, with fallback logic.

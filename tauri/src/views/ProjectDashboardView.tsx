@@ -361,7 +361,7 @@ export default function ProjectDashboardView() {
       if (loadId !== dashboardLoadIdRef.current) {return;}
       setConcepts(nextConcepts);
     }).catch(() => {});
-    api.note.list(activeWorkspaceId)
+    api.note.list(activeWorkspaceId, { limit: 200, offset: 0 })
       .then((notes) => {
         if (loadId !== dashboardLoadIdRef.current) {return;}
         setRecentNotes(notes.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));

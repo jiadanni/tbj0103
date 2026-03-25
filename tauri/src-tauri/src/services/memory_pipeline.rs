@@ -59,7 +59,9 @@ pub async fn extract_and_store_memories(
 ) -> Result<(), String> {
     if recent_messages.is_empty() { return Ok(()); }
 
-    let client = OllamaClient::new(ollama_url);
+    let Ok(client) = OllamaClient::new(ollama_url) else {
+        return Ok(());
+    };
     
     let mut conversation_text = String::new();
     for msg in recent_messages {

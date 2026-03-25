@@ -17,22 +17,22 @@ pub struct RetrievedChunk {
 }
 
 /// Return the top-`k` document chunks most similar to `query_embedding`
-/// within the given project.
+/// within the given workspace.
 pub fn get_relevant_chunks(
     conn: &Connection,
-    project_id: &str,
+    workspace_id: &str,
     query_embedding: &[f32],
     top_k: usize,
 ) -> Result<Vec<RetrievedChunk>, String> {
     let mut stmt = conn.prepare(
-        "SELECT dc.id, dc.document_id, d.filename, dc.content, dc.embedding, dc.chunk_index
-         FROM document_chunks dc
-         JOIN uploaded_documents d ON dc.document_id = d.id
-         WHERE d.project_id = ?1 AND dc.embedding IS NOT NULL"
+        "SELECT sc.id, sc.source_id, COALESCE(s.filename, s.title), sc.content, sc.embedding, sc.chunk_index
+         FROM source_chunks sc
+         JOIN sources s ON sc.source_id = s.id
+         WHERE s.workspace_id = ?1 AND s.source_type = 'document' AND sc.embedding IS NOT NULL"
     ).map_err(|e| e.to_string())?;
 
     let mut scored: Vec<(f32, RetrievedChunk)> = stmt.query_map(
-        rusqlite::params![project_id],
+        rusqlite::params![workspace_id],
         |row| Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,

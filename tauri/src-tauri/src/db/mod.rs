@@ -2,6 +2,9 @@ use rusqlite::{Connection, Result};
 use std::path::Path;
 use std::sync::Mutex;
 
+#[cfg(test)]
+pub mod test_utils;
+
 pub struct DbState(pub Mutex<Connection>);
 
 pub fn initialize_database(path: &Path) -> Result<Connection> {
@@ -648,6 +651,28 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         );
         conn.execute_batch(
             "INSERT INTO _migrations(name) VALUES('v28_workspace_is_hidden');",
+        )?;
+    }
+
+    // v29: add compound indexes for common list/query paths
+    let applied_v29: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v29_query_indexes'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v29 == 0 {
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace_project_pinned_updated
+                 ON chat_sessions(workspace_id, project_id, is_pinned, updated_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace_pinned_updated
+                 ON chat_sessions(workspace_id, is_pinned, updated_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_messages_session_created_at
+                 ON messages(session_id, created_at);
+             CREATE INDEX IF NOT EXISTS idx_learning_cards_workspace_review
+                 ON learning_cards(workspace_id, next_review_date);
+             CREATE INDEX IF NOT EXISTS idx_concept_links_source_target
+                 ON concept_links(source_id, target_id);
+             INSERT INTO _migrations(name) VALUES('v29_query_indexes');",
         )?;
     }
 

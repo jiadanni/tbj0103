@@ -4,6 +4,7 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2, Tag, Search, FileText, Save } from "lucide-react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { api, type ProjectNote } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import SmartTextEditor from "../components/SmartTextEditor";
@@ -28,7 +29,7 @@ export default function NoteEditorView() {
 
   useEffect(() => {
     if (!activeProjectId) {return;}
-    api.note.list(activeProjectId).then(setNotes).catch(() => {});
+    api.note.list(activeProjectId, { limit: 200, offset: 0 }).then(setNotes).catch(() => {});
   }, [activeProjectId]);
 
   useEffect(() => {
@@ -73,7 +74,10 @@ export default function NoteEditorView() {
   }
 
   async function deleteNote(id: string) {
-    if (!confirm("Delete this note?")) {return;}
+    if (!await confirm("Delete this note?", {
+      title: "Delete note?",
+      kind: "warning",
+    })) {return;}
     await api.note.delete(id);
     setNotes((prev) => prev.filter((n) => n.id !== id));
     if (selected?.id === id) {setSelected(null);}

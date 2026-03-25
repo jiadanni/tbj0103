@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { MessageSquare, Trash2, RefreshCcw, Trash, Search, ChevronLeft } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore, type ChatSession } from "../stores/chatStore";
@@ -37,7 +38,7 @@ export default function RecycleBinView() {
       await api.chat.restoreSession(activeWorkspaceId, id);
       setDeletedSessions(prev => prev.filter(s => s.id !== id));
       // Refresh the main sessions list in the store
-      const refreshed = await api.chat.listSessions(activeWorkspaceId, null);
+      const refreshed = await api.chat.listSessions(activeWorkspaceId, null, { limit: 200, offset: 0 });
       setSessions(refreshed);
     } catch (e) {
       console.error(e);
@@ -45,7 +46,10 @@ export default function RecycleBinView() {
   }
 
   async function hardDeleteSession(id: string) {
-    if (!activeWorkspaceId || !await confirm("Permanently delete this chat? This cannot be undone.")) {return;}
+    if (!activeWorkspaceId || !await confirm("Permanently delete this chat? This cannot be undone.", {
+      title: "Delete chat permanently?",
+      kind: "warning",
+    })) {return;}
     try {
       await api.chat.hardDeleteSession(activeWorkspaceId, id);
       setDeletedSessions(prev => prev.filter(s => s.id !== id));
@@ -55,7 +59,10 @@ export default function RecycleBinView() {
   }
 
   async function emptyRecycleBin() {
-    if (!activeWorkspaceId || !await confirm("Permanently delete all chats in the recycle bin?")) {return;}
+    if (!activeWorkspaceId || !await confirm("Permanently delete all chats in the recycle bin?", {
+      title: "Empty recycle bin?",
+      kind: "warning",
+    })) {return;}
     try {
       await api.chat.emptyRecycleBin(activeWorkspaceId);
       setDeletedSessions([]);

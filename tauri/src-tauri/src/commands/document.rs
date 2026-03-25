@@ -26,9 +26,19 @@ pub fn upload_document(state: State<DbState>, req: UploadDocumentRequest) -> Res
         updated_at: now,
     };
     conn.execute(
-        "INSERT INTO uploaded_documents (id, workspace_id, filename, file_type, file_size, content, is_processed, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8)",
-        rusqlite::params![doc.id, doc.workspace_id, doc.filename, doc.file_type, doc.file_size, doc.content, doc.created_at, doc.updated_at],
+        "INSERT INTO sources (id, workspace_id, source_type, title, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at)
+         VALUES (?1, ?2, 'document', ?3, ?4, ?5, ?6, ?7, NULL, 0, ?8, ?9)",
+        rusqlite::params![
+            doc.id,
+            doc.workspace_id,
+            doc.filename,
+            doc.filename,
+            doc.file_type,
+            doc.file_size,
+            doc.content,
+            doc.created_at,
+            doc.updated_at
+        ],
     ).map_err(|e| e.to_string())?;
     Ok(doc)
 }
@@ -37,9 +47,9 @@ pub fn upload_document(state: State<DbState>, req: UploadDocumentRequest) -> Res
 pub fn list_documents(state: State<DbState>, workspace_id: String) -> Result<Vec<UploadedDocument>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT d.id, d.workspace_id, d.filename, d.file_type, d.file_size, d.content, d.summary, d.is_processed,
-                (SELECT COUNT(*) FROM document_chunks WHERE document_id = d.id), d.created_at, d.updated_at
-         FROM uploaded_documents d WHERE d.workspace_id = ?1 ORDER BY d.created_at DESC"
+        "SELECT s.id, s.workspace_id, s.filename, s.file_type, s.file_size, s.content, s.summary, s.is_processed,
+                (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
+         FROM sources s WHERE s.workspace_id = ?1 AND s.source_type = 'document' ORDER BY s.created_at DESC"
     ).map_err(|e| e.to_string())?;
     let items = stmt.query_map(rusqlite::params![workspace_id], |row| {
         Ok(UploadedDocument {
@@ -65,8 +75,9 @@ pub fn list_documents(state: State<DbState>, workspace_id: String) -> Result<Vec
 pub fn get_document(state: State<DbState>, id: String) -> Result<Option<UploadedDocument>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, workspace_id, filename, file_type, file_size, content, summary, is_processed, NULL, created_at, updated_at
-         FROM uploaded_documents WHERE id = ?1",
+        "SELECT s.id, s.workspace_id, s.filename, s.file_type, s.file_size, s.content, s.summary, s.is_processed,
+                (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
+         FROM sources s WHERE s.id = ?1 AND s.source_type = 'document'",
         rusqlite::params![id],
         |row| Ok(UploadedDocument {
             id: row.get(0)?,
@@ -77,7 +88,7 @@ pub fn get_document(state: State<DbState>, id: String) -> Result<Option<Uploaded
             content: row.get(5)?,
             summary: row.get(6)?,
             is_processed: row.get::<_, i32>(7)? != 0,
-            chunk_count: None,
+            chunk_count: row.get(8)?,
             created_at: row.get(9)?,
             updated_at: row.get(10)?,
         }),
@@ -92,7 +103,7 @@ pub fn get_document(state: State<DbState>, id: String) -> Result<Option<Uploaded
 #[tauri::command]
 pub fn delete_document(state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM uploaded_documents WHERE id = ?1", rusqlite::params![id])
+    conn.execute("DELETE FROM sources WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -103,7 +114,7 @@ pub fn delete_document(state: State<DbState>, id: String) -> Result<(), String> 
 pub fn process_document(state: State<DbState>, req: ProcessDocumentRequest) -> Result<i64, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let content: String = conn.query_row(
-        "SELECT content FROM uploaded_documents WHERE id = ?1",
+        "SELECT content FROM sources WHERE id = ?1 AND source_type = 'document'",
         rusqlite::params![req.document_id],
         |r| r.get(0),
     ).map_err(|e| e.to_string())?;
@@ -113,16 +124,19 @@ pub fn process_document(state: State<DbState>, req: ProcessDocumentRequest) -> R
     let chunk_count = chunks.len() as i64;
     let now = chrono::Utc::now().to_rfc3339();
 
+    conn.execute("DELETE FROM source_chunks WHERE source_id = ?1", rusqlite::params![req.document_id])
+        .map_err(|e| e.to_string())?;
+
     for (i, chunk) in chunks.iter().enumerate() {
         let chunk_id = uuid::Uuid::new_v4().to_string();
         conn.execute(
-            "INSERT INTO document_chunks (id, document_id, content, chunk_index, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO source_chunks (id, source_id, content, chunk_index, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params![chunk_id, req.document_id, chunk, i as i64, now],
         ).map_err(|e| e.to_string())?;
     }
 
     conn.execute(
-        "UPDATE uploaded_documents SET is_processed = 1, updated_at = ?1 WHERE id = ?2",
+        "UPDATE sources SET is_processed = 1, updated_at = ?1 WHERE id = ?2",
         rusqlite::params![now, req.document_id],
     ).map_err(|e| e.to_string())?;
 
