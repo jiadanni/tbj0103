@@ -10,6 +10,8 @@ interface AppSettings {
   backgroundModel: string;
   quickSearchModels: string[];
   ollamaUrl: string;
+  mlxUrl: string;
+  llamacppModelPaths: string[];
   embeddingModel: string;
   theme: Theme;
   accentColor: string;
@@ -34,6 +36,8 @@ interface SettingsStore extends AppSettings {
   setBackgroundModel: (m: string) => void;
   setQuickSearchModels: (models: string[]) => void;
   setOllamaUrl: (url: string) => void;
+  setMlxUrl: (url: string) => void;
+  setLlamacppModelPaths: (paths: string[]) => void;
   setTheme: (t: Theme) => void;
   setAccentColor: (c: string) => void;
   setFontSize: (n: number) => void;
@@ -59,6 +63,8 @@ export const useSettingsStore = create<SettingsStore>()(
       backgroundModel: "",
       quickSearchModels: [],
       ollamaUrl: "http://localhost:11434",
+      mlxUrl: "http://localhost:8080",
+      llamacppModelPaths: [],
       embeddingModel: "nomic-embed-text",
       theme: "system",
       accentColor: "#007AFF",
@@ -80,6 +86,8 @@ export const useSettingsStore = create<SettingsStore>()(
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
+      setMlxUrl: (mlxUrl) => set({ mlxUrl }),
+      setLlamacppModelPaths: (llamacppModelPaths) => set({ llamacppModelPaths }),
       setTheme: (theme) => set({ theme }),
       setAccentColor: (accentColor) => set({ accentColor }),
       setFontSize: (fontSize) => set({ fontSize }),

@@ -17,6 +17,8 @@ pub struct Settings {
     pub font_size: i64,
     pub sidebar_width: i64,
     pub ollama_base_url: String,
+    pub mlx_base_url: String,
+    pub llamacpp_model_paths: Vec<String>,
     pub embedding_model: String,
     pub chat_title_auto_refresh: String,
     pub chat_title_refresh_interval: i64,
@@ -50,6 +52,8 @@ impl Default for Settings {
             font_size: 14,
             sidebar_width: 240,
             ollama_base_url: "http://localhost:11434".to_string(),
+            mlx_base_url: "http://localhost:8080".to_string(),
+            llamacpp_model_paths: Vec::new(),
             embedding_model: "nomic-embed-text".to_string(),
             chat_title_auto_refresh: "initial_only".to_string(),
             chat_title_refresh_interval: 5,
@@ -148,6 +152,12 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         ollama_base_url: get_setting(&conn, "ollama_base_url")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.ollama_base_url),
+        mlx_base_url: get_setting(&conn, "mlx_base_url")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.mlx_base_url),
+        llamacpp_model_paths: get_setting(&conn, "llamacpp_model_paths")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.llamacpp_model_paths),
         embedding_model: get_setting(&conn, "embedding_model")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.embedding_model),
@@ -216,6 +226,8 @@ pub fn update_settings(app: AppHandle, state: State<DbState>, settings: Settings
     set_setting(&conn, "font_size", &settings.font_size.to_string())?;
     set_setting(&conn, "sidebar_width", &settings.sidebar_width.to_string())?;
     set_setting(&conn, "ollama_base_url", &serde_json::to_string(&settings.ollama_base_url).unwrap())?;
+    set_setting(&conn, "mlx_base_url", &serde_json::to_string(&settings.mlx_base_url).unwrap())?;
+    set_setting(&conn, "llamacpp_model_paths", &serde_json::to_string(&settings.llamacpp_model_paths).unwrap())?;
     set_setting(&conn, "embedding_model", &serde_json::to_string(&settings.embedding_model).unwrap())?;
     set_setting(&conn, "chat_title_auto_refresh", &settings.chat_title_auto_refresh)?;
     set_setting(&conn, "chat_title_refresh_interval", &settings.chat_title_refresh_interval.to_string())?;
