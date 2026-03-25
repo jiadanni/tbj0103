@@ -42,7 +42,8 @@ dirs = "5.0"
 aes-gcm = "0.10"
 pbkdf2 = "0.12"
 hmac = "0.12"
-llama-cpp-2 = { version = "0.1", features = ["metal"] }
+llama-cpp-2 = { version = "0.1", features = ["metal"], optional = true }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+llamacpp = ["dep:llama-cpp-2"]

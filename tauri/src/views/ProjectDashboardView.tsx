@@ -618,7 +618,7 @@ export default function ProjectDashboardView() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <MetricCard
             label="Notes"
-            value={projectStats?.note_count ?? recentNotes.length}
+            value={recentNotes.length}
             icon={FileText}
             color="text-green-400"
           />

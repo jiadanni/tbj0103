@@ -10,7 +10,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 
 interface WebCapture {
   id: string;
-  project_id: string;
+  workspace_id: string;
   url: string;
   title: string;
   content: string;
@@ -20,7 +20,7 @@ interface WebCapture {
 }
 
 export default function WebCaptureView() {
-  const { activeProjectId } = useWorkspaceStore();
+  const { activeWorkspaceId } = useWorkspaceStore();
   const [captures, setCaptures] = useState<WebCapture[]>([]);
   const [selected, setSelected] = useState<WebCapture | null>(null);
   const [query, setQuery] = useState("");
@@ -31,9 +31,9 @@ export default function WebCaptureView() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!activeProjectId) {return;}
-    api.webCapture.list(activeProjectId).then(setCaptures).catch(() => {});
-  }, [activeProjectId]);
+    if (!activeWorkspaceId) {return;}
+    api.webCapture.list(activeWorkspaceId).then(setCaptures).catch(() => {});
+  }, [activeWorkspaceId]);
 
   const filtered = captures.filter(
     (c) =>
@@ -43,13 +43,13 @@ export default function WebCaptureView() {
   );
 
   async function addCapture() {
-    if (!activeProjectId || !newUrl.trim()) {return;}
+    if (!activeWorkspaceId || !newUrl.trim()) {return;}
     setSaving(true);
     setError(null);
     try {
       const url = newUrl.trim();
       const title = newTitle.trim() || url;
-      const capture = await api.webCapture.create(activeProjectId, url, title, "");
+      const capture = await api.webCapture.create(activeWorkspaceId, url, title, "");
       setCaptures((prev) => [capture, ...prev]);
       setSelected(capture);
       setAdding(false);
@@ -96,7 +96,7 @@ export default function WebCaptureView() {
           </div>
           <button
             onClick={() => setAdding(true)}
-            disabled={!activeProjectId}
+            disabled={!activeWorkspaceId}
             title="Add web capture"
             className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--accent-color)] disabled:opacity-40"
           >
@@ -142,8 +142,8 @@ export default function WebCaptureView() {
         )}
 
         <div className="flex-1 overflow-y-auto">
-          {!activeProjectId ? (
-            <p className="p-4 text-xs text-[var(--text-muted)] text-center">Select a project first.</p>
+          {!activeWorkspaceId ? (
+            <p className="p-4 text-xs text-[var(--text-muted)] text-center">Select a workspace first.</p>
           ) : filtered.length === 0 ? (
             <p className="p-4 text-xs text-[var(--text-muted)] text-center">
               {captures.length === 0 ? "No captures yet. Click + to add one." : "No matches."}
@@ -229,7 +229,7 @@ export default function WebCaptureView() {
           <div className="text-center space-y-2">
             <Globe size={32} className="mx-auto opacity-30" />
             <p className="text-sm">Select a capture to view</p>
-            {activeProjectId && (
+            {activeWorkspaceId && (
               <button onClick={() => setAdding(true)} className="text-xs text-[var(--accent-color)] hover:underline">
                 + Add web capture
               </button>

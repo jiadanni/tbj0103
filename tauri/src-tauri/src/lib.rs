@@ -51,12 +51,15 @@ pub fn run() {
                 std::sync::Mutex::new(std::collections::HashMap::new()),
             ));
 
-            // Initialize llama.cpp worker
-            let worker_state = llamacpp::worker::spawn_inference_worker(app.handle().clone());
-            app.manage(worker_state);
-            app.manage(commands::llamacpp::LlamacppCancelState(
-                std::sync::Mutex::new(std::collections::HashMap::new()),
-            ));
+            #[cfg(feature = "llamacpp")]
+            {
+                // Initialize llama.cpp worker
+                let worker_state = llamacpp::worker::spawn_inference_worker(app.handle().clone());
+                app.manage(worker_state);
+                app.manage(commands::llamacpp::LlamacppCancelState(
+                    std::sync::Mutex::new(std::collections::HashMap::new()),
+                ));
+            }
 
             // Initialize MCP Client Manager
             let mcp_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
