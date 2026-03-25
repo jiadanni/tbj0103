@@ -15,8 +15,11 @@ pub fn start_scheduler(app: AppHandle) {
             // L5: Before processing, check if user is actively streaming to avoid concurrent Ollama calls
             let is_streaming = {
                 let abort_state = app.state::<crate::commands::ollama::StreamAbortState>();
-                let map = abort_state.0.lock().unwrap();
-                !map.is_empty()
+                let result = match abort_state.0.lock() {
+                    Ok(map) => !map.is_empty(),
+                    Err(_) => false,
+                };
+                result
             };
             if is_streaming { continue; }
             
@@ -24,10 +27,12 @@ pub fn start_scheduler(app: AppHandle) {
             
             // L4: Read Ollama URL from settings
             let ollama_url = {
-                let conn = db.0.lock().unwrap();
-                conn.query_row("SELECT value FROM settings WHERE key = 'ollama_base_url'", [], |row| row.get::<_, String>(0))
-                    .map(|v| v.trim_matches('"').to_string())
-                    .ok()
+                match db.0.lock() {
+                    Ok(conn) => conn.query_row("SELECT value FROM settings WHERE key = 'ollama_base_url'", [], |row| row.get::<_, String>(0))
+                        .map(|v| v.trim_matches('"').to_string())
+                        .ok(),
+                    Err(_) => None,
+                }
             };
             
             // 1. Process memory extraction
@@ -35,11 +40,20 @@ pub fn start_scheduler(app: AppHandle) {
 
             // 2. Process summarization
             let sessions = {
-                let conn = db.0.lock().unwrap();
-                let mut stmt = conn.prepare("SELECT id, workspace_id FROM chat_sessions").unwrap();
-                stmt.query_map([], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                }).unwrap().filter_map(Result::ok).collect::<Vec<_>>()
+                match db.0.lock() {
+                    Ok(conn) => {
+                        match conn.prepare("SELECT id, workspace_id FROM chat_sessions") {
+                            Ok(mut stmt) => stmt
+                                .query_map([], |row| {
+                                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                                })
+                                .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
+                                .unwrap_or_default(),
+                            Err(_) => Vec::new(),
+                        }
+                    }
+                    Err(_) => Vec::new(),
+                }
             };
 
             for (session_id, workspace_id) in sessions {
@@ -49,16 +63,20 @@ pub fn start_scheduler(app: AppHandle) {
             // 3. Git sync — every 10 ticks (5 minutes at 30s interval)
             if git_sync_tick.is_multiple_of(10) {
                 let (sync_enabled, remote_url) = {
-                    let conn = db.0.lock().unwrap();
-                    let enabled = conn.query_row(
-                        "SELECT value FROM settings WHERE key = 'git_sync_enabled'", [],
-                        |r| r.get::<_, String>(0)
-                    ).unwrap_or_default() == "true";
-                    let url = conn.query_row(
-                        "SELECT value FROM settings WHERE key = 'git_sync_remote_url'", [],
-                        |r| r.get::<_, String>(0)
-                    ).unwrap_or_default();
-                    (enabled, url)
+                    match db.0.lock() {
+                        Ok(conn) => {
+                            let enabled = conn.query_row(
+                                "SELECT value FROM settings WHERE key = 'git_sync_enabled'", [],
+                                |r| r.get::<_, String>(0)
+                            ).unwrap_or_default() == "true";
+                            let url = conn.query_row(
+                                "SELECT value FROM settings WHERE key = 'git_sync_remote_url'", [],
+                                |r| r.get::<_, String>(0)
+                            ).unwrap_or_default();
+                            (enabled, url)
+                        }
+                        Err(_) => (false, String::new()),
+                    }
                 };
 
                 if sync_enabled && !remote_url.is_empty() {
@@ -66,18 +84,19 @@ pub fn start_scheduler(app: AppHandle) {
                         if git_sync::ensure_repo(&app_dir, &remote_url).is_ok() {
                             let result = git_sync::sync(&app_dir);
                             let now = chrono::Utc::now().to_rfc3339();
-                            let conn = db.0.lock().unwrap();
-                            let set = |key: &str, val: &str| {
-                                let _ = conn.execute(
-                                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
-                                    rusqlite::params![key, val],
-                                );
-                            };
-                            if result.error.is_none() && !result.conflict {
-                                set("git_sync_last_synced_at", &now);
-                                set("git_sync_last_error", "");
-                            } else if let Some(err) = result.error {
-                                set("git_sync_last_error", &err);
+                            if let Ok(conn) = db.0.lock() {
+                                let set = |key: &str, val: &str| {
+                                    let _ = conn.execute(
+                                        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+                                        rusqlite::params![key, val],
+                                    );
+                                };
+                                if result.error.is_none() && !result.conflict {
+                                    set("git_sync_last_synced_at", &now);
+                                    set("git_sync_last_error", "");
+                                } else if let Some(err) = result.error {
+                                    set("git_sync_last_error", &err);
+                                }
                             }
                         }
                     }

@@ -325,7 +325,8 @@ export const api = {
   chat: {
     createSession: (workspaceId: string, projectId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string; is_incognito?: boolean; exclude_from_analytics?: boolean }) =>
       invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, project_id: projectId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt, is_incognito: opts?.is_incognito, exclude_from_analytics: opts?.exclude_from_analytics } }),
-    listSessions: (workspaceId: string, projectId?: string | null) => invoke<ChatSession[]>("list_chat_sessions", { workspaceId, projectId: projectId ?? '' }),
+    listSessions: (workspaceId: string, projectId?: string | null, opts?: { limit?: number; offset?: number }) =>
+      invoke<ChatSession[]>("list_chat_sessions", { workspaceId, projectId: projectId ?? '', limit: opts?.limit, offset: opts?.offset }),
     searchSessions: (workspaceId: string, query: string, projectId?: string | null) =>
       invoke<ChatSession[]>("search_chat_sessions", { req: { workspace_id: workspaceId, query, project_id: projectId ?? null } }),
     getSession: (workspaceId: string, id: string) => invoke<ChatSession | null>("get_chat_session", { workspaceId, id }),
@@ -392,7 +393,8 @@ export const api = {
   flashcard: {
     create: (workspaceId: string, front: string, back: string) =>
       invoke<LearningCard>("create_flashcard", { req: { workspace_id: workspaceId, front, back } }),
-    listDue: (workspaceId: string) => invoke<LearningCard[]>("list_flashcards_due", { workspaceId }),
+    listDue: (workspaceId: string, opts?: { limit?: number; offset?: number }) =>
+      invoke<LearningCard[]>("list_flashcards_due", { workspaceId, limit: opts?.limit, offset: opts?.offset }),
     review: (cardId: string, quality: number) =>
       invoke<LearningCard>("review_flashcard", { req: { card_id: cardId, quality } }),
     getStats: (workspaceId: string) => invoke<ReviewStats>("get_review_stats", { workspaceId }),
@@ -411,7 +413,8 @@ export const api = {
   note: {
     create: (workspaceId: string, title: string, content?: string) =>
       invoke<ProjectNote>("create_note", { req: { workspace_id: workspaceId, title, content } }),
-    list: (workspaceId: string) => invoke<ProjectNote[]>("list_notes", { workspaceId }),
+    list: (workspaceId: string, opts?: { limit?: number; offset?: number }) =>
+      invoke<ProjectNote[]>("list_notes", { workspaceId, limit: opts?.limit, offset: opts?.offset }),
     get: (id: string) => invoke<ProjectNote | null>("get_note", { id }),
     update: (id: string, fields: Partial<ProjectNote>) => invoke<void>("update_note", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_note", { id }),
@@ -595,9 +598,9 @@ export const api = {
       invoke<{ id: string; workspace_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string }>(
         "create_web_capture", { workspaceId, url, title, content, summary }
       ),
-    list: (workspaceId: string) =>
+    list: (workspaceId: string, opts?: { limit?: number; offset?: number }) =>
       invoke<{ id: string; workspace_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string }[]>(
-        "list_web_captures", { workspaceId }
+        "list_web_captures", { workspaceId, limit: opts?.limit, offset: opts?.offset }
       ),
     get: (id: string) =>
       invoke<{ id: string; workspace_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string } | null>(

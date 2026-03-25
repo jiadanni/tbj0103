@@ -109,7 +109,7 @@ pub fn get_source(state: State<DbState>, id: String) -> Result<Option<Source>, S
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let result = conn.query_row(
         "SELECT s.id, s.workspace_id, s.source_type, s.title, s.filename, s.file_type, s.file_size, s.url, s.content, s.summary, s.favicon_data, s.is_processed,
-                (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
+                s.folder, s.token_count, (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
          FROM sources s WHERE s.id = ?1",
         rusqlite::params![id],
         row_to_source,
@@ -166,6 +166,9 @@ pub fn process_source(state: State<DbState>, id: String) -> Result<i64, String> 
     let chunks = chunk_text(&content, 512, 50);
     let chunk_count = chunks.len() as i64;
     let now = chrono::Utc::now().to_rfc3339();
+
+    conn.execute("DELETE FROM source_chunks WHERE source_id = ?1", rusqlite::params![id])
+        .map_err(|e| e.to_string())?;
 
     for (i, chunk) in chunks.iter().enumerate() {
         let chunk_id = uuid::Uuid::new_v4().to_string();

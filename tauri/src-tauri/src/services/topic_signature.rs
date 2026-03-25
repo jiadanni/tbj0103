@@ -324,7 +324,9 @@ Rules:\n\
 Chat excerpts:\n{sample}"
     );
 
-    let client = OllamaClient::new(Some(ollama_url.to_string()));
+    let Ok(client) = OllamaClient::new(Some(ollama_url.to_string())) else {
+        return heuristic;
+    };
     let messages = vec![OllamaMessage {
         role: "user".to_string(),
         content: prompt,

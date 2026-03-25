@@ -34,7 +34,7 @@ pub struct DualModelRequest {
 /// For streaming: emits "ollama-stream-{session_id}" events to frontend.
 #[tauri::command]
 pub async fn send_message(app: AppHandle, req: SendMessageRequest) -> Result<String, String> {
-    let client = OllamaClient::new(req.ollama_url);
+    let client = OllamaClient::new(req.ollama_url)?;
     if req.stream {
         client.stream_message(&app, &req.session_id, &req.model, req.messages).await
     } else {
@@ -44,13 +44,13 @@ pub async fn send_message(app: AppHandle, req: SendMessageRequest) -> Result<Str
 
 #[tauri::command]
 pub async fn list_models(ollama_url: Option<String>) -> Result<Vec<ModelInfo>, String> {
-    let client = OllamaClient::new(ollama_url);
+    let client = OllamaClient::new(ollama_url)?;
     client.list_models().await
 }
 
 #[tauri::command]
 pub async fn generate_title(model: String, first_message: String, ollama_url: Option<String>) -> Result<String, String> {
-    let client = OllamaClient::new(ollama_url);
+    let client = OllamaClient::new(ollama_url)?;
     client.generate_title(&model, &first_message).await
 }
 
@@ -60,13 +60,13 @@ pub async fn generate_title_from_conversation(
     conversation: Vec<OllamaMessage>,
     ollama_url: Option<String>,
 ) -> Result<String, String> {
-    let client = OllamaClient::new(ollama_url);
+    let client = OllamaClient::new(ollama_url)?;
     client.generate_title_from_conversation(&model, conversation).await
 }
 
 #[tauri::command]
 pub async fn generate_embedding(req: EmbeddingRequest) -> Result<Vec<f32>, String> {
-    let client = OllamaClient::new(req.ollama_url);
+    let client = OllamaClient::new(req.ollama_url)?;
     let model = req.model.as_deref().unwrap_or("nomic-embed-text");
     client.generate_embedding(model, &req.text).await
 }
@@ -76,7 +76,7 @@ pub async fn generate_embedding(req: EmbeddingRequest) -> Result<Vec<f32>, Strin
 /// The frontend shows the draft answer instantly and upgrades it when the refinement arrives.
 #[tauri::command]
 pub async fn send_dual_model_message(app: AppHandle, req: DualModelRequest) -> Result<String, String> {
-    let client = OllamaClient::new(req.ollama_url);
+    let client = OllamaClient::new(req.ollama_url)?;
     let execution_mode = req.execution_mode.as_deref().unwrap_or("serial");
 
     match execution_mode {
@@ -104,7 +104,7 @@ pub async fn generate_follow_ups(
     messages: Vec<OllamaMessage>,
     ollama_url: Option<String>,
 ) -> Result<Vec<String>, String> {
-    let client = OllamaClient::new(ollama_url);
+    let client = OllamaClient::new(ollama_url)?;
 
     let mut prompt_messages = messages;
     prompt_messages.push(OllamaMessage {
@@ -147,7 +147,7 @@ pub async fn extract_topics(
         Weight 1-10 based on how prominent the topic is. No explanation, just the JSON array."
     );
 
-    let client = OllamaClient::new(ollama_url);
+    let client = OllamaClient::new(ollama_url)?;
     let messages = vec![OllamaMessage {
         role: "user".to_string(),
         content: prompt,
