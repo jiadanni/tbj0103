@@ -171,7 +171,7 @@ export default function DailyNotesView() {
   const hasContent = note && (note.content?.trim().length ?? 0) > 0;
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full min-h-0 overflow-hidden">
       {/* ──── Calendar sidebar ──── */}
       <div className="w-64 border-r border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)]">
         {/* Month nav */}
@@ -296,7 +296,7 @@ export default function DailyNotesView() {
       </div>
 
       {/* ──── Editor panel ──── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex min-h-0 flex-col overflow-hidden">
         {/* Header with day navigation (mirrors DailyNoteHeader in Swift) */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-color)] bg-[var(--bg-secondary)]/30">
           <div className="flex items-center gap-2">
@@ -372,7 +372,7 @@ export default function DailyNotesView() {
         </div>
 
         {/* Editor area or empty state */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
           {!activeWorkspaceId ? (
             <p className="text-[var(--text-muted)] text-sm">Select a workspace to view daily notes.</p>
           ) : !note ? (
@@ -403,19 +403,23 @@ export default function DailyNotesView() {
             </div>
           ) : !hasContent && content.trim().length === 0 ? (
             /* Note exists but is empty — show editor with prominent placeholder */
-            <SmartTextEditor
-              value={content}
-              onChange={setContent}
-              placeholder="How was your day? Use [[concept]] to link ideas…"
-              minHeight="calc(100vh - 160px)"
-            />
+            <div className="h-full min-h-0">
+              <SmartTextEditor
+                value={content}
+                onChange={setContent}
+                placeholder="How was your day? Use [[concept]] to link ideas…"
+                minHeight="100%"
+              />
+            </div>
           ) : (
-            <SmartTextEditor
-              value={content}
-              onChange={setContent}
-              placeholder="How was your day? Use [[concept]] to link ideas…"
-              minHeight="calc(100vh - 160px)"
-            />
+            <div className="h-full min-h-0">
+              <SmartTextEditor
+                value={content}
+                onChange={setContent}
+                placeholder="How was your day? Use [[concept]] to link ideas…"
+                minHeight="100%"
+              />
+            </div>
           )}
         </div>
       </div>

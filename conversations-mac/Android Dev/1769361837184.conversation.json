@@ -1,0 +1,296 @@
+{
+  "name": "Japanese Name Maruchin",
+  "pinned": false,
+  "createdAt": 1769361837185,
+  "preset": "",
+  "tokenCount": 352,
+  "userLastMessagedAt": 1769361852370,
+  "assistantLastMessagedAt": 1769361854727,
+  "systemPrompt": "",
+  "messages": [
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "maruchin"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "liquid/lfm2-1.2b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1769361841680-0.6776934514340249",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Maruchin is a Japanese surname that can also be transliterated as Maruchin or Maruchin. It's common among people of Japanese descent, particularly in Okinawa and other parts of Japan. The meaning of the name can vary, but it's often associated with strength or resilience. If you're interested in learning more about the history or specific cultural significance, feel free to ask!",
+                  "fromDraftModel": false,
+                  "tokensCount": 81,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "liquid/lfm2-1.2b",
+                "identifier": "liquid/lfm2-1.2b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{{bos_token}}{% if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content'] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = 'You are a helpful assistant trained by Liquid AI.' %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{%- if tools %}\n    {%- set system_message = system_message + '\\nList of tools: <|tool_list_start|>' + (tools | tojson) + '<|tool_list_end|>' %}\n{%- endif %}\n{{- '<|im_start|>system\\n' + system_message + '<|im_end|>\\n'}}\n{%- for message in loop_messages %}\n    {%- if message['role'] == 'user' %}\n        {{- '<|im_start|>user\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- elif message['role'] == 'assistant' %}\n        {{- '<|im_start|>assistant\\n'}}\n        {%- if message.get('tool_calls') %}\n            {# ───── create a list to append tool calls to ───── #}\n            {%- set tool_calls_ns = namespace(tool_calls=[])%}\n            {%- for tool_call in message['tool_calls'] %}\n                {%- set func_name = tool_call['function']['name'] %}\n                {%- set func_args = tool_call['function']['arguments'] %}\n                {# ───── create a list of func_arg strings to accumulate for each tool call ───── #}\n                {%- set args_ns = namespace(arg_strings=[])%}\n                {%- for arg_name, arg_value in func_args.items() %}\n                    {%- set formatted_arg_value = arg_value %}\n                    {%- if arg_value is string %}\n                      {%- set formatted_arg_value = '\"' + arg_value + '\"' %}\n                    {%- elif arg_value is mapping %}\n                      {%- set formatted_arg_value = arg_value | tojson %}\n                    {%- elif arg_value is iterable %}\n                      {%- set formatted_arg_value = '[' + arg_value + ']' %}\n                    {%- endif %}\n                    {# ───── format each argument key,value pair ───── #}\n                    {%- set args_ns.arg_strings =  args_ns.arg_strings + [(arg_name + '=' + formatted_arg_value)] %}\n                {%- endfor %}\n                {# ───── append each formatted tool call ───── #}\n                {%- set tool_calls_ns.tool_calls = tool_calls_ns.tool_calls + [(func_name + '(' + (args_ns.arg_strings | join(\",\")) + ')' )]%}\n            {%- endfor %}\n            {# ───── format the final tool calls ───── #}\n            {{-'<|tool_call_start|>[' + (tool_calls_ns.tool_calls | join(\",\")) + ']<|tool_call_end|>'}}\n            {%- if message['content'] %}\n                {{-message['content']}}\n            {%- endif %}\n        {%- else %}\n            {{-message['content']}}\n        {%- endif %}\n        {{-'<|im_end|>\\n'}}\n    {%- elif message['role'] == 'tool' %}\n        {{-'<|im_start|>tool\\n<|tool_response_start|>' + message['content'] + '<|tool_response_end|><|im_end|>\\n'}}\n    {%- elif message['role'] == 'system' %}\n        {{-'<|im_start|>system\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{-'<|im_start|>assistant\\n'}}\n{%- endif %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.15
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 100
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.3
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 107.79063378263623,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 0.218,
+                  "totalTimeSec": 0.761,
+                  "promptTokensCount": 27,
+                  "predictedTokensCount": 82,
+                  "totalTokensCount": 109
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1769361842401-0.2846337082447674",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "singleStep",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "noodles"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    },
+    {
+      "versions": [
+        {
+          "type": "multiStep",
+          "role": "assistant",
+          "senderInfo": {
+            "senderName": "liquid/lfm2-1.2b"
+          },
+          "steps": [
+            {
+              "type": "contentBlock",
+              "stepIdentifier": "1769361852616-0.8050229405101689",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Noodles are a staple food in many cuisines around the world, especially in Asian countries like China, Japan, and Korea. They come in a vast array of shapes, sizes, and flavors, including:\n\n1. **Ramen** - Japanese noodles in a savory broth, often with toppings like pork, vegetables, and eggs.\n2. **Udon** - Thick, chewy noodles typically served in a hot broth or with dipping sauces.\n3. **Soba** - Thin, buckwheat noodles, often served cold with dipping sauces.\n4. **Linguine** - A flat, wide noodle often used in Italian dishes like Carbonara.\n5. **Pasta** - A broad term for various types of pasta from Italy, including spaghetti, penne, and fettuccine.\n\nNoodles can be made from different types of grains or legumes, and they're often served as a comfort food, in soups, salads, or as a side dish. What kind of noodles are you interested in learning more about?",
+                  "fromDraftModel": false,
+                  "tokensCount": 231,
+                  "isStructural": false
+                }
+              ],
+              "genInfo": {
+                "indexedModelIdentifier": "liquid/lfm2-1.2b",
+                "identifier": "liquid/lfm2-1.2b",
+                "loadModelConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.load.contextLength",
+                      "value": 4096
+                    }
+                  ]
+                },
+                "predictionConfig": {
+                  "fields": [
+                    {
+                      "key": "llm.prediction.promptTemplate",
+                      "value": {
+                        "type": "jinja",
+                        "jinjaPromptTemplate": {
+                          "template": "{{bos_token}}{% if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content'] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = 'You are a helpful assistant trained by Liquid AI.' %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{%- if tools %}\n    {%- set system_message = system_message + '\\nList of tools: <|tool_list_start|>' + (tools | tojson) + '<|tool_list_end|>' %}\n{%- endif %}\n{{- '<|im_start|>system\\n' + system_message + '<|im_end|>\\n'}}\n{%- for message in loop_messages %}\n    {%- if message['role'] == 'user' %}\n        {{- '<|im_start|>user\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- elif message['role'] == 'assistant' %}\n        {{- '<|im_start|>assistant\\n'}}\n        {%- if message.get('tool_calls') %}\n            {# ───── create a list to append tool calls to ───── #}\n            {%- set tool_calls_ns = namespace(tool_calls=[])%}\n            {%- for tool_call in message['tool_calls'] %}\n                {%- set func_name = tool_call['function']['name'] %}\n                {%- set func_args = tool_call['function']['arguments'] %}\n                {# ───── create a list of func_arg strings to accumulate for each tool call ───── #}\n                {%- set args_ns = namespace(arg_strings=[])%}\n                {%- for arg_name, arg_value in func_args.items() %}\n                    {%- set formatted_arg_value = arg_value %}\n                    {%- if arg_value is string %}\n                      {%- set formatted_arg_value = '\"' + arg_value + '\"' %}\n                    {%- elif arg_value is mapping %}\n                      {%- set formatted_arg_value = arg_value | tojson %}\n                    {%- elif arg_value is iterable %}\n                      {%- set formatted_arg_value = '[' + arg_value + ']' %}\n                    {%- endif %}\n                    {# ───── format each argument key,value pair ───── #}\n                    {%- set args_ns.arg_strings =  args_ns.arg_strings + [(arg_name + '=' + formatted_arg_value)] %}\n                {%- endfor %}\n                {# ───── append each formatted tool call ───── #}\n                {%- set tool_calls_ns.tool_calls = tool_calls_ns.tool_calls + [(func_name + '(' + (args_ns.arg_strings | join(\",\")) + ')' )]%}\n            {%- endfor %}\n            {# ───── format the final tool calls ───── #}\n            {{-'<|tool_call_start|>[' + (tool_calls_ns.tool_calls | join(\",\")) + ']<|tool_call_end|>'}}\n            {%- if message['content'] %}\n                {{-message['content']}}\n            {%- endif %}\n        {%- else %}\n            {{-message['content']}}\n        {%- endif %}\n        {{-'<|im_end|>\\n'}}\n    {%- elif message['role'] == 'tool' %}\n        {{-'<|im_start|>tool\\n<|tool_response_start|>' + message['content'] + '<|tool_response_end|><|im_end|>\\n'}}\n    {%- elif message['role'] == 'system' %}\n        {{-'<|im_start|>system\\n' + message['content'] + '<|im_end|>\\n'}}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{-'<|im_start|>assistant\\n'}}\n{%- endif %}"
+                        },
+                        "stopStrings": []
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topPSampling",
+                      "value": {
+                        "checked": false,
+                        "value": 1
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.minPSampling",
+                      "value": {
+                        "checked": true,
+                        "value": 0.15
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.repeatPenalty",
+                      "value": {
+                        "checked": true,
+                        "value": 1.05
+                      }
+                    },
+                    {
+                      "key": "llm.prediction.topKSampling",
+                      "value": 100
+                    },
+                    {
+                      "key": "llm.prediction.contextPrefill",
+                      "value": []
+                    },
+                    {
+                      "key": "llm.prediction.temperature",
+                      "value": 0.3
+                    },
+                    {
+                      "key": "llm.prediction.tools",
+                      "value": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                "stats": {
+                  "stopReason": "eosFound",
+                  "tokensPerSecond": 107.63778840301421,
+                  "numGpuLayers": -1,
+                  "timeToFirstTokenSec": 0.182,
+                  "totalTimeSec": 2.156,
+                  "promptTokensCount": 121,
+                  "predictedTokensCount": 232,
+                  "totalTokensCount": 353
+                }
+              },
+              "defaultShouldIncludeInContext": true,
+              "shouldIncludeInContext": true
+            },
+            {
+              "type": "debugInfoBlock",
+              "stepIdentifier": "1769361854726-0.14165124503906668",
+              "debugInfo": "Conversation naming technique: 'prompt'"
+            }
+          ]
+        }
+      ],
+      "currentlySelected": 0
+    }
+  ],
+  "usePerChatPredictionConfig": true,
+  "perChatPredictionConfig": {
+    "fields": [
+      {
+        "key": "ext.virtualModel.customField.openai.gptOss20b.reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  "clientInput": "",
+  "clientInputFiles": [],
+  "userFilesSizeBytes": 0,
+  "lastUsedModel": {
+    "identifier": "liquid/lfm2-1.2b",
+    "indexedModelIdentifier": "liquid/lfm2-1.2b",
+    "instanceLoadTimeConfig": {
+      "fields": [
+        {
+          "key": "llm.load.llama.cpuThreadPoolSize",
+          "value": 7
+        },
+        {
+          "key": "llm.load.contextLength",
+          "value": 4096
+        }
+      ]
+    },
+    "instanceOperationTimeConfig": {
+      "fields": []
+    }
+  },
+  "notes": [],
+  "plugins": [],
+  "pluginConfigs": {},
+  "disabledPluginTools": [],
+  "looseFiles": []
+}

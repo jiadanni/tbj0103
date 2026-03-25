@@ -18,7 +18,10 @@ Legend: ✅ Complete · 🔄 Partial · ⬜ Not started
 - [ ] **Unified 'Source' Concept** — Combine "Documents" and "Web Captures" into a single, unified data model to simplify the ingestion pipeline and UI.
 - [ ] **Frictionless Flashcards** — Overhaul flashcard creation to be completely auto-generated seamlessly from chat/notes, or reduced to a single-click action.
 
-### 3. ⬜ Data Lifecycle & Migrations
+### 3. ⬜ Security — PIN Recovery
+- [ ] **Forgotten PIN** — There is currently no recovery path if a user forgets their PIN; they are fully locked out. Add a recovery flow (options: emergency data-wipe with explicit warning, or a one-time recovery phrase generated at PIN-setup time). Defer until the security layer is more settled — avoid touching encryption/deletion during rapid iteration.
+
+### 4. ⬜ Data Lifecycle & Migrations
 - [ ] **Cascading Deletes & Workspace Moves** — Define exact behavior when deleting a workspace or project. Implement the ability to move a project to another workspace. Determine the exact cascading rules for owned entities: do chats, concepts, notes, flashcards, learning goals, daily notes, and templates move with the project or stay behind?
 
 ## 🎬 Demo Mode — Plan

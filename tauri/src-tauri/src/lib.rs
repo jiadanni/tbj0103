@@ -1,3 +1,4 @@
+pub mod app_menu;
 pub mod db;
 pub mod models;
 pub mod services;
@@ -14,6 +15,7 @@ use tauri_plugin_autostart::MacosLauncher;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let run_result = tauri::Builder::default()
+        .on_menu_event(app_menu::handle_menu_event)
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -77,6 +79,12 @@ pub fn run() {
                     let _ = window.maximize();
                 }
             }
+
+            // Build and set the app-specific menu bar
+            let menu = app_menu::build_menu(app.handle())
+                .map_err(|e| format!("Failed to build menu: {e}"))?;
+            app.set_menu(menu)
+                .map_err(|e| format!("Failed to set menu: {e}"))?;
             
             // Start background scheduler
             crate::services::background_scheduler::start_scheduler(app.handle().clone());

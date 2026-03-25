@@ -260,11 +260,17 @@ pub fn import_lmstudio_folder(
         return Err(format!("{} is not a directory", folder_path));
     }
 
-    // Root folder name becomes the workspace name
+    // Root folder name becomes the workspace name.
     let workspace_name = folder.file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("Imported Chats")
         .to_string();
+
+    // Discover all conversation files with their subfolder names
+    let conversations = chat_file_store::discover_lmstudio_conversations(folder)?;
+    if conversations.is_empty() {
+        return Err("No .conversation.json files found in the selected folder.".to_string());
+    }
 
     let now = chrono::Utc::now().to_rfc3339();
     let normalized_workspace_name = workspace_name.trim();
@@ -274,59 +280,58 @@ pub fn import_lmstudio_folder(
         |row| row.get::<_, String>(0),
     ).ok();
 
-    let workspace_id = if let Some(existing_workspace_id) = existing_workspace_id {
-        existing_workspace_id
-    } else {
-        let new_workspace_id = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
-             VALUES (?1, ?2, '', '', '{}', ?3, ?3)",
-            rusqlite::params![new_workspace_id, workspace_name, now],
-        ).map_err(|e| e.to_string())?;
-        new_workspace_id
-    };
+    let mut workspace_id: Option<String> = existing_workspace_id;
+    let mut created_workspace = false;
 
-    // Discover all conversation files with their subfolder names
-    let conversations = chat_file_store::discover_lmstudio_conversations(folder)?;
-    if conversations.is_empty() {
-        return Err("No .conversation.json files found in the selected folder.".to_string());
-    }
-
-    // Build project map: subfolder name → project ID
+    // Build project map lazily: subfolder name -> project ID.
     let mut project_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
     let mut session_ids = Vec::new();
     let mut errors = Vec::new();
 
     for conv in &conversations {
-        // Create project for subfolder if we haven't yet
-        let project_id = if conv.subfolder.is_empty() {
-            String::new() // root-level conversations have no project
-        } else {
-            let pid = project_map.entry(conv.subfolder.clone()).or_insert_with(|| {
-                let normalized_project_name = conv.subfolder.trim();
-                if let Ok(existing_project_id) = conn.query_row(
-                    "SELECT id FROM projects WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) LIMIT 1",
-                    rusqlite::params![workspace_id, normalized_project_name],
-                    |row| row.get::<_, String>(0),
-                ) {
-                    return existing_project_id;
-                }
-
-                let id = uuid::Uuid::new_v4().to_string();
-                let _ = conn.execute(
-                    "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, '', '', '#007AFF', 'folder', ?4, ?4)",
-                    rusqlite::params![id, workspace_id, conv.subfolder, now],
-                );
-                id
-            });
-            pid.clone()
-        };
-
         match std::fs::read(&conv.path) {
             Ok(bytes) => match chat_file_store::parse_lmstudio_conversation(&bytes) {
                 Ok(data) => {
+                    let workspace_id = if let Some(id) = &workspace_id {
+                        id.clone()
+                    } else {
+                        let new_workspace_id = uuid::Uuid::new_v4().to_string();
+                        conn.execute(
+                            "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
+                             VALUES (?1, ?2, '', '', '{}', ?3, ?3)",
+                            rusqlite::params![new_workspace_id, workspace_name, now],
+                        ).map_err(|e| e.to_string())?;
+                        created_workspace = true;
+                        workspace_id = Some(new_workspace_id.clone());
+                        new_workspace_id
+                    };
+
+                    let project_id = if conv.subfolder.is_empty() {
+                        String::new()
+                    } else if let Some(existing_project_id) = project_map.get(&conv.subfolder) {
+                        existing_project_id.clone()
+                    } else {
+                        let normalized_project_name = conv.subfolder.trim();
+                        let project_id = if let Ok(existing_project_id) = conn.query_row(
+                            "SELECT id FROM projects WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) LIMIT 1",
+                            rusqlite::params![workspace_id, normalized_project_name],
+                            |row| row.get::<_, String>(0),
+                        ) {
+                            existing_project_id
+                        } else {
+                            let id = uuid::Uuid::new_v4().to_string();
+                            conn.execute(
+                                "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
+                                 VALUES (?1, ?2, ?3, '', '', '#007AFF', 'folder', ?4, ?4)",
+                                rusqlite::params![id, workspace_id, conv.subfolder, now],
+                            ).map_err(|e| e.to_string())?;
+                            id
+                        };
+                        project_map.insert(conv.subfolder.clone(), project_id.clone());
+                        project_id
+                    };
+
                     match chat_file_store::import_chat_data(&conn, &data, &workspace_id, &project_id) {
                         Ok(sid) => session_ids.push(sid),
                         Err(e) => errors.push(format!("{}: {e}", conv.path.display())),
@@ -344,12 +349,32 @@ pub fn import_lmstudio_folder(
         let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, id, pass.as_deref());
     }
 
+    if session_ids.is_empty() {
+        if created_workspace {
+            if let Some(workspace_id) = workspace_id.as_ref() {
+                let _ = conn.execute("DELETE FROM workspaces WHERE id = ?1", rusqlite::params![workspace_id]);
+            }
+        }
+
+        let mut message = "LM Studio import found conversation files, but none contained importable messages.".to_string();
+        if !errors.is_empty() {
+            let sample = errors.iter().take(3).cloned().collect::<Vec<_>>().join("\n");
+            message.push_str("\n\nExamples:\n");
+            message.push_str(&sample);
+            if errors.len() > 3 {
+                message.push_str(&format!("\n… and {} more.", errors.len() - 3));
+            }
+        }
+        return Err(message);
+    }
+
     Ok(serde_json::json!({
         "imported": session_ids.len(),
-        "workspace_id": workspace_id,
+        "workspace_id": workspace_id.unwrap_or_default(),
         "workspace_name": workspace_name,
         "projects_created": project_map.len(),
         "errors": errors.len(),
+        "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
     }))
 }
 
