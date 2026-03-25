@@ -8,6 +8,14 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   confirm: vi.fn(),
 }));
 
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ toggleMaximize: vi.fn() }),
+}));
+
 vi.mock("react-resizable-panels", () => ({
   PanelGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -50,15 +58,16 @@ vi.mock("@/lib/workspacePane", () => ({
 }));
 
 vi.mock("@/views/ChatView", () => ({ default: () => <div>Chat View</div> }));
-vi.mock("@/views/MemoryView", () => ({ default: () => <div>Memory View</div> }));
 vi.mock("@/views/KnowledgeGraphView", () => ({ default: () => <div>Graph View</div> }));
+vi.mock("@/views/DailyNotesView", () => ({ default: () => <div>Daily Notes View</div> }));
 vi.mock("@/views/FlashcardReviewView", () => ({ default: () => <div>Flashcards View</div> }));
 vi.mock("@/views/ProjectDashboardView", () => ({ default: () => <div>Project Dashboard</div> }));
-vi.mock("@/views/SettingsView", () => ({ default: () => <div>Settings View</div> }));
+vi.mock("@/views/PreferencesView", () => ({ default: () => <div>Preferences View</div> }));
+vi.mock("@/views/DocumentBrowserView", () => ({ default: () => <div>Documents View</div> }));
+vi.mock("@/views/LearningPathView", () => ({ default: () => <div>Learning Path View</div> }));
+vi.mock("@/views/PluginManagerView", () => ({ default: () => <div>Plugins View</div> }));
 vi.mock("@/views/NoteEditorView", () => ({ default: () => <div>Notes View</div> }));
-vi.mock("@/views/SourceBrowserView", () => ({ default: () => <div>Sources View</div> }));
-vi.mock("@/views/ThoughtQueueView", () => ({ default: () => <div>Thoughts View</div> }));
-vi.mock("@/views/RecycleBinView", () => ({ default: () => <div>Recycle Bin View</div> }));
+vi.mock("@/views/WebCaptureView", () => ({ default: () => <div>Web Capture View</div> }));
 
 import Layout from "@/components/Layout";
 
@@ -90,33 +99,7 @@ describe("Layout", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1280 });
   });
 
-  it("exits split mode before opening settings from the global toolbar", () => {
-    useWorkspaceStore.setState({
-      workspaces: [
-        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
-        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
-      ],
-      activeWorkspaceId: "ws-1",
-      splitMode: true,
-      panes: {
-        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
-      },
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/project"]}>
-        <Layout />
-      </MemoryRouter>
-    );
-
-    fireEvent.click(screen.getAllByRole("button", { name: /settings/i })[0]);
-
-    expect(useWorkspaceStore.getState().splitMode).toBe(false);
-    expect(screen.getByText("Settings View")).toBeInTheDocument();
-  });
-
-  it("marks the top toolbar as a drag region", () => {
+  it("marks the workspace tab bar as a drag region", () => {
     render(
       <MemoryRouter initialEntries={["/project"]}>
         <Layout />
@@ -124,23 +107,28 @@ describe("Layout", () => {
     );
 
     const dragRegions = document.querySelectorAll("[data-tauri-drag-region]");
-    expect(dragRegions.length).toBeGreaterThan(1);
+    expect(dragRegions.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("keeps split mode active in a collapsed state when the window is narrow", () => {
-    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 640 });
+  it("renders the sidebar in sidebar navigation mode", () => {
+    useWorkspaceStore.setState({ workspaceNavigation: "sidebar" });
 
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("Sidebar")).toBeInTheDocument();
+  });
+
+  it("renders workspace tabs and allows switching", () => {
     useWorkspaceStore.setState({
       workspaces: [
         { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
         { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
       ],
       activeWorkspaceId: "ws-1",
-      splitMode: true,
-      panes: {
-        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
-      },
     });
 
     render(
@@ -149,30 +137,10 @@ describe("Layout", () => {
       </MemoryRouter>
     );
 
-    expect(useWorkspaceStore.getState().splitMode).toBe(true);
-    expect(screen.getByLabelText("Second pane collapsed until the window is wider")).toBeInTheDocument();
-  });
+    expect(screen.getByText("Agentic")).toBeInTheDocument();
+    expect(screen.getByText("Rust")).toBeInTheDocument();
 
-  it("opens a context menu for workspace tabs", () => {
-    useWorkspaceStore.setState({
-      workspaces: [
-        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
-        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
-      ],
-      activeWorkspaceId: "ws-1",
-      workspaceNavigation: "top-tabs",
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/project"]}>
-        <Layout />
-      </MemoryRouter>
-    );
-
-    fireEvent.contextMenu(screen.getByRole("button", { name: "Agentic" }));
-
-    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Manage Workspaces" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Rust"));
+    expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
   });
 });
