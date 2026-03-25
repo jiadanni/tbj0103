@@ -24,7 +24,9 @@ const MEMORY_COLUMNS: &str = "id, workspace_id, content, memory_type, scope, sou
 /// Best-effort: generate and store an embedding for a memory.
 /// Does not fail if Ollama is unavailable.
 async fn store_memory_embedding(state: &DbState, memory_id: &str, content: &str, ollama_url: Option<String>) {
-    let client = OllamaClient::new(ollama_url);
+    let Ok(client) = OllamaClient::new(ollama_url) else {
+        return;
+    };
     let embedding_model = {
         let Ok(conn) = state.0.lock() else {
             return;
@@ -226,7 +228,7 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
     );
 
     // 3. Call Ollama
-    let client = OllamaClient::new(req.ollama_url);
+    let client = OllamaClient::new(req.ollama_url)?;
     let messages = vec![OllamaMessage {
         role: "user".to_string(),
         content: prompt,

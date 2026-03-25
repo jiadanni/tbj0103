@@ -159,3 +159,73 @@ pub fn delete_workspace(state: State<DbState>, id: String) -> Result<(), String>
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_utils::tests::setup_test_db;
+    use std::sync::Mutex;
+    use tauri::test::{mock_builder, mock_context};
+    use tauri::Manager;
+
+    fn get_mock_state(db: rusqlite::Connection) -> tauri::State<'static, DbState> {
+        let app = mock_builder().build(tauri::generate_context!()).unwrap();
+        app.manage(DbState(Mutex::new(db)));
+        // This is safe for a test environment as long as app stays alive
+        // Wait, app is dropped at the end of the function, so state will be invalidated.
+        // Let's just return the app handle and get state from it in each test.
+        unreachable!()
+    }
+
+    #[test]
+    fn test_create_and_list_workspace() {
+        let db = setup_test_db();
+        let app = mock_builder().build(tauri::generate_context!()).unwrap();
+        app.manage(DbState(Mutex::new(db)));
+        let state = app.state::<DbState>();
+
+        let req = CreateWorkspaceRequest {
+            name: "Test Workspace".to_string(),
+            description: Some("A test description".to_string()),
+        };
+
+        // Test create
+        let ws = create_workspace(state.clone(), req).expect("Failed to create workspace");
+        assert_eq!(ws.name, "Test Workspace");
+        assert_eq!(ws.description, "A test description");
+
+        // Test list
+        let workspaces = list_workspaces(state.clone()).expect("Failed to list workspaces");
+        assert_eq!(workspaces.len(), 1);
+        assert_eq!(workspaces[0].name, "Test Workspace");
+    }
+
+    #[test]
+    fn test_hide_unhide_workspace() {
+        let db = setup_test_db();
+        let app = mock_builder().build(tauri::generate_context!()).unwrap();
+        app.manage(DbState(Mutex::new(db)));
+        let state = app.state::<DbState>();
+
+        let req = CreateWorkspaceRequest {
+            name: "Hidden Test Workspace".to_string(),
+            description: None,
+        };
+        let ws = create_workspace(state.clone(), req).unwrap();
+
+        // Initial state is not hidden
+        assert_eq!(list_workspaces(state.clone()).unwrap().len(), 1);
+        assert_eq!(list_hidden_workspaces(state.clone()).unwrap().len(), 0);
+
+        // Hide it
+        hide_workspace(state.clone(), ws.id.clone()).unwrap();
+        assert_eq!(list_workspaces(state.clone()).unwrap().len(), 0);
+        assert_eq!(list_hidden_workspaces(state.clone()).unwrap().len(), 1);
+
+        // Unhide it
+        unhide_workspace(state.clone(), ws.id.clone()).unwrap();
+        assert_eq!(list_workspaces(state.clone()).unwrap().len(), 1);
+        assert_eq!(list_hidden_workspaces(state.clone()).unwrap().len(), 0);
+    }
+}
+

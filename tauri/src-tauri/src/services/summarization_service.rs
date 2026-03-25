@@ -40,7 +40,9 @@ pub async fn generate_rolling_summary(
         conversation_text.push_str(&format!("{}: {}\n", role, content));
     }
 
-    let client = OllamaClient::new(ollama_url);
+    let Ok(client) = OllamaClient::new(ollama_url) else {
+        return Ok(());
+    };
     let prompt = format!(
         "Summarize the following conversation concisely. Focus on key decisions, topics, and user preferences.\n\n\
         Conversation:\n{}",

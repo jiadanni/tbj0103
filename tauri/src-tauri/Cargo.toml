@@ -47,3 +47,6 @@ llama-cpp-2 = { version = "0.1", features = ["metal"], optional = true }
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 llamacpp = ["dep:llama-cpp-2"]
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }

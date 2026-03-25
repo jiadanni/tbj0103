@@ -1017,6 +1017,8 @@ export default function ChatView() {
   const [loadedSessionScopeKey, setLoadedSessionScopeKey] = useState<string | null>(null);
   const [sessionSidebarDragActive, setSessionSidebarDragActive] = useState(false);
   const chatViewRef = useRef<HTMLDivElement | null>(null);
+  const streamUnlistenRef = useRef<(() => void) | null>(null);
+  const refineUnlistenRef = useRef<(() => void) | null>(null);
   const currentSessionId = routeSessionId ?? activeChatId ?? null;
   const effectiveWorkspaceId = scopedWorkspaceId ?? activeWorkspaceId;
   const effectiveProjectId = scopedProjectId ?? activeProjectId;
@@ -1220,7 +1222,26 @@ export default function ChatView() {
     setPendingLink(null);
   }, []);
 
-  const markdownComponents = {
+  const clearStreamListener = useCallback(() => {
+    streamUnlistenRef.current?.();
+    streamUnlistenRef.current = null;
+  }, []);
+
+  const clearRefineListener = useCallback(() => {
+    refineUnlistenRef.current?.();
+    refineUnlistenRef.current = null;
+  }, []);
+
+  const clearActiveStreamListeners = useCallback(() => {
+    clearStreamListener();
+    clearRefineListener();
+  }, [clearRefineListener, clearStreamListener]);
+
+  useEffect(() => () => {
+    clearActiveStreamListeners();
+  }, [clearActiveStreamListeners]);
+
+  const markdownComponents = useMemo(() => ({
     a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
       <a
         {...props}
@@ -1239,7 +1260,7 @@ export default function ChatView() {
       const match = /language-(\w+)/.exec(className || "");
       const lang = match ? match[1] : "";
       const content = String(children).replace(/\n$/, "");
-      
+
       if (!inline && content.split("\n").length >= 5) {
         return (
           <div className="group relative">
@@ -1253,11 +1274,11 @@ export default function ChatView() {
                   await useArtifactStore.getState().createArtifact({
                     workspace_id: effectiveWorkspaceId,
                     session_id: activeChatId,
-                    title: `New ${lang || 'Code'} Snippet`,
-                    artifact_type: 'code',
+                    title: `New ${lang || "Code"} Snippet`,
+                    artifact_type: "code",
                     language: lang,
-                    content: content,
-                    description: `Extracted from chat session`,
+                    content,
+                    description: "Extracted from chat session",
                   });
                 } catch (e) {
                   console.error("Failed to save artifact:", e);
@@ -1273,7 +1294,7 @@ export default function ChatView() {
       }
       return <code className={className} {...props}>{children}</code>;
     }
-  };
+  }), [activeChatId, effectiveWorkspaceId, handleLinkClick]);
 
   const [comparePrompt, setComparePrompt] = useState("");
   const [compareResponseA, setCompareResponseA] = useState("");
@@ -1428,7 +1449,7 @@ export default function ChatView() {
     const timeoutId = window.setTimeout(() => {
       const request = trimmedQuery
         ? api.chat.searchSessions(effectiveWorkspaceId, trimmedQuery, null)
-        : api.chat.listSessions(effectiveWorkspaceId, null);
+        : api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0 });
 
       request.then(setSidebarSessions).catch(() => {});
     }, trimmedQuery ? 150 : 0);
@@ -1438,13 +1459,13 @@ export default function ChatView() {
 
   async function refreshProjectTree(workspaceId: string) {
     const refreshedProjects = await api.project.list(workspaceId);
-    const refreshedSidebarSessions = await api.chat.listSessions(workspaceId, null);
+    const refreshedSidebarSessions = await api.chat.listSessions(workspaceId, null, { limit: 200, offset: 0 });
     setProjectsForWorkspace(workspaceId, refreshedProjects);
     setSidebarSessions(refreshedSidebarSessions);
   }
 
   async function refreshScopedSessions(workspaceId: string, projectId: string | null) {
-    const refreshedSessions = await api.chat.listSessions(workspaceId, projectId);
+    const refreshedSessions = await api.chat.listSessions(workspaceId, projectId, { limit: 200, offset: 0 });
     setSessions(refreshedSessions);
   }
 
@@ -1513,7 +1534,7 @@ export default function ChatView() {
     let cancelled = false;
     setLoadedSessionScopeKey(null);
 
-    api.chat.listSessions(effectiveWorkspaceId, effectiveProjectId)
+    api.chat.listSessions(effectiveWorkspaceId, effectiveProjectId, { limit: 200, offset: 0 })
       .then((nextSessions) => {
         if (cancelled) {return;}
         setSessions(nextSessions);
@@ -1716,7 +1737,7 @@ export default function ChatView() {
       excludeFromAnalytics: options?.excludeFromAnalytics ?? false,
     };
 
-    const workspaceSessions = await api.chat.listSessions(effectiveWorkspaceId, null);
+    const workspaceSessions = await api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0 });
     const unusedSession = findUnusedSession(
       workspaceSessions,
       useChatStore.getState().messages,
@@ -1901,12 +1922,13 @@ export default function ChatView() {
     /* eslint-disable @typescript-eslint/no-non-null-assertion */
     if (isOneOffWebProvider && oneOffWebProviderKey) {
       try {
+        clearStreamListener();
         const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
             finalizeStream(sid!, modelId, tokensUsed, durationMs);
             setIsStreaming(false);
-            unlisten();
+            clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
@@ -1918,8 +1940,10 @@ export default function ChatView() {
             appendStreamChunk(sid!, chunk);
           }
         });
+        streamUnlistenRef.current = unlisten;
         await api.webAI.sendMessage(sid, oneOffWebProviderKey, finalUserContent, preserveWebSession);
       } catch (err) {
+        clearStreamListener();
         setIsStreaming(false);
         const errMsg = err instanceof Error ? err.message : String(err);
         appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
@@ -1927,12 +1951,13 @@ export default function ChatView() {
       }
     } else if (isLlamacppProvider) {
       try {
+        clearStreamListener();
         const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
             finalizeStream(sid!, modelId, tokensUsed, durationMs);
             setIsStreaming(false);
-            unlisten();
+            clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
@@ -1944,8 +1969,10 @@ export default function ChatView() {
             appendStreamChunk(sid!, chunk);
           }
         });
+        streamUnlistenRef.current = unlisten;
         await api.llamacpp.sendMessage(sid, modelId, history);
       } catch (err) {
+        clearStreamListener();
         setIsStreaming(false);
         const errMsg = err instanceof Error ? err.message : String(err);
         appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
@@ -1953,12 +1980,13 @@ export default function ChatView() {
       }
     } else if (isMlxProvider) {
       try {
+        clearStreamListener();
         const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
             finalizeStream(sid!, modelId, tokensUsed, durationMs);
             setIsStreaming(false);
-            unlisten();
+            clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
@@ -1970,8 +1998,10 @@ export default function ChatView() {
             appendStreamChunk(sid!, chunk);
           }
         });
+        streamUnlistenRef.current = unlisten;
         await api.mlx.sendMessage(sid, modelId, history, useSettingsStore.getState().mlxUrl);
       } catch (err) {
+        clearStreamListener();
         setIsStreaming(false);
         const errMsg = err instanceof Error ? err.message : String(err);
         appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
@@ -1980,6 +2010,7 @@ export default function ChatView() {
     } else if (dualModelEnabled && draftModel && draftModel !== modelId) {
       resetDualStreamingState();
       try {
+        clearActiveStreamListeners();
         let draftUnlisten: (() => void) | null = null;
         draftUnlisten = await api.listenStream(sid!, (chunk, done) => {
           if (done) {
@@ -1989,11 +2020,12 @@ export default function ChatView() {
             if (dualModelExecutionMode === "serial") {
               setIsRefiningPhase(true);
             }
-            draftUnlisten?.();
+            clearStreamListener();
           } else {
             appendStreamChunk(sid!, chunk);
           }
         });
+        streamUnlistenRef.current = draftUnlisten;
 
         let refineUnlisten: (() => void) | null = null;
         refineUnlisten = await api.listenRefineStream(sid!, (chunk, done, tokensUsed, durationMs) => {
@@ -2011,7 +2043,7 @@ export default function ChatView() {
             });
             resetDualStreamingState();
             setIsStreaming(false);
-            refineUnlisten?.();
+            clearRefineListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", refineText, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
@@ -2023,9 +2055,11 @@ export default function ChatView() {
             appendRefineChunk(chunk);
           }
         });
+        refineUnlistenRef.current = refineUnlisten;
 
         await api.ollama.sendDualModelMessage(sid!, draftModel, modelId, history, dualModelExecutionMode, ollamaUrl);
       } catch (err) {
+        clearActiveStreamListeners();
         setIsStreaming(false);
         resetDualStreamingState();
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -2034,12 +2068,13 @@ export default function ChatView() {
       }
     } else {
       try {
+        clearStreamListener();
         const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
             finalizeStream(sid!, modelId, tokensUsed, durationMs);
             setIsStreaming(false);
-            unlisten();
+            clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
@@ -2051,9 +2086,11 @@ export default function ChatView() {
             appendStreamChunk(sid!, chunk);
           }
         });
+        streamUnlistenRef.current = unlisten;
 
         await api.ollama.sendMessage(sid, modelId, history, true, ollamaUrl || undefined);
       } catch (err) {
+        clearStreamListener();
         setIsStreaming(false);
         const errMsg = err instanceof Error ? err.message : String(err);
         appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
@@ -2328,11 +2365,12 @@ export default function ChatView() {
 
     try {
       const sid = activeChatId;
+      clearStreamListener();
       const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
         if (done) {
           finalizeStream(sid, selectedModel, tokensUsed, durationMs);
           setIsStreaming(false);
-          unlisten();
+          clearStreamListener();
           const assembled = useChatStore.getState().streamingContent;
           api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
             .then((persisted) => updateMessage(sid, persisted))
@@ -2344,8 +2382,10 @@ export default function ChatView() {
           appendStreamChunk(sid, chunk);
         }
       });
+      streamUnlistenRef.current = unlisten;
       await api.ollama.sendMessage(sid, selectedModel, history, true, ollamaUrl || undefined);
     } catch (err) {
+      clearStreamListener();
       setIsStreaming(false);
       const errMsg = err instanceof Error ? err.message : String(err);
       appendStreamChunk(activeChatId, `\n\n⚠️ Error: ${errMsg}`);
@@ -2365,11 +2405,12 @@ export default function ChatView() {
     setIsStreaming(true);
     try {
       const sid = activeChatId;
+      clearStreamListener();
       const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
         if (done) {
           finalizeStream(sid, selectedModel, tokensUsed, durationMs);
           setIsStreaming(false);
-          unlisten();
+          clearStreamListener();
           const assembled = useChatStore.getState().streamingContent;
           api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
             .then((persisted) => updateMessage(sid, persisted))
@@ -2381,8 +2422,10 @@ export default function ChatView() {
           appendStreamChunk(sid, chunk);
         }
       });
+      streamUnlistenRef.current = unlisten;
       await api.ollama.sendMessage(sid, selectedModel, trimmedMessages.map((m) => ({ role: m.role, content: m.content })), true, ollamaUrl || undefined);
     } catch (err) {
+      clearStreamListener();
       setIsStreaming(false);
       const errMsg = err instanceof Error ? err.message : String(err);
       appendStreamChunk(activeChatId, `\n\n⚠️ Error: ${errMsg}`);
@@ -2857,14 +2900,14 @@ export default function ChatView() {
                                   {thoughtExpanded && (
                                     <div className="border-t border-[var(--border-color)] px-3 py-2">
                                       <div className="prose prose-sm prose-invert max-w-none overflow-x-auto text-[var(--text-secondary)]">
-                                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{parts.thought}</ReactMarkdown>
+                                        <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>{parts.thought}</ReactMarkdown>
                                       </div>
                                     </div>
                                   )}
                                 </div>
                               )}
                               <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>
                                   {parts?.answer || msg.content}
                                 </ReactMarkdown>
                               </div>
@@ -2956,7 +2999,7 @@ export default function ChatView() {
                     <Zap size={9} /> Draft ({draftModel})
                   </div>
                   <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{draftSnapshot}</ReactMarkdown>
+                    <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>{draftSnapshot}</ReactMarkdown>
                   </div>
                 </div>
               </div>

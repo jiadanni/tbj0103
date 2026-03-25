@@ -71,7 +71,7 @@ export default function FlashcardReviewView() {
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
     Promise.all([
-      api.flashcard.listDue(activeWorkspaceId),
+      api.flashcard.listDue(activeWorkspaceId, { limit: 200, offset: 0 }),
       api.flashcard.getStats(activeWorkspaceId),
     ]).then(([due, s]) => {
       setCards(due);

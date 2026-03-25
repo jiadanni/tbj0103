@@ -88,29 +88,35 @@ pub fn list_chat_sessions(
     state: State<DbState>,
     workspace_id: String,
     project_id: String,
+    limit: Option<i64>,
+    offset: Option<i64>,
 ) -> Result<Vec<ChatSession>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let limit = limit.unwrap_or(200).clamp(1, 1000);
+    let offset = offset.unwrap_or(0).max(0);
     let sql = if project_id.is_empty() {
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 parent_session_id, branch_message_id, created_at, updated_at
          FROM chat_sessions
          WHERE workspace_id = ?1 AND is_deleted = 0
-         ORDER BY is_pinned DESC, updated_at DESC"
+         ORDER BY is_pinned DESC, updated_at DESC
+         LIMIT ?2 OFFSET ?3"
     } else {
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 parent_session_id, branch_message_id, created_at, updated_at
          FROM chat_sessions
          WHERE workspace_id = ?1 AND project_id = ?2 AND is_deleted = 0
-         ORDER BY is_pinned DESC, updated_at DESC"
+         ORDER BY is_pinned DESC, updated_at DESC
+         LIMIT ?3 OFFSET ?4"
     };
 
     let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
     let rows = if project_id.is_empty() {
-        stmt.query_map(rusqlite::params![workspace_id], row_to_session)
+        stmt.query_map(rusqlite::params![workspace_id, limit, offset], row_to_session)
     } else {
-        stmt.query_map(rusqlite::params![workspace_id, project_id], row_to_session)
+        stmt.query_map(rusqlite::params![workspace_id, project_id, limit, offset], row_to_session)
     }
     .map_err(|e| e.to_string())?;
 

@@ -33,13 +33,20 @@ pub fn create_note(state: State<DbState>, req: CreateNoteRequest) -> Result<Proj
 }
 
 #[tauri::command]
-pub fn list_notes(state: State<DbState>, workspace_id: String) -> Result<Vec<ProjectNote>, String> {
+pub fn list_notes(
+    state: State<DbState>,
+    workspace_id: String,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<ProjectNote>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let limit = limit.unwrap_or(200).clamp(1, 1000);
+    let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, title, content, note_type, tags, created_at, updated_at
-         FROM project_notes WHERE workspace_id = ?1 ORDER BY updated_at DESC"
+         FROM project_notes WHERE workspace_id = ?1 ORDER BY updated_at DESC LIMIT ?2 OFFSET ?3"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], |row| {
+    let items = stmt.query_map(rusqlite::params![workspace_id, limit, offset], |row| {
         let tags_json: String = row.get(5)?;
         Ok(ProjectNote {
             id: row.get(0)?,

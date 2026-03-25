@@ -13,7 +13,7 @@ use tauri_plugin_autostart::MacosLauncher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let run_result = tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -27,15 +27,17 @@ pub fn run() {
             ))?;
 
             // Initialize SQLite database
-            let app_dir = app.path().app_data_dir()
-                .expect("Failed to get app data directory");
+            let app_dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("Failed to get app data directory: {e}"))?;
             std::fs::create_dir_all(&app_dir)?;
             let db_path = app_dir.join("aetherium.db");
             let conn = db::initialize_database(&db_path)
-                .expect("Failed to initialize database");
+                .map_err(|e| format!("Failed to initialize database: {e}"))?;
 
             commands::settings::sync_autostart(&app.handle().clone(), &conn)
-                .expect("Failed to synchronize autostart setting");
+                .map_err(|e| format!("Failed to synchronize autostart setting: {e}"))?;
             let should_open_in_background = commands::settings::should_open_in_background(&conn);
 
             // Resolve the chats directory and try to load encryption passphrase
@@ -87,19 +89,27 @@ pub fn run() {
                 loop {
                     let interval_minutes = {
                         let state = app_handle.state::<db::DbState>();
-                        let conn = state.0.lock().unwrap();
-                        let val: String = conn.query_row(
-                            "SELECT value FROM settings WHERE key = 'topic_analysis_interval_minutes'",
-                            [],
-                            |row| row.get(0)
-                        ).unwrap_or_else(|_| "30".to_string());
-                        val.parse::<u64>().unwrap_or(30)
+                        let result = match state.0.lock() {
+                            Ok(conn) => {
+                                let val: String = conn.query_row(
+                                    "SELECT value FROM settings WHERE key = 'topic_analysis_interval_minutes'",
+                                    [],
+                                    |row| row.get(0)
+                                ).unwrap_or_else(|_| "30".to_string());
+                                val.parse::<u64>().unwrap_or(30)
+                            }
+                            Err(_) => 30,
+                        };
+                        result
                     };
 
                     {
                         let db = app_handle.state::<db::DbState>();
                         let workspace_ids: Vec<String> = {
-                            let conn = db.0.lock().unwrap();
+                            let Ok(conn) = db.0.lock() else {
+                                tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
+                                continue;
+                            };
                             conn.prepare("SELECT id FROM workspaces")
                                 .and_then(|mut stmt| {
                                     stmt.query_map([], |row| row.get::<_, String>(0))?
@@ -331,6 +341,9 @@ pub fn run() {
             commands::git_sync::configure_git_sync,
             commands::git_sync::trigger_git_sync,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    if let Err(err) = run_result {
+        eprintln!("error while running tauri application: {err}");
+    }
 }

@@ -131,7 +131,7 @@ pub async fn assemble_and_send(
     };
 
     let client_url = req.options.get("ollama_url").and_then(|v: &serde_json::Value| v.as_str()).map(|s: &str| s.to_string());
-    let client = OllamaClient::new(client_url);
+    let client = OllamaClient::new(client_url)?;
 
     if use_fast_path {
         let messages = {

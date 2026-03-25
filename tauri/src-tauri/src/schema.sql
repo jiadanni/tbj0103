@@ -466,14 +466,21 @@ CREATE TABLE IF NOT EXISTS context_snapshots (
 CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace ON chat_sessions(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace_project_pinned_updated
+    ON chat_sessions(workspace_id, project_id, is_pinned, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace_pinned_updated
+    ON chat_sessions(workspace_id, is_pinned, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_messages_session_created_at ON messages(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_citations_message ON citations(message_id);
 CREATE INDEX IF NOT EXISTS idx_concept_nodes_workspace ON concept_nodes(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_concept_links_source ON concept_links(source_id);
 CREATE INDEX IF NOT EXISTS idx_concept_links_target ON concept_links(target_id);
+CREATE INDEX IF NOT EXISTS idx_concept_links_source_target ON concept_links(source_id, target_id);
 CREATE INDEX IF NOT EXISTS idx_concept_mentions_concept ON concept_mentions(concept_id);
 CREATE INDEX IF NOT EXISTS idx_learning_goals_workspace ON learning_goals(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_learning_cards_review ON learning_cards(next_review_date);
+CREATE INDEX IF NOT EXISTS idx_learning_cards_workspace_review ON learning_cards(workspace_id, next_review_date);
 CREATE INDEX IF NOT EXISTS idx_daily_notes_workspace_date ON daily_notes(workspace_id, date);
 CREATE INDEX IF NOT EXISTS idx_uploaded_docs_workspace ON uploaded_documents(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_doc_chunks_document ON document_chunks(document_id);

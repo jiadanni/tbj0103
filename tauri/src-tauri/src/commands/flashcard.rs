@@ -38,14 +38,21 @@ pub fn create_flashcard(state: State<DbState>, req: CreateCardRequest) -> Result
 
 /// Returns cards due today or overdue, for a given project.
 #[tauri::command]
-pub fn list_flashcards_due(state: State<DbState>, workspace_id: String) -> Result<Vec<LearningCard>, String> {
+pub fn list_flashcards_due(
+    state: State<DbState>,
+    workspace_id: String,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<LearningCard>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let limit = limit.unwrap_or(200).clamp(1, 1000);
+    let offset = offset.unwrap_or(0).max(0);
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
-         FROM learning_cards WHERE workspace_id = ?1 AND next_review_date <= ?2 ORDER BY next_review_date ASC"
+         FROM learning_cards WHERE workspace_id = ?1 AND next_review_date <= ?2 ORDER BY next_review_date ASC LIMIT ?3 OFFSET ?4"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id, today], row_to_card)
+    let items = stmt.query_map(rusqlite::params![workspace_id, today, limit, offset], row_to_card)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -125,7 +132,7 @@ pub async fn generate_flashcards(state: State<'_, DbState>, req: GenerateCardsRe
         count = count,
         topic = req.topic,
     );
-    let client = OllamaClient::new(req.ollama_url);
+    let client = OllamaClient::new(req.ollama_url)?;
     let messages = vec![OllamaMessage {
         role: "user".to_string(),
         content: prompt,
@@ -199,7 +206,7 @@ pub async fn generate_flashcards_from_concept(state: State<'_, DbState>, req: Ge
         count = count,
         topic = topic,
     );
-    let client = OllamaClient::new(req.ollama_url);
+    let client = OllamaClient::new(req.ollama_url)?;
     let messages = vec![OllamaMessage {
         role: "user".to_string(),
         content: prompt,
@@ -298,7 +305,7 @@ pub async fn extract_flashcards_from_content(state: State<'_, DbState>, req: Ext
         No markdown, no explanation, no code fences — just the raw JSON array."
     );
 
-    let client = OllamaClient::new(req.ollama_url);
+    let client = OllamaClient::new(req.ollama_url)?;
     let messages = vec![OllamaMessage {
         role: "user".to_string(),
         content: prompt,

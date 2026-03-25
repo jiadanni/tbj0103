@@ -233,7 +233,7 @@ export default function KnowledgeGraphView() {
         setFcIsFlipped(false);
       }).catch(() => {});
     } else {
-      api.flashcard.listDue(activeWorkspaceId).then((due) => {
+      api.flashcard.listDue(activeWorkspaceId, { limit: 200, offset: 0 }).then((due) => {
         setFcCards(due);
         setFcCurrentIndex(0);
         setFcIsFlipped(false);

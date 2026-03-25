@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { useArtifactStore } from '../stores/artifactStore';
 import { api } from '../lib/api';
 import type { ArtifactSummary } from '../lib/api';
@@ -33,7 +34,10 @@ export default function ArtifactPanel() {
   };
 
   const handleDelete = async () => {
-    if (await confirm("Are you sure you want to delete this artifact?")) {
+    if (await confirm("Are you sure you want to delete this artifact?", {
+      title: "Delete artifact?",
+      kind: "warning",
+    })) {
       await deleteArtifact(activeArtifact.id);
       setPanelOpen(false);
     }
