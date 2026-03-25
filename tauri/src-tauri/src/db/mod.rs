@@ -636,5 +636,20 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v28: add is_hidden to workspaces for archive/hide support
+    let applied_v28: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v28_workspace_is_hidden'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v28 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE workspaces ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0;",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v28_workspace_is_hidden');",
+        )?;
+    }
+
     Ok(())
 }

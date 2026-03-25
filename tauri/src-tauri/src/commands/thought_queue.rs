@@ -23,7 +23,7 @@ const SELECT_COLS: &str = "id, workspace_id, content, status, process_at, model_
 
 #[tauri::command]
 pub fn create_thought(state: State<DbState>, req: CreateThoughtRequest) -> Result<ThoughtItem, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let status = if req.process_at.is_some() { "scheduled" } else { "pending" };
     let item = ThoughtItem {
@@ -41,17 +41,19 @@ pub fn create_thought(state: State<DbState>, req: CreateThoughtRequest) -> Resul
         updated_at: now.clone(),
     };
 
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     // If linked to a session, also insert the user's thought content as a user message
     if let Some(ref sid) = item.session_id {
         let msg_id = uuid::Uuid::new_v4().to_string();
-        let _ = conn.execute(
+        tx.execute(
             "INSERT INTO messages (id, session_id, role, content, model_name, created_at)
              VALUES (?1, ?2, 'user', ?3, ?4, ?5)",
             rusqlite::params![msg_id, sid, item.content, item.model_name, now],
-        );
+        ).map_err(|e| e.to_string())?;
     }
 
-    conn.execute(
+    tx.execute(
         "INSERT INTO thought_queue (id, workspace_id, content, status, process_at, model_name, prompt_prefix, result, result_at, session_id, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, NULL, ?8, ?9, ?10)",
         rusqlite::params![
@@ -60,6 +62,7 @@ pub fn create_thought(state: State<DbState>, req: CreateThoughtRequest) -> Resul
             item.session_id, item.created_at, item.updated_at
         ],
     ).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(item)
 }
 

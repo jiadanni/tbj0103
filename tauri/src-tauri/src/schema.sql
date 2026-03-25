@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     prompt_instructions TEXT NOT NULL DEFAULT '',
     topic_signature TEXT NOT NULL DEFAULT '{}',
     signature_updated_at TEXT,
+    is_hidden INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -482,4 +483,3 @@ CREATE INDEX IF NOT EXISTS idx_audio_transcriptions_workspace ON audio_transcrip
 CREATE INDEX IF NOT EXISTS idx_alarms_fire_date ON calendar_alarms(fire_date);
 CREATE INDEX IF NOT EXISTS idx_memories_workspace ON memories(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_memories_active ON memories(workspace_id, is_active);
-

@@ -45,8 +45,8 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
     // Demo chat sessions
     let session1_id = "demo-chat-session-transformers-00001";
     conn.execute(
-        "INSERT INTO chat_sessions (id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, 'What is Self-Attention?', '', ?3, ?4)",
-        rusqlite::params![session1_id, DEMO_PROJECT_ID_1, now, now],
+        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'What is Self-Attention?', '', ?4, ?5)",
+        rusqlite::params![session1_id, DEMO_WORKSPACE_ID, DEMO_PROJECT_ID_1, now, now],
     ).map_err(|e| e.to_string())?;
 
     let msgs: Vec<(&str, &str, &str)> = vec![
@@ -109,8 +109,8 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
     for (front, back) in cards {
         let cid = uuid::Uuid::new_v4().to_string();
         conn.execute(
-            "INSERT INTO learning_cards (id, project_id, front, back, source_type, ease_factor, interval, repetitions, next_review_date, created_at) VALUES (?1, ?2, ?3, ?4, 'ai_generated', 2.5, 1, 0, ?5, ?6)",
-            rusqlite::params![cid, DEMO_PROJECT_ID_1, front, back, today, now],
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, ease_factor, interval, repetitions, next_review_date, created_at) VALUES (?1, ?2, ?3, ?4, 'ai_generated', 2.5, 1, 0, ?5, ?6)",
+            rusqlite::params![cid, DEMO_WORKSPACE_ID, front, back, today, now],
         ).map_err(|e| e.to_string())?;
     }
 

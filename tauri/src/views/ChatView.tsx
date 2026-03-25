@@ -2016,7 +2016,7 @@ export default function ChatView() {
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
               .catch(() => {});
             if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(modelId, tokensUsed).catch(() => {});
+              api.aiModel.recordTokenUsage(modelId, "ollama", tokensUsed).catch(() => {});
             }
           } else {
             setIsRefiningPhase(true);
@@ -2338,7 +2338,7 @@ export default function ChatView() {
             .then((persisted) => updateMessage(sid, persisted))
             .catch(() => {});
           if (tokensUsed && tokensUsed > 0) {
-            api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
+            api.aiModel.recordTokenUsage(selectedModel, "ollama", tokensUsed).catch(() => {});
           }
         } else {
           appendStreamChunk(sid, chunk);
@@ -2375,7 +2375,7 @@ export default function ChatView() {
             .then((persisted) => updateMessage(sid, persisted))
             .catch(() => {});
           if (tokensUsed && tokensUsed > 0) {
-            api.aiModel.recordTokenUsage(selectedModel, tokensUsed).catch(() => {});
+            api.aiModel.recordTokenUsage(selectedModel, "ollama", tokensUsed).catch(() => {});
           }
         } else {
           appendStreamChunk(sid, chunk);

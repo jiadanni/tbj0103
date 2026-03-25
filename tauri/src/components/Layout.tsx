@@ -111,7 +111,7 @@ function WorkspaceTabBar() {
       )}
       <div className="ml-auto flex items-center">
         <button
-          onClick={() => setWorkspaceNavigation(workspaceNavigation === "sidebar" ? "tabs" : "sidebar")}
+          onClick={() => setWorkspaceNavigation(workspaceNavigation === "sidebar" ? "top-tabs" : "sidebar")}
           title={workspaceNavigation === "sidebar" ? "Switch to tab navigation" : "Switch to sidebar navigation"}
           className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
         >
@@ -175,9 +175,9 @@ export default function Layout() {
 
       <WorkspaceTabBar />
 
-      {workspaceNavigation === "tabs" && <NavigationTabBar />}
+      {workspaceNavigation === "top-tabs" && <NavigationTabBar />}
 
-      {workspaceNavigation === "tabs" ? (
+      {workspaceNavigation === "top-tabs" ? (
         <div className="flex-1 overflow-hidden min-h-0">
           <Routes>
             <Route path="/" element={<Navigate to="/project" replace />} />
