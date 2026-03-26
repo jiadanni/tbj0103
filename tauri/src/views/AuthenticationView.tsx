@@ -11,6 +11,7 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
   const [secret, setSecret] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [touchIdLoading, setTouchIdLoading] = useState(false);
   const [touchIdEnabled, setTouchIdEnabled] = useState(false);
   const [pinLockEnabled, setPinLockEnabled] = useState(false);
   // When Touch ID is the primary method, PIN input is hidden until the user requests it
@@ -24,6 +25,23 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
       if (!status.touch_id_enabled) { setShowPinFallback(true); }
     }).catch(() => { onAuthenticated(); });
   }, [onAuthenticated]);
+
+  async function handleTouchId() {
+    setTouchIdLoading(true);
+    setError("");
+    try {
+      const success = await api.security.authenticateBiometric();
+      if (success) {
+        onAuthenticated();
+      } else {
+        setError("Touch ID was not recognised. Try your PIN instead.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Touch ID failed. Try your PIN instead.");
+    } finally {
+      setTouchIdLoading(false);
+    }
+  }
 
   async function handlePinSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -70,10 +88,11 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
           </div>
 
           <button
-            onClick={onAuthenticated}
-            className="w-full py-2.5 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
+            onClick={handleTouchId}
+            disabled={touchIdLoading}
+            className="w-full py-2.5 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
           >
-            Use Touch ID
+            {touchIdLoading ? "Verifying…" : "Use Touch ID"}
           </button>
 
           {pinLockEnabled && (
@@ -84,6 +103,10 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
             >
               Use PIN instead
             </button>
+          )}
+
+          {error && (
+            <p className="text-xs text-red-500 text-center">{error}</p>
           )}
         </div>
       </div>

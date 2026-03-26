@@ -7,10 +7,27 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 use crate::commands::ollama::StreamAbortState;
 
 const DEFAULT_BASE_URL: &str = "http://localhost:11434";
+const MODEL_CACHE_TTL: Duration = Duration::from_secs(30);
+
+// Process-level cache for /api/tags responses, keyed by base URL.
+// This prevents a redundant GET /api/tags before every /api/chat call.
+struct CachedModels {
+    models: Vec<ModelInfo>,
+    fetched_at: Instant,
+    url: String,
+}
+
+static MODEL_CACHE: OnceLock<Mutex<Option<CachedModels>>> = OnceLock::new();
+
+fn model_cache() -> &'static Mutex<Option<CachedModels>> {
+    MODEL_CACHE.get_or_init(|| Mutex::new(None))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OllamaMessage {
@@ -54,7 +71,7 @@ pub struct EmbeddingRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
-    pub embedding: Vec<f32>,
+    pub embeddings: Vec<Vec<f32>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -370,10 +387,17 @@ impl OllamaClient {
 
     /// Generate an embedding vector for the given text.
     pub async fn generate_embedding(&self, model: &str, text: &str) -> Result<Vec<f32>, String> {
-        // Embeddings usually need a specific model, so we don't resolve_model here 
-        // to avoid accidentally using a chat model for embeddings.
-        let url = format!("{}/api/embeddings", self.base_url);
-        let body = json!({ "model": model, "prompt": text });
+        // Guard: verify the model is locally available before calling /api/embed.
+        // This prevents 404 spam in the Ollama server log when the embedding model
+        // hasn't been pulled yet. list_models() is cached, so there is no extra I/O
+        // on the hot path.
+        let available = self.list_models().await.unwrap_or_default();
+        if !available.iter().any(|m| m.name == model || m.name.starts_with(&format!("{model}:"))) {
+            return Err(format!("Embedding model '{model}' is not available locally. Run: ollama pull {model}"));
+        }
+
+        let url = format!("{}/api/embed", self.base_url);
+        let body = json!({ "model": model, "input": text });
 
         let response = self.client
             .post(&url)
@@ -393,11 +417,26 @@ impl OllamaClient {
             .await
             .map_err(|e| format!("Failed to parse embedding: {e}"))?;
 
-        Ok(emb.embedding)
+        emb.embeddings
+            .into_iter()
+            .next()
+            .ok_or_else(|| "Ollama returned no embedding vectors".to_string())
     }
 
-    /// Fetch list of locally available models.
+    /// Fetch list of locally available models, with a 30-second process-level cache.
+    /// This eliminates the redundant GET /api/tags that was issued before every /api/chat.
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, String> {
+        // Check cache first (hold the lock only briefly).
+        {
+            let guard = model_cache().lock().map_err(|e| format!("model cache lock poisoned: {e}"))?;
+            if let Some(cached) = guard.as_ref() {
+                if cached.url == self.base_url && cached.fetched_at.elapsed() < MODEL_CACHE_TTL {
+                    return Ok(cached.models.clone());
+                }
+            }
+        }
+
+        // Cache miss — fetch from Ollama.
         let url = format!("{}/api/tags", self.base_url);
         let response = self.client
             .get(&url)
@@ -414,7 +453,24 @@ impl OllamaClient {
             .await
             .map_err(|e| format!("Failed to parse models list: {e}"))?;
 
+        // Store in cache.
+        {
+            let mut guard = model_cache().lock().map_err(|e| format!("model cache lock poisoned: {e}"))?;
+            *guard = Some(CachedModels {
+                models: tags.models.clone(),
+                fetched_at: Instant::now(),
+                url: self.base_url.clone(),
+            });
+        }
+
         Ok(tags.models)
+    }
+
+    /// Force-flush the process-level model cache (called by `list_models_fresh`).
+    pub fn invalidate_model_cache(&self) {
+        if let Ok(mut guard) = model_cache().lock() {
+            *guard = None;
+        }
     }
 
     /// Generate a short title for a chat session given the first user message.

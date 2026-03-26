@@ -46,8 +46,11 @@ function MenuEventHandler() {
 }
 
 export default function App() {
-  const { theme, accentColor, fontSize } = useSettingsStore();
-  const { setWorkspaces, setProjects } = useWorkspaceStore();
+  const theme = useSettingsStore((state) => state.theme);
+  const accentColor = useSettingsStore((state) => state.accentColor);
+  const fontSize = useSettingsStore((state) => state.fontSize);
+  const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
+  const setProjects = useWorkspaceStore((state) => state.setProjects);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 

@@ -48,6 +48,15 @@ pub async fn list_models(ollama_url: Option<String>) -> Result<Vec<ModelInfo>, S
     client.list_models().await
 }
 
+/// Same as list_models but bypasses the process-level cache.
+/// Called from the frontend's `listModelsFresh` (e.g., Preferences refresh button).
+#[tauri::command]
+pub async fn list_models_fresh(ollama_url: Option<String>) -> Result<Vec<ModelInfo>, String> {
+    let client = OllamaClient::new(ollama_url)?;
+    client.invalidate_model_cache();
+    client.list_models().await
+}
+
 #[tauri::command]
 pub async fn generate_title(model: String, first_message: String, ollama_url: Option<String>) -> Result<String, String> {
     let client = OllamaClient::new(ollama_url)?;

@@ -24,7 +24,13 @@ import WebCaptureView from "../views/WebCaptureView";
 import type { Workspace } from "../stores/workspaceStore";
 
 function WorkspaceTabBar() {
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces, workspaceNavigation, setWorkspaceNavigation } = useWorkspaceStore();
+  const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
+  const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
+  const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
+  const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
+  const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
+  const setWorkspaceNavigation = useWorkspaceStore((state) => state.setWorkspaceNavigation);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [contextMenu, setContextMenu] = useState<{ workspace: Workspace; x: number; y: number } | null>(null);
@@ -323,7 +329,7 @@ function NavigationTabBar() {
 export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const navigate = useNavigate();
-  const { workspaceNavigation } = useWorkspaceStore();
+  const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
 
   // Global Cmd+K shortcut
   useEffect(() => {
