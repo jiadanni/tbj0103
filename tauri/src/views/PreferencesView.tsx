@@ -371,7 +371,7 @@ export default function PreferencesView() {
       await api.security.removePin(currentPin);
       const refreshedStatus = await api.security.getStatus();
       setSecurityStatus(refreshedStatus);
-      setDbSettings((prev) => prev ? { ...prev, pin_lock_enabled: false } : prev);
+      setDbSettings((prev) => prev ? { ...prev, pin_lock_enabled: false, touch_id_enabled: false } : prev);
       resetPinForm();
       setPinMessage({ type: "success", text: "PIN removed." });
     } catch (err) {
