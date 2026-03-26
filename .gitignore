@@ -87,5 +87,9 @@ tauri/src-tauri/gen/
 # Logs
 *.log
 
+# Local conversation exports / imports
+conversations-mac/
+*.conversation.json
+
 # Override global gitignore for source ollama module
 !**/src/ollama/
