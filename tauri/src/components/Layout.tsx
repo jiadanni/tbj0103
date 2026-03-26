@@ -392,7 +392,6 @@ function AppRoutes() {
       <Route path="/preferences" element={<PreferencesView />} />
       
       {/* Legacy redirects */}
-      <Route path="/compare" element={<Navigate to="/chat" state={{ subView: "compare" }} replace />} />
       <Route path="/grounded" element={<Navigate to="/chat" state={{ subView: "grounded" }} replace />} />
       <Route path="/chat-sessions" element={<Navigate to="/chat" state={{ subView: "sessions" }} replace />} />
       <Route path="/daily" element={<Navigate to="/notes" state={{ subView: "daily" }} replace />} />
