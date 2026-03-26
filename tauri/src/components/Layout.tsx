@@ -35,6 +35,8 @@ function WorkspaceTabBar() {
   const [newName, setNewName] = useState("");
   const [contextMenu, setContextMenu] = useState<{ workspace: Workspace; x: number; y: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
+  const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
 
   async function createWorkspace() {
@@ -128,8 +130,57 @@ function WorkspaceTabBar() {
               event.stopPropagation();
               setContextMenu({ workspace: ws, x: event.clientX, y: event.clientY });
             }}
+            onDragOver={(event) => {
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                return;
+              }
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }}
+            onDragEnter={(event) => {
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                return;
+              }
+              event.preventDefault();
+              setDragOverWorkspaceId(ws.id);
+              if (dragHoverTimerRef.current) {
+                clearTimeout(dragHoverTimerRef.current);
+              }
+              dragHoverTimerRef.current = setTimeout(() => {
+                setActiveWorkspaceId(ws.id);
+              }, 600);
+            }}
+            onDragLeave={(event) => {
+              const related = event.relatedTarget as Node | null;
+              if (related && event.currentTarget.contains(related)) {
+                return;
+              }
+              if (dragOverWorkspaceId === ws.id) {
+                setDragOverWorkspaceId(null);
+              }
+              if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragOverWorkspaceId(null);
+              if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
+              const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+              if (!raw) {
+                return;
+              }
+              try {
+                const sessionIds = JSON.parse(raw) as string[];
+                if (sessionIds.length > 0) {
+                  void api.chat.moveSessions(sessionIds, ws.id).then(() => {
+                    setActiveWorkspaceId(ws.id);
+                  });
+                }
+              } catch { /* ignore malformed data */ }
+            }}
             className={`flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-b-2 transition-colors select-none ${
-              activeWorkspaceId === ws.id
+              dragOverWorkspaceId === ws.id
+                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)] font-medium"
+                : activeWorkspaceId === ws.id
                 ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
                 : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             }`}
