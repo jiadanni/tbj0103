@@ -103,13 +103,16 @@ pub fn get_artifact(conn: &Connection, id: &str) -> Result<Artifact, String> {
     ).map_err(|e| e.to_string())
 }
 
-pub fn list_artifacts(conn: &Connection, workspace_id: &str) -> Result<Vec<ArtifactSummary>, String> {
+pub fn list_artifacts(conn: &Connection, workspace_id: &str, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<ArtifactSummary>, String> {
+    let limit = limit.unwrap_or(200).clamp(1, 1000);
+    let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn.prepare(
         "SELECT id, title, artifact_type, language, description, tags, is_pinned, version, updated_at
-         FROM artifacts WHERE workspace_id = ?1 ORDER BY is_pinned DESC, updated_at DESC"
+         FROM artifacts WHERE workspace_id = ?1 ORDER BY is_pinned DESC, updated_at DESC
+         LIMIT ?2 OFFSET ?3"
     ).map_err(|e| e.to_string())?;
 
-    let iter = stmt.query_map(rusqlite::params![workspace_id], |row| {
+    let iter = stmt.query_map(rusqlite::params![workspace_id, limit, offset], |row| {
         let tags_json: String = row.get(5)?;
         let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
         Ok(ArtifactSummary {

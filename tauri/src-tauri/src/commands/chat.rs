@@ -306,13 +306,16 @@ pub fn add_message(state: State<DbState>, req: AddMessageRequest) -> Result<Mess
 }
 
 #[tauri::command]
-pub fn get_messages(state: State<DbState>, session_id: String) -> Result<Vec<Message>, String> {
+pub fn get_messages(state: State<DbState>, session_id: String, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<Message>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let limit = limit.unwrap_or(200).clamp(1, 2000);
+    let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn.prepare(
         "SELECT id, session_id, role, content, model_name, tokens_used, duration_ms, created_at
-         FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
+         FROM messages WHERE session_id = ?1 ORDER BY created_at ASC
+         LIMIT ?2 OFFSET ?3"
     ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(rusqlite::params![session_id], |row| {
+    let rows = stmt.query_map(rusqlite::params![session_id, limit, offset], |row| {
         let role_str: String = row.get(2)?;
         let role = role_str
             .parse::<MessageRole>()
