@@ -9,7 +9,7 @@ import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, P
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus } from "../lib/api";
 import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
 import { ACCENT_COLORS, THEMES } from "../lib/theme";
-import { useSettingsStore } from "../stores/settingsStore";
+import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore";
 import { type NavigationPresentation, type SplitNavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
@@ -19,6 +19,7 @@ import type { PreferencesSection } from "../components/navigationItems";
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
+const DEFAULT_FONT_SIZE = 14;
 
 const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[] = [
   { id: "general",     label: "General",     Icon: SettingsIcon },
@@ -58,8 +59,20 @@ function Toggle({ on, onToggle, disabled = false }: { on: boolean; onToggle: () 
 
 export default function PreferencesView() {
   const pillSelectClassName = "h-10 w-full appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-9 text-sm text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
-  const zustandSettings = useSettingsStore();
-  const { settingsNavLayout, setSettingsNavLayout } = useSettingsStore();
+  const settingsNavLayout = useSettingsStore((state) => state.settingsNavLayout);
+  const setSettingsNavLayout = useSettingsStore((state) => state.setSettingsNavLayout);
+  const autoGenerateFlashcards = useSettingsStore((state) => state.autoGenerateFlashcards);
+  const setAutoGenerateFlashcards = useSettingsStore((state) => state.setAutoGenerateFlashcards);
+  const modelLabels = useSettingsStore((state) => state.modelLabels);
+  const setModelLabel = useSettingsStore((state) => state.setModelLabel);
+  const showGenInfo = useSettingsStore((state) => state.showGenInfo);
+  const setShowGenInfo = useSettingsStore((state) => state.setShowGenInfo);
+  const scrollToTopOnSend = useSettingsStore((state) => state.scrollToTopOnSend);
+  const setScrollToTopOnSend = useSettingsStore((state) => state.setScrollToTopOnSend);
+  const chatMessageStyle = useSettingsStore((state) => state.chatMessageStyle);
+  const setChatMessageStyle = useSettingsStore((state) => state.setChatMessageStyle);
+  const expandChatToWindowWidth = useSettingsStore((state) => state.expandChatToWindowWidth);
+  const setExpandChatToWindowWidth = useSettingsStore((state) => state.setExpandChatToWindowWidth);
   const location = useLocation();
   const {
     workspaceNavigation,
@@ -165,24 +178,25 @@ export default function PreferencesView() {
   }, []);
 
   function syncClientSettings(settings: AppSettings) {
+    const settingsStore = useSettingsStore.getState();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    zustandSettings.setTheme(settings.theme as any);
-    zustandSettings.setAccentColor(settings.accent_color);
-    zustandSettings.setFontSize(settings.font_size);
-    zustandSettings.setPreferredModel(settings.preferred_model);
-    zustandSettings.setBackgroundModel(settings.background_model);
-    zustandSettings.setQuickSearchModels(settings.quick_search_models);
-    zustandSettings.setOllamaUrl(settings.ollama_base_url);
-    zustandSettings.setMlxUrl(settings.mlx_base_url);
-    zustandSettings.setLlamacppModelPaths(settings.llamacpp_model_paths);
-    zustandSettings.setDualModelEnabled(settings.dual_model_enabled);
-    zustandSettings.setDraftModel(settings.draft_model);
-    zustandSettings.setDualModelExecutionMode(settings.dual_model_execution_mode);
-    zustandSettings.setCompareModelA(settings.compare_model_a);
-    zustandSettings.setCompareModelB(settings.compare_model_b);
-    zustandSettings.setImmediateDelete(settings.immediate_delete);
-    zustandSettings.setConfirmMoveToTrash(settings.confirm_move_to_trash);
-    zustandSettings.setPromptInstructions(settings.prompt_instructions);
+    settingsStore.setTheme(settings.theme as any);
+    settingsStore.setAccentColor(settings.accent_color);
+    settingsStore.setFontSize(settings.font_size);
+    settingsStore.setPreferredModel(settings.preferred_model);
+    settingsStore.setBackgroundModel(settings.background_model);
+    settingsStore.setQuickSearchModels(settings.quick_search_models);
+    settingsStore.setOllamaUrl(settings.ollama_base_url);
+    settingsStore.setMlxUrl(settings.mlx_base_url);
+    settingsStore.setLlamacppModelPaths(settings.llamacpp_model_paths);
+    settingsStore.setDualModelEnabled(settings.dual_model_enabled);
+    settingsStore.setDraftModel(settings.draft_model);
+    settingsStore.setDualModelExecutionMode(settings.dual_model_execution_mode);
+    settingsStore.setCompareModelA(settings.compare_model_a);
+    settingsStore.setCompareModelB(settings.compare_model_b);
+    settingsStore.setImmediateDelete(settings.immediate_delete);
+    settingsStore.setConfirmMoveToTrash(settings.confirm_move_to_trash);
+    settingsStore.setPromptInstructions(settings.prompt_instructions);
   }
 
   function scheduleSavedNoticeReset() {
@@ -231,8 +245,8 @@ export default function PreferencesView() {
       setAiModels(models);
       // Sync names to modelLabels store
       models.forEach((m) => {
-        if (m.name && zustandSettings.modelLabels[m.model_id] !== m.name) {
-          zustandSettings.setModelLabel(m.model_id, m.name);
+        if (m.name && useSettingsStore.getState().modelLabels[m.model_id] !== m.name) {
+          useSettingsStore.getState().setModelLabel(m.model_id, m.name);
         }
       });
     }).catch(() => {});
@@ -286,7 +300,6 @@ export default function PreferencesView() {
     api.security.getStatus().then(setSecurityStatus).catch(() => {});
     api.mcp.listServers().then(setMcpServers).catch(() => {});
     api.gitSync.getStatus().then((s) => { setGitSync(s); setGitSyncUrl(s.remote_url); }).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function set<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
@@ -439,7 +452,7 @@ export default function PreferencesView() {
         </div>
       )}
 
-      <div className={`flex-1 min-h-0 overflow-hidden ${settingsNavLayout === "side-tabs" ? "flex" : "block"}`}>
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {settingsNavLayout === "side-tabs" && (
           <aside className="w-60 shrink-0 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] px-3 py-4 overflow-y-auto">
             {settingsTabButtons}
@@ -448,7 +461,7 @@ export default function PreferencesView() {
 
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
       {(activeTab === "general" || activeTab === "appearance" || activeTab === "chat" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
         <div className="max-w-lg space-y-5">
 
           {/* ── General ── */}
@@ -638,8 +651,8 @@ export default function PreferencesView() {
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically extract flashcards from chat responses and notes</p>
                 </div>
                 <Toggle
-                  on={zustandSettings.autoGenerateFlashcards}
-                  onToggle={() => zustandSettings.setAutoGenerateFlashcards(!zustandSettings.autoGenerateFlashcards)}
+                  on={autoGenerateFlashcards}
+                  onToggle={() => setAutoGenerateFlashcards(!autoGenerateFlashcards)}
                 />
               </div>
 
@@ -719,6 +732,14 @@ export default function PreferencesView() {
                     className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     A+
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAppearance("font_size", DEFAULT_FONT_SIZE)}
+                    disabled={dbSettings.font_size === DEFAULT_FONT_SIZE}
+                    className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Reset
                   </button>
                 </div>
               </div>
@@ -908,45 +929,78 @@ export default function PreferencesView() {
               <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-2 block">Embedding Model</label>
                 <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="embedding_model"
-                      checked={dbSettings.embedding_model === "nomic-embed-text"}
-                      onChange={() => set("embedding_model", "nomic-embed-text")}
-                      className="accent-[var(--accent-color)]"
-                    />
-                    <span className="text-sm text-[var(--text-primary)]">nomic-embed-text</span>
-                    <span className="text-[10px] text-[var(--text-muted)]">(default)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="embedding_model"
-                      checked={dbSettings.embedding_model !== "nomic-embed-text"}
-                      onChange={() => set("embedding_model", "")}
-                      className="accent-[var(--accent-color)]"
-                    />
-                    <span className="text-sm text-[var(--text-primary)]">Custom</span>
-                  </label>
-                  {dbSettings.embedding_model !== "nomic-embed-text" && (
-                    <div className="ml-6 space-y-2">
-                      <input
-                        value={dbSettings.embedding_model}
-                        onChange={(e) => set("embedding_model", e.target.value)}
-                        placeholder="e.g. mxbai-embed-large"
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                      />
-                      <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1">
-                        <p className="text-[11px] font-medium text-amber-400">Before switching</p>
-                        <ul className="text-[10px] text-amber-400/80 list-disc ml-3 space-y-0.5">
-                          <li>Pull the model first: <code className="bg-[var(--bg-primary)] px-1 rounded">ollama pull model-name</code></li>
-                          <li>Changing models invalidates all existing embeddings (memories, documents, artifacts)</li>
-                          <li>You will need to re-index your data for search and deduplication to work correctly</li>
-                        </ul>
-                      </div>
-                    </div>
-                  )}
+                  {(() => {
+                    const isModelInstalled = (name: string) =>
+                      !hasLoadedOllamaModels ||
+                      ollamaModels.some((m) => m === name || m.startsWith(`${name}:`));
+                    const nomicInstalled = isModelInstalled("nomic-embed-text");
+                    const isCustom = dbSettings.embedding_model !== "nomic-embed-text";
+                    const customInstalled = !isCustom || isModelInstalled(dbSettings.embedding_model);
+                    return (
+                      <>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="embedding_model"
+                            checked={!isCustom}
+                            onChange={() => set("embedding_model", "nomic-embed-text")}
+                            className="accent-[var(--accent-color)]"
+                          />
+                          <span className="text-sm text-[var(--text-primary)]">nomic-embed-text</span>
+                          <span className="text-[10px] text-[var(--text-muted)]">(default)</span>
+                          {!nomicInstalled && (
+                            <span className="text-[10px] font-medium text-red-400 bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded">
+                              not installed
+                            </span>
+                          )}
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="embedding_model"
+                            checked={isCustom}
+                            onChange={() => set("embedding_model", "")}
+                            className="accent-[var(--accent-color)]"
+                          />
+                          <span className="text-sm text-[var(--text-primary)]">Custom</span>
+                        </label>
+                        {isCustom && (
+                          <div className="ml-6 space-y-2">
+                            <input
+                              value={dbSettings.embedding_model}
+                              onChange={(e) => set("embedding_model", e.target.value)}
+                              placeholder="e.g. mxbai-embed-large"
+                              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                            />
+                            {!customInstalled && dbSettings.embedding_model && (
+                              <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
+                                <p className="text-[11px] font-medium text-red-400">Model not installed</p>
+                                <p className="text-[10px] text-red-400/80 mt-0.5">
+                                  Run: <code className="bg-[var(--bg-primary)] px-1 rounded">ollama pull {dbSettings.embedding_model}</code>
+                                </p>
+                              </div>
+                            )}
+                            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1">
+                              <p className="text-[11px] font-medium text-amber-400">Before switching</p>
+                              <ul className="text-[10px] text-amber-400/80 list-disc ml-3 space-y-0.5">
+                                <li>Pull the model first: <code className="bg-[var(--bg-primary)] px-1 rounded">ollama pull model-name</code></li>
+                                <li>Changing models invalidates all existing embeddings (memories, documents, artifacts)</li>
+                                <li>You will need to re-index your data for search and deduplication to work correctly</li>
+                              </ul>
+                            </div>
+                          </div>
+                        )}
+                        {!isCustom && !nomicInstalled && hasLoadedOllamaModels && (
+                          <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
+                            <p className="text-[11px] font-medium text-red-400">Model not installed — embeddings are disabled</p>
+                            <p className="text-[10px] text-red-400/80 mt-0.5">
+                              Run: <code className="bg-[var(--bg-primary)] px-1 rounded">ollama pull nomic-embed-text</code>
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1213,13 +1267,13 @@ export default function PreferencesView() {
                       <div key={modelId} className="flex items-center gap-2 group">
                         <span className="text-[10px] text-[var(--text-muted)] w-24 truncate" title={modelId}>{modelId}</span>
                         <input
-                          value={zustandSettings.modelLabels[modelId] || ""}
-                          onChange={(e) => zustandSettings.setModelLabel(modelId, e.target.value)}
+                          value={modelLabels[modelId] || ""}
+                          onChange={(e) => setModelLabel(modelId, e.target.value)}
                           onBlur={async () => {
                             // If this model is in the priority list, update it there too
                             const matchingAiModel = aiModels.find(am => am.model_id === modelId);
-                            if (matchingAiModel && matchingAiModel.name !== zustandSettings.modelLabels[modelId]) {
-                              await api.aiModel.update(matchingAiModel.id, { name: zustandSettings.modelLabels[modelId] });
+                            if (matchingAiModel && matchingAiModel.name !== modelLabels[modelId]) {
+                              await api.aiModel.update(matchingAiModel.id, { name: modelLabels[modelId] });
                               loadAiModels();
                             }
                           }}
@@ -1311,6 +1365,55 @@ export default function PreferencesView() {
                   <Toggle on={dbSettings.confirm_move_to_trash} onToggle={() => set("confirm_move_to_trash", !dbSettings.confirm_move_to_trash)} />
                 </div>
               )}
+
+              {/* Show Gen Info */}
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Show Gen Info</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Display token count, duration, and speed (tok/s) below assistant messages</p>
+                </div>
+                <Toggle on={showGenInfo} onToggle={() => setShowGenInfo(!showGenInfo)} />
+              </div>
+
+              {/* Scroll message to top on send */}
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Scroll Message to Top on Send</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">After sending, scroll so your message appears at the top of the view</p>
+                </div>
+                <Toggle on={scrollToTopOnSend} onToggle={() => setScrollToTopOnSend(!scrollToTopOnSend)} />
+              </div>
+
+              {/* Chat messages style */}
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Chat Messages Style</label>
+                <div className="space-y-2">
+                  {(["bubble", "flat"] as ChatMessageStyle[]).map((style) => (
+                    <label key={style} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="radio"
+                        name="chat_message_style"
+                        checked={chatMessageStyle === style}
+                        onChange={() => setChatMessageStyle(style)}
+                        className="accent-[var(--accent-color)]"
+                      />
+                      <span className="text-[var(--text-secondary)] capitalize">{style}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mt-2">
+                  <strong>Bubble:</strong> colored rounded message bubbles. <strong>Flat:</strong> borderless document-style layout.
+                </p>
+              </div>
+
+              {/* Expand chat container to window width */}
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Expand Chat Container to Window Width</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Remove the maximum width constraint on the chat area</p>
+                </div>
+                <Toggle on={expandChatToWindowWidth} onToggle={() => setExpandChatToWindowWidth(!expandChatToWindowWidth)} />
+              </div>
             </>
           )}
 

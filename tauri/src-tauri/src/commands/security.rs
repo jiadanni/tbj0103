@@ -220,3 +220,42 @@ pub fn remove_pin_passcode(state: State<DbState>, current_pin: String) -> Result
     set_setting(&conn, "pin_lock_enabled", "false")?;
     Ok(())
 }
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub async fn authenticate_biometric() -> Result<bool, String> {
+    use block2::RcBlock;
+    use objc2::runtime::Bool;
+    use objc2_foundation::{NSError, NSString};
+    use objc2_local_authentication::{LAContext, LAPolicy};
+    use std::sync::{Arc, Mutex};
+    use tokio::sync::oneshot;
+
+    let (tx, rx) = oneshot::channel::<bool>();
+    let tx_shared = Arc::new(Mutex::new(Some(tx)));
+    let tx_for_block = tx_shared.clone();
+
+    unsafe {
+        let context = LAContext::new();
+        let reason = NSString::from_str("Unlock Aetherium");
+        context.evaluatePolicy_localizedReason_reply(
+            LAPolicy::DeviceOwnerAuthenticationWithBiometrics,
+            &reason,
+            &RcBlock::new(move |success: Bool, _error: *mut NSError| {
+                if let Ok(mut guard) = tx_for_block.lock() {
+                    if let Some(sender) = guard.take() {
+                        let _ = sender.send(success.as_bool());
+                    }
+                }
+            }),
+        );
+    }
+
+    rx.await.map_err(|_| "Authentication was cancelled.".to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub async fn authenticate_biometric() -> Result<bool, String> {
+    Err("Biometric authentication is not available on this platform.".to_string())
+}

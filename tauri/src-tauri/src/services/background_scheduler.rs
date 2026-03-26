@@ -38,11 +38,17 @@ pub fn start_scheduler(app: AppHandle) {
             // 1. Process memory extraction
             let _ = memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone()).await;
 
-            // 2. Process summarization
+            // 2. Process summarization — only sessions with recent activity
+            // (mirrors the memory-pipeline filter: no new messages = no work to do)
             let sessions = {
                 match db.0.lock() {
                     Ok(conn) => {
-                        match conn.prepare("SELECT id, workspace_id FROM chat_sessions") {
+                        match conn.prepare(
+                            "SELECT cs.id, cs.workspace_id FROM chat_sessions cs
+                             WHERE cs.updated_at > datetime('now', '-5 minutes')
+                               AND cs.is_incognito = 0
+                               AND cs.exclude_from_analytics = 0"
+                        ) {
                             Ok(mut stmt) => stmt
                                 .query_map([], |row| {
                                     Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))

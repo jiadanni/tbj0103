@@ -88,6 +88,7 @@ interface SessionSidebarProps {
   renameProject: (projectId: string, name: string) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
   moveProjectToWorkspace: (project: Project, targetWorkspaceId: string) => Promise<void>;
+  createWorkspaceForMove: (name: string) => Promise<Workspace>;
   sessionQuery: string;
   setSessionQuery: (q: string) => void;
   creatingFolder: boolean;
@@ -239,7 +240,7 @@ function SessionItem({
 
 function SessionSidebar({
   sidebarSessions, workspaces, projectsByWorkspace, projects, activeProjectId, setActiveProjectId,
-  activeProject: _activeProject, moveSessionsToTarget, bulkDeleteSessions, renameProject, deleteProject, moveProjectToWorkspace, sessionQuery, setSessionQuery,
+  activeProject: _activeProject, moveSessionsToTarget, bulkDeleteSessions, renameProject, deleteProject, moveProjectToWorkspace, createWorkspaceForMove, sessionQuery, setSessionQuery,
   creatingFolder, setCreatingFolder, newFolderName, setNewFolderName,
   creatingFolderPending,
   folderInputRef, handleCreateFolder, createNewSession,
@@ -370,6 +371,26 @@ function SessionSidebar({
     return (
       <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-lg">
         <button
+          onClick={() => {
+            const name = window.prompt("New workspace name")?.trim();
+            if (!name) {return;}
+            void createWorkspaceForMove(name)
+              .then((workspace) => onSelect(workspace.id, null))
+              .catch((error) => {
+                const description = error instanceof Error
+                  ? error.message
+                  : typeof error === "string" && error.trim()
+                    ? error
+                    : "Failed to create workspace.";
+                showAlertDialog("Create workspace failed", description, "danger");
+              });
+          }}
+          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+        >
+          <Plus size={11} /> Create workspace...
+        </button>
+        <div className="my-1 border-t border-[var(--border-color)]" />
+        <button
           onClick={() => onSelect(workspaceId, null)}
           className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
         >
@@ -394,6 +415,26 @@ function SessionSidebar({
   ) {
     return (
       <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-lg">
+        <button
+          onClick={() => {
+            const name = window.prompt("New workspace name")?.trim();
+            if (!name) {return;}
+            void createWorkspaceForMove(name)
+              .then((workspace) => onSelect(workspace.id))
+              .catch((error) => {
+                const description = error instanceof Error
+                  ? error.message
+                  : typeof error === "string" && error.trim()
+                    ? error
+                    : "Failed to create workspace.";
+                showAlertDialog("Create workspace failed", description, "danger");
+              });
+          }}
+          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+        >
+          <Plus size={11} /> Create workspace...
+        </button>
+        <div className="my-1 border-t border-[var(--border-color)]" />
         {workspaces.map((workspace) => {
           const isCurrentWorkspace = workspace.id === project.workspace_id;
           return (
@@ -985,8 +1026,8 @@ export default function ChatView() {
   } = useChatStore();
   const { activeChatId, setActiveChatId } = useScopedChat();
 
-  const { 
-    activeProjectId, activeWorkspaceId, setProjectsForWorkspace, projectsByWorkspace,
+  const {
+    activeProjectId, activeWorkspaceId, setProjectsForWorkspace, projectsByWorkspace, addWorkspace,
   } = useWorkspaceStore();
   const {
     activeProjectId: scopedProjectId,
@@ -1002,6 +1043,7 @@ export default function ChatView() {
     dualModelExecutionMode, setDualModelEnabled, setDraftModel, compareModelA: savedCompareA, compareModelB: savedCompareB,
     setCompareModelA: saveCompareA, setCompareModelB: saveCompareB, modelLabels, quickSearchModels,
     skipLinkConfirm, setSkipLinkConfirm,
+    showGenInfo, scrollToTopOnSend, chatMessageStyle, expandChatToWindowWidth,
   } = useSettingsStore();
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
   const topSelectClassName = "h-8 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-8 text-xs font-medium text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
@@ -1422,7 +1464,10 @@ export default function ChatView() {
   const [draftSnapshot, setDraftSnapshot] = useState("");
   const [refineStreamingContent, setRefineStreamingContent] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevScrollChatIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messagesScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const pendingSentScrollId = useRef<string | null>(null);
   const incognitoSessionIdsRef = useRef<Set<string>>(new Set());
   const refineContentRef = useRef("");
 
@@ -1750,13 +1795,31 @@ export default function ChatView() {
     });
   }, [ollamaUrl, activeSession?.model_name, preferredModel]);
 
-  // Scroll to bottom on new messages — use instant scroll during streaming
-  // so rapid content updates don't cause smooth-scroll to fall behind
+  // Scroll to bottom on new messages.
+  // Use "instant" during streaming (so rapid updates don't fall behind) and
+  // also when switching sessions (so the initial load doesn't visibly animate
+  // from wherever the previous scroll position was down to the bottom).
   useEffect(() => {
+    const isSessionSwitch = prevScrollChatIdRef.current !== activeChatId;
+    prevScrollChatIdRef.current = activeChatId;
+
+    if (scrollToTopOnSend && pendingSentScrollId.current && !isCurrentlyStreaming && !isSessionSwitch) {
+      const msgId = pendingSentScrollId.current;
+      pendingSentScrollId.current = null;
+      const container = messagesScrollContainerRef.current;
+      if (container) {
+        requestAnimationFrame(() => {
+          const el = container.querySelector(`[data-msg-id="${msgId}"]`);
+          if (el) { (el as HTMLElement).scrollIntoView({ behavior: "smooth", block: "start" }); }
+        });
+        return;
+      }
+    }
+
     messagesEndRef.current?.scrollIntoView({
-      behavior: isCurrentlyStreaming ? "instant" : "smooth",
+      behavior: (isCurrentlyStreaming || isSessionSwitch) ? "instant" : "smooth",
     });
-  }, [activeMessages.length, streamingContent, isCurrentlyStreaming]);
+  }, [activeChatId, activeMessages.length, streamingContent, isCurrentlyStreaming, scrollToTopOnSend]);
 
   useEffect(() => {
     if (!activeChatId || !hasLoadedActiveMessages || activeMessages.length > 0 || isStreaming) {return;}
@@ -1918,6 +1981,7 @@ export default function ChatView() {
       created_at: new Date().toISOString(),
     };
     appendMessage(sid, optimisticUserMsg);
+    pendingSentScrollId.current = optimisticUserMsg.id;
 
     const userMsg = await api.chat.addMessage(effectiveWorkspaceId, sid, "user", userContent);
     updateMessage(sid, persistedUserMessageWithFallback(optimisticUserMsg, userMsg));
@@ -2346,6 +2410,17 @@ export default function ChatView() {
     ]);
   }
 
+  async function createWorkspaceForMove(name: string) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      throw new Error("Workspace name cannot be empty.");
+    }
+
+    const workspace = await api.workspace.create(trimmedName);
+    addWorkspace(workspace);
+    return workspace;
+  }
+
   async function saveSession(session: ChatSession) {
     try {
       const destPath = await saveDialog({
@@ -2573,6 +2648,7 @@ export default function ChatView() {
         renameProject={renameProject}
         deleteProject={deleteProject}
         moveProjectToWorkspace={moveProjectToWorkspace}
+        createWorkspaceForMove={createWorkspaceForMove}
         sessionQuery={sessionQuery}
         setSessionQuery={setSessionQuery}
         creatingFolder={creatingFolder}
@@ -2885,10 +2961,11 @@ export default function ChatView() {
           )}
 
           {/* Messages */}
-          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
+          <div ref={messagesScrollContainerRef} className={`min-h-0 overflow-y-auto px-4 py-4 space-y-4 ${activeMessages.length > 0 || isStreaming ? "flex-1" : "hidden"}`}>
             {activeMessages.map((msg, i) => (
               <div
                 key={msg.id}
+                data-msg-id={msg.id}
                 className={`group/msg flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}
               >
                 {editingMessageId === msg.id ? (
@@ -2922,10 +2999,14 @@ export default function ChatView() {
                 ) : (
                   <>
                     <div
-                      className={`max-w-[75%] break-words rounded-2xl px-4 py-2.5 text-sm ${
-                        msg.role === "user"
-                          ? "message-user"
-                          : "message-assistant"
+                      className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words px-4 py-2.5 text-sm ${
+                        chatMessageStyle === "flat"
+                          ? msg.role === "user"
+                            ? "rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                            : "rounded border-l-2 border-[var(--accent-color)]/40 bg-transparent text-[var(--text-primary)]"
+                          : msg.role === "user"
+                            ? "rounded-2xl message-user"
+                            : "rounded-2xl message-assistant"
                       }`}
                     >
                       {msg.role === "assistant" ? (
@@ -3007,17 +3088,17 @@ export default function ChatView() {
                     </div>
                     <div className={`flex items-center gap-2 text-[10px] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
                       <span>{formatMessageTimestamp(msg.created_at)}</span>
-                      {msg.role === "assistant" && msg.tokens_used ? (
+                      {showGenInfo && msg.role === "assistant" && msg.tokens_used ? (
                         <span>{msg.tokens_used.toLocaleString()} tok</span>
                       ) : null}
-                      {msg.role === "assistant" && msg.duration_ms ? (
+                      {showGenInfo && msg.role === "assistant" && msg.duration_ms ? (
                         <span>
                           {msg.duration_ms >= 1000
                             ? `${(msg.duration_ms / 1000).toFixed(1)}s`
                             : `${msg.duration_ms}ms`}
                         </span>
                       ) : null}
-                      {msg.role === "assistant" && msg.tokens_used && msg.duration_ms && msg.duration_ms > 0 ? (
+                      {showGenInfo && msg.role === "assistant" && msg.tokens_used && msg.duration_ms && msg.duration_ms > 0 ? (
                         <span className="text-[var(--accent-color)] font-medium">
                           {(msg.tokens_used / (msg.duration_ms / 1000)).toFixed(1)} tok/s
                         </span>
@@ -3135,8 +3216,8 @@ export default function ChatView() {
           </div>
 
           {/* Input / composer area */}
-          <div className="px-4 pb-6 pt-2 bg-transparent flex flex-col items-center flex-shrink-0">
-            <div className="w-full max-w-4xl min-w-0 flex flex-col bg-[var(--bg-elevated)]/80 border border-[var(--border-color)] rounded-2xl p-2.5 shadow-lg backdrop-blur-md">
+          <div className={`px-4 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center py-4" : "pb-6 pt-2 flex-shrink-0"}`}>
+            <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-4xl"} min-w-0 flex flex-col bg-[var(--bg-elevated)]/80 border border-[var(--border-color)] rounded-2xl p-2.5 shadow-lg backdrop-blur-md`}>
               {activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
                 <div className="px-2 pt-1 pb-2">
                   <TopicChips
@@ -3386,7 +3467,7 @@ export default function ChatView() {
 
             </div>
             </div>
-            <div className="w-full max-w-4xl mt-3">
+            <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-4xl"} mt-3`}>
               <WorkspaceMigrationBanner />
             </div>
           </div>
