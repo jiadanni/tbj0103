@@ -260,6 +260,7 @@ function SessionSidebar({
   const [projectRenamingId, setProjectRenamingId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState("");
   const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
+  const [dragOverRoot, setDragOverRoot] = useState(false);
   const [ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
   const [ctxProjectMoveWorkspaceId, setCtxProjectMoveWorkspaceId] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<
@@ -330,6 +331,7 @@ function SessionSidebar({
     setMoveMenuOpen(false);
     setBulkMoveWorkspaceId(null);
     setDragOverProjectId(null);
+    setDragOverRoot(false);
     setCtxMoveWorkspaceId(null);
     setCtxProjectMoveWorkspaceId(null);
   }
@@ -360,6 +362,38 @@ function SessionSidebar({
       setExpanded((prev) => ({ ...prev, [project.id]: true }));
     } catch (error) {
       console.error("Failed to drop chat into folder:", error);
+    }
+  }
+
+  async function handleRootDrop(event: React.DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOverRoot(false);
+
+    const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+    if (!raw) {
+      return;
+    }
+
+    try {
+      const sessionIds = JSON.parse(raw) as string[];
+      const sessionsToMove = sessionIds.filter((sessionId) => {
+        const session = sidebarSessions.find((item) => item.id === sessionId);
+        return session && session.project_id;
+      });
+      if (sessionsToMove.length === 0) {
+        return;
+      }
+
+      const workspaceId = sidebarSessions.find((s) => sessionsToMove.includes(s.id))?.workspace_id;
+      if (!workspaceId) {
+        return;
+      }
+
+      await moveSessionsToTarget(sessionsToMove, workspaceId, null);
+      setActiveProjectId(null);
+    } catch (error) {
+      console.error("Failed to drop chat to root:", error);
     }
   }
 
@@ -676,7 +710,41 @@ function SessionSidebar({
       )}
 
       {/* Session list */}
-      <div className="flex-1 overflow-y-auto">
+      <div
+        className="flex-1 overflow-y-auto"
+        onDragOver={(event) => {
+          if (selectMode || !event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+            return;
+          }
+          const target = event.target as HTMLElement;
+          if (target.closest("[data-project-drop-zone]")) {
+            return;
+          }
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          setDragOverRoot(true);
+        }}
+        onDragLeave={(event) => {
+          const related = event.relatedTarget as Node | null;
+          if (related && event.currentTarget.contains(related)) {
+            return;
+          }
+          setDragOverRoot(false);
+        }}
+        onDrop={(event) => {
+          const target = event.target as HTMLElement;
+          if (target.closest("[data-project-drop-zone]")) {
+            return;
+          }
+          void handleRootDrop(event);
+        }}
+      >
+        {dragOverRoot && projects.length > 0 && (
+          <div className="mx-2 mt-1 mb-1 flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--accent-color)] bg-[var(--accent-color)]/5 px-3 py-1.5">
+            <Inbox size={12} className="text-[var(--accent-color)]" />
+            <span className={`text-[var(--accent-color)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}>Drop here to move to workspace root</span>
+          </div>
+        )}
         {visibleSessions.length === 0 && projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-3">
             <MessageSquare size={isSplitPane ? 22 : 20} className="text-[var(--text-muted)] opacity-30" />
@@ -693,7 +761,7 @@ function SessionSidebar({
               const projectSessions = byProject[project.id] ?? [];
               const isOpen = expanded[project.id] ?? true;
               return (
-                <div key={project.id}>
+                <div key={project.id} data-project-drop-zone>
                   <button
                     onContextMenu={(event) => {
                       event.preventDefault();
