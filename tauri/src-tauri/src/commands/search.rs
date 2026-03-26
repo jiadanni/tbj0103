@@ -120,41 +120,49 @@ pub fn keyword_search(state: State<DbState>, req: SearchRequest) -> Result<Vec<S
 /// computes cosine similarity against stored chunk embeddings.
 #[tauri::command]
 pub fn semantic_search(state: State<DbState>, req: SearchRequest, query_embedding: Vec<f32>, workspace_id: String) -> Result<Vec<SearchResult>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
     let limit = req.limit.unwrap_or(10) as usize;
 
-    // Load all chunk embeddings for this workspace from the unified sources tables.
-    let mut stmt = conn.prepare(
-        "SELECT sc.id, sc.source_id, sc.content, sc.embedding, s.title
-         FROM source_chunks sc
-         JOIN sources s ON sc.source_id = s.id
-         WHERE s.workspace_id = ?1 AND sc.embedding IS NOT NULL"
-    ).map_err(|e| e.to_string())?;
+    // Fetch raw rows from DB, then release the lock before computing cosine similarity.
+    let raw_rows: Vec<(String, String, String, String, String)>;
+    {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT sc.id, sc.source_id, sc.content, sc.embedding, s.title
+             FROM source_chunks sc
+             JOIN sources s ON sc.source_id = s.id
+             WHERE s.workspace_id = ?1 AND sc.embedding IS NOT NULL"
+        ).map_err(|e| e.to_string())?;
 
-    let mut scored: Vec<(f64, SearchResult)> = stmt.query_map(rusqlite::params![workspace_id], |row| {
-        let chunk_id: String = row.get(0)?;
-        let doc_id: String = row.get(1)?;
-        let content: String = row.get(2)?;
-        let emb_json: String = row.get(3)?;
-        let filename: String = row.get(4)?;
-        Ok((chunk_id, doc_id, content, emb_json, filename))
-    }).map_err(|e| e.to_string())?
-    .filter_map(Result::ok)
-    .filter_map(|(chunk_id, doc_id, content, emb_json, filename)| {
-        let embedding: Vec<f32> = serde_json::from_str(&emb_json).ok()?;
-        let score = crate::ollama::client::cosine_similarity(&query_embedding, &embedding) as f64;
-        let excerpt: String = content.chars().take(200).collect();
-        Some((score, SearchResult {
-            id: chunk_id,
-            result_type: "document_chunk".to_string(),
-            title: filename,
-            excerpt,
-            score,
-            source_id: Some(doc_id),
-            project_id: None,
-        }))
-    })
-    .collect();
+        let rows = stmt.query_map(rusqlite::params![workspace_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        }).map_err(|e| e.to_string())?;
+        raw_rows = rows.filter_map(Result::ok).collect();
+    } // DB lock released here
+
+    // Compute cosine similarity outside the lock
+    let mut scored: Vec<(f64, SearchResult)> = raw_rows
+        .into_iter()
+        .filter_map(|(chunk_id, doc_id, content, emb_json, filename)| {
+            let embedding: Vec<f32> = serde_json::from_str(&emb_json).ok()?;
+            let score = crate::ollama::client::cosine_similarity(&query_embedding, &embedding) as f64;
+            let excerpt: String = content.chars().take(200).collect();
+            Some((score, SearchResult {
+                id: chunk_id,
+                result_type: "document_chunk".to_string(),
+                title: filename,
+                excerpt,
+                score,
+                source_id: Some(doc_id),
+                project_id: None,
+            }))
+        })
+        .collect();
 
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     let results = scored.into_iter().take(limit).map(|(_, r)| r).collect();
