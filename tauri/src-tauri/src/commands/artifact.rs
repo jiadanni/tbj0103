@@ -25,9 +25,11 @@ pub async fn get_artifact(
 pub async fn list_artifacts(
     state: State<'_, DbState>,
     workspace_id: String,
+    limit: Option<i64>,
+    offset: Option<i64>,
 ) -> Result<Vec<ArtifactSummary>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    artifact_service::list_artifacts(&conn, &workspace_id)
+    artifact_service::list_artifacts(&conn, &workspace_id, limit, offset)
 }
 
 #[tauri::command]

@@ -341,7 +341,7 @@ export const api = {
     emptyRecycleBin: (workspaceId: string) => invoke<void>("empty_recycle_bin", { workspaceId }),
     addMessage: (workspaceId: string, sessionId: string, role: "user" | "assistant", content: string, modelName?: string, tokensUsed?: number, durationMs?: number) =>
       invoke<Message>("add_message", { req: { workspace_id: workspaceId, session_id: sessionId, role, content, model_name: modelName, tokens_used: tokensUsed, duration_ms: durationMs } }),
-    getMessages: (workspaceId: string, sessionId: string) => invoke<Message[]>("get_messages", { workspaceId, sessionId }),
+    getMessages: (workspaceId: string, sessionId: string, limit?: number, offset?: number) => invoke<Message[]>("get_messages", { sessionId, limit, offset }),
     getTokenUsageByDate: (workspaceId: string, days?: number) =>
       invoke<{ day: string; total_tokens: number }[]>("get_token_usage_by_date", { workspaceId, days }),
   },
@@ -378,13 +378,13 @@ export const api = {
   graph: {
     createConcept: (workspaceId: string, name: string, opts?: Partial<ConceptNode>) =>
       invoke<ConceptNode>("create_concept", { req: { workspace_id: workspaceId, name, ...opts } }),
-    listConcepts: (workspaceId: string) => invoke<ConceptNode[]>("list_concepts", { workspaceId }),
+    listConcepts: (workspaceId: string, limit?: number, offset?: number) => invoke<ConceptNode[]>("list_concepts", { workspaceId, limit, offset }),
     getConcept: (id: string) => invoke<ConceptNode | null>("get_concept", { id }),
     updateConcept: (id: string, fields: Partial<ConceptNode>) => invoke<void>("update_concept", { id, ...fields }),
     deleteConcept: (id: string) => invoke<void>("delete_concept", { id }),
     createLink: (sourceId: string, targetId: string, linkType?: string, strength?: number) =>
       invoke<ConceptLink>("create_concept_link", { req: { source_id: sourceId, target_id: targetId, link_type: linkType, strength } }),
-    listLinks: (workspaceId: string) => invoke<ConceptLink[]>("list_concept_links", { workspaceId }),
+    listLinks: (workspaceId: string, limit?: number, offset?: number) => invoke<ConceptLink[]>("list_concept_links", { workspaceId, limit, offset }),
     deleteLink: (id: string) => invoke<void>("delete_concept_link", { id }),
     getStats: (workspaceId: string) => invoke<GraphStatistics>("get_graph_stats", { workspaceId }),
   },
@@ -486,7 +486,7 @@ export const api = {
 
   artifact: {
     create: (req: CreateArtifactRequest) => invoke<Artifact>("create_artifact", { req }),
-    list: (workspace_id: string) => invoke<ArtifactSummary[]>("list_artifacts", { workspace_id }),
+    list: (workspace_id: string, limit?: number, offset?: number) => invoke<ArtifactSummary[]>("list_artifacts", { workspace_id, limit, offset }),
     get: (id: string) => invoke<Artifact>("get_artifact", { id }),
     update: (id: string, updates: Partial<CreateArtifactRequest & { is_pinned: boolean }>) => invoke<void>("update_artifact", { id, updates }),
     delete: (id: string) => invoke<void>("delete_artifact", { id }),

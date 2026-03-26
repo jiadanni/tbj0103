@@ -6,7 +6,7 @@ default-run = "aetherium"
 
 [lib]
 name = "aetherium_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -25,14 +25,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "io-util", "process"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 thiserror = "1"
 anyhow = "1"
 futures = "0.3"
-tokio-stream = { version = "0.1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["time"] }
 bytes = "1"
 lopdf = "0.34"
 base64 = "0.22"
@@ -53,6 +53,13 @@ block2 = "0.6"
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 llamacpp = ["dep:llama-cpp-2"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+opt-level = "s"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

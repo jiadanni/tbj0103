@@ -45,13 +45,16 @@ pub fn create_concept(state: State<DbState>, req: CreateConceptRequest) -> Resul
 }
 
 #[tauri::command]
-pub fn list_concepts(state: State<DbState>, workspace_id: String) -> Result<Vec<ConceptNode>, String> {
+pub fn list_concepts(state: State<DbState>, workspace_id: String, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<ConceptNode>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let limit = limit.unwrap_or(500).clamp(1, 5000);
+    let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at
-         FROM concept_nodes WHERE workspace_id = ?1 ORDER BY name ASC"
+         FROM concept_nodes WHERE workspace_id = ?1 ORDER BY name ASC
+         LIMIT ?2 OFFSET ?3"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], row_to_concept)
+    let items = stmt.query_map(rusqlite::params![workspace_id, limit, offset], row_to_concept)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -121,15 +124,18 @@ pub fn create_concept_link(state: State<DbState>, req: CreateLinkRequest) -> Res
 }
 
 #[tauri::command]
-pub fn list_concept_links(state: State<DbState>, workspace_id: String) -> Result<Vec<ConceptLink>, String> {
+pub fn list_concept_links(state: State<DbState>, workspace_id: String, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<ConceptLink>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let limit = limit.unwrap_or(1000).clamp(1, 10000);
+    let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn.prepare(
         "SELECT cl.id, cl.source_id, cl.target_id, cl.link_type, cl.strength, cl.context, cl.created_at
          FROM concept_links cl
          JOIN concept_nodes cn ON cl.source_id = cn.id
-         WHERE cn.workspace_id = ?1"
+         WHERE cn.workspace_id = ?1
+         LIMIT ?2 OFFSET ?3"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], |row| {
+    let items = stmt.query_map(rusqlite::params![workspace_id, limit, offset], |row| {
         let type_str: String = row.get(3)?;
         Ok(ConceptLink {
             id: row.get(0)?,

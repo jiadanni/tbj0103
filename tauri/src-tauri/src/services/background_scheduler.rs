@@ -1,7 +1,10 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use crate::db::DbState;
 use crate::services::{memory_pipeline, summarization_service, git_sync};
+
+static SCHEDULER_RUNNING: AtomicBool = AtomicBool::new(false);
 
 pub fn start_scheduler(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
@@ -12,7 +15,12 @@ pub fn start_scheduler(app: AppHandle) {
             interval.tick().await;
             git_sync_tick += 1;
 
-            // L5: Before processing, check if user is actively streaming to avoid concurrent Ollama calls
+            // Guard: skip this tick if the previous one is still running
+            if SCHEDULER_RUNNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+                continue;
+            }
+
+            // Before processing, check if user is actively streaming to avoid concurrent Ollama calls
             let is_streaming = {
                 let abort_state = app.state::<crate::commands::ollama::StreamAbortState>();
                 let result = match abort_state.0.lock() {
@@ -21,11 +29,14 @@ pub fn start_scheduler(app: AppHandle) {
                 };
                 result
             };
-            if is_streaming { continue; }
+            if is_streaming {
+                SCHEDULER_RUNNING.store(false, Ordering::SeqCst);
+                continue;
+            }
             
             let db = app.state::<DbState>();
             
-            // L4: Read Ollama URL from settings
+            // Read Ollama URL from settings
             let ollama_url = {
                 match db.0.lock() {
                     Ok(conn) => conn.query_row("SELECT value FROM settings WHERE key = 'ollama_base_url'", [], |row| row.get::<_, String>(0))
@@ -39,7 +50,6 @@ pub fn start_scheduler(app: AppHandle) {
             let _ = memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone()).await;
 
             // 2. Process summarization — only sessions with recent activity
-            // (mirrors the memory-pipeline filter: no new messages = no work to do)
             let sessions = {
                 match db.0.lock() {
                     Ok(conn) => {
@@ -67,7 +77,7 @@ pub fn start_scheduler(app: AppHandle) {
             }
 
             // 3. Git sync — every 10 ticks (5 minutes at 30s interval)
-            if git_sync_tick.is_multiple_of(10) {
+            if git_sync_tick % 10 == 0 {
                 let (sync_enabled, remote_url) = {
                     match db.0.lock() {
                         Ok(conn) => {
@@ -87,8 +97,18 @@ pub fn start_scheduler(app: AppHandle) {
 
                 if sync_enabled && !remote_url.is_empty() {
                     if let Ok(app_dir) = app.path().app_data_dir() {
-                        if git_sync::ensure_repo(&app_dir, &remote_url).is_ok() {
-                            let result = git_sync::sync(&app_dir);
+                        let remote_url_clone = remote_url.clone();
+                        let app_dir_clone = app_dir.clone();
+                        // Run blocking git operations on a dedicated thread to avoid blocking the async runtime
+                        let sync_result = tokio::task::spawn_blocking(move || {
+                            if git_sync::ensure_repo(&app_dir_clone, &remote_url_clone).is_ok() {
+                                Some(git_sync::sync(&app_dir_clone))
+                            } else {
+                                None
+                            }
+                        }).await;
+
+                        if let Ok(Some(result)) = sync_result {
                             let now = chrono::Utc::now().to_rfc3339();
                             if let Ok(conn) = db.0.lock() {
                                 let set = |key: &str, val: &str| {
@@ -108,6 +128,8 @@ pub fn start_scheduler(app: AppHandle) {
                     }
                 }
             }
+
+            SCHEDULER_RUNNING.store(false, Ordering::SeqCst);
         }
     });
 }

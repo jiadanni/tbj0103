@@ -271,6 +271,9 @@ impl OllamaClient {
         let mut full_response = String::new();
         let mut stream = response.bytes_stream();
         let mut stream_done = false;
+        let mut pending_chunk = String::new();
+        let mut last_emit = std::time::Instant::now();
+        const EMIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
 
         loop {
             if Self::should_abort(app, session_id)? {
@@ -280,6 +283,18 @@ impl OllamaClient {
             let chunk_result = tokio::select! {
                 next_chunk = stream.next() => next_chunk,
                 _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                    // Flush any pending text on timeout
+                    if !pending_chunk.is_empty() {
+                        let event_name = format!("{event_prefix}{session_id}");
+                        let _ = app.emit(&event_name, StreamEvent {
+                            session_id: session_id.to_string(),
+                            chunk: std::mem::take(&mut pending_chunk),
+                            done: false,
+                            tokens_used: None,
+                            duration_ms: None,
+                        });
+                        last_emit = std::time::Instant::now();
+                    }
                     continue;
                 }
             };
@@ -298,13 +313,15 @@ impl OllamaClient {
 
                     let event_name = format!("{event_prefix}{session_id}");
                     if parsed.done {
+                        // Flush any pending text together with the final chunk
+                        pending_chunk.push_str(&content);
                         let duration_ms = parsed
                             .eval_duration
                             .or(parsed.total_duration)
                             .map(|ns| ns / 1_000_000);
                         let _ = app.emit(&event_name, StreamEvent {
                             session_id: session_id.to_string(),
-                            chunk: content,
+                            chunk: std::mem::take(&mut pending_chunk),
                             done: true,
                             tokens_used: parsed.eval_count,
                             duration_ms,
@@ -312,13 +329,18 @@ impl OllamaClient {
                         stream_done = true;
                         break;
                     } else {
-                        let _ = app.emit(&event_name, StreamEvent {
-                            session_id: session_id.to_string(),
-                            chunk: content,
-                            done: false,
-                            tokens_used: None,
-                            duration_ms: None,
-                        });
+                        pending_chunk.push_str(&content);
+                        // Emit batched chunk if enough time has passed
+                        if last_emit.elapsed() >= EMIT_INTERVAL {
+                            let _ = app.emit(&event_name, StreamEvent {
+                                session_id: session_id.to_string(),
+                                chunk: std::mem::take(&mut pending_chunk),
+                                done: false,
+                                tokens_used: None,
+                                duration_ms: None,
+                            });
+                            last_emit = std::time::Instant::now();
+                        }
                     }
                 }
             }
