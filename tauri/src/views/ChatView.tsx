@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEve
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Plus, Trash2, Copy, ChevronDown, ChevronRight, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
+import { Send, Plus, Trash2, Copy, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
@@ -2617,7 +2617,6 @@ export default function ChatView() {
           {[
             { id: "chat", label: "Standard", Icon: MessageSquare },
             { id: "grounded", label: "Grounded (RAG)", Icon: BookOpen },
-            { id: "compare", label: "Compare Models", Icon: SplitSquareHorizontal },
           ].map(({ id, label, Icon }) => (
             <button
               key={id}
@@ -2636,6 +2635,20 @@ export default function ChatView() {
 
         {activeSubView === "compare" ? (
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0">
+            <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)] flex-shrink-0">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-[var(--text-primary)]">Compare Models</div>
+                <div className="text-xs text-[var(--text-muted)]">Opened from the composer compare button.</div>
+              </div>
+              <button
+                onClick={() => setActiveSubView("chat")}
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)] transition-colors"
+              >
+                <ArrowLeft size={14} />
+                Back to chat
+              </button>
+            </div>
+
             {/* Model selectors header */}
             <div className="flex items-stretch border-b border-[var(--border-color)] flex-shrink-0 bg-[var(--bg-elevated)]">
             <div className="flex-1 px-4 py-3 flex flex-col gap-1 border-r border-[var(--border-color)]">
