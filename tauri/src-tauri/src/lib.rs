@@ -227,6 +227,7 @@ pub fn run() {
             // Ollama commands
             commands::ollama::send_message,
             commands::ollama::list_models,
+            commands::ollama::list_models_fresh,
             commands::ollama::generate_title,
             commands::ollama::generate_title_from_conversation,
             commands::ollama::generate_embedding,
@@ -257,6 +258,7 @@ pub fn run() {
             commands::security::set_pin_passcode,
             commands::security::verify_pin_passcode,
             commands::security::remove_pin_passcode,
+            commands::security::authenticate_biometric,
             // Graph algorithm commands
             commands::graph::compute_pagerank,
             commands::graph::find_shortest_path,

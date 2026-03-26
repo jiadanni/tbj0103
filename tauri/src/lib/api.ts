@@ -372,6 +372,7 @@ export const api = {
     setPin: (newPin: string, currentPin?: string) => invoke<void>("set_pin_passcode", { newPin, currentPin }),
     verifyPin: (pin: string) => invoke<boolean>("verify_pin_passcode", { pin }),
     removePin: (currentPin: string) => invoke<void>("remove_pin_passcode", { currentPin }),
+    authenticateBiometric: () => invoke<boolean>("authenticate_biometric"),
   },
 
   graph: {
@@ -523,7 +524,13 @@ export const api = {
       }),
     listModels: (ollamaUrl?: string) => cachedListModels(ollamaUrl),
     /** Bypass cache and fetch fresh model list from Ollama */
-    listModelsFresh: (ollamaUrl?: string) => { modelCache = null; return cachedListModels(ollamaUrl); },
+    listModelsFresh: (ollamaUrl?: string) => {
+      modelCache = null;
+      const promise = invoke<OllamaModel[]>("list_models_fresh", { ollamaUrl });
+      modelCache = { promise, url: ollamaUrl, ts: Date.now() };
+      promise.catch(() => { if (modelCache?.promise === promise) { modelCache = null; } });
+      return promise;
+    },
     generateTitle: (model: string, firstMessage: string, ollamaUrl?: string) =>
       invoke<string>("generate_title", { model, firstMessage, ollamaUrl }),
     generateTitleFromConversation: (model: string, conversation: { role: string; content: string }[], ollamaUrl?: string) =>

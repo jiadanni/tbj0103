@@ -16,7 +16,7 @@ interface SidebarProps {
 export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { workspaceNavigation } = useWorkspaceStore();
+  const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const activeSegment = "/" + location.pathname.split("/")[1];
   const [contextMenu, setContextMenu] = useState<{ item: NavigationItem; x: number; y: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);

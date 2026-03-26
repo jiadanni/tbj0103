@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 export type Theme = "system" | "light" | "dark" | "oled" | "sepia" | "hacker" | "glasscode";
 export type DualModelExecutionMode = "serial" | "parallel";
 export type SettingsNavigationLayout = "top-tabs" | "side-tabs";
+export type ChatMessageStyle = "bubble" | "flat";
 
 interface AppSettings {
   preferredModel: string;
@@ -29,6 +30,10 @@ interface AppSettings {
   confirmMoveToTrash: boolean;
   promptInstructions: string;
   autoGenerateFlashcards: boolean;
+  showGenInfo: boolean;
+  scrollToTopOnSend: boolean;
+  chatMessageStyle: ChatMessageStyle;
+  expandChatToWindowWidth: boolean;
 }
 
 interface SettingsStore extends AppSettings {
@@ -54,6 +59,10 @@ interface SettingsStore extends AppSettings {
   setConfirmMoveToTrash: (v: boolean) => void;
   setPromptInstructions: (v: string) => void;
   setAutoGenerateFlashcards: (v: boolean) => void;
+  setShowGenInfo: (v: boolean) => void;
+  setScrollToTopOnSend: (v: boolean) => void;
+  setChatMessageStyle: (v: ChatMessageStyle) => void;
+  setExpandChatToWindowWidth: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -82,6 +91,10 @@ export const useSettingsStore = create<SettingsStore>()(
       confirmMoveToTrash: true,
       promptInstructions: "",
       autoGenerateFlashcards: false,
+      showGenInfo: true,
+      scrollToTopOnSend: false,
+      chatMessageStyle: "bubble",
+      expandChatToWindowWidth: false,
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
@@ -104,6 +117,10 @@ export const useSettingsStore = create<SettingsStore>()(
       setConfirmMoveToTrash: (confirmMoveToTrash) => set({ confirmMoveToTrash }),
       setPromptInstructions: (promptInstructions) => set({ promptInstructions }),
       setAutoGenerateFlashcards: (autoGenerateFlashcards) => set({ autoGenerateFlashcards }),
+      setShowGenInfo: (showGenInfo) => set({ showGenInfo }),
+      setScrollToTopOnSend: (scrollToTopOnSend) => set({ scrollToTopOnSend }),
+      setChatMessageStyle: (chatMessageStyle) => set({ chatMessageStyle }),
+      setExpandChatToWindowWidth: (expandChatToWindowWidth) => set({ expandChatToWindowWidth }),
     }),
     { name: "aetherium-settings" }
   )
