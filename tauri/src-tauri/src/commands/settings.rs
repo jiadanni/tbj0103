@@ -111,6 +111,10 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
     let pin_configured = get_setting(&conn, "pin_passcode_hash")
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false);
+    let pin_lock_enabled = get_setting(&conn, "pin_lock_enabled")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(def.pin_lock_enabled)
+        && pin_configured;
     let biometric_available = biometric_available();
 
     Ok(Settings {
@@ -129,11 +133,9 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         touch_id_enabled: get_setting(&conn, "touch_id_enabled")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.touch_id_enabled)
-            && biometric_available,
-        pin_lock_enabled: get_setting(&conn, "pin_lock_enabled")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(def.pin_lock_enabled)
-            && pin_configured,
+            && biometric_available
+            && pin_lock_enabled,
+        pin_lock_enabled,
         auto_lock_minutes: get_setting(&conn, "auto_lock_minutes")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.auto_lock_minutes),
@@ -213,13 +215,14 @@ pub fn update_settings(app: AppHandle, state: State<DbState>, settings: Settings
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false);
     let biometric_available = biometric_available();
+    let effective_pin_lock_enabled = settings.pin_lock_enabled && pin_configured;
 
     set_setting(&conn, "preferred_model", &serde_json::to_string(&settings.preferred_model).unwrap())?;
     set_setting(&conn, "background_model", &serde_json::to_string(&settings.background_model).unwrap())?;
     set_setting(&conn, "quick_search_models", &serde_json::to_string(&settings.quick_search_models).unwrap())?;
     set_setting(&conn, "backup_enabled", &settings.backup_enabled.to_string())?;
-    set_setting(&conn, "touch_id_enabled", &(settings.touch_id_enabled && biometric_available).to_string())?;
-    set_setting(&conn, "pin_lock_enabled", &(settings.pin_lock_enabled && pin_configured).to_string())?;
+    set_setting(&conn, "touch_id_enabled", &(settings.touch_id_enabled && biometric_available && effective_pin_lock_enabled).to_string())?;
+    set_setting(&conn, "pin_lock_enabled", &effective_pin_lock_enabled.to_string())?;
     set_setting(&conn, "auto_lock_minutes", &settings.auto_lock_minutes.to_string())?;
     set_setting(&conn, "theme", &serde_json::to_string(&settings.theme).unwrap())?;
     set_setting(&conn, "accent_color", &serde_json::to_string(&settings.accent_color).unwrap())?;

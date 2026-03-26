@@ -153,7 +153,8 @@ pub fn get_security_status(state: State<DbState>) -> Result<SecurityStatus, Stri
     let touch_id_enabled = get_setting(&conn, "touch_id_enabled")
         .map(|value| value == "true")
         .unwrap_or(false)
-        && biometric_available;
+        && biometric_available
+        && pin_lock_enabled;
 
     Ok(SecurityStatus {
         pin_enabled,
@@ -218,6 +219,7 @@ pub fn remove_pin_passcode(state: State<DbState>, current_pin: String) -> Result
 
     set_setting(&conn, PIN_HASH_KEY, "")?;
     set_setting(&conn, "pin_lock_enabled", "false")?;
+    set_setting(&conn, "touch_id_enabled", "false")?;
     Ok(())
 }
 
