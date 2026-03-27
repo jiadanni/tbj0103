@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, Suspense } from "react";
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   Panel, PanelGroup, PanelResizeHandle,
@@ -15,12 +15,14 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { api } from "../lib/api";
 import { isMac } from "../lib/platform";
 import ChatView from "../views/ChatView";
-import KnowledgeGraphView from "../views/KnowledgeGraphView";
-import ProjectDashboardView from "../views/ProjectDashboardView";
-import PreferencesView from "../views/PreferencesView";
-import DocumentBrowserView from "../views/DocumentBrowserView";
-import NoteEditorView from "../views/NoteEditorView";
-import WebCaptureView from "../views/WebCaptureView";
+
+// Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
+const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
+const ProjectDashboardView = React.lazy(() => import("../views/ProjectDashboardView"));
+const PreferencesView = React.lazy(() => import("../views/PreferencesView"));
+const DocumentBrowserView = React.lazy(() => import("../views/DocumentBrowserView"));
+const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
+const WebCaptureView = React.lazy(() => import("../views/WebCaptureView"));
 import type { Workspace } from "../stores/workspaceStore";
 
 function WorkspaceTabBar() {
@@ -435,8 +437,13 @@ export default function Layout() {
   );
 }
 
+const LazyFallback = () => (
+  <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">Loading…</div>
+);
+
 function AppRoutes() {
   return (
+    <Suspense fallback={<LazyFallback />}>
     <Routes>
       <Route path="/" element={<Navigate to="/project" replace />} />
       <Route path="/project" element={<ProjectDashboardView />} />
@@ -461,5 +468,6 @@ function AppRoutes() {
       <Route path="/workspaces" element={<Navigate to="/preferences" state={{ settingsTab: "workspaces" }} replace />} />
       <Route path="/backup" element={<Navigate to="/preferences" state={{ settingsTab: "backup" }} replace />} />
     </Routes>
+    </Suspense>
   );
 }

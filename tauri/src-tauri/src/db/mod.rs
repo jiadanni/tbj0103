@@ -676,5 +676,26 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v30: performance indexes for sources, artifacts, concept_mentions, thought_queue, memories
+    let applied_v30: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v30_performance_indexes'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v30 == 0 {
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_sources_workspace ON sources(workspace_id);
+             CREATE INDEX IF NOT EXISTS idx_sources_workspace_processed ON sources(workspace_id, is_processed);
+             CREATE INDEX IF NOT EXISTS idx_source_chunks_source ON source_chunks(source_id);
+             CREATE INDEX IF NOT EXISTS idx_artifacts_workspace ON artifacts(workspace_id);
+             CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id);
+             CREATE INDEX IF NOT EXISTS idx_concept_mentions_source ON concept_mentions(source_type, source_id);
+             CREATE INDEX IF NOT EXISTS idx_thought_queue_status ON thought_queue(workspace_id, status, process_at);
+             CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(workspace_id, is_active, scope);
+             CREATE INDEX IF NOT EXISTS idx_conv_summaries_session ON conversation_summaries(session_id);
+             INSERT INTO _migrations(name) VALUES('v30_performance_indexes');",
+        )?;
+    }
+
     Ok(())
 }
