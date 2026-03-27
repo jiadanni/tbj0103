@@ -78,16 +78,30 @@ pub async fn extract_and_store_memories(
 
     let msgs = vec![OllamaMessage { role: "user".to_string(), content: prompt }];
     
-    // Use the configured background/chat model and skip quietly if none is available.
-    let model = {
+    // Fetch model config and existing embeddings in a SINGLE lock acquisition
+    let (model, embedding_model, existing_embeddings) = {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
-        get_configured_chat_model(&conn)
-    };
+        let model = get_configured_chat_model(&conn);
+        let emb_model = get_embedding_model(&conn);
 
-    let embedding_model = {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
-        get_embedding_model(&conn)
-    };
+        // Pre-fetch all existing memory embeddings for dedup (avoids per-fact lock)
+        let existing: Vec<Vec<f32>> = conn.prepare(
+            "SELECT me.embedding FROM memory_embeddings me 
+             JOIN memories m ON me.memory_id = m.id 
+             WHERE m.workspace_id = ?1"
+        ).ok()
+        .map(|mut stmt| {
+            stmt.query_map(rusqlite::params![workspace_id], |row| {
+                let bytes: Vec<u8> = row.get(0)?;
+                Ok(crate::services::vector_index::bytes_to_f32_vec(&bytes))
+            }).ok()
+            .map(|iter| iter.flatten().collect::<Vec<_>>())
+            .unwrap_or_default()
+        })
+        .unwrap_or_default();
+
+        (model, emb_model, existing)
+    }; // DB lock released here
 
     let Some(model) = model else {
         return Ok(());
@@ -102,58 +116,44 @@ pub async fn extract_and_store_memories(
             if let Some(end) = response.rfind(']') {
                 let json_str = &response[start..=end];
                 if let Ok(facts) = serde_json::from_str::<Vec<String>>(json_str) {
+                    // Generate embeddings and check dedup OUTSIDE the lock
+                    let mut new_memories: Vec<(String, String, Vec<u8>)> = Vec::new();
                     for fact in facts {
-                        // 1. Generate embedding for the new fact
                         let embedding = if let Ok(emb) = client.generate_embedding(&embedding_model, &fact).await {
                             emb
                         } else {
-                            // Fallback to dummy if embedding fails, or skip
                             continue;
                         };
 
+                        // Semantic deduplication — CPU work with NO lock held
+                        let is_duplicate = existing_embeddings.iter().any(|existing_emb| {
+                            crate::services::vector_index::cosine_similarity(&embedding, existing_emb) > 0.85
+                        });
+
+                        if !is_duplicate {
+                            let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
+                            new_memories.push((fact, uuid::Uuid::new_v4().to_string(), embedding_bytes));
+                        }
+                    }
+
+                    // Write all new memories in a SINGLE lock + transaction
+                    if !new_memories.is_empty() {
                         let conn = state.0.lock().map_err(|e| e.to_string())?;
-                        
-                        // 2. Semantic Deduplication: Check against existing memories in this workspace
-                        let mut stmt = conn.prepare(
-                            "SELECT me.embedding FROM memory_embeddings me 
-                             JOIN memories m ON me.memory_id = m.id 
-                             WHERE m.workspace_id = ?1"
-                        ).unwrap();
-                        
-                        let mut is_duplicate = false;
-                        if let Ok(iter) = stmt.query_map(rusqlite::params![workspace_id], |row| {
-                            let bytes: Vec<u8> = row.get(0)?;
-                            Ok(crate::services::vector_index::bytes_to_f32_vec(&bytes))
-                        }) {
-                            for existing_emb in iter.flatten() {
-                                let similarity = crate::services::vector_index::cosine_similarity(&embedding, &existing_emb);
-                                if similarity > 0.85 {
-                                    is_duplicate = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if is_duplicate {
-                            continue;
-                        }
-
-                        // 3. Insert if unique
-                        let id = uuid::Uuid::new_v4().to_string();
+                        conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
                         let now = chrono::Utc::now().to_rfc3339();
-                        
-                        let _ = conn.execute(
-                            "INSERT INTO memories (id, workspace_id, project_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
-                             VALUES (?1, ?2, ?3, ?4, 'fact', 'workspace', ?5, 0, 1, ?6, ?7)",
-                            rusqlite::params![id, workspace_id, project_id, fact, session_id, now, now],
-                        );
-                        
-                        let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
-                        let _ = conn.execute(
-                            "INSERT INTO memory_embeddings (memory_id, embedding, model, created_at)
-                             VALUES (?1, ?2, ?3, ?4)",
-                            rusqlite::params![id, embedding_bytes, embedding_model, now],
-                        );
+                        for (fact, id, embedding_bytes) in &new_memories {
+                            let _ = conn.execute(
+                                "INSERT INTO memories (id, workspace_id, project_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
+                                 VALUES (?1, ?2, ?3, ?4, 'fact', 'workspace', ?5, 0, 1, ?6, ?7)",
+                                rusqlite::params![id, workspace_id, project_id, fact, session_id, now, now],
+                            );
+                            let _ = conn.execute(
+                                "INSERT INTO memory_embeddings (memory_id, embedding, model, created_at)
+                                 VALUES (?1, ?2, ?3, ?4)",
+                                rusqlite::params![id, embedding_bytes, embedding_model, now],
+                            );
+                        }
+                        let _ = conn.execute_batch("COMMIT");
                     }
                 }
             }

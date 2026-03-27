@@ -490,3 +490,14 @@ CREATE INDEX IF NOT EXISTS idx_audio_transcriptions_workspace ON audio_transcrip
 CREATE INDEX IF NOT EXISTS idx_alarms_fire_date ON calendar_alarms(fire_date);
 CREATE INDEX IF NOT EXISTS idx_memories_workspace ON memories(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_memories_active ON memories(workspace_id, is_active);
+
+-- Performance indexes (v30)
+CREATE INDEX IF NOT EXISTS idx_sources_workspace ON sources(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_sources_workspace_processed ON sources(workspace_id, is_processed);
+CREATE INDEX IF NOT EXISTS idx_source_chunks_source ON source_chunks(source_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_workspace ON artifacts(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id);
+CREATE INDEX IF NOT EXISTS idx_concept_mentions_source ON concept_mentions(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_thought_queue_status ON thought_queue(workspace_id, status, process_at);
+CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(workspace_id, is_active, scope);
+CREATE INDEX IF NOT EXISTS idx_conv_summaries_session ON conversation_summaries(session_id);
