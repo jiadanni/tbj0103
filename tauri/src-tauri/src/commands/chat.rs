@@ -252,19 +252,38 @@ pub fn move_chat_sessions(
     target_workspace_id: String,
     target_project_id: Option<String>,
 ) -> Result<(), String> {
+    if session_ids.is_empty() {
+        return Ok(());
+    }
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let target_project_id = target_project_id.unwrap_or_default();
-    for session_id in session_ids {
-        conn.execute(
-            "UPDATE chat_sessions
-             SET workspace_id = ?1, project_id = ?2, updated_at = ?3
-             WHERE id = ?4",
-            rusqlite::params![target_workspace_id, target_project_id, now, session_id],
-        )
-        .map_err(|e| e.to_string())?;
+
+    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+    let result = (|| {
+        let placeholders: String = session_ids.iter().enumerate()
+            .map(|(i, _)| format!("?{}", i + 4))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2, updated_at = ?3 WHERE id IN ({})",
+            placeholders
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::with_capacity(3 + session_ids.len());
+        params.push(Box::new(target_workspace_id.clone()));
+        params.push(Box::new(target_project_id.clone()));
+        params.push(Box::new(now.clone()));
+        for sid in &session_ids {
+            params.push(Box::new(sid.clone()));
+        }
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        conn.execute(&sql, param_refs.as_slice()).map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    match result {
+        Ok(()) => { conn.execute_batch("COMMIT").map_err(|e| e.to_string())?; Ok(()) }
+        Err(e) => { let _ = conn.execute_batch("ROLLBACK"); Err(e) }
     }
-    Ok(())
 }
 
 #[tauri::command]

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEve
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Plus, Trash2, Copy, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, RotateCcw, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
+import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
@@ -14,7 +14,7 @@ import type { ChatSession, Message } from "../stores/chatStore";
 import ComposerSuggestionRows from "../components/ComposerSuggestionRows";
 import { TopicChips } from "../components/TopicChips";
 import { WorkspaceMigrationBanner } from "../components/WorkspaceMigrationBanner";
-import ContextIndicator from "../components/ContextIndicator";
+import ChatMessageBubble from "../components/ChatMessageBubble";
 import { useScopedChat, useScopedProjects, useScopedWorkspace, useWorkspacePane } from "../lib/workspacePane";
 import {
   buildChatSuggestionRow,
@@ -1036,7 +1036,7 @@ function SessionSidebar({
   );
 }
 
-function formatMessageTimestamp(value: string) {
+function _formatMessageTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {return value;}
   return new Intl.DateTimeFormat(undefined, {
@@ -1057,7 +1057,7 @@ function chatExportFilename(title: string) {
   return `${base || "chat"}.json`;
 }
 
-function splitAssistantMessage(content: string) {
+function _splitAssistantMessage(content: string) {
   const thinkMatch = content.match(/^<think(?:\s+title="([^"]*)")?>\s*([\s\S]*?)\s*<\/think>\s*([\s\S]*)$/);
   if (thinkMatch) {
     return {
@@ -1082,37 +1082,142 @@ function splitAssistantMessage(content: string) {
   return { thought, answer };
 }
 
+function StreamingBubble({
+  activeChatId,
+  chatMessageStyle,
+  expandChatToWindowWidth,
+  dualModelEnabled,
+  draftModel,
+  isRefiningPhase,
+  modelDisplayName,
+  selectedModel
+}: {
+  activeChatId: string | null;
+  chatMessageStyle: string;
+  expandChatToWindowWidth: boolean;
+  dualModelEnabled: boolean;
+  draftModel: string | null;
+  isRefiningPhase: boolean;
+  modelDisplayName: (id: string) => string;
+  selectedModel: string;
+}) {
+  const streamingSessionId = useChatStore((s) => s.streamingSessionId);
+  const streamingContent = useChatStore((s) => s.streamingContent);
+  const isCurrentlyStreaming = activeChatId ? streamingSessionId === activeChatId : false;
+
+  if (!isCurrentlyStreaming || !streamingContent) { return null; }
+
+  return (
+    <div className="flex flex-col gap-1 items-start">
+      <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${
+        chatMessageStyle === "flat"
+          ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]"
+          : ""
+      }`}>
+        {dualModelEnabled && draftModel && !isRefiningPhase && (
+          <div className="flex items-center gap-1 mb-1 text-[10px] text-amber-400">
+            <Zap size={9} /> Drafting with {modelDisplayName(draftModel)}…
+          </div>
+        )}
+        {isRefiningPhase && (
+          <div className="flex items-center gap-1 mb-1 text-[10px] text-[var(--accent-color)]">
+            <Zap size={9} /> Refining with {modelDisplayName(selectedModel)}…
+          </div>
+        )}
+        <p className="whitespace-pre-wrap">{streamingContent}</p>
+        <span className="streaming-cursor" />
+      </div>
+    </div>
+  );
+}
+
+function RefineBubble({
+  isRefiningPhase,
+  chatMessageStyle,
+  expandChatToWindowWidth,
+  modelDisplayName,
+  selectedModel
+}: {
+  isRefiningPhase: boolean;
+  chatMessageStyle: string;
+  expandChatToWindowWidth: boolean;
+  modelDisplayName: (id: string) => string;
+  selectedModel: string;
+}) {
+  const refineContent = useChatStore((s) => s.refineContent);
+  const isCurrentlyRefining = useChatStore((s) => s.refineContent.length > 0) && isRefiningPhase;
+
+  if (!isCurrentlyRefining) { return null; }
+
+  return (
+    <div className="flex flex-col gap-1 items-start">
+      <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant border border-[var(--accent-color)]/20 ${
+        chatMessageStyle === "flat" ? "bg-[var(--bg-elevated)]" : "bg-[var(--bg-primary)]"
+      }`}>
+        <div className="flex items-center gap-1 mb-1 text-[10px] text-[var(--accent-color)]">
+          <Zap size={9} /> Refining with {modelDisplayName(selectedModel)}…
+        </div>
+        <p className="whitespace-pre-wrap">{refineContent}</p>
+        <span className="streaming-cursor" />
+      </div>
+    </div>
+  );
+}
+
 export default function ChatView() {
   const navigate = useNavigate();
   const location = useLocation();
   const { sessionId: routeSessionId } = useParams();
 
-  const {
-    sessions, messages,
-    setSessions, setMessages, appendMessage, appendStreamChunk, finalizeStream,
-    streamingSessionId, streamingContent, setStreamingSession, updateMessage,
-  } = useChatStore();
+  const sessions = useChatStore((s) => s.sessions);
+  const messages = useChatStore((s) => s.messages);
+  const setSessions = useChatStore((s) => s.setSessions);
+  const setMessages = useChatStore((s) => s.setMessages);
+  const appendMessage = useChatStore((s) => s.appendMessage);
+  const appendStreamChunk = useChatStore((s) => s.appendStreamChunk);
+  const finalizeStream = useChatStore((s) => s.finalizeStream);
+  const streamingSessionId = useChatStore((s) => s.streamingSessionId);
+  const setStreamingSession = useChatStore((s) => s.setStreamingSession);
+  const updateMessage = useChatStore((s) => s.updateMessage);
+  const appendRefineChunkGlobal = useChatStore((s) => s.appendRefineChunk);
   const { activeChatId, setActiveChatId } = useScopedChat();
 
-  const {
-    activeProjectId, activeWorkspaceId, setProjectsForWorkspace, projectsByWorkspace, addWorkspace,
-  } = useWorkspaceStore();
+  const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const setProjectsForWorkspace = useWorkspaceStore((s) => s.setProjectsForWorkspace);
+  const projectsByWorkspace = useWorkspaceStore((s) => s.projectsByWorkspace);
+  const addWorkspace = useWorkspaceStore((s) => s.addWorkspace);
   const {
     activeProjectId: scopedProjectId,
     setActiveProjectId: setScopedProjectId,
     activeWorkspaceId: scopedWorkspaceId,
   } = useScopedWorkspace();
-  const {
-    activeTopicSignature, setActiveTopicSignature, setWorkspaceTopicSignature, setMigrationSuggestion, workspaces,
-  } = useWorkspaceStore();
+  const activeTopicSignature = useWorkspaceStore((s) => s.activeTopicSignature);
+  const setActiveTopicSignature = useWorkspaceStore((s) => s.setActiveTopicSignature);
+  const setWorkspaceTopicSignature = useWorkspaceStore((s) => s.setWorkspaceTopicSignature);
+  const setMigrationSuggestion = useWorkspaceStore((s) => s.setMigrationSuggestion);
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
   const projects = useScopedProjects();
-  const {
-    preferredModel, setPreferredModel, ollamaUrl, dualModelEnabled, draftModel,
-    dualModelExecutionMode, setDualModelEnabled, setDraftModel, compareModelA: savedCompareA, compareModelB: savedCompareB,
-    setCompareModelA: saveCompareA, setCompareModelB: saveCompareB, modelLabels, quickSearchModels,
-    skipLinkConfirm, setSkipLinkConfirm,
-    showGenInfo, scrollToTopOnSend, chatMessageStyle, expandChatToWindowWidth,
-  } = useSettingsStore();
+  const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const setPreferredModel = useSettingsStore((s) => s.setPreferredModel);
+  const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
+  const dualModelEnabled = useSettingsStore((s) => s.dualModelEnabled);
+  const draftModel = useSettingsStore((s) => s.draftModel);
+  const dualModelExecutionMode = useSettingsStore((s) => s.dualModelExecutionMode);
+  const setDualModelEnabled = useSettingsStore((s) => s.setDualModelEnabled);
+  const setDraftModel = useSettingsStore((s) => s.setDraftModel);
+  const savedCompareA = useSettingsStore((s) => s.compareModelA);
+  const savedCompareB = useSettingsStore((s) => s.compareModelB);
+  const saveCompareA = useSettingsStore((s) => s.setCompareModelA);
+  const saveCompareB = useSettingsStore((s) => s.setCompareModelB);
+  const modelLabels = useSettingsStore((s) => s.modelLabels);
+  const quickSearchModels = useSettingsStore((s) => s.quickSearchModels);
+  const skipLinkConfirm = useSettingsStore((s) => s.skipLinkConfirm);
+  const setSkipLinkConfirm = useSettingsStore((s) => s.setSkipLinkConfirm);
+  const showGenInfo = useSettingsStore((s) => s.showGenInfo);
+  const scrollToTopOnSend = useSettingsStore((s) => s.scrollToTopOnSend);
+  const chatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
+  const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
   const topSelectClassName = "h-8 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-8 text-xs font-medium text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
   const composerToggleBaseClass = "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium shadow-sm transition-colors";
@@ -1372,6 +1477,34 @@ export default function ChatView() {
     clearActiveStreamListeners();
   }, [clearActiveStreamListeners]);
 
+  // ── Stabilized callbacks for ChatMessageBubble ──────────────────────────
+  const handleCopyMessage = useCallback((msgId: string, content: string) => {
+    window.navigator.clipboard.writeText(content);
+    setCopiedMessageId(msgId);
+    setTimeout(() => setCopiedMessageId(null), 1500);
+  }, []);
+
+  const handleStartEditing = useCallback((msgId: string, content: string) => {
+    setEditingMessageId(msgId);
+    setEditContent(content);
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessageId(null);
+  }, []);
+
+  const handleToggleThought = useCallback((msgId: string) => {
+    setExpandedThoughtIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(msgId)) { next.delete(msgId); } else { next.add(msgId); }
+      return next;
+    });
+  }, []);
+
+  const handleToggleSources = useCallback((msgId: string) => {
+    setExpandedSources((prev) => prev === msgId ? null : msgId);
+  }, []);
+
   const markdownComponents = useMemo(() => ({
     a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
       <a
@@ -1530,14 +1663,13 @@ export default function ChatView() {
   // Dual-model (draft + refine) state
   const [isRefiningPhase, setIsRefiningPhase] = useState(false);
   const [draftSnapshot, setDraftSnapshot] = useState("");
-  const [refineStreamingContent, setRefineStreamingContent] = useState("");
+  const refineContentRef = useRef("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevScrollChatIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const pendingSentScrollId = useRef<string | null>(null);
   const incognitoSessionIdsRef = useRef<Set<string>>(new Set());
-  const refineContentRef = useRef("");
 
   const activeMessages = useMemo(
     () => (activeChatId ? (messages[activeChatId] ?? []) : []),
@@ -1548,7 +1680,7 @@ export default function ChatView() {
     : false;
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
-  const isCurrentlyRefining = isRefiningPhase && refineStreamingContent.length > 0;
+  const isCurrentlyRefining = useChatStore((s) => s.refineContent.length > 0) && isRefiningPhase;
   const activeSession = activeChatId ? sessions.find((s) => s.id === activeChatId) ?? null : null;
   const activeSessionWorkspaceId = activeSession?.workspace_id ?? effectiveWorkspaceId;
 
@@ -1556,12 +1688,13 @@ export default function ChatView() {
     setIsRefiningPhase(false);
     setDraftSnapshot("");
     refineContentRef.current = "";
-    setRefineStreamingContent("");
   }
 
   function appendRefineChunk(chunk: string) {
     refineContentRef.current += chunk;
-    setRefineStreamingContent(refineContentRef.current);
+    if (activeChatId) {
+      appendRefineChunkGlobal(activeChatId, chunk);
+    }
   }
 
   // Web AI provider detection
@@ -1863,10 +1996,8 @@ export default function ChatView() {
     });
   }, [ollamaUrl, activeSession?.model_name, preferredModel]);
 
-  // Scroll to bottom on new messages.
-  // Use "instant" during streaming (so rapid updates don't fall behind) and
-  // also when switching sessions (so the initial load doesn't visibly animate
-  // from wherever the previous scroll position was down to the bottom).
+  // Scroll to bottom on new messages or session switch.
+  // Does NOT depend on streamingContent — a separate interval handles that.
   useEffect(() => {
     const isSessionSwitch = prevScrollChatIdRef.current !== activeChatId;
     prevScrollChatIdRef.current = activeChatId;
@@ -1885,9 +2016,19 @@ export default function ChatView() {
     }
 
     messagesEndRef.current?.scrollIntoView({
-      behavior: (isCurrentlyStreaming || isSessionSwitch) ? "instant" : "smooth",
+      behavior: isSessionSwitch ? "instant" : "smooth",
     });
-  }, [activeChatId, activeMessages.length, streamingContent, isCurrentlyStreaming, scrollToTopOnSend]);
+  }, [activeChatId, activeMessages.length, isCurrentlyStreaming, scrollToTopOnSend]);
+
+  // Throttled scroll-to-bottom during streaming — runs at ~7 fps instead of
+  // on every chunk, avoiding layout thrashing while keeping the view pinned.
+  useEffect(() => {
+    if (!isCurrentlyStreaming) { return; }
+    const interval = setInterval(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+    }, 150);
+    return () => clearInterval(interval);
+  }, [isCurrentlyStreaming]);
 
   useEffect(() => {
     if (!activeChatId || !hasLoadedActiveMessages || activeMessages.length > 0 || isStreaming) {return;}
@@ -2508,13 +2649,13 @@ export default function ChatView() {
     }
   }
 
-  function copyMessage(msgId: string, content: string) {
+  function _copyMessage(msgId: string, content: string) {
     window.navigator.clipboard.writeText(content);
     setCopiedMessageId(msgId);
     setTimeout(() => setCopiedMessageId(null), 1500);
   }
 
-  function startEditing(msgId: string, content: string) {
+  function _startEditing(msgId: string, content: string) {
     setEditingMessageId(msgId);
     setEditContent(content);
   }
@@ -3031,173 +3172,31 @@ export default function ChatView() {
           {/* Messages */}
           <div ref={messagesScrollContainerRef} className={`min-h-0 overflow-y-auto px-4 py-4 space-y-4 ${activeMessages.length > 0 || isStreaming ? "flex-1" : "hidden"}`}>
             {activeMessages.map((msg, i) => (
-              <div
+              <ChatMessageBubble
                 key={msg.id}
-                data-msg-id={msg.id}
-                className={`group/msg flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}
-              >
-                {editingMessageId === msg.id ? (
-                  <div className="max-w-[75%] w-full flex flex-col gap-2">
-                    <textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      className="w-full resize-none px-3.5 py-2.5 text-sm rounded-xl bg-[var(--bg-elevated)] border border-[var(--accent-color)] text-[var(--text-primary)] outline-none max-h-40 overflow-y-auto"
-                      rows={3}
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitEdit(msg.id); }
-                        if (e.key === "Escape") {setEditingMessageId(null);}
-                      }}
-                    />
-                    <div className="flex gap-1.5 justify-end">
-                      <button
-                        onClick={() => setEditingMessageId(null)}
-                        className="px-2.5 py-1 text-xs rounded-lg border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => submitEdit(msg.id)}
-                        className="px-2.5 py-1 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 transition-opacity"
-                      >
-                        Send
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div
-                      className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words px-4 py-2.5 text-sm ${
-                        chatMessageStyle === "flat"
-                          ? msg.role === "user"
-                            ? "rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)]"
-                            : "rounded border-l-2 border-[var(--accent-color)]/40 bg-transparent text-[var(--text-primary)]"
-                          : msg.role === "user"
-                            ? "rounded-2xl message-user"
-                            : "rounded-2xl message-assistant"
-                      }`}
-                    >
-                      {msg.role === "assistant" ? (
-                        (() => {
-                          const parts = splitAssistantMessage(msg.content);
-                          const thoughtExpanded = expandedThoughtIds.has(msg.id);
-
-                          return (
-                            <div className="space-y-3">
-                              {i === activeMessages.length - 1 && currentSessionId && activeContextSources[currentSessionId] && (
-                                <ContextIndicator sources={activeContextSources[currentSessionId]} />
-                              )}
-                              {parts?.thought && (
-                                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/50">
-                                  <button
-                                    onClick={() => {
-                                      setExpandedThoughtIds((prev) => {
-                                        const next = new Set(prev);
-                                        if (next.has(msg.id)) {
-                                          next.delete(msg.id);
-                                        } else {
-                                          next.add(msg.id);
-                                        }
-                                        return next;
-                                      });
-                                    }}
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                                  >
-                                    {thoughtExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                    <span>{parts.thoughtTitle || "Thought"}</span>
-                                  </button>
-                                  {thoughtExpanded && (
-                                    <div className="border-t border-[var(--border-color)] px-3 py-2">
-                                      <div className="prose prose-sm prose-invert max-w-none overflow-x-auto text-[var(--text-secondary)]">
-                                        <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>{parts.thought}</ReactMarkdown>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
-                                <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                                  {parts?.answer || msg.content}
-                                </ReactMarkdown>
-                              </div>
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
-                      )}
-                    </div>
-                    <div className={`flex gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
-                      <button
-                        onClick={() => copyMessage(msg.id, msg.content)}
-                        className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                        title="Copy"
-                      >
-                        {copiedMessageId === msg.id ? <Check size={11} /> : <Copy size={11} />}
-                      </button>
-                      {msg.role === "user" && !isStreaming && (
-                        <button
-                          onClick={() => startEditing(msg.id, msg.content)}
-                          className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                          title="Edit"
-                        >
-                          <Pencil size={11} />
-                        </button>
-                      )}
-                      {msg.role === "assistant" && !isStreaming && (
-                        <button
-                          onClick={() => redoMessage(msg.id)}
-                          className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                          title="Redo"
-                        >
-                          <RotateCcw size={11} />
-                        </button>
-                      )}
-                    </div>
-                    <div className={`flex items-center gap-2 text-[10px] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
-                      <span>{formatMessageTimestamp(msg.created_at)}</span>
-                      {showGenInfo && msg.role === "assistant" && msg.tokens_used ? (
-                        <span>{msg.tokens_used.toLocaleString()} tok</span>
-                      ) : null}
-                      {showGenInfo && msg.role === "assistant" && msg.duration_ms ? (
-                        <span>
-                          {msg.duration_ms >= 1000
-                            ? `${(msg.duration_ms / 1000).toFixed(1)}s`
-                            : `${msg.duration_ms}ms`}
-                        </span>
-                      ) : null}
-                      {showGenInfo && msg.role === "assistant" && msg.tokens_used && msg.duration_ms && msg.duration_ms > 0 ? (
-                        <span className="text-[var(--accent-color)] font-medium">
-                          {(msg.tokens_used / (msg.duration_ms / 1000)).toFixed(1)} tok/s
-                        </span>
-                      ) : null}
-                    </div>
-                    {/* Grounded sources for this message */}
-                    {messageSources[msg.id] && messageSources[msg.id].length > 0 && (
-                      <div className={`max-w-[75%] ${msg.role === "user" ? "self-end" : ""}`}>
-                        <button
-                          onClick={() => setExpandedSources(expandedSources === msg.id ? null : msg.id)}
-                          className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                        >
-                          <BookOpen size={10} />
-                          {messageSources[msg.id].length} source{messageSources[msg.id].length !== 1 ? "s" : ""} used
-                          {expandedSources === msg.id ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                        </button>
-                        {expandedSources === msg.id && (
-                          <div className="mt-1.5 space-y-1">
-                            {messageSources[msg.id].map((s, i) => (
-                              <div key={s.id} className="rounded-lg p-2 bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[11px]">
-                                <div className="font-medium text-[var(--text-secondary)]">[{i + 1}] {s.title}</div>
-                                <div className="text-[var(--text-muted)] line-clamp-2 mt-0.5">{s.excerpt}</div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+                msg={msg}
+                isLastMessage={i === activeMessages.length - 1}
+                isStreaming={isStreaming}
+                chatMessageStyle={chatMessageStyle}
+                expandChatToWindowWidth={expandChatToWindowWidth}
+                showGenInfo={showGenInfo}
+                editingMessageId={editingMessageId}
+                editContent={editContent}
+                copiedMessageId={copiedMessageId}
+                expandedThoughtIds={expandedThoughtIds}
+                messageSources={messageSources}
+                expandedSources={expandedSources}
+                contextSources={i === activeMessages.length - 1 && currentSessionId ? activeContextSources[currentSessionId] ?? null : null}
+                markdownComponents={markdownComponents}
+                onCopy={handleCopyMessage}
+                onStartEdit={handleStartEditing}
+                onSubmitEdit={submitEdit}
+                onSetEditContent={setEditContent}
+                onCancelEdit={handleCancelEdit}
+                onRedo={redoMessage}
+                onToggleThought={handleToggleThought}
+                onToggleSources={handleToggleSources}
+              />
             ))}
 
             {/* Draft snapshot bubble — shown during refine phase */}
@@ -3247,38 +3246,26 @@ export default function ChatView() {
                 </div>
               </div>
             )}
+            {/* Normal Streaming bubble */}
+            <StreamingBubble
+              activeChatId={activeChatId}
+              chatMessageStyle={chatMessageStyle}
+              expandChatToWindowWidth={expandChatToWindowWidth}
+              dualModelEnabled={dualModelEnabled}
+              draftModel={draftModel}
+              isRefiningPhase={isRefiningPhase}
+              modelDisplayName={modelDisplayName}
+              selectedModel={selectedModel}
+            />
 
-            {/* Streaming bubble (draft phase or refine phase) */}
-            {isCurrentlyStreaming && streamingContent && (
-              <div className="flex flex-col gap-1 items-start">
-                <div className="max-w-[75%] break-words rounded-2xl px-4 py-2.5 text-sm message-assistant">
-                  {dualModelEnabled && draftModel && !isRefiningPhase && (
-                    <div className="flex items-center gap-1 mb-1 text-[10px] text-amber-400">
-                      <Zap size={9} /> Drafting with {modelDisplayName(draftModel)}…
-                    </div>
-                  )}
-                  {isRefiningPhase && (
-                    <div className="flex items-center gap-1 mb-1 text-[10px] text-[var(--accent-color)]">
-                      <Zap size={9} /> Refining with {modelDisplayName(selectedModel)}…
-                    </div>
-                  )}
-                  <p className="whitespace-pre-wrap">{streamingContent}</p>
-                  <span className="streaming-cursor" />
-                </div>
-              </div>
-            )}
-
-            {isCurrentlyRefining && (
-              <div className="flex flex-col gap-1 items-start">
-                <div className="max-w-[75%] break-words rounded-2xl px-4 py-2.5 text-sm message-assistant border border-[var(--accent-color)]/20">
-                  <div className="flex items-center gap-1 mb-1 text-[10px] text-[var(--accent-color)]">
-                    <Zap size={9} /> Refining with {modelDisplayName(selectedModel)}…
-                  </div>
-                  <p className="whitespace-pre-wrap">{refineStreamingContent}</p>
-                  <span className="streaming-cursor" />
-                </div>
-              </div>
-            )}
+            {/* Refining bubble */}
+            <RefineBubble
+              isRefiningPhase={isRefiningPhase}
+              chatMessageStyle={chatMessageStyle}
+              expandChatToWindowWidth={expandChatToWindowWidth}
+              modelDisplayName={modelDisplayName}
+              selectedModel={selectedModel}
+            />
 
             <div ref={messagesEndRef} />
           </div>

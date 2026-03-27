@@ -15,6 +15,13 @@ export default defineConfig(async () => ({
   build: {
     rollupOptions: {
       input: resolve(__dirname, "index.html"),
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom", "react-router-dom"],
+          codemirror: ["@codemirror/view", "@codemirror/state", "@codemirror/lang-markdown"],
+          d3: ["d3"],
+        },
+      },
     },
   },
   server: {

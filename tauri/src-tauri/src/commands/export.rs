@@ -44,43 +44,47 @@ pub fn export_markdown(state: State<DbState>, req: ExportRequest) -> Result<Stri
 
     // Chats (all workspace sessions, or filtered by optional project)
     if req.include_chats.unwrap_or(true) {
-        let sessions: Vec<(String, String)> = if let Some(ref pid) = req.project_id {
-            let mut stmt = conn.prepare(
-                "SELECT id, title FROM chat_sessions WHERE project_id = ?1 ORDER BY created_at"
-            ).map_err(|e| e.to_string())?;
-            let rows: Vec<(String, String)> = stmt.query_map(rusqlite::params![pid], |r| Ok((r.get(0)?, r.get(1)?)))
-                .map_err(|e| e.to_string())?
-                .filter_map(Result::ok).collect();
-            rows
+        // Single JOIN query instead of N+1 (1 session fetch + N message fetches)
+        let sql = if req.project_id.is_some() {
+            "SELECT cs.id, cs.title, m.role, m.content
+             FROM chat_sessions cs
+             LEFT JOIN messages m ON m.session_id = cs.id
+             WHERE cs.project_id = ?1
+             ORDER BY cs.created_at, m.created_at"
         } else {
-            let mut stmt = conn.prepare(
-                "SELECT cs.id, cs.title FROM chat_sessions cs
-                 JOIN projects p ON cs.project_id = p.id
-                 WHERE p.workspace_id = ?1 ORDER BY cs.created_at"
-            ).map_err(|e| e.to_string())?;
-            let rows: Vec<(String, String)> = stmt.query_map(rusqlite::params![req.workspace_id], |r| Ok((r.get(0)?, r.get(1)?)))
-                .map_err(|e| e.to_string())?
-                .filter_map(Result::ok).collect();
-            rows
+            "SELECT cs.id, cs.title, m.role, m.content
+             FROM chat_sessions cs
+             JOIN projects p ON cs.project_id = p.id
+             LEFT JOIN messages m ON m.session_id = cs.id
+             WHERE p.workspace_id = ?1
+             ORDER BY cs.created_at, m.created_at"
         };
-        if !sessions.is_empty() {
+        let param = if let Some(ref pid) = req.project_id { pid } else { &req.workspace_id };
+        let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+        let rows: Vec<(String, String, Option<String>, Option<String>)> = stmt.query_map(
+            rusqlite::params![param],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        ).map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+
+        if !rows.is_empty() {
             output.push_str("## Chat Sessions\n\n");
-            for (session_id, title) in sessions {
-                output.push_str(&format!("### {title}\n\n"));
-                let mut msg_stmt = conn.prepare(
-                    "SELECT role, content FROM messages WHERE session_id = ?1 ORDER BY created_at"
-                ).map_err(|e| e.to_string())?;
-                let msgs: Vec<(String, String)> = msg_stmt.query_map(rusqlite::params![session_id], |r| {
-                    Ok((r.get(0)?, r.get(1)?))
-                }).map_err(|e| e.to_string())?
-                .filter_map(Result::ok)
-                .collect();
-                for (role, content) in msgs {
+            let mut current_session_id = String::new();
+            for (session_id, title, role, content) in &rows {
+                if *session_id != current_session_id {
+                    if !current_session_id.is_empty() {
+                        output.push_str("---\n\n");
+                    }
+                    output.push_str(&format!("### {title}\n\n"));
+                    current_session_id = session_id.clone();
+                }
+                if let (Some(role), Some(content)) = (role, content) {
                     let label = if role == "user" { "**You**" } else { "**Assistant**" };
                     output.push_str(&format!("{label}: {content}\n\n"));
                 }
-                output.push_str("---\n\n");
             }
+            output.push_str("---\n\n");
         }
     }
 

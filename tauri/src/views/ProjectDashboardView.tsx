@@ -276,10 +276,13 @@ function InsightCard({ text }: { text: string }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ProjectDashboardView() {
-  const { workspaces } = useWorkspaceStore();
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
   const { activeWorkspaceId } = useScopedWorkspace();
-  const { sessions } = useChatStore();
-  const { preferredModel, backgroundModel, ollamaUrl, modelLabels } = useSettingsStore();
+  const sessions = useChatStore((s) => s.sessions);
+  const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const backgroundModel = useSettingsStore((s) => s.backgroundModel);
+  const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
+  const modelLabels = useSettingsStore((s) => s.modelLabels);
   const navigate = useNavigate();
 
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId);

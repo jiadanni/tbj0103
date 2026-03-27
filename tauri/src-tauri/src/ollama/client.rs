@@ -25,6 +25,21 @@ struct CachedModels {
 
 static MODEL_CACHE: OnceLock<Mutex<Option<CachedModels>>> = OnceLock::new();
 
+// Shared HTTP client — reqwest::Client is internally Arc'd and manages a
+// connection pool, so reusing one instance across all OllamaClient instances
+// avoids redundant TCP/TLS handshakes.
+static SHARED_HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
+
+fn shared_http_client() -> &'static Client {
+    SHARED_HTTP_CLIENT.get_or_init(|| {
+        Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .pool_max_idle_per_host(4)
+            .build()
+            .expect("Failed to build shared HTTP client")
+    })
+}
+
 fn model_cache() -> &'static Mutex<Option<CachedModels>> {
     MODEL_CACHE.get_or_init(|| Mutex::new(None))
 }
@@ -157,13 +172,8 @@ impl OllamaClient {
     }
 
     pub fn new(base_url: Option<String>) -> Result<Self, String> {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(300))
-            .build()
-            .map_err(|e| format!("Failed to build Ollama HTTP client: {e}"))?;
-
         Ok(Self {
-            client,
+            client: shared_http_client().clone(),
             base_url: Self::validate_base_url(base_url)?,
         })
     }
