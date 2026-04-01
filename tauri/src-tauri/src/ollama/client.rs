@@ -214,13 +214,27 @@ impl OllamaClient {
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
+        self.send_message_with_options(model, messages, None).await
+    }
+
+    /// Send a non-streaming message with an optional keep_alive duration.
+    /// Pass `Some("0s")` to unload the model immediately after the call.
+    pub async fn send_message_with_options(
+        &self,
+        model: &str,
+        messages: Vec<OllamaMessage>,
+        keep_alive: Option<&str>,
+    ) -> Result<String, String> {
         let resolved_model = self.resolve_model(model).await?;
         let url = format!("{}/api/chat", self.base_url);
-        let body = json!({
+        let mut body = json!({
             "model": resolved_model,
             "messages": messages,
             "stream": false
         });
+        if let Some(ka) = keep_alive {
+            body.as_object_mut().unwrap().insert("keep_alive".to_string(), json!(ka));
+        }
 
         let response = self.client
             .post(&url)
@@ -419,17 +433,23 @@ impl OllamaClient {
 
     /// Generate an embedding vector for the given text.
     pub async fn generate_embedding(&self, model: &str, text: &str) -> Result<Vec<f32>, String> {
+        self.generate_embedding_with_options(model, text, None).await
+    }
+
+    /// Generate an embedding with an optional keep_alive duration.
+    /// Pass `Some("0s")` to unload the model immediately after the call.
+    pub async fn generate_embedding_with_options(&self, model: &str, text: &str, keep_alive: Option<&str>) -> Result<Vec<f32>, String> {
         // Guard: verify the model is locally available before calling /api/embed.
-        // This prevents 404 spam in the Ollama server log when the embedding model
-        // hasn't been pulled yet. list_models() is cached, so there is no extra I/O
-        // on the hot path.
         let available = self.list_models().await.unwrap_or_default();
         if !available.iter().any(|m| m.name == model || m.name.starts_with(&format!("{model}:"))) {
             return Err(format!("Embedding model '{model}' is not available locally. Run: ollama pull {model}"));
         }
 
         let url = format!("{}/api/embed", self.base_url);
-        let body = json!({ "model": model, "input": text });
+        let mut body = json!({ "model": model, "input": text });
+        if let Some(ka) = keep_alive {
+            body.as_object_mut().unwrap().insert("keep_alive".to_string(), json!(ka));
+        }
 
         let response = self.client
             .post(&url)

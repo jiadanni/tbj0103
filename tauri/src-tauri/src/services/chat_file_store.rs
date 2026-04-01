@@ -229,8 +229,8 @@ pub fn import_session_from_file(
     let session_id = uuid::Uuid::new_v4().to_string();
     conn.execute(
         "INSERT INTO chat_sessions
-             (id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, parent_session_id, branch_message_id, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 0, 0, NULL, NULL, NULL, ?7, ?8)",
+             (id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, is_imported, parent_session_id, branch_message_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 0, 0, NULL, 1, NULL, NULL, ?7, ?8)",
         rusqlite::params![
             session_id, workspace_id, project_id, data.title, data.model, data.system_prompt,
             data.created_at, data.updated_at
@@ -599,8 +599,8 @@ pub fn import_chat_data(
         "INSERT INTO chat_sessions
              (id, workspace_id, project_id, title, model_name, system_prompt,
               is_pinned, is_incognito, exclude_from_analytics, is_deleted,
-              deleted_at, parent_session_id, branch_message_id, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 0, 0, NULL, NULL, NULL, ?7, ?8)",
+              deleted_at, is_imported, parent_session_id, branch_message_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 0, 0, NULL, 1, NULL, NULL, ?7, ?8)",
         rusqlite::params![
             session_id, workspace_id, project_id,
             data.title, data.model, data.system_prompt,

@@ -697,5 +697,20 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v31: add is_imported flag to chat_sessions for scheduler exclusion
+    let applied_v31: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v31_chat_sessions_is_imported'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v31 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE chat_sessions ADD COLUMN is_imported INTEGER NOT NULL DEFAULT 0;",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v31_chat_sessions_is_imported');",
+        )?;
+    }
+
     Ok(())
 }
