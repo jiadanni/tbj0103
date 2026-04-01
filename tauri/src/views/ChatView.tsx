@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -260,11 +260,9 @@ function SessionSidebar({
   const [projectRenamingId, setProjectRenamingId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState("");
   const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
-  const [dragOverRoot, setDragOverRoot] = useState(false);
   const [ctxMoveOpen, setCtxMoveOpen] = useState(false);
   const [ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
   const [ctxProjectMoveWorkspaceId, setCtxProjectMoveWorkspaceId] = useState<string | null>(null);
-  const ctxMenuRef = useRef<HTMLDivElement | null>(null);
   const [ctxMenu, setCtxMenu] = useState<
     | { type: "session"; x: number; y: number; session: ChatSession }
     | { type: "project"; x: number; y: number; project: Project }
@@ -333,7 +331,6 @@ function SessionSidebar({
     setMoveMenuOpen(false);
     setBulkMoveWorkspaceId(null);
     setDragOverProjectId(null);
-    setDragOverRoot(false);
     setCtxMoveOpen(false);
     setCtxMoveWorkspaceId(null);
     setCtxProjectMoveWorkspaceId(null);
@@ -368,45 +365,11 @@ function SessionSidebar({
     }
   }
 
-  async function handleRootDrop(event: React.DragEvent) {
-    event.preventDefault();
-    event.stopPropagation();
-    setDragOverRoot(false);
-
-    const raw = event.dataTransfer.getData("application/x-chat-session-ids");
-    if (!raw) {
-      return;
-    }
-
-    try {
-      const sessionIds = JSON.parse(raw) as string[];
-      const sessionsToMove = sessionIds.filter((sessionId) => {
-        const session = sidebarSessions.find((item) => item.id === sessionId);
-        return session && session.project_id;
-      });
-      if (sessionsToMove.length === 0) {
-        return;
-      }
-
-      const workspaceId = sidebarSessions.find((s) => sessionsToMove.includes(s.id))?.workspace_id;
-      if (!workspaceId) {
-        return;
-      }
-
-      await moveSessionsToTarget(sessionsToMove, workspaceId, null);
-      setActiveProjectId(null);
-    } catch (error) {
-      console.error("Failed to drop chat to root:", error);
-    }
-  }
-
-  function renderWorkspaceMoveSubmenu(
-    workspaceId: string,
+  function renderSessionMoveSubmenu(
     onSelect: (workspaceId: string, projectId: string | null) => void,
   ) {
-    const workspaceProjects = projectsByWorkspace[workspaceId] ?? [];
     return (
-      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-lg">
+      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-lg">
         <button
           onClick={() => {
             const name = window.prompt("New workspace name")?.trim();
@@ -427,21 +390,43 @@ function SessionSidebar({
           <Plus size={11} /> Create workspace...
         </button>
         <div className="my-1 border-t border-[var(--border-color)]" />
-        <button
-          onClick={() => onSelect(workspaceId, null)}
-          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-        >
-          <MessageSquare size={11} /> Workspace
-        </button>
-        {workspaceProjects.map((project) => (
-          <button
-            key={project.id}
-            onClick={() => onSelect(workspaceId, project.id)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-          >
-            <Folder size={11} /> <span className="truncate">{project.name}</span>
-          </button>
-        ))}
+        {workspaces.map((workspace) => {
+          const workspaceProjects = projectsByWorkspace[workspace.id] ?? [];
+          return (
+            <div
+              key={workspace.id}
+              className="relative"
+              onMouseEnter={() => setCtxMoveWorkspaceId(workspace.id)}
+            >
+              <button
+                onClick={() => setCtxMoveWorkspaceId((current) => current === workspace.id ? null : workspace.id)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <span className="truncate flex-1">{workspace.name}</span>
+                <ChevronRight size={11} />
+              </button>
+              {ctxMoveWorkspaceId === workspace.id && (
+                <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-lg">
+                  <button
+                    onClick={() => onSelect(workspace.id, null)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    <MessageSquare size={11} /> Workspace root
+                  </button>
+                  {workspaceProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      onClick={() => onSelect(workspace.id, project.id)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                    >
+                      <Folder size={11} /> <span className="truncate">{project.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -451,7 +436,7 @@ function SessionSidebar({
     onSelect: (workspaceId: string) => void,
   ) {
     return (
-      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-lg">
+      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-lg">
         <button
           onClick={() => {
             const name = window.prompt("New workspace name")?.trim();
@@ -513,23 +498,6 @@ function SessionSidebar({
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [ctxMenu]);
-
-  useLayoutEffect(() => {
-    if (!ctxMenu || !ctxMenuRef.current) {return;}
-    const el = ctxMenuRef.current;
-    const rect = el.getBoundingClientRect();
-    const pad = 8;
-    let x = ctxMenu.x;
-    let y = ctxMenu.y;
-    if (rect.right > window.innerWidth - pad) { x = window.innerWidth - rect.width - pad; }
-    if (rect.bottom > window.innerHeight - pad) { y = window.innerHeight - rect.height - pad; }
-    if (x < pad) { x = pad; }
-    if (y < pad) { y = pad; }
-    if (x !== ctxMenu.x || y !== ctxMenu.y) {
-      el.style.left = `${x}px`;
-      el.style.top = `${y}px`;
-    }
   }, [ctxMenu]);
 
   return (
@@ -603,30 +571,85 @@ function SessionSidebar({
                 {bulkActionPending === "move" ? "Moving..." : "Move"}
               </button>
               {moveMenuOpen && bulkActionPending === null && (
-                <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-lg">
-                  {workspaces.map((workspace) => (
-                    <div
-                      key={workspace.id}
-                      className="relative"
-                      onMouseEnter={() => setBulkMoveWorkspaceId(workspace.id)}
-                    >
-                      <button
-                        onClick={() => setBulkMoveWorkspaceId((current) => current === workspace.id ? null : workspace.id)}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      >
-                        <span className="truncate flex-1">{workspace.name}</span>
-                        <ChevronRight size={11} />
-                      </button>
-                      {bulkMoveWorkspaceId === workspace.id && renderWorkspaceMoveSubmenu(workspace.id, (targetWorkspaceId, targetProjectId) => {
-                        setBulkActionPending("move");
-                        void moveSessionsToTarget(Array.from(selectedIds), targetWorkspaceId, targetProjectId).then(() => {
-                          resetSelectionState();
-                        }).finally(() => {
-                          setBulkActionPending(null);
+                <div className="absolute left-0 top-full z-20 mt-1 w-44 max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-lg">
+                  <button
+                    onClick={() => {
+                      const name = window.prompt("New workspace name")?.trim();
+                      if (!name) {return;}
+                      void createWorkspaceForMove(name)
+                        .then((workspace) => {
+                          setBulkActionPending("move");
+                          void moveSessionsToTarget(Array.from(selectedIds), workspace.id, null).then(() => {
+                            resetSelectionState();
+                          }).finally(() => {
+                            setBulkActionPending(null);
+                          });
+                        })
+                        .catch((error) => {
+                          const description = error instanceof Error
+                            ? error.message
+                            : typeof error === "string" && error.trim()
+                              ? error
+                              : "Failed to create workspace.";
+                          showAlertDialog("Create workspace failed", description, "danger");
                         });
-                      })}
-                    </div>
-                  ))}
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    <Plus size={11} /> Create workspace...
+                  </button>
+                  <div className="my-1 border-t border-[var(--border-color)]" />
+                  {workspaces.map((workspace) => {
+                    const workspaceProjects = projectsByWorkspace[workspace.id] ?? [];
+                    return (
+                      <div
+                        key={workspace.id}
+                        className="relative"
+                        onMouseEnter={() => setBulkMoveWorkspaceId(workspace.id)}
+                      >
+                        <button
+                          onClick={() => setBulkMoveWorkspaceId((current) => current === workspace.id ? null : workspace.id)}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        >
+                          <span className="truncate flex-1">{workspace.name}</span>
+                          <ChevronRight size={11} />
+                        </button>
+                        {bulkMoveWorkspaceId === workspace.id && (
+                          <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-lg">
+                            <button
+                              onClick={() => {
+                                setBulkActionPending("move");
+                                void moveSessionsToTarget(Array.from(selectedIds), workspace.id, null).then(() => {
+                                  resetSelectionState();
+                                }).finally(() => {
+                                  setBulkActionPending(null);
+                                });
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                            >
+                              <MessageSquare size={11} /> Workspace root
+                            </button>
+                            {workspaceProjects.map((project) => (
+                              <button
+                                key={project.id}
+                                onClick={() => {
+                                  setBulkActionPending("move");
+                                  void moveSessionsToTarget(Array.from(selectedIds), workspace.id, project.id).then(() => {
+                                    resetSelectionState();
+                                  }).finally(() => {
+                                    setBulkActionPending(null);
+                                  });
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                              >
+                                <Folder size={11} /> <span className="truncate">{project.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -730,41 +753,7 @@ function SessionSidebar({
       )}
 
       {/* Session list */}
-      <div
-        className="flex-1 overflow-y-auto"
-        onDragOver={(event) => {
-          if (selectMode || !event.dataTransfer.types.includes("application/x-chat-session-ids")) {
-            return;
-          }
-          const target = event.target as HTMLElement;
-          if (target.closest("[data-project-drop-zone]")) {
-            return;
-          }
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-          setDragOverRoot(true);
-        }}
-        onDragLeave={(event) => {
-          const related = event.relatedTarget as Node | null;
-          if (related && event.currentTarget.contains(related)) {
-            return;
-          }
-          setDragOverRoot(false);
-        }}
-        onDrop={(event) => {
-          const target = event.target as HTMLElement;
-          if (target.closest("[data-project-drop-zone]")) {
-            return;
-          }
-          void handleRootDrop(event);
-        }}
-      >
-        {dragOverRoot && projects.length > 0 && (
-          <div className="mx-2 mt-1 mb-1 flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--accent-color)] bg-[var(--accent-color)]/5 px-3 py-1.5">
-            <Inbox size={12} className="text-[var(--accent-color)]" />
-            <span className={`text-[var(--accent-color)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}>Drop here to move to workspace root</span>
-          </div>
-        )}
+      <div className="flex-1 overflow-y-auto">
         {visibleSessions.length === 0 && projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-3">
             <MessageSquare size={isSplitPane ? 22 : 20} className="text-[var(--text-muted)] opacity-30" />
@@ -781,7 +770,7 @@ function SessionSidebar({
               const projectSessions = byProject[project.id] ?? [];
               const isOpen = expanded[project.id] ?? true;
               return (
-                <div key={project.id} data-project-drop-zone>
+                <div key={project.id}>
                   <button
                     onContextMenu={(event) => {
                       event.preventDefault();
@@ -906,9 +895,8 @@ function SessionSidebar({
 
       {ctxMenu && (
         <div
-          ref={ctxMenuRef}
           data-chat-tree-context-menu
-          className="fixed z-50 min-w-[180px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-xl"
+          className="fixed z-50 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
         >
           {ctxMenu.type === "session" ? (
@@ -973,63 +961,20 @@ function SessionSidebar({
                   <span className="truncate flex-1">Move to</span>
                   <ChevronRight size={11} />
                 </button>
-                {ctxMoveOpen && (
-                  <div className="absolute left-full top-0 z-60 ml-1 min-w-[180px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-lg">
-                    <button
-                      onClick={() => {
-                        const name = window.prompt("New workspace name")?.trim();
-                        if (!name) {return;}
-                        void createWorkspaceForMove(name)
-                          .then((workspace) => {
-                            void moveSessionsToTarget([ctxMenu.session.id], workspace.id, null);
-                            setCtxMoveOpen(false);
-                            setCtxMenu(null);
-                          })
-                          .catch((error) => {
-                            const description = error instanceof Error
-                              ? error.message
-                              : typeof error === "string" && error.trim()
-                                ? error
-                                : "Failed to create workspace.";
-                            showAlertDialog("Create workspace failed", description, "danger");
-                          });
-                      }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                    >
-                      <Plus size={11} /> Create workspace...
-                    </button>
-                    <div className="my-1 border-t border-[var(--border-color)]" />
-                    {workspaces.map((workspace) => (
-                      <div
-                        key={workspace.id}
-                        className="relative"
-                        onMouseEnter={() => setCtxMoveWorkspaceId(workspace.id)}
-                      >
-                        <button
-                          onClick={() => setCtxMoveWorkspaceId((current) => current === workspace.id ? null : workspace.id)}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                        >
-                          <span className="truncate flex-1">{workspace.name}</span>
-                          <ChevronRight size={11} />
-                        </button>
-                        {ctxMoveWorkspaceId === workspace.id && renderWorkspaceMoveSubmenu(workspace.id, (targetWorkspaceId, targetProjectId) => {
-                          void moveSessionsToTarget([ctxMenu.session.id], targetWorkspaceId, targetProjectId).catch((error) => {
-                            const description = error instanceof Error
-                              ? error.message
-                              : typeof error === "string" && error.trim()
-                                ? error
-                                : "Failed to move chat.";
-                            console.error("Failed to move chat:", error);
-                            showAlertDialog("Move failed", description, "danger");
-                          });
-                          setCtxMoveWorkspaceId(null);
-                          setCtxMoveOpen(false);
-                          setCtxMenu(null);
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {ctxMoveOpen && renderSessionMoveSubmenu((targetWorkspaceId, targetProjectId) => {
+                  void moveSessionsToTarget([ctxMenu.session.id], targetWorkspaceId, targetProjectId).catch((error) => {
+                    const description = error instanceof Error
+                      ? error.message
+                      : typeof error === "string" && error.trim()
+                        ? error
+                        : "Failed to move chat.";
+                    console.error("Failed to move chat:", error);
+                    showAlertDialog("Move failed", description, "danger");
+                  });
+                  setCtxMoveWorkspaceId(null);
+                  setCtxMoveOpen(false);
+                  setCtxMenu(null);
+                })}
               </div>
               <div className="my-1 border-t border-[var(--border-color)]" />
               <button
