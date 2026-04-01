@@ -13,7 +13,10 @@ pub async fn process_auto_memory_extraction(state: &DbState, ollama_url: Option<
             "SELECT id, workspace_id, project_id FROM chat_sessions 
              WHERE updated_at > datetime('now', '-5 minutes') 
              AND is_incognito = 0
-             AND exclude_from_analytics = 0"
+             AND exclude_from_analytics = 0
+             AND is_imported = 0
+             ORDER BY updated_at DESC
+             LIMIT 5"
         ).unwrap();
         stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
@@ -110,7 +113,7 @@ pub async fn extract_and_store_memories(
         return Ok(());
     };
 
-    if let Ok(response) = client.send_message(&model, msgs).await {
+    if let Ok(response) = client.send_message_with_options(&model, msgs, Some("0s")).await {
         // Parse JSON
         if let Some(start) = response.find('[') {
             if let Some(end) = response.rfind(']') {
@@ -119,7 +122,7 @@ pub async fn extract_and_store_memories(
                     // Generate embeddings and check dedup OUTSIDE the lock
                     let mut new_memories: Vec<(String, String, Vec<u8>)> = Vec::new();
                     for fact in facts {
-                        let embedding = if let Ok(emb) = client.generate_embedding(&embedding_model, &fact).await {
+                        let embedding = if let Ok(emb) = client.generate_embedding_with_options(&embedding_model, &fact, Some("0s")).await {
                             emb
                         } else {
                             continue;

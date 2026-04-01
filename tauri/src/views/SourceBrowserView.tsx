@@ -2,7 +2,7 @@
  * SourceBrowserView — unified browser for documents and web captures.
  * Displays sources in a collapsible folder tree with token counts.
  */
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from "react";
 import { Upload, Globe, Trash2, Cpu, X, Search, ExternalLink, FolderOpen, Folder, ChevronRight, MoreHorizontal, File, FolderPlus, Pencil } from "lucide-react";
 import { api, type Source } from "../lib/api";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -84,10 +84,27 @@ function ContextMenu({ x, y, source, onClose, onDelete, onProcess, onRename, onM
     return () => document.removeEventListener("mousedown", handleClick);
   }, [onClose]);
 
+  useLayoutEffect(() => {
+    if (!ref.current) {return;}
+    const el = ref.current;
+    const rect = el.getBoundingClientRect();
+    const pad = 8;
+    let nx = x;
+    let ny = y;
+    if (rect.right > window.innerWidth - pad) { nx = window.innerWidth - rect.width - pad; }
+    if (rect.bottom > window.innerHeight - pad) { ny = window.innerHeight - rect.height - pad; }
+    if (nx < pad) { nx = pad; }
+    if (ny < pad) { ny = pad; }
+    if (nx !== x || ny !== y) {
+      el.style.left = `${nx}px`;
+      el.style.top = `${ny}px`;
+    }
+  }, [x, y]);
+
   return (
     <div
       ref={ref}
-      className="fixed z-50 min-w-[160px] py-1 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-lg shadow-xl"
+      className="fixed z-50 min-w-[160px] py-1 bg-[var(--bg-elevated)] backdrop-blur-xl border border-[var(--border-color)] rounded-lg shadow-xl"
       style={{ left: x, top: y }}
     >
       <button
