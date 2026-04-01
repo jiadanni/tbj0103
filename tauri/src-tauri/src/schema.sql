@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     exclude_from_analytics INTEGER NOT NULL DEFAULT 0,
     is_deleted INTEGER NOT NULL DEFAULT 0,
     deleted_at TEXT,
+    is_imported INTEGER NOT NULL DEFAULT 0,
     parent_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
     branch_message_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),

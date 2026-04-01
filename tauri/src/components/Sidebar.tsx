@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -44,6 +44,23 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
       window.removeEventListener("contextmenu", handlePointerDown);
       window.removeEventListener("keydown", handleEscape);
     };
+  }, [contextMenu]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) {return;}
+    const el = contextMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const pad = 8;
+    let x = contextMenu.x;
+    let y = contextMenu.y;
+    if (rect.right > window.innerWidth - pad) { x = window.innerWidth - rect.width - pad; }
+    if (rect.bottom > window.innerHeight - pad) { y = window.innerHeight - rect.height - pad; }
+    if (x < pad) { x = pad; }
+    if (y < pad) { y = pad; }
+    if (x !== contextMenu.x || y !== contextMenu.y) {
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+    }
   }, [contextMenu]);
 
   if (workspaceNavigation !== "sidebar") {
@@ -112,7 +129,7 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
         <div
           ref={contextMenuRef}
           data-sidebar-section-context-menu
-          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
+          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button

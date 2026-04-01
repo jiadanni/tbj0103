@@ -8,6 +8,16 @@ pub async fn generate_rolling_summary(
     workspace_id: &str,
     ollama_url: Option<String>,
 ) -> Result<(), String> {
+    // Skip imported sessions that haven't received new messages
+    {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let is_imported: i64 = conn.query_row(
+            "SELECT is_imported FROM chat_sessions WHERE id = ?1",
+            rusqlite::params![session_id],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        if is_imported != 0 { return Ok(()); }
+    }
     // 1. Get messages that need summarization
     let messages: Vec<(String, String, String)> = {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
@@ -61,7 +71,7 @@ pub async fn generate_rolling_summary(
         return Ok(());
     };
 
-    if let Ok(summary_content) = client.send_message(&model, msgs).await {
+    if let Ok(summary_content) = client.send_message_with_options(&model, msgs, Some("0s")).await {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();

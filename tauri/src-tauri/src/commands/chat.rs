@@ -318,7 +318,7 @@ pub fn add_message(state: State<DbState>, req: AddMessageRequest) -> Result<Mess
 
     let now = chrono::Utc::now().to_rfc3339();
     let _ = conn.execute(
-        "UPDATE chat_sessions SET updated_at = ?1 WHERE id = ?2",
+        "UPDATE chat_sessions SET updated_at = ?1, is_imported = 0 WHERE id = ?2",
         rusqlite::params![now, req.session_id],
     );
     Ok(msg)

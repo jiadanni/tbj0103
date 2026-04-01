@@ -30,7 +30,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "rpm"],
+    "targets": ["app", "dmg", "appimage", "deb", "rpm", "msi", "nsis"],
     "resources": [
       "resources/playwright-runner.js"
     ],

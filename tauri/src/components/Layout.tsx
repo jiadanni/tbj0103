@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, Suspense } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, Suspense } from "react";
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   Panel, PanelGroup, PanelResizeHandle,
@@ -111,6 +111,23 @@ function WorkspaceTabBar() {
       window.removeEventListener("contextmenu", handlePointerDown);
       window.removeEventListener("keydown", handleEscape);
     };
+  }, [contextMenu]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) {return;}
+    const el = contextMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const pad = 8;
+    let x = contextMenu.x;
+    let y = contextMenu.y;
+    if (rect.right > window.innerWidth - pad) { x = window.innerWidth - rect.width - pad; }
+    if (rect.bottom > window.innerHeight - pad) { y = window.innerHeight - rect.height - pad; }
+    if (x < pad) { x = pad; }
+    if (y < pad) { y = pad; }
+    if (x !== contextMenu.x || y !== contextMenu.y) {
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+    }
   }, [contextMenu]);
 
   return (
@@ -238,7 +255,7 @@ function WorkspaceTabBar() {
         <div
           ref={contextMenuRef}
           data-workspace-context-menu
-          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
+          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
@@ -314,6 +331,23 @@ function NavigationTabBar() {
     };
   }, [contextMenu]);
 
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) {return;}
+    const el = contextMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const pad = 8;
+    let x = contextMenu.x;
+    let y = contextMenu.y;
+    if (rect.right > window.innerWidth - pad) { x = window.innerWidth - rect.width - pad; }
+    if (rect.bottom > window.innerHeight - pad) { y = window.innerHeight - rect.height - pad; }
+    if (x < pad) { x = pad; }
+    if (y < pad) { y = pad; }
+    if (x !== contextMenu.x || y !== contextMenu.y) {
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+    }
+  }, [contextMenu]);
+
   const renderItem = (
     item: NavigationItem,
     Icon: LucideIcon,
@@ -352,7 +386,7 @@ function NavigationTabBar() {
         <div
           ref={contextMenuRef}
           data-section-context-menu
-          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
+          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button

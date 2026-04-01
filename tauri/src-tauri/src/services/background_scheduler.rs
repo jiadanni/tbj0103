@@ -57,7 +57,10 @@ pub fn start_scheduler(app: AppHandle) {
                             "SELECT cs.id, cs.workspace_id FROM chat_sessions cs
                              WHERE cs.updated_at > datetime('now', '-5 minutes')
                                AND cs.is_incognito = 0
-                               AND cs.exclude_from_analytics = 0"
+                               AND cs.exclude_from_analytics = 0
+                               AND cs.is_imported = 0
+                             ORDER BY cs.updated_at DESC
+                             LIMIT 5"
                         ) {
                             Ok(mut stmt) => stmt
                                 .query_map([], |row| {
