@@ -29,10 +29,12 @@ fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatSession> {
         exclude_from_analytics: row.get::<_, i32>(8)? != 0,
         is_deleted: row.get::<_, i32>(9)? != 0,
         deleted_at: row.get(10)?,
-        parent_session_id: row.get(11)?,
-        branch_message_id: row.get(12)?,
-        created_at: row.get(13)?,
-        updated_at: row.get(14)?,
+        last_accessed_at: row.get(11)?,
+        is_imported: row.get::<_, i32>(12)? != 0,
+        parent_session_id: row.get(13)?,
+        branch_message_id: row.get(14)?,
+        created_at: row.get(15)?,
+        updated_at: row.get(16)?,
     })
 }
 
@@ -58,8 +60,9 @@ pub fn create_chat_session(state: State<DbState>, req: CreateChatSessionRequest)
         "INSERT INTO chat_sessions (
             id, workspace_id, project_id, title, model_name, system_prompt,
             is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-            parent_session_id, branch_message_id, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            last_accessed_at, is_imported, parent_session_id, branch_message_id,
+            created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         rusqlite::params![
             session.id,
             session.workspace_id,
@@ -72,6 +75,8 @@ pub fn create_chat_session(state: State<DbState>, req: CreateChatSessionRequest)
             session.exclude_from_analytics as i32,
             session.is_deleted as i32,
             session.deleted_at,
+            session.last_accessed_at,
+            session.is_imported as i32,
             session.parent_session_id,
             session.branch_message_id,
             session.created_at,
@@ -97,7 +102,8 @@ pub fn list_chat_sessions(
     let sql = if project_id.is_empty() {
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-                parent_session_id, branch_message_id, created_at, updated_at
+                last_accessed_at, is_imported, parent_session_id, branch_message_id,
+                created_at, updated_at
          FROM chat_sessions
          WHERE workspace_id = ?1 AND is_deleted = 0
          ORDER BY is_pinned DESC, updated_at DESC
@@ -105,7 +111,8 @@ pub fn list_chat_sessions(
     } else {
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-                parent_session_id, branch_message_id, created_at, updated_at
+                last_accessed_at, is_imported, parent_session_id, branch_message_id,
+                created_at, updated_at
          FROM chat_sessions
          WHERE workspace_id = ?1 AND project_id = ?2 AND is_deleted = 0
          ORDER BY is_pinned DESC, updated_at DESC
@@ -133,7 +140,8 @@ pub fn search_chat_sessions(
     let sql = if req.project_id.as_deref().unwrap_or_default().is_empty() {
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-                parent_session_id, branch_message_id, created_at, updated_at
+                last_accessed_at, is_imported, parent_session_id, branch_message_id,
+                created_at, updated_at
          FROM chat_sessions
          WHERE workspace_id = ?1 AND is_deleted = 0
            AND (title LIKE ?2 OR model_name LIKE ?2)
@@ -141,7 +149,8 @@ pub fn search_chat_sessions(
     } else {
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-                parent_session_id, branch_message_id, created_at, updated_at
+                last_accessed_at, is_imported, parent_session_id, branch_message_id,
+                created_at, updated_at
          FROM chat_sessions
          WHERE workspace_id = ?1 AND project_id = ?2 AND is_deleted = 0
            AND (title LIKE ?3 OR model_name LIKE ?3)
@@ -165,7 +174,8 @@ pub fn get_chat_session(state: State<DbState>, id: String) -> Result<Option<Chat
     let result = conn.query_row(
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-                parent_session_id, branch_message_id, created_at, updated_at
+                last_accessed_at, is_imported, parent_session_id, branch_message_id,
+                created_at, updated_at
          FROM chat_sessions WHERE id = ?1",
         rusqlite::params![id],
         row_to_session,
@@ -209,7 +219,8 @@ pub fn list_deleted_chat_sessions(state: State<DbState>, workspace_id: String) -
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-                parent_session_id, branch_message_id, created_at, updated_at
+                last_accessed_at, is_imported, parent_session_id, branch_message_id,
+                created_at, updated_at
          FROM chat_sessions
          WHERE workspace_id = ?1 AND is_deleted = 1
          ORDER BY deleted_at DESC, updated_at DESC"
@@ -406,5 +417,41 @@ pub fn get_token_usage_by_date(
             total_tokens: row.get(1)?,
         })
     }).map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn touch_session_accessed(state: State<DbState>, session_id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE chat_sessions SET last_accessed_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, session_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_recent_sessions(
+    state: State<DbState>,
+    workspace_id: String,
+    limit: Option<i64>,
+) -> Result<Vec<ChatSession>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let limit = limit.unwrap_or(10).clamp(1, 100);
+    let mut stmt = conn.prepare(
+        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+                is_incognito, exclude_from_analytics, is_deleted, deleted_at,
+                last_accessed_at, is_imported, parent_session_id, branch_message_id,
+                created_at, updated_at
+         FROM chat_sessions
+         WHERE workspace_id = ?1 AND is_deleted = 0
+         ORDER BY last_accessed_at DESC
+         LIMIT ?2"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![workspace_id, limit], row_to_session)
+        .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }

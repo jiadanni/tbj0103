@@ -37,6 +37,8 @@ function makeSession(overrides: Partial<ChatSession> = {}): ChatSession {
     is_incognito: false,
     exclude_from_analytics: false,
     is_deleted: false,
+    last_accessed_at: "2024-01-01T00:00:00Z",
+    is_imported: false,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
     ...overrides,

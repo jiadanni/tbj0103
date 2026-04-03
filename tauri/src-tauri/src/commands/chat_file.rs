@@ -218,7 +218,7 @@ pub fn import_chat_from_json(
     let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, &session_id, pass.as_deref());
 
     conn.query_row(
-        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, parent_session_id, branch_message_id, created_at, updated_at
+        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, last_accessed_at, is_imported, parent_session_id, branch_message_id, created_at, updated_at
          FROM chat_sessions WHERE id = ?1",
         rusqlite::params![session_id],
         |row| {
@@ -234,10 +234,12 @@ pub fn import_chat_from_json(
                 exclude_from_analytics: row.get::<_, i32>(8)? != 0,
                 is_deleted: row.get::<_, i32>(9)? != 0,
                 deleted_at: row.get(10)?,
-                parent_session_id: row.get(11)?,
-                branch_message_id: row.get(12)?,
-                created_at: row.get(13)?,
-                updated_at: row.get(14)?,
+                last_accessed_at: row.get(11)?,
+                is_imported: row.get::<_, i32>(12)? != 0,
+                parent_session_id: row.get(13)?,
+                branch_message_id: row.get(14)?,
+                created_at: row.get(15)?,
+                updated_at: row.get(16)?,
             })
         },
     )

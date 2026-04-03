@@ -417,6 +417,7 @@ export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const navigate = useNavigate();
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
 
   // Global Cmd+K shortcut
   useEffect(() => {
@@ -434,6 +435,7 @@ export default function Layout() {
     <div className="flex flex-col h-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
       {commandPaletteOpen && (
         <CommandPalette
+          workspaceId={activeWorkspaceId ?? ""}
           onClose={() => setCommandPaletteOpen(false)}
           onNavigate={(path: string) => { navigate(path); setCommandPaletteOpen(false); }}
         />

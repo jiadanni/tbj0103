@@ -712,5 +712,20 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v32: add last_accessed_at column to chat_sessions
+    let applied_v32: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v32_chat_sessions_last_accessed_at'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v32 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE chat_sessions ADD COLUMN last_accessed_at TEXT;",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v32_chat_sessions_last_accessed_at');",
+        )?;
+    }
+
     Ok(())
 }
