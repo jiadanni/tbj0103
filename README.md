@@ -34,6 +34,7 @@ The Tauri port is the primary development target and receives all new features.
 - Upload documents (PDF, TXT, Markdown, HTML, RTF)
 - Capture web pages; audio transcriptions via macOS Speech framework
 - Chat session history with rename / soft-delete
+- **Import chat histories** from other platforms (LM Studio, Google Gemini Takeout)
 - **Chat Recycle Bin**: Restore deleted chats or permanently erase them
 - Model comparison view to benchmark responses side-by-side
 - AI-generated study guides and quizzes
