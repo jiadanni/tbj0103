@@ -313,7 +313,7 @@ export const api = {
   },
 
   project: {
-    create: (workspaceId: string, name: string, opts?: Partial<{ project_description: string; color: string; icon: string }>) =>
+    create: (workspaceId: string, name: string, opts?: Partial<{ project_description: string; custom_instructions: string; color: string; icon: string }>) =>
       invoke<Project>("create_project", { req: { workspace_id: workspaceId, name, ...opts } }),
     list: (workspaceId: string) => invoke<Project[]>("list_projects", { workspaceId }),
     get: (id: string) => invoke<Project | null>("get_project", { id }),
@@ -335,6 +335,11 @@ export const api = {
       invoke<void>("update_chat_session", { workspaceId, id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt }),
     moveSessions: (sessionIds: string[], targetWorkspaceId: string, targetProjectId?: string) =>
       invoke<void>("move_chat_sessions", { sessionIds, targetWorkspaceId, targetProjectId }),
+    batchMoveSessions: (sessionIds: string[], targetWorkspaceId: string, preserveFolderStructure: boolean) =>
+      invoke<{ sessions_moved: number; projects_created: string[]; project_mapping: Record<string, string> }>(
+        "batch_move_sessions",
+        { req: { session_ids: sessionIds, target_workspace_id: targetWorkspaceId, preserve_folder_structure: preserveFolderStructure } }
+      ),
     listDeletedSessions: (workspaceId: string) => invoke<ChatSession[]>("list_deleted_chat_sessions", { workspaceId }),
     restoreSession: (workspaceId: string, id: string) => invoke<void>("restore_chat_session", { workspaceId, id }),
     hardDeleteSession: (workspaceId: string, id: string) => invoke<void>("hard_delete_chat_session", { workspaceId, id }),
