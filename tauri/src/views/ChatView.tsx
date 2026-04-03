@@ -1893,7 +1893,7 @@ export default function ChatView() {
     }, trimmedQuery ? 150 : 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [effectiveWorkspaceId, sessionQuery, sessions]);
+  }, [effectiveWorkspaceId, sessionQuery]);
 
   async function refreshProjectTree(workspaceId: string) {
     const refreshedProjects = await api.project.list(workspaceId);
@@ -1905,39 +1905,6 @@ export default function ChatView() {
   async function refreshScopedSessions(workspaceId: string, projectId: string | null) {
     const refreshedSessions = await api.chat.listSessions(workspaceId, projectId, { limit: 200, offset: 0 });
     setSessions(refreshedSessions);
-  }
-
-  async function ensureProjectInWorkspace(
-    targetWorkspaceId: string,
-    sourceProjectId: string,
-  ): Promise<string | null> {
-    const sourceProject = projects.find((project) => project.id === sourceProjectId);
-    if (!sourceProject) {return null;}
-
-    let targetProjects = projectsByWorkspace[targetWorkspaceId];
-    if (!targetProjects) {
-      targetProjects = await api.project.list(targetWorkspaceId);
-      setProjectsForWorkspace(targetWorkspaceId, targetProjects);
-    }
-
-    const normalizedName = sourceProject.name.trim().toLowerCase();
-    const existingProject = targetProjects.find((project) => project.name.trim().toLowerCase() === normalizedName);
-    if (existingProject) {
-      return existingProject.id;
-    }
-
-    const createdProject = await api.project.create(targetWorkspaceId, sourceProject.name, {
-      project_description: sourceProject.project_description,
-      color: sourceProject.color,
-      icon: sourceProject.icon,
-    });
-    await api.project.update(createdProject.id, {
-      custom_instructions: sourceProject.custom_instructions,
-    });
-
-    const nextProjects = [...targetProjects, { ...createdProject, custom_instructions: sourceProject.custom_instructions }];
-    setProjectsForWorkspace(targetWorkspaceId, nextProjects);
-    return createdProject.id;
   }
 
   async function bulkDeleteSessions(sessionIds: string[], projectIds: string[] = []) {
@@ -2721,52 +2688,50 @@ export default function ChatView() {
   async function moveSessionsToTarget(sessionIds: string[], workspaceId: string, projectId: string | null) {
     if (sessionIds.length === 0) {return;}
     const sessionIdSet = new Set(sessionIds);
-    const shouldPreserveProjectStructure = workspaceId !== effectiveWorkspaceId && projectId === null;
-    let destinationProjectIdForView = projectId;
+    const isCrossWorkspaceMove = workspaceId !== effectiveWorkspaceId;
+    const shouldPreserveProjectStructure = isCrossWorkspaceMove && projectId === null;
 
-    if (shouldPreserveProjectStructure) {
-      const selectedSessions = sidebarSessions.filter((session) => sessionIdSet.has(session.id));
-      const rootSessionIds = selectedSessions
-        .filter((session) => !session.project_id)
-        .map((session) => session.id);
-      const sessionIdsByProject = new Map<string, string[]>();
-
-      for (const session of selectedSessions) {
-        if (!session.project_id) {continue;}
-        const ids = sessionIdsByProject.get(session.project_id) ?? [];
-        ids.push(session.id);
-        sessionIdsByProject.set(session.project_id, ids);
-      }
-
-      setScopedWorkspaceId(workspaceId);
-      if (rootSessionIds.length === 0 && sessionIdsByProject.size === 1) {
-        const [sourceProjectId] = sessionIdsByProject.keys();
-        destinationProjectIdForView = await ensureProjectInWorkspace(workspaceId, sourceProjectId);
-        setScopedProjectId(destinationProjectIdForView);
-      } else {
-        destinationProjectIdForView = null;
-        setScopedProjectId(null);
-      }
-
-      if (rootSessionIds.length > 0) {
-        await api.chat.moveSessions(rootSessionIds, workspaceId, undefined);
-      }
-
-      for (const [sourceProjectId, groupedSessionIds] of sessionIdsByProject) {
-        const targetProjectId = await ensureProjectInWorkspace(workspaceId, sourceProjectId);
-        await api.chat.moveSessions(groupedSessionIds, workspaceId, targetProjectId ?? undefined);
-      }
-    } else {
-      if (workspaceId !== effectiveWorkspaceId) {
-        setScopedWorkspaceId(workspaceId);
-        setScopedProjectId(projectId);
-      }
-      await api.chat.moveSessions(sessionIds, workspaceId, projectId ?? undefined);
+    // Optimistic UI update: remove from source immediately
+    if (isCrossWorkspaceMove) {
+      setSidebarSessions((prev) => prev.filter((session) => !sessionIdSet.has(session.id)));
+      setSessions(sessions.filter((session) => !sessionIdSet.has(session.id)));
     }
 
-    const isSameWorkspaceMove = workspaceId === effectiveWorkspaceId;
-
-    if (isSameWorkspaceMove) {
+    if (isCrossWorkspaceMove && shouldPreserveProjectStructure) {
+      // Use batch move: single IPC call handles project lookup/create + all moves
+      const result = await api.chat.batchMoveSessions(sessionIds, workspaceId, true);
+      
+      // Determine which project to navigate to
+      const mappedProjectIds = Object.values(result.project_mapping);
+      const destinationProjectIdForView = mappedProjectIds.length === 1 ? mappedProjectIds[0] : null;
+      
+      setScopedWorkspaceId(workspaceId);
+      setScopedProjectId(destinationProjectIdForView);
+      
+      // Refresh only the destination workspace tree (source already updated optimistically)
+      await refreshProjectTree(workspaceId);
+      
+      if (activeChatId && sessionIds.includes(activeChatId)) {
+        setActiveChatId(sessionIds.length === 1 ? activeChatId : null);
+      }
+    } else if (isCrossWorkspaceMove) {
+      // Cross-workspace move to specific project or root
+      await api.chat.moveSessions(sessionIds, workspaceId, projectId ?? undefined);
+      
+      setScopedWorkspaceId(workspaceId);
+      setScopedProjectId(projectId);
+      
+      // Refresh only the destination workspace tree
+      await refreshProjectTree(workspaceId);
+      
+      if (activeChatId && sessionIds.includes(activeChatId)) {
+        setActiveChatId(sessionIds.length === 1 ? activeChatId : null);
+      }
+    } else {
+      // Same-workspace move
+      await api.chat.moveSessions(sessionIds, workspaceId, projectId ?? undefined);
+      
+      // Optimistic local update for same-workspace
       setScopedProjectId(projectId);
       setSidebarSessions((prev) => prev.map((session) => (
         sessionIdSet.has(session.id)
@@ -2778,27 +2743,11 @@ export default function ChatView() {
           ? { ...session, workspace_id: workspaceId, project_id: projectId ?? "" }
           : session
       )));
-    } else {
-      setSidebarSessions((prev) => prev.filter((session) => !sessionIdSet.has(session.id)));
-      setSessions(sessions.filter((session) => !sessionIdSet.has(session.id)));
-    }
-
-    if (effectiveWorkspaceId) {
-      await Promise.all([
-        refreshProjectTree(effectiveWorkspaceId),
-        refreshScopedSessions(
-          effectiveWorkspaceId,
-          isSameWorkspaceMove ? projectId : effectiveProjectId,
-        ),
-      ]);
-    }
-    if (activeChatId && sessionIds.includes(activeChatId) && workspaceId !== effectiveWorkspaceId) {
-      setActiveChatId(sessionIds.length === 1 ? activeChatId : null);
-    }
-    if (workspaceId !== effectiveWorkspaceId) {
-      await refreshProjectTree(workspaceId);
-      if (destinationProjectIdForView !== projectId) {
-        setScopedProjectId(destinationProjectIdForView);
+      
+      // Light refresh for project counts (sessions already updated optimistically)
+      if (effectiveWorkspaceId) {
+        const refreshedProjects = await api.project.list(effectiveWorkspaceId);
+        setProjectsForWorkspace(effectiveWorkspaceId, refreshedProjects);
       }
     }
   }
@@ -2818,11 +2767,9 @@ export default function ChatView() {
 
     const movedProject = await api.project.create(targetWorkspaceId, project.name, {
       project_description: project.project_description,
+      custom_instructions: project.custom_instructions,
       color: project.color,
       icon: project.icon,
-    });
-    await api.project.update(movedProject.id, {
-      custom_instructions: project.custom_instructions,
     });
     if (projectSessionIds.length > 0) {
       await api.chat.moveSessions(projectSessionIds, targetWorkspaceId, movedProject.id);

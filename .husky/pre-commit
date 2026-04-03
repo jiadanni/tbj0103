@@ -1,1 +1,0 @@
-cd tauri && npx lint-staged
