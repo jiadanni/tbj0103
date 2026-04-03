@@ -150,6 +150,9 @@ Each project's chat sessions should demonstrate a different capability:
 - [x] Markdown export
 - [x] JSON export
 - [x] Obsidian vault export
+- [x] LM Studio chat history import
+- [x] Google Gemini Takeout import (text-only)
+- [ ] Google Gemini Takeout import — **add support for parsing and copying attached media/images** into local storage
 - [ ] Standalone interactive HTML export — self-contained `.html` with embedded graph  ← **priority**
 - [ ] LaTeX export — `.tex` with citations and sectioning for academic papers
 - [ ] Notion import/export — push/pull via Notion API
