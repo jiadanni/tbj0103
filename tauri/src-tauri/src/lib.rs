@@ -178,6 +178,7 @@ pub fn run() {
             commands::chat::hard_delete_chat_session,
             commands::chat::empty_recycle_bin,
             commands::chat::move_chat_sessions,
+            commands::chat::batch_move_sessions,
             // Knowledge graph commands
             commands::knowledge_graph::create_concept,
             commands::knowledge_graph::list_concepts,
