@@ -1,0 +1,3 @@
+a25b520 chore: add husky pre-commit hook
+46982be perf(chat): optimize session/project move data flow
+007e94d feat: implement tab history in command palette

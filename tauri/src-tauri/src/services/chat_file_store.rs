@@ -703,6 +703,126 @@ pub fn reencrypt_all_files(
     Ok(count)
 }
 
+// ── Google Takeout (Gemini) parser ──────────────────────────────────────────
+
+pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>, String> {
+    let mut sessions: std::collections::BTreeMap<String, Vec<ChatFileMessage>> = std::collections::BTreeMap::new();
+    let re_date = regex::Regex::new(r"(\d{1,2} [A-Z][a-z]{2} \d{4}), (\d{2}:\d{2}:\d{2})").unwrap();
+    let re_tags = regex::Regex::new(r"<[^>]+>").unwrap();
+
+    // Split by the outer cell div
+    for part in html.split("<div class=\"outer-cell ") {
+        if !part.contains("Prompted") {
+            continue;
+        }
+
+        let prompt_start = match part.find("Prompted") {
+            Some(i) => i + 8,
+            None => continue,
+        };
+        let after_prompt = &part[prompt_start..];
+        
+        let trimmed = after_prompt.trim_start()
+            .trim_start_matches('\u{a0}')
+            .trim_start_matches("&#160;")
+            .trim_start_matches("&nbsp;")
+            .trim_start();
+        
+        let prompt_end = trimmed.find("<br>").unwrap_or(trimmed.len());
+        let prompt_text = &trimmed[..prompt_end];
+
+        if let Some(caps) = re_date.captures(trimmed) {
+            let date_str = caps.get(1).unwrap().as_str().to_string();
+            let time_str = caps.get(2).unwrap().as_str().to_string();
+            let date_match = caps.get(0).unwrap();
+
+            let after_date = &trimmed[date_match.end()..];
+            let mut assistant_html = after_date;
+            
+            // Skip the timezone/other meta info up to the response body
+            if let Some(idx) = assistant_html.find("<p>") {
+                assistant_html = &assistant_html[idx..];
+            } else if let Some(idx) = assistant_html.find("<br>") {
+                assistant_html = &assistant_html[idx+4..];
+            }
+            if let Some(idx) = assistant_html.find("</div></div></div>") {
+                assistant_html = &assistant_html[..idx];
+            } else if let Some(idx) = assistant_html.find("</div><div class=") {
+                assistant_html = &assistant_html[..idx];
+            } else if let Some(idx) = assistant_html.find("</div>") {
+                assistant_html = &assistant_html[..idx];
+            }
+
+            let safe_html = assistant_html
+                .replace("<br>", "\n")
+                .replace("</p>", "\n\n")
+                .replace("&nbsp;", " ")
+                .replace("&quot;", "\"")
+                .replace("&amp;", "&")
+                .replace("&#39;", "'")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">");
+            
+            let safe_text = re_tags.replace_all(&safe_html, "").to_string().trim().to_string();
+            let safe_prompt = prompt_text
+                .replace("&nbsp;", " ")
+                .replace("&quot;", "\"")
+                .replace("&amp;", "&")
+                .replace("&#39;", "'")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">");
+
+            let messages = sessions.entry(date_str.clone()).or_insert_with(Vec::new);
+            let id_prefix = uuid::Uuid::new_v4().to_string();
+            
+            // Because Gemini exports newest first, we push user then assistant.
+            // But we have to reverse the pairs later to make it chronological.
+            // A safer trick is to push (assistant, user) or we reverse them as a block later.
+            // Standard timeline: oldest at index 0. Here, latest is inserted first.
+            // Wait, we need the user/assistant pair to stay intact! 
+            // So we'll push the prompt and response, and at the end we will `messages.reverse()` 
+            // which flips their order. But wait - reversing [user1, assistant1, user2, assistant2] 
+            // becomes [assistant2, user2, assistant1, user1].
+            // That's bad! We want [user2, assistant2, user1, assistant1].
+            // To do this simply, we will insert at the beginning of the vector `Vec::insert(0)`
+            messages.insert(0, ChatFileMessage {
+                id: format!("{}-assistant", id_prefix),
+                role: "assistant".to_string(),
+                content: safe_text,
+                model: Some("gemini".to_string()),
+                tokens_used: None,
+                timestamp: format!("{}T{}+00:00", date_str, time_str),
+                duration_ms: None,
+            });
+            messages.insert(0, ChatFileMessage {
+                id: format!("{}-user", id_prefix),
+                role: "user".to_string(),
+                content: safe_prompt,
+                model: None,
+                tokens_used: None,
+                timestamp: format!("{}T{}+00:00", date_str, time_str),
+                duration_ms: None,
+            });
+        }
+    }
+
+    let mut result = Vec::new();
+    let now = chrono::Utc::now().to_rfc3339();
+    for (date, messages) in sessions {
+        result.push(ChatFileData {
+            id: uuid::Uuid::new_v4().to_string(),
+            title: format!("Gemini - {}", date),
+            model: "gemini".to_string(),
+            system_prompt: "".to_string(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            messages,
+        });
+    }
+    
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
