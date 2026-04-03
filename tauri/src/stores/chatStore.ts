@@ -23,6 +23,8 @@ export interface ChatSession {
   exclude_from_analytics: boolean;
   is_deleted: boolean;
   deleted_at?: string;
+  last_accessed_at?: string;
+  is_imported?: boolean;
   created_at: string;
   updated_at: string;
   title_generated_at?: string;
