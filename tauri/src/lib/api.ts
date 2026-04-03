@@ -344,6 +344,10 @@ export const api = {
     getMessages: (workspaceId: string, sessionId: string, limit?: number, offset?: number) => invoke<Message[]>("get_messages", { sessionId, limit, offset }),
     getTokenUsageByDate: (workspaceId: string, days?: number) =>
       invoke<{ day: string; total_tokens: number }[]>("get_token_usage_by_date", { workspaceId, days }),
+    touchSessionAccessed: (sessionId: string) =>
+      invoke<void>("touch_session_accessed", { sessionId }),
+    getRecentSessions: (workspaceId: string, limit?: number) =>
+      invoke<ChatSession[]>("get_recent_sessions", { workspaceId, limit }),
   },
 
   chatFile: {

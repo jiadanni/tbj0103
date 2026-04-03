@@ -278,6 +278,8 @@ pub fn run() {
             // Chat session update
             commands::chat::update_chat_session,
             commands::chat::get_token_usage_by_date,
+            commands::chat::touch_session_accessed,
+            commands::chat::get_recent_sessions,
             // Project stats
             commands::project::get_project_stats,
             // Web capture commands
