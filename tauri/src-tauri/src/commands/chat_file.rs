@@ -380,6 +380,105 @@ pub fn import_lmstudio_folder(
     }))
 }
 
+/// Import a Gemini Takeout `My Activity.html` file into a new "Gemini Apps" workspace.
+#[tauri::command]
+pub fn import_gemini_takeout(
+    file_path: String,
+    chats_dir_state: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
+    db_state: State<DbState>,
+) -> Result<serde_json::Value, String> {
+    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    
+    let path = std::path::Path::new(&file_path);
+    if !path.is_file() {
+        return Err(format!("{} is not a file", file_path));
+    }
+
+    let html_bytes = std::fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let html = String::from_utf8(html_bytes).map_err(|e| format!("Invalid UTF-8 in HTML: {}", e))?;
+
+    let sessions = chat_file_store::parse_gemini_takeout(&html)?;
+    if sessions.is_empty() {
+        return Err("No Gemini conversations found in the selected HTML file.".to_string());
+    }
+
+    let workspace_name = "Gemini Apps".to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    
+    let existing_workspace_id = conn.query_row(
+        "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
+        rusqlite::params!["gemini apps"],
+        |row| row.get::<_, String>(0),
+    ).ok();
+
+    let workspace_id = if let Some(id) = existing_workspace_id {
+        id
+    } else {
+        let new_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
+             VALUES (?1, ?2, '', '', '{}', ?3, ?3)",
+            rusqlite::params![new_id, workspace_name, now],
+        ).map_err(|e| e.to_string())?;
+        new_id
+    };
+
+    let mut session_ids = Vec::new();
+    let mut messages_count = 0;
+
+    for data in sessions {
+        conn.execute(
+            "INSERT INTO chat_sessions (
+                id, workspace_id, project_id, title, model_name, system_prompt,
+                is_pinned, is_incognito, exclude_from_analytics, is_deleted,
+                is_imported, created_at, updated_at
+            ) VALUES (?1, ?2, '', ?3, ?4, ?5, 0, 0, 0, 0, 1, ?6, ?6)",
+            rusqlite::params![
+                data.id,
+                workspace_id,
+                data.title,
+                data.model,
+                data.system_prompt,
+                data.created_at
+            ],
+        ).map_err(|e| e.to_string())?;
+
+        for fmsg in &data.messages {
+            conn.execute(
+                "INSERT INTO chat_messages (
+                    id, session_id, role, content, model_name,
+                    tokens_used, is_deleted, created_at, updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?7)",
+                rusqlite::params![
+                    fmsg.id,
+                    data.id,
+                    fmsg.role,
+                    fmsg.content,
+                    fmsg.model,
+                    fmsg.tokens_used,
+                    data.created_at
+                ],
+            ).map_err(|e| e.to_string())?;
+            messages_count += 1;
+        }
+        session_ids.push(data.id.clone());
+    }
+
+    // Write to disk for file-based consistency
+    let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
+    for id in &session_ids {
+        let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, id, pass.as_deref());
+    }
+
+    Ok(serde_json::json!({
+        "imported_sessions": session_ids.len(),
+        "imported_messages": messages_count,
+        "workspace_id": workspace_id,
+        "workspace_name": workspace_name,
+    }))
+}
+
 /// Sync every session in the DB to the chats directory.
 /// Useful after a cold start to ensure files are up to date.
 #[tauri::command]
