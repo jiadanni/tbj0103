@@ -82,12 +82,12 @@ export default function BackupSettingsSection() {
         throw new Error("LM Studio import completed without importing any conversations.");
       }
 
-      const [workspaces, importedProjects, importedSessions] = await Promise.all([
+      const [workspaces, importedProjects, firstSession] = await Promise.all([
         api.workspace.list(),
         api.project.list(result.workspace_id),
-        api.chat.listSessions(result.workspace_id, null, { limit: 200, offset: 0 }),
+        api.chat.listSessions(result.workspace_id, null, { limit: 1, offset: 0 }),
       ]);
-      if (importedSessions.length < 1) {
+      if (firstSession.length < 1) {
         throw new Error("LM Studio import reported success, but no chat sessions were found in the imported workspace.");
       }
       setWorkspaces(workspaces);
@@ -95,14 +95,16 @@ export default function BackupSettingsSection() {
       setActiveWorkspaceId(result.workspace_id);
       setActiveProjectId(null);
 
-      const summary = [
-        `Imported ${result.imported} conversation${result.imported === 1 ? "" : "s"} into "${result.workspace_name}".`,
+      const lines = [
+        `${result.imported} conversation${result.imported === 1 ? "" : "s"} imported.`,
         `${result.projects_created} project${result.projects_created === 1 ? "" : "s"} created.`,
-        result.errors > 0 ? `${result.errors} file${result.errors === 1 ? "" : "s"} could not be imported.` : "No import errors reported.",
-        result.error_messages.length > 0 ? `Examples: ${result.error_messages.slice(0, 3).join(" | ")}` : "",
-      ].join(" ");
+      ];
+      if (result.errors > 0) {
+        lines.push(`${result.errors} file${result.errors === 1 ? "" : "s"} skipped (empty or unreadable).`);
+      }
+      const summary = lines.join("\n");
 
-      navigate(`/chat/${importedSessions[0].id}`);
+      navigate(`/chat/${firstSession[0].id}`);
       await message(summary, { title: "LM Studio import complete", kind: result.errors > 0 ? "warning" : "info" });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "LM Studio import failed";

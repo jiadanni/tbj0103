@@ -504,9 +504,10 @@ export default function PreferencesView() {
 
               <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-2 block">Workspace Navigation</label>
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className="grid gap-2 sm:grid-cols-2">
                   {[
                     { id: "sidebar", label: "Sidebar", description: "Keep workspace switching in the left rail beside the main content." },
+                    { id: "icon-bar", label: "Icon Bar", description: "Compact icon-only sidebar without text labels." },
                     { id: "top-tabs", label: "Top Tabs", description: "Show workspaces as visible tabs across the top." },
                     { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact workspace picker in the top bar." },
                   ].map((option) => (
@@ -528,9 +529,10 @@ export default function PreferencesView() {
 
               <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-2 block">Section Navigation</label>
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className="grid gap-2 sm:grid-cols-2">
                   {[
                     { id: "sidebar", label: "Sidebar", description: "Keep section navigation in the left rail." },
+                    { id: "icon-bar", label: "Icon Bar", description: "Compact icon-only sidebar without text labels." },
                     { id: "top-tabs", label: "Top Tabs", description: "Show sections as visible tabs across the top." },
                     { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact section picker in the top bar." },
                   ].map((option) => (

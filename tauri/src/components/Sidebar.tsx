@@ -11,9 +11,10 @@ import type { NavigationItem } from "./navigationItems";
 
 interface SidebarProps {
   onOpenCommandPalette: () => void;
+  iconOnly?: boolean;
 }
 
-export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
+export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
@@ -63,15 +64,15 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
     }
   }, [contextMenu]);
 
-  if (workspaceNavigation !== "sidebar") {
+  if (workspaceNavigation !== "sidebar" && workspaceNavigation !== "icon-bar") {
     return null;
   }
 
   return (
-    <div className="flex h-full flex-col bg-[var(--bg-sidebar)]">
+    <div className={`flex h-full flex-col bg-[var(--bg-sidebar)] ${iconOnly ? "items-center" : ""}`}>
       {/* Scrollable nav section */}
-      <div className="flex-1 overflow-y-auto py-4">
-        <nav className="px-3 space-y-1">
+      <div className={`flex-1 overflow-y-auto py-4 ${iconOnly ? "w-full" : ""}`}>
+        <nav className={iconOnly ? "flex flex-col items-center gap-1 px-1.5" : "px-3 space-y-1"}>
           {PRIMARY_NAV_ITEMS.map((item) => {
             const isActive = activeSegment === item.path;
             const Icon = item.icon;
@@ -87,14 +88,23 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
                   event.stopPropagation();
                   setContextMenu({ item, x: event.clientX, y: event.clientY });
                 }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors select-none ${
-                  isActive
-                    ? "bg-[var(--accent-color)] text-white shadow-sm"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                }`}
+                title={iconOnly ? item.label : undefined}
+                className={
+                  iconOnly
+                    ? `flex items-center justify-center w-10 h-10 rounded-xl transition-colors select-none ${
+                        isActive
+                          ? "bg-[var(--accent-color)] text-white shadow-sm"
+                          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                      }`
+                    : `w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors select-none ${
+                        isActive
+                          ? "bg-[var(--accent-color)] text-white shadow-sm"
+                          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                      }`
+                }
               >
-                <Icon size={18} />
-                <span className="flex-1 text-left">{item.label}</span>
+                <Icon size={iconOnly ? 20 : 18} />
+                {!iconOnly && <span className="flex-1 text-left">{item.label}</span>}
               </button>
             );
           })}
@@ -102,26 +112,44 @@ export default function Sidebar({ onOpenCommandPalette }: SidebarProps) {
       </div>
 
       {/* Fixed bottom actions */}
-      <div className="p-4 border-t border-[var(--border-color)] space-y-2">
+      <div className={`border-t border-[var(--border-color)] ${iconOnly ? "p-2 flex flex-col items-center gap-1" : "p-4 space-y-2"}`}>
         <button
           onClick={() => navigate("/preferences")}
-          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors ${
-            activeSegment === "/preferences"
-              ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-              : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-          }`}
+          title={iconOnly ? "Preferences" : undefined}
+          className={
+            iconOnly
+              ? `flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
+                  activeSegment === "/preferences"
+                    ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                }`
+              : `w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors ${
+                  activeSegment === "/preferences"
+                    ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                }`
+          }
         >
-          <SettingsIcon size={18} />
-          <span className="flex-1 text-left">Preferences</span>
+          <SettingsIcon size={iconOnly ? 20 : 18} />
+          {!iconOnly && <span className="flex-1 text-left">Preferences</span>}
         </button>
 
         <button
           onClick={onOpenCommandPalette}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)] transition-colors"
+          title={iconOnly ? "Command Palette (⌘K)" : undefined}
+          className={
+            iconOnly
+              ? "flex items-center justify-center w-10 h-10 rounded-xl text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)] transition-colors"
+              : "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)] transition-colors"
+          }
         >
-          <Zap size={18} />
-          <span className="flex-1 text-left">Command Palette</span>
-          <kbd className="text-[10px] px-1 py-0.5 bg-[var(--bg-hover)] rounded font-mono">⌘K</kbd>
+          <Zap size={iconOnly ? 20 : 18} />
+          {!iconOnly && (
+            <>
+              <span className="flex-1 text-left">Command Palette</span>
+              <kbd className="text-[10px] px-1 py-0.5 bg-[var(--bg-hover)] rounded font-mono">⌘K</kbd>
+            </>
+          )}
         </button>
       </div>
 
