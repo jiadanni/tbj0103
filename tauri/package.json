@@ -74,7 +74,7 @@
     "tailwindcss": "^3",
     "typescript": "^5",
     "vite": "^5",
-    "vitest": "^2"
+    "vitest": "^2.1.9"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
