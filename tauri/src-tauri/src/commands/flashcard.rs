@@ -160,13 +160,14 @@ pub async fn generate_flashcards(state: State<'_, DbState>, req: GenerateCardsRe
     let pairs: Vec<CardPair> = serde_json::from_str(json_str)
         .map_err(|e| format!("Failed to parse AI-generated cards: {e}\nRaw: {json_str}"))?;
 
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut cards = Vec::new();
     for pair in pairs {
         if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
         let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
         card.source_type = "ai_generated".to_string();
-        conn.execute(
+        tx.execute(
             "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id,
@@ -174,6 +175,7 @@ pub async fn generate_flashcards(state: State<'_, DbState>, req: GenerateCardsRe
         ).map_err(|e| e.to_string())?;
         cards.push(card);
     }
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(cards)
 }
 
@@ -230,14 +232,15 @@ pub async fn generate_flashcards_from_concept(state: State<'_, DbState>, req: Ge
     let pairs: Vec<CardPair> = serde_json::from_str(json_str)
         .map_err(|e| format!("Failed to parse AI-generated cards: {e}\nRaw: {json_str}"))?;
 
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut cards = Vec::new();
     for pair in pairs {
         if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
         let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
         card.source_type = "concept".to_string();
         card.source_id = Some(req.concept_id.clone());
-        conn.execute(
+        tx.execute(
             "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id,
@@ -245,6 +248,7 @@ pub async fn generate_flashcards_from_concept(state: State<'_, DbState>, req: Ge
         ).map_err(|e| e.to_string())?;
         cards.push(card);
     }
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(cards)
 }
 
@@ -329,14 +333,15 @@ pub async fn extract_flashcards_from_content(state: State<'_, DbState>, req: Ext
     let pairs: Vec<CardPair> = serde_json::from_str(json_str).unwrap_or_default();
     if pairs.is_empty() { return Ok(vec![]); }
 
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut cards = Vec::new();
     for pair in pairs {
         if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
         let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
         card.source_type = req.source_type.clone();
         card.source_id = req.source_id.clone();
-        conn.execute(
+        tx.execute(
             "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id,
@@ -344,5 +349,6 @@ pub async fn extract_flashcards_from_content(state: State<'_, DbState>, req: Ext
         ).map_err(|e| e.to_string())?;
         cards.push(card);
     }
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(cards)
 }
