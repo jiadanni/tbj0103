@@ -397,7 +397,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('compare_model_b', '""'),
     ('immediate_delete', 'false'),
     ('confirm_move_to_trash', 'true'),
-    ('prompt_instructions', '""');
+    ('prompt_instructions', '""'),
+    ('switch_workspace_to_chat', 'false');
 
 -- Conversation summaries
 CREATE TABLE IF NOT EXISTS conversation_summaries (

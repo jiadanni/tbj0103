@@ -12,6 +12,7 @@ import CommandPalette from "./CommandPalette";
 import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useSettingsStore } from "../stores/settingsStore";
 import { api } from "../lib/api";
 import { isMac } from "../lib/platform";
 import ChatView from "../views/ChatView";
@@ -33,6 +34,7 @@ function WorkspaceTabBar() {
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const setWorkspaceNavigation = useWorkspaceStore((state) => state.setWorkspaceNavigation);
+  const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [contextMenu, setContextMenu] = useState<{ workspace: Workspace; x: number; y: number } | null>(null);
@@ -41,11 +43,20 @@ function WorkspaceTabBar() {
   const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
 
+  function activateWorkspace(workspaceId: string) {
+    const isChanged = workspaceId !== activeWorkspaceId;
+    setActiveWorkspaceId(workspaceId);
+    if (isChanged && switchWorkspaceToChat) {
+      navigate("/chat");
+    }
+    setContextMenu(null);
+  }
+
   async function createWorkspace() {
     if (!newName.trim()) { return; }
     const ws = await api.workspace.create(newName.trim());
     addWorkspace(ws);
-    setActiveWorkspaceId(ws.id);
+    activateWorkspace(ws.id);
     setNewName("");
     setCreating(false);
   }
@@ -140,10 +151,7 @@ function WorkspaceTabBar() {
         {workspaces.map((ws) => (
           <button
             key={ws.id}
-            onClick={() => {
-              setActiveWorkspaceId(ws.id);
-              setContextMenu(null);
-            }}
+            onClick={() => activateWorkspace(ws.id)}
             onContextMenu={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -191,7 +199,7 @@ function WorkspaceTabBar() {
                 const sessionIds = JSON.parse(raw) as string[];
                 if (sessionIds.length > 0) {
                   void api.chat.moveSessions(sessionIds, ws.id).then(() => {
-                    setActiveWorkspaceId(ws.id);
+                    activateWorkspace(ws.id);
                   });
                 }
               } catch { /* ignore malformed data */ }
@@ -260,8 +268,7 @@ function WorkspaceTabBar() {
         >
           <button
             onClick={() => {
-              setActiveWorkspaceId(contextMenu.workspace.id);
-              setContextMenu(null);
+              activateWorkspace(contextMenu.workspace.id);
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
           >

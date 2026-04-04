@@ -73,6 +73,8 @@ export default function PreferencesView() {
   const setChatMessageStyle = useSettingsStore((state) => state.setChatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((state) => state.expandChatToWindowWidth);
   const setExpandChatToWindowWidth = useSettingsStore((state) => state.setExpandChatToWindowWidth);
+  const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
+  const setSwitchWorkspaceToChat = useSettingsStore((state) => state.setSwitchWorkspaceToChat);
   const location = useLocation();
   const {
     workspaceNavigation,
@@ -197,6 +199,7 @@ export default function PreferencesView() {
     settingsStore.setImmediateDelete(settings.immediate_delete);
     settingsStore.setConfirmMoveToTrash(settings.confirm_move_to_trash);
     settingsStore.setPromptInstructions(settings.prompt_instructions);
+    settingsStore.setSwitchWorkspaceToChat(settings.switch_workspace_to_chat);
   }
 
   function scheduleSavedNoticeReset() {
@@ -620,6 +623,19 @@ export default function PreferencesView() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Open Chats when switching workspace</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Always return to the main Chats view instead of keeping the current section in the new workspace.
+                  </p>
+                </div>
+                <Toggle
+                  on={switchWorkspaceToChat}
+                  onToggle={() => set("switch_workspace_to_chat", !switchWorkspaceToChat)}
+                />
               </div>
 
               <div>
