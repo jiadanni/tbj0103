@@ -37,6 +37,8 @@ interface ChatStore {
   messages: Record<string, Message[]>;
   streamingSessionId: string | null;
   streamingContent: string;
+  // Pending prompt from text selection
+  pendingPromptText: string | null;
   // Dual-model refine phase state
   refiningSessionId: string | null;
   refineContent: string;
@@ -51,6 +53,7 @@ interface ChatStore {
   setStreamingSession: (id: string | null) => void;
   appendStreamChunk: (sessionId: string, chunk: string) => void;
   finalizeStream: (sessionId: string, modelName?: string, tokensUsed?: number, durationMs?: number) => void;
+  setPendingPromptText: (text: string | null) => void;
   // Refine (large model second pass)
   appendRefineChunk: (sessionId: string, chunk: string) => void;
   finalizeRefine: (sessionId: string, modelName?: string) => void;
@@ -62,6 +65,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: {},
   streamingSessionId: null,
   streamingContent: "",
+  pendingPromptText: null,
   refiningSessionId: null,
   refineContent: "",
   setActiveChatId: (activeChatId) => set({ activeChatId }),
@@ -113,6 +117,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       },
     }));
   },
+  setPendingPromptText: (pendingPromptText) => set({ pendingPromptText }),
   appendRefineChunk: (sessionId, chunk) =>
     set((s) => ({ refiningSessionId: sessionId, refineContent: s.refineContent + chunk })),
   finalizeRefine: (sessionId, modelName) => {

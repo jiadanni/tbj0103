@@ -1,10 +1,12 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy, Pencil, RotateCcw, ChevronDown, ChevronRight, ChevronUp, BookOpen } from "lucide-react";
 import type { Message } from "../stores/chatStore";
 import type { SearchResult } from "../lib/api";
 import ContextIndicator from "./ContextIndicator";
+import { useWordHover } from "../hooks/useWordHover";
+import { WordDefinitionTooltip } from "./WordDefinitionTooltip";
 
 type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
 
@@ -104,11 +106,15 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   const hasSources = sources && sources.length > 0;
   const isSourcesExpanded = expandedSources === msg.id;
 
+  const assistantProseRef = useRef<HTMLDivElement>(null);
+  const wordDefinition = useWordHover(assistantProseRef);
+
   return (
     <div
       data-msg-id={msg.id}
       className={`group/msg flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}
     >
+      {wordDefinition && <WordDefinitionTooltip definition={wordDefinition} />}
       {editingMessageId === msg.id ? (
         <div className="max-w-[75%] w-full flex flex-col gap-2">
           <textarea
@@ -173,7 +179,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                     )}
                   </div>
                 )}
-                <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
+                <div className="prose prose-sm prose-invert max-w-none overflow-x-auto" ref={assistantProseRef}>
                   <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>
                     {parts?.answer || msg.content}
                   </ReactMarkdown>
