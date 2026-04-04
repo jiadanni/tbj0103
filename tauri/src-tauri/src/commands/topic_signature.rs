@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 #[tauri::command]
 pub fn get_topic_signature(state: State<DbState>, workspace_id: String) -> Result<TopicSignature, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     
     let sig_json: String = conn.query_row(
         "SELECT topic_signature FROM workspaces WHERE id = ?1",
@@ -49,7 +49,7 @@ pub fn update_topic_signature(
     manual_tags: Vec<String>,
     ignored_tags: Vec<String>
 ) -> Result<TopicSignature, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     
     let sig_json: String = conn.query_row(
         "SELECT topic_signature FROM workspaces WHERE id = ?1",
@@ -73,7 +73,7 @@ pub fn update_topic_signature(
 
 #[tauri::command]
 pub fn check_workspace_match(state: State<DbState>, workspace_id: String, message: String) -> Result<WorkspaceMatchResult, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     
     let sig_json: String = conn.query_row(
         "SELECT topic_signature FROM workspaces WHERE id = ?1",

@@ -249,7 +249,7 @@ CREATE TABLE IF NOT EXISTS source_chunks (
     source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     chunk_index INTEGER NOT NULL,
-    embedding TEXT,
+    embedding BLOB,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

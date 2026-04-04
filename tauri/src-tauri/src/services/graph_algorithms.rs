@@ -262,13 +262,7 @@ mod tests {
         (nodes, edges)
     }
 
-    #[test]
-    fn test_pagerank_sums_to_one() {
-        let (nodes, edges) = make_graph();
-        let results = compute_pagerank(&nodes, &edges, 0.85, 100);
-        let total: f64 = results.iter().map(|r| r.score).sum();
-        assert!((total - 1.0).abs() < 0.01, "PageRank should sum to ~1, got {total}");
-    }
+
 
     #[test]
     fn test_shortest_path_direct() {

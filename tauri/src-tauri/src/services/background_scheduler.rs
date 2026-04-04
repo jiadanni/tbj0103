@@ -20,6 +20,8 @@ pub fn start_scheduler(app: AppHandle) {
                 continue;
             }
 
+            let db = app.state::<DbState>();
+
             // Before processing, check if user is actively streaming to avoid concurrent Ollama calls
             let is_streaming = {
                 let abort_state = app.state::<crate::commands::ollama::StreamAbortState>();
@@ -29,16 +31,23 @@ pub fn start_scheduler(app: AppHandle) {
                 };
                 result
             };
-            if is_streaming {
-                SCHEDULER_RUNNING.store(false, Ordering::SeqCst);
-                continue;
-            }
             
-            let db = app.state::<DbState>();
+            let is_active_chatting = {
+                if let Ok(conn) = db.0.get() {
+                    let count: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM chat_sessions WHERE last_accessed_at >= datetime('now', '-5 minutes')",
+                        [],
+                        |row| row.get(0),
+                    ).unwrap_or(0);
+                    count > 0
+                } else {
+                    false
+                }
+            };
             
             // Read Ollama URL from settings
             let ollama_url = {
-                match db.0.lock() {
+                match db.0.get() {
                     Ok(conn) => conn.query_row("SELECT value FROM settings WHERE key = 'ollama_base_url'", [], |row| row.get::<_, String>(0))
                         .map(|v| v.trim_matches('"').to_string())
                         .ok(),
@@ -46,43 +55,46 @@ pub fn start_scheduler(app: AppHandle) {
                 }
             };
             
-            // 1. Process memory extraction
-            let _ = memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone()).await;
+            // If user is NOT chatting, run AI tasks
+            if !is_streaming && !is_active_chatting {
+                // 1. Process memory extraction
+                let _ = memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone()).await;
 
-            // 2. Process summarization — only sessions with recent activity
-            let sessions = {
-                match db.0.lock() {
-                    Ok(conn) => {
-                        match conn.prepare(
-                            "SELECT cs.id, cs.workspace_id FROM chat_sessions cs
-                             WHERE cs.updated_at > datetime('now', '-5 minutes')
-                               AND cs.is_incognito = 0
-                               AND cs.exclude_from_analytics = 0
-                               AND cs.is_imported = 0
-                             ORDER BY cs.updated_at DESC
-                             LIMIT 5"
-                        ) {
-                            Ok(mut stmt) => stmt
-                                .query_map([], |row| {
-                                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                                })
-                                .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
-                                .unwrap_or_default(),
-                            Err(_) => Vec::new(),
+                // 2. Process summarization — only sessions with recent activity
+                let sessions = {
+                    match db.0.get() {
+                        Ok(conn) => {
+                            match conn.prepare(
+                                "SELECT cs.id, cs.workspace_id FROM chat_sessions cs
+                                 WHERE cs.updated_at > datetime('now', '-5 minutes')
+                                   AND cs.is_incognito = 0
+                                   AND cs.exclude_from_analytics = 0
+                                   AND cs.is_imported = 0
+                                 ORDER BY cs.updated_at DESC
+                                 LIMIT 5"
+                            ) {
+                                Ok(mut stmt) => stmt
+                                    .query_map([], |row| {
+                                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                                    })
+                                    .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
+                                    .unwrap_or_default(),
+                                Err(_) => Vec::new(),
+                            }
                         }
+                        Err(_) => Vec::new(),
                     }
-                    Err(_) => Vec::new(),
-                }
-            };
+                };
 
-            for (session_id, workspace_id) in sessions {
-                let _ = summarization_service::generate_rolling_summary(&db, &session_id, &workspace_id, ollama_url.clone()).await;
+                for (session_id, workspace_id) in sessions {
+                    let _ = summarization_service::generate_rolling_summary(&db, &session_id, &workspace_id, ollama_url.clone()).await;
+                }
             }
 
             // 3. Git sync — every 10 ticks (5 minutes at 30s interval)
             if git_sync_tick % 10 == 0 {
                 let (sync_enabled, remote_url) = {
-                    match db.0.lock() {
+                    match db.0.get() {
                         Ok(conn) => {
                             let enabled = conn.query_row(
                                 "SELECT value FROM settings WHERE key = 'git_sync_enabled'", [],
@@ -113,7 +125,7 @@ pub fn start_scheduler(app: AppHandle) {
 
                         if let Ok(Some(result)) = sync_result {
                             let now = chrono::Utc::now().to_rfc3339();
-                            if let Ok(conn) = db.0.lock() {
+                            if let Ok(conn) = db.0.get() {
                                 let set = |key: &str, val: &str| {
                                     let _ = conn.execute(
                                         "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",

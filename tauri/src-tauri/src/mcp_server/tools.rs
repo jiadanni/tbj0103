@@ -155,7 +155,7 @@ pub async fn handle_search_notes(
         .and_then(|v| v.as_i64())
         .unwrap_or(20) as usize;
 
-    let conn = db_state.0.lock().map_err(|_| JsonRpcError {
+    let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
         data: None,
@@ -218,7 +218,7 @@ pub async fn handle_list_due_flashcards(
         .and_then(|v| v.as_i64())
         .unwrap_or(50) as usize;
 
-    let conn = db_state.0.lock().map_err(|_| JsonRpcError {
+    let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
         data: None,
@@ -279,7 +279,7 @@ pub async fn handle_get_concept_neighbors(
             data: None,
         })?;
 
-    let conn = db_state.0.lock().map_err(|_| JsonRpcError {
+    let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
         data: None,
@@ -339,7 +339,7 @@ pub async fn handle_get_learning_goal_progress(
             data: None,
         })?;
 
-    let conn = db_state.0.lock().map_err(|_| JsonRpcError {
+    let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
         data: None,
@@ -409,7 +409,7 @@ pub async fn handle_search_chat_messages(
         .and_then(|v| v.as_i64())
         .unwrap_or(20) as usize;
 
-    let conn = db_state.0.lock().map_err(|_| JsonRpcError {
+    let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
         data: None,
@@ -471,7 +471,7 @@ pub async fn handle_get_workspace_stats(
             data: None,
         })?;
 
-    let conn = db_state.0.lock().map_err(|_| JsonRpcError {
+    let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
         data: None,
