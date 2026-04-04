@@ -319,6 +319,7 @@ export const api = {
     get: (id: string) => invoke<Project | null>("get_project", { id }),
     update: (id: string, fields: Partial<Project>) => invoke<void>("update_project", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_project", { id }),
+    moveToWorkspace: (projectId: string, targetWorkspaceId: string) => invoke<Project>("move_project_to_workspace", { projectId, targetWorkspaceId }),
     getStats: (id: string) => invoke<{ note_count: number; document_count: number; chat_session_count: number; flashcard_count: number; web_capture_count: number }>("get_project_stats", { id }),
   },
 

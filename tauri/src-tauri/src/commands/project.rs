@@ -96,6 +96,91 @@ pub fn delete_project(state: State<DbState>, id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn move_project_to_workspace(
+    state: State<DbState>,
+    project_id: String,
+    target_workspace_id: String,
+) -> Result<Project, String> {
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    // Get the source project
+    let source_project: Project = conn.query_row(
+        "SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
+         FROM projects WHERE id = ?1",
+        rusqlite::params![project_id],
+        |row| Ok(Project {
+            id: row.get(0)?,
+            workspace_id: row.get(1)?,
+            name: row.get(2)?,
+            project_description: row.get(3)?,
+            custom_instructions: row.get(4)?,
+            color: row.get(5)?,
+            icon: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+        })
+    ).map_err(|e| e.to_string())?;
+
+    if source_project.workspace_id == target_workspace_id {
+        return Ok(source_project);
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let new_project = Project::new(target_workspace_id.clone(), source_project.name.clone());
+
+    tx.execute(
+        "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![
+            new_project.id,
+            new_project.workspace_id,
+            new_project.name,
+            source_project.project_description,
+            source_project.custom_instructions,
+            source_project.color,
+            source_project.icon,
+            new_project.created_at,
+            new_project.updated_at
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "UPDATE chat_sessions
+         SET workspace_id = ?1, project_id = ?2, updated_at = ?3
+         WHERE project_id = ?4",
+        rusqlite::params![
+            target_workspace_id,
+            new_project.id,
+            now,
+            project_id
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "DELETE FROM projects WHERE id = ?1",
+        rusqlite::params![project_id],
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    // Return the newly created project
+    Ok(Project {
+        id: new_project.id,
+        workspace_id: new_project.workspace_id,
+        name: new_project.name,
+        project_description: source_project.project_description,
+        custom_instructions: source_project.custom_instructions,
+        color: source_project.color,
+        icon: source_project.icon,
+        created_at: new_project.created_at,
+        updated_at: new_project.updated_at,
+    })
+}
+
 #[derive(Debug, Serialize)]
 pub struct ProjectStats {
     pub note_count: i64,
