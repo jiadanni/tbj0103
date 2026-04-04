@@ -562,7 +562,7 @@ pub fn discover_lmstudio_conversations(folder: &Path) -> Result<Vec<DiscoveredCo
                 walk(&path, root, results)?;
             } else if path.file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n.ends_with(".conversation.json"))
+                .map(|n| n.ends_with(".conversation.json") || n == "conversation.json")
                 .unwrap_or(false)
             {
                 // Determine the subfolder: immediate parent relative to root
