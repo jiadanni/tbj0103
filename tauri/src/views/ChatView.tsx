@@ -1884,15 +1884,20 @@ export default function ChatView() {
     }
 
     const trimmedQuery = sessionQuery.trim();
-    const timeoutId = window.setTimeout(() => {
-      const request = trimmedQuery
-        ? api.chat.searchSessions(effectiveWorkspaceId, trimmedQuery, null)
-        : api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0 });
-
-      request.then(setSidebarSessions).catch(() => {});
-    }, trimmedQuery ? 150 : 0);
-
-    return () => window.clearTimeout(timeoutId);
+    if (trimmedQuery) {
+      // Allow searching to trigger queries for the current workspace
+      const timeoutId = window.setTimeout(() => {
+        api.chat.searchSessions(effectiveWorkspaceId, trimmedQuery, null)
+          .then(setSidebarSessions).catch(() => {});
+      }, 150);
+      return () => window.clearTimeout(timeoutId);
+    } else {
+      // When not searching, only fetch on initial mount or workspace change.
+      // Other updates (move, create, delete, rename) should handle UI updates via optimistic
+      // changes or explicit refresh events.
+      api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0 })
+        .then(setSidebarSessions).catch(() => {});
+    }
   }, [effectiveWorkspaceId, sessionQuery]);
 
   async function refreshProjectTree(workspaceId: string) {
@@ -2765,31 +2770,51 @@ export default function ChatView() {
       .filter((session) => session.project_id === project.id)
       .map((session) => session.id);
 
-    const movedProject = await api.project.create(targetWorkspaceId, project.name, {
-      project_description: project.project_description,
-      custom_instructions: project.custom_instructions,
-      color: project.color,
-      icon: project.icon,
-    });
-    if (projectSessionIds.length > 0) {
-      await api.chat.moveSessions(projectSessionIds, targetWorkspaceId, movedProject.id);
-    }
-    await api.project.delete(project.id);
+    // Snapshot state for potential rollback
+    const prevSidebarSessions = [...sidebarSessions];
+    const prevSessions = [...sessions];
+    const prevWorkspaceProjects = useWorkspaceStore.getState().projectsByWorkspace[project.workspace_id] ?? [];
 
-    if (effectiveWorkspaceId) {
-      await Promise.all([
-        refreshProjectTree(effectiveWorkspaceId),
-        refreshScopedSessions(effectiveWorkspaceId, effectiveProjectId === project.id ? null : effectiveProjectId),
-      ]);
-    }
-    if (targetWorkspaceId !== effectiveWorkspaceId) {
+    // Optimistic UI update: remove from source workspace locally without doing a full refresh
+    // Instead we just remove it from sidebarSessions and sessions, and let the background refresh
+    // or navigation handle the rest, specifically avoiding refreshProjectTree(effectiveWorkspaceId).
+    setSidebarSessions((prev) => prev.filter((session) => session.project_id !== project.id));
+    setSessions(sessions.filter((session) => session.project_id !== project.id));
+
+    // For the projects list, we can optimistically update the workspace store
+    useWorkspaceStore.getState().setProjectsForWorkspace(
+      project.workspace_id,
+      prevWorkspaceProjects.filter(p => p.id !== project.id)
+    );
+
+    try {
+      // Use the single transaction Rust backend command
+      const movedProject = await api.project.moveToWorkspace(project.id, targetWorkspaceId);
+
+      // Now navigate to the target workspace and refresh only its tree.
+      setScopedWorkspaceId(targetWorkspaceId);
+      setScopedProjectId(movedProject.id);
       await refreshProjectTree(targetWorkspaceId);
-    }
-    if (effectiveProjectId === project.id) {
-      setScopedProjectId(null);
-    }
-    if (activeChatId && projectSessionIds.includes(activeChatId)) {
-      setActiveChatId(null);
+
+      if (activeChatId && projectSessionIds.includes(activeChatId)) {
+        // If we had the active chat open, keep it open if it was a single move, or reset if multiple
+        setActiveChatId(projectSessionIds.length === 1 ? activeChatId : null);
+      } else if (effectiveProjectId === project.id) {
+        // If we had the project open but not a chat, we navigate to the new project.
+        setScopedProjectId(movedProject.id);
+      }
+    } catch (error) {
+      // Rollback on failure
+      setSidebarSessions(prevSidebarSessions);
+      setSessions(prevSessions);
+      useWorkspaceStore.getState().setProjectsForWorkspace(project.workspace_id, prevWorkspaceProjects);
+
+      const description = error instanceof Error
+        ? error.message
+        : typeof error === "string" && error.trim()
+          ? error
+          : "Failed to move folder.";
+      showAlertDialog("Move failed", description, "danger");
     }
   }
 
