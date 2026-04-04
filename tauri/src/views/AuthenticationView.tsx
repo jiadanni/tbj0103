@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Fingerprint, Lock } from "lucide-react";
 import { api } from "../lib/api";
-import WindowControls, { onDragRegionMouseDown } from "../components/WindowControls";
+import WindowControls, { onDragRegionMouseDown, onDragRegionDoubleClick } from "../components/WindowControls";
 
 interface Props {
   onAuthenticated: () => void;
@@ -68,7 +68,7 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
   }
 
   const dragRegion = (
-    <div data-tauri-drag-region onMouseDown={onDragRegionMouseDown} className="fixed top-0 left-0 right-0 h-9 z-50 flex items-center justify-end pr-2">
+    <div data-tauri-drag-region onMouseDown={onDragRegionMouseDown} onDoubleClick={onDragRegionDoubleClick} className="fixed top-0 left-0 right-0 h-9 z-50 flex items-center justify-end pr-2">
       <WindowControls />
     </div>
   );

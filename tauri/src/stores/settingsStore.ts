@@ -35,6 +35,7 @@ interface AppSettings {
   chatMessageStyle: ChatMessageStyle;
   expandChatToWindowWidth: boolean;
   switchWorkspaceToChat: boolean;
+  hideNativeMenu: boolean;
 }
 
 interface SettingsStore extends AppSettings {
@@ -65,6 +66,7 @@ interface SettingsStore extends AppSettings {
   setChatMessageStyle: (v: ChatMessageStyle) => void;
   setExpandChatToWindowWidth: (v: boolean) => void;
   setSwitchWorkspaceToChat: (v: boolean) => void;
+  setHideNativeMenu: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -79,7 +81,7 @@ export const useSettingsStore = create<SettingsStore>()(
       embeddingModel: "nomic-embed-text",
       theme: "system",
       accentColor: "#007AFF",
-      fontSize: 14,
+      fontSize: 16,
       sidebarWidth: 240,
       settingsNavLayout: "top-tabs",
       dualModelEnabled: false,
@@ -98,6 +100,7 @@ export const useSettingsStore = create<SettingsStore>()(
       chatMessageStyle: "bubble",
       expandChatToWindowWidth: false,
       switchWorkspaceToChat: false,
+      hideNativeMenu: false,
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
@@ -125,6 +128,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setChatMessageStyle: (chatMessageStyle) => set({ chatMessageStyle }),
       setExpandChatToWindowWidth: (expandChatToWindowWidth) => set({ expandChatToWindowWidth }),
       setSwitchWorkspaceToChat: (switchWorkspaceToChat) => set({ switchWorkspaceToChat }),
+      setHideNativeMenu: (hideNativeMenu) => set({ hideNativeMenu }),
     }),
     { name: "aetherium-settings" }
   )

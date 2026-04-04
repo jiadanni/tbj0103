@@ -84,11 +84,26 @@ pub fn run() {
                 }
             }
 
-            // Build and set the app-specific menu bar
-            let menu = app_menu::build_menu(app.handle())
-                .map_err(|e| format!("Failed to build menu: {e}"))?;
-            app.set_menu(menu)
-                .map_err(|e| format!("Failed to set menu: {e}"))?;
+            let hide_native_menu = {
+                let db_state = app.state::<db::DbState>();
+                if let Ok(conn) = db_state.0.get() {
+                    let val: String = conn.query_row(
+                        "SELECT value FROM settings WHERE key = 'hide_native_menu'",
+                        [],
+                        |row| row.get(0)
+                    ).unwrap_or_else(|_| "false".to_string());
+                    val == "true"
+                } else {
+                    false
+                }
+            };
+
+            if !hide_native_menu {
+                let menu = app_menu::build_menu(app.handle())
+                    .map_err(|e| format!("Failed to build menu: {e}"))?;
+                app.set_menu(menu)
+                    .map_err(|e| format!("Failed to set menu: {e}"))?;
+            }
             
             // Start background scheduler
             crate::services::background_scheduler::start_scheduler(app.handle().clone());

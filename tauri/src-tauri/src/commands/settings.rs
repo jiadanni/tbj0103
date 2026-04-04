@@ -36,6 +36,7 @@ pub struct Settings {
     pub confirm_move_to_trash: bool,
     pub prompt_instructions: String,
     pub switch_workspace_to_chat: bool,
+    pub hide_native_menu: bool,
 }
 
 impl Default for Settings {
@@ -50,7 +51,7 @@ impl Default for Settings {
             auto_lock_minutes: 15,
             theme: "system".to_string(),
             accent_color: "#007AFF".to_string(),
-            font_size: 14,
+            font_size: 16,
             sidebar_width: 240,
             ollama_base_url: "http://localhost:11434".to_string(),
             mlx_base_url: "http://localhost:8080".to_string(),
@@ -72,6 +73,7 @@ impl Default for Settings {
             confirm_move_to_trash: true,
             prompt_instructions: String::new(),
             switch_workspace_to_chat: false,
+            hide_native_menu: false,
         }
     }
 }
@@ -210,6 +212,9 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         switch_workspace_to_chat: get_setting(&conn, "switch_workspace_to_chat")
             .map(|v| v == "true")
             .unwrap_or(def.switch_workspace_to_chat),
+        hide_native_menu: get_setting(&conn, "hide_native_menu")
+            .map(|v| v == "true")
+            .unwrap_or(def.hide_native_menu),
     })
 }
 
@@ -252,11 +257,20 @@ pub fn update_settings(app: AppHandle, state: State<DbState>, settings: Settings
     set_setting(&conn, "confirm_move_to_trash", &settings.confirm_move_to_trash.to_string())?;
     set_setting(&conn, "prompt_instructions", &serde_json::to_string(&settings.prompt_instructions).unwrap())?;
     set_setting(&conn, "switch_workspace_to_chat", &settings.switch_workspace_to_chat.to_string())?;
+    set_setting(&conn, "hide_native_menu", &settings.hide_native_menu.to_string())?;
 
     if settings.start_at_login {
         app.autolaunch().enable().map_err(|e| e.to_string())?;
     } else {
         app.autolaunch().disable().map_err(|e| e.to_string())?;
+    }
+
+    if settings.hide_native_menu {
+        let _ = app.remove_menu();
+    } else {
+        if let Ok(menu) = crate::app_menu::build_menu(&app) {
+            let _ = app.set_menu(menu);
+        }
     }
 
     // chat_encryption_enabled is managed by dedicated commands.

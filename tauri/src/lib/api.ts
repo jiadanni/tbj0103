@@ -214,6 +214,7 @@ export interface AppSettings {
   confirm_move_to_trash: boolean;
   prompt_instructions: string;
   switch_workspace_to_chat: boolean;
+  hide_native_menu: boolean;
 }
 
 export interface GitSyncStatus {
@@ -599,15 +600,12 @@ export const api = {
   },
 
   graphAlgo: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     pagerank: (workspaceId: string, damping?: number, iterations?: number) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       invoke<any[]>("compute_pagerank", { workspaceId, damping, iterations }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     communities: (workspaceId: string) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       invoke<any[]>("detect_communities", { workspaceId }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     shortestPath: (workspaceId: string, sourceId: string, targetId: string) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       invoke<any>("find_shortest_path", { workspaceId, sourceId, targetId }),

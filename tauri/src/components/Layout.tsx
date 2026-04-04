@@ -3,16 +3,17 @@ import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-
 import {
   Panel, PanelGroup, PanelResizeHandle,
 } from "react-resizable-panels";
-import { Plus, PanelLeft, LayoutList, Settings as SettingsIcon, Pencil, Trash2, ExternalLink } from "lucide-react";
+import { Plus, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon, Pencil, Trash2, ExternalLink } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, message } from "@tauri-apps/plugin-dialog";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
+import WindowControls, { onDragRegionMouseDown, onDragRegionDoubleClick } from "./WindowControls";
 import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import AppHeaderMenu from "./AppHeaderMenu";
 import { api } from "../lib/api";
 import { isMac } from "../lib/platform";
 import ChatView from "../views/ChatView";
@@ -35,6 +36,7 @@ function WorkspaceTabBar() {
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const setWorkspaceNavigation = useWorkspaceStore((state) => state.setWorkspaceNavigation);
   const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
+  const hideNativeMenu = useSettingsStore((state) => state.hideNativeMenu);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [contextMenu, setContextMenu] = useState<{ workspace: Workspace; x: number; y: number } | null>(null);
@@ -145,9 +147,11 @@ function WorkspaceTabBar() {
     <div className="relative">
       <div
         data-tauri-drag-region
-        onDoubleClick={() => getCurrentWindow().toggleMaximize()}
+        onMouseDown={onDragRegionMouseDown}
+        onDoubleClick={onDragRegionDoubleClick}
         className={`flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 overflow-x-auto select-none ${isMac ? "pl-[72px]" : ""}`}
       >
+        {hideNativeMenu && <AppHeaderMenu />}
         {workspaces.map((ws) => (
           <button
             key={ws.id}
@@ -252,10 +256,14 @@ function WorkspaceTabBar() {
           <button
             onClick={() => setWorkspaceNavigation(workspaceNavigation === "sidebar" ? "top-tabs" : "sidebar")}
             title={workspaceNavigation === "sidebar" ? "Switch to tab navigation" : "Switch to sidebar navigation"}
-            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+            className="relative p-1.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
           >
-            {workspaceNavigation === "sidebar" ? <LayoutList size={14} /> : <PanelLeft size={14} />}
+            {workspaceNavigation === "sidebar" ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+            {workspaceNavigation !== "sidebar" && (
+              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-[var(--accent-color)] rounded-full ring-2 ring-[var(--bg-sidebar)]"></span>
+            )}
           </button>
+          <WindowControls />
         </div>
       </div>
 
