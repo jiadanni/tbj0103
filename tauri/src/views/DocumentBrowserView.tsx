@@ -87,14 +87,20 @@ export default function DocumentBrowserView() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {documents.length === 0 && (
-            <p className="px-3 py-6 text-xs text-center text-[var(--text-muted)]">
-              No documents yet
-            </p>
+            <div className="px-4 py-6 text-center">
+              <p className="text-xs font-medium text-[var(--text-secondary)]">No documents yet</p>
+              <p className="mt-2 text-[11px] leading-5 text-[var(--text-muted)]">
+                Add reference files for this workspace. Once processed, they are chunked and indexed so chat and search can use them as context.
+              </p>
+            </div>
           )}
           {documents.map((d) => (
             <div
               key={d.id}
-              onClick={() => setSelected(d)}
+              onClick={async () => {
+                const fullDoc = await api.document.get(d.id);
+                setSelected(fullDoc || d);
+              }}
               className={`group flex items-center gap-2 px-3 py-2.5 cursor-pointer transition-colors ${
                 selected?.id === d.id
                   ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"

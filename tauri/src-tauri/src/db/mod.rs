@@ -755,5 +755,18 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         tx.commit()?;
     }
 
+    // v34: add last_processed_message_count column to chat_sessions
+    let applied_v34: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v34_chat_sessions_last_processed_message_count'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v34 == 0 {
+        let _ = conn.execute_batch("ALTER TABLE chat_sessions ADD COLUMN last_processed_message_count INTEGER NOT NULL DEFAULT 0;");
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v34_chat_sessions_last_processed_message_count');",
+        )?;
+    }
+
     Ok(())
 }

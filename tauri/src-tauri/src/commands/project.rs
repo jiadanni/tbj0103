@@ -102,7 +102,7 @@ pub fn move_project_to_workspace(
     project_id: String,
     target_workspace_id: String,
 ) -> Result<Project, String> {
-    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
 
     // Get the source project
     let source_project: Project = conn.query_row(

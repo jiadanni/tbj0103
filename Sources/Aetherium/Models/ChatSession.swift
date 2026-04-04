@@ -9,6 +9,7 @@ final class ChatSession {
     var updatedAt: Date
     var modelName: String
     var isLocal: Bool // Whether using Ollama or cloud API
+    var lastProcessedMessageCount: Int
 
     @Relationship(deleteRule: .cascade) var messages: [Message]
     var project: Project?
@@ -33,7 +34,8 @@ final class ChatSession {
         isLocal: Bool = true,
         systemPrompt: String? = nil,
         parentMessageID: UUID? = nil,
-        branchLabel: String? = nil
+        branchLabel: String? = nil,
+        lastProcessedMessageCount: Int = 0
     ) {
         self.id = id
         self.title = title
@@ -47,6 +49,7 @@ final class ChatSession {
         self.relatedGoalIDs = []
         self.parentMessageID = parentMessageID
         self.branchLabel = branchLabel
+        self.lastProcessedMessageCount = lastProcessedMessageCount
     }
 
     var needsAutoTitle: Bool {

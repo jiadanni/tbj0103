@@ -25,41 +25,78 @@ pub fn get_relevant_chunks(
     top_k: usize,
 ) -> Result<Vec<RetrievedChunk>, String> {
     let mut stmt = conn.prepare(
-        "SELECT sc.id, sc.source_id, COALESCE(s.filename, s.title), sc.content, sc.embedding, sc.chunk_index
+        "SELECT sc.id, sc.embedding
          FROM source_chunks sc
          JOIN sources s ON sc.source_id = s.id
          WHERE s.workspace_id = ?1 AND s.source_type = 'document' AND sc.embedding IS NOT NULL"
     ).map_err(|e| e.to_string())?;
 
-    let raw_rows: Vec<(String, String, String, String, Vec<u8>, i64)> = stmt.query_map(
+    let raw_rows: Vec<(String, Vec<u8>)> = stmt.query_map(
         rusqlite::params![workspace_id],
         |row| Ok((
             row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, Vec<u8>>(4)?,
-            row.get::<_, i64>(5)?,
+            row.get::<_, Vec<u8>>(1)?,
         ))
     ).map_err(|e| e.to_string())?
     .filter_map(Result::ok)
     .collect();
 
     use rayon::prelude::*;
-    let mut scored: Vec<(f32, RetrievedChunk)> = raw_rows
+    let mut scored: Vec<(f32, String)> = raw_rows
         .into_par_iter()
-        .filter_map(|(chunk_id, doc_id, filename, content, emb_blob, chunk_index)| {
+        .filter_map(|(chunk_id, emb_blob)| {
             let embedding = crate::services::vector_index::bytes_to_f32_vec(&emb_blob);
             if embedding.is_empty() {
                 return None;
             }
             let score = cosine_similarity(query_embedding, &embedding);
-            Some((score, RetrievedChunk { chunk_id, document_id: doc_id, filename, content, score, chunk_index }))
+            Some((score, chunk_id))
         })
         .collect();
 
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    Ok(scored.into_iter().take(top_k).map(|(_, c)| c).collect())
+    scored.truncate(top_k);
+
+    if scored.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let chunk_ids: Vec<String> = scored.iter().map(|(_, id)| id.clone()).collect();
+    let placeholders = chunk_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!(
+        "SELECT sc.id, sc.source_id, COALESCE(s.filename, s.title), sc.content, sc.chunk_index
+         FROM source_chunks sc
+         JOIN sources s ON sc.source_id = s.id
+         WHERE sc.id IN ({})",
+        placeholders
+    );
+    let mut fetch_stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
+    
+    let mut chunk_map = std::collections::HashMap::new();
+    let params = rusqlite::params_from_iter(chunk_ids.iter());
+    
+    let rows = fetch_stmt.query_map(params, |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, i64>(4)?,
+        ))
+    }).map_err(|e| e.to_string())?;
+    
+    for row in rows.filter_map(Result::ok) {
+        chunk_map.insert(row.0.clone(), row);
+    }
+    
+    let mut results = Vec::new();
+    for (score, id) in scored {
+        if let Some((chunk_id, doc_id, filename, content, chunk_index)) = chunk_map.remove(&id) {
+            results.push(RetrievedChunk { chunk_id, document_id: doc_id, filename, content, score, chunk_index });
+        }
+    }
+    
+    Ok(results)
 }
 
 /// Build a grounded system prompt that injects retrieved chunks as context.

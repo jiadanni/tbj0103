@@ -35,7 +35,7 @@ pub fn start_scheduler(app: AppHandle) {
             let is_active_chatting = {
                 if let Ok(conn) = db.0.get() {
                     let count: i64 = conn.query_row(
-                        "SELECT COUNT(*) FROM chat_sessions WHERE last_accessed_at >= datetime('now', '-5 minutes')",
+                        "SELECT COUNT(*) FROM chat_sessions WHERE datetime(last_accessed_at) >= datetime('now', '-5 minutes')",
                         [],
                         |row| row.get(0),
                     ).unwrap_or(0);
@@ -66,7 +66,7 @@ pub fn start_scheduler(app: AppHandle) {
                         Ok(conn) => {
                             match conn.prepare(
                                 "SELECT cs.id, cs.workspace_id FROM chat_sessions cs
-                                 WHERE cs.updated_at > datetime('now', '-5 minutes')
+                                 WHERE datetime(cs.updated_at) > datetime('now', '-5 minutes')
                                    AND cs.is_incognito = 0
                                    AND cs.exclude_from_analytics = 0
                                    AND cs.is_imported = 0

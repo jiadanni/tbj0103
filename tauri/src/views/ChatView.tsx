@@ -1543,6 +1543,7 @@ export default function ChatView() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const creatingFolderRequestRef = useRef(false);
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
+  const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
 
   const openConfirmDialog = useCallback((options: ConfirmDialogState) => {
     setConfirmDialog(options);
@@ -2848,7 +2849,7 @@ export default function ChatView() {
         : typeof error === "string" && error.trim()
           ? error
           : "Failed to move folder.";
-      showAlertDialog("Move failed", description, "danger");
+      openAlertDialog("Move failed", description, "danger");
     }
   }
 
@@ -3431,7 +3432,7 @@ export default function ChatView() {
 
           {/* Messages */}
           <div className={`min-h-0 flex-1 flex flex-col ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 flex flex-col">
               <Virtuoso
                 ref={virtuosoRef}
                 data={activeMessages}
