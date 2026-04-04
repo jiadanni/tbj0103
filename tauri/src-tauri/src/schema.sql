@@ -398,6 +398,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('immediate_delete', 'false'),
     ('confirm_move_to_trash', 'true'),
     ('prompt_instructions', '""'),
+    ('hide_native_menu', 'false'),
     ('switch_workspace_to_chat', 'false');
 
 -- Conversation summaries

@@ -9,7 +9,7 @@ const SETTINGS_INITIAL = {
   embeddingModel: "nomic-embed-text",
   theme: "system" as const,
   accentColor: "#007AFF",
-  fontSize: 14,
+  fontSize: 16,
   sidebarWidth: 240,
   settingsNavLayout: "top-tabs" as const,
   dualModelEnabled: false,
@@ -36,8 +36,8 @@ describe("default values", () => {
     expect(useSettingsStore.getState().ollamaUrl).toBe("http://localhost:11434");
   });
 
-  it("fontSize defaults to 14", () => {
-    expect(useSettingsStore.getState().fontSize).toBe(14);
+  it("fontSize defaults to 16", () => {
+    expect(useSettingsStore.getState().fontSize).toBe(16);
   });
 
   it("sidebarWidth defaults to 240", () => {
@@ -76,7 +76,7 @@ describe("setters", () => {
     useSettingsStore.getState().setOllamaUrl("http://remote:11434");
     const state = useSettingsStore.getState();
     expect(state.ollamaUrl).toBe("http://remote:11434");
-    expect(state.fontSize).toBe(14); // unchanged
+    expect(state.fontSize).toBe(16); // unchanged
   });
 
   it("setFontSize updates fontSize only", () => {
@@ -164,6 +164,6 @@ describe("zustand/persist", () => {
     useSettingsStore.getState().setFontSize(20);
     localStorage.clear();
     useSettingsStore.setState(SETTINGS_INITIAL, true);
-    expect(useSettingsStore.getState().fontSize).toBe(14);
+    expect(useSettingsStore.getState().fontSize).toBe(16);
   });
 });
