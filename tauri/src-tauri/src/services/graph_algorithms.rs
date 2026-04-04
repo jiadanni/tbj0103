@@ -3,8 +3,8 @@
 ///
 /// Algorithms: PageRank, community detection (label propagation),
 /// centrality, degree distribution, shortest path (BFS/Dijkstra)
-use std::collections::{HashMap, HashSet, VecDeque};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphNode {
@@ -68,8 +68,14 @@ pub fn compute_pagerank(
     }
 
     for edge in edges {
-        out_links.entry(edge.source.as_str()).or_default().push(edge.target.as_str());
-        in_links.entry(edge.target.as_str()).or_default().push((edge.source.as_str(), edge.weight));
+        out_links
+            .entry(edge.source.as_str())
+            .or_default()
+            .push(edge.target.as_str());
+        in_links
+            .entry(edge.target.as_str())
+            .or_default()
+            .push((edge.source.as_str(), edge.weight));
     }
 
     // Initialize ranks
@@ -80,22 +86,34 @@ pub fn compute_pagerank(
         let mut new_ranks: HashMap<&str, f64> = HashMap::new();
         for node in nodes {
             let id = node.id.as_str();
-            let incoming_sum: f64 = in_links.get(id).unwrap_or(&vec![]).iter().map(|(src, _w)| {
-                let src_rank = ranks.get(src).copied().unwrap_or(init);
-                let out_count = out_links.get(src).map(|v| v.len()).unwrap_or(1) as f64;
-                src_rank / out_count.max(1.0)
-            }).sum();
+            let incoming_sum: f64 = in_links
+                .get(id)
+                .unwrap_or(&vec![])
+                .iter()
+                .map(|(src, _w)| {
+                    let src_rank = ranks.get(src).copied().unwrap_or(init);
+                    let out_count = out_links.get(src).map(|v| v.len()).unwrap_or(1) as f64;
+                    src_rank / out_count.max(1.0)
+                })
+                .sum();
             let rank = (1.0 - damping_factor) / n as f64 + damping_factor * incoming_sum;
             new_ranks.insert(id, rank);
         }
         ranks = new_ranks;
     }
 
-    let mut results: Vec<PageRankResult> = nodes.iter().map(|n| PageRankResult {
-        node_id: n.id.clone(),
-        score: ranks.get(n.id.as_str()).copied().unwrap_or(init),
-    }).collect();
-    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    let mut results: Vec<PageRankResult> = nodes
+        .iter()
+        .map(|n| PageRankResult {
+            node_id: n.id.clone(),
+            score: ranks.get(n.id.as_str()).copied().unwrap_or(init),
+        })
+        .collect();
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     results
 }
 
@@ -113,20 +131,33 @@ pub fn detect_communities(nodes: &[GraphNode], edges: &[GraphEdge]) -> Vec<Commu
         neighbors.entry(node.id.as_str()).or_default();
     }
     for edge in edges {
-        neighbors.entry(edge.source.as_str()).or_default().push(edge.target.as_str());
-        neighbors.entry(edge.target.as_str()).or_default().push(edge.source.as_str());
+        neighbors
+            .entry(edge.source.as_str())
+            .or_default()
+            .push(edge.target.as_str());
+        neighbors
+            .entry(edge.target.as_str())
+            .or_default()
+            .push(edge.source.as_str());
     }
 
     // Initialize each node to its own community (indexed by position)
     let node_ids: Vec<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
-    let mut labels: HashMap<&str, usize> = node_ids.iter().cloned().enumerate().map(|(i, id)| (id, i)).collect();
+    let mut labels: HashMap<&str, usize> = node_ids
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(i, id)| (id, i))
+        .collect();
 
     // Iterate label propagation
     for _ in 0..10 {
         let mut changed = false;
         for &id in &node_ids {
             let nbrs = neighbors.get(id).cloned().unwrap_or_default();
-            if nbrs.is_empty() { continue; }
+            if nbrs.is_empty() {
+                continue;
+            }
             // Find the most frequent label among neighbors
             let mut freq: HashMap<usize, usize> = HashMap::new();
             for nbr in &nbrs {
@@ -140,23 +171,37 @@ pub fn detect_communities(nodes: &[GraphNode], edges: &[GraphEdge]) -> Vec<Commu
                 }
             }
         }
-        if !changed { break; }
+        if !changed {
+            break;
+        }
     }
 
     // Remap community labels to contiguous integers
     let mut label_map: HashMap<usize, usize> = HashMap::new();
     let mut next_id = 0usize;
-    nodes.iter().map(|n| {
-        let raw = *labels.get(n.id.as_str()).unwrap_or(&0);
-        let community_id = *label_map.entry(raw).or_insert_with(|| { let id = next_id; next_id += 1; id });
-        CommunityResult { node_id: n.id.clone(), community_id }
-    }).collect()
+    nodes
+        .iter()
+        .map(|n| {
+            let raw = *labels.get(n.id.as_str()).unwrap_or(&0);
+            let community_id = *label_map.entry(raw).or_insert_with(|| {
+                let id = next_id;
+                next_id += 1;
+                id
+            });
+            CommunityResult {
+                node_id: n.id.clone(),
+                community_id,
+            }
+        })
+        .collect()
 }
 
 /// Degree centrality for all nodes (normalized by n-1).
 pub fn compute_centrality(nodes: &[GraphNode], edges: &[GraphEdge]) -> Vec<CentralityResult> {
     let n = nodes.len();
-    if n == 0 { return vec![]; }
+    if n == 0 {
+        return vec![];
+    }
 
     let mut degree: HashMap<&str, usize> = nodes.iter().map(|n| (n.id.as_str(), 0)).collect();
     for edge in edges {
@@ -165,14 +210,17 @@ pub fn compute_centrality(nodes: &[GraphNode], edges: &[GraphEdge]) -> Vec<Centr
     }
 
     let norm = (n - 1).max(1) as f64;
-    nodes.iter().map(|node| {
-        let d = *degree.get(node.id.as_str()).unwrap_or(&0) as f64;
-        CentralityResult {
-            node_id: node.id.clone(),
-            degree_centrality: d / norm,
-            betweenness_centrality: 0.0, // Simplified: full betweenness is O(V*E), omitted for perf
-        }
-    }).collect()
+    nodes
+        .iter()
+        .map(|node| {
+            let d = *degree.get(node.id.as_str()).unwrap_or(&0) as f64;
+            CentralityResult {
+                node_id: node.id.clone(),
+                degree_centrality: d / norm,
+                betweenness_centrality: 0.0, // Simplified: full betweenness is O(V*E), omitted for perf
+            }
+        })
+        .collect()
 }
 
 /// BFS shortest path between two nodes.
@@ -184,19 +232,33 @@ pub fn find_shortest_path(
 ) -> ShortestPathResult {
     let node_set: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
     if !node_set.contains(source_id) || !node_set.contains(target_id) {
-        return ShortestPathResult { path: vec![], total_weight: f64::INFINITY, found: false };
+        return ShortestPathResult {
+            path: vec![],
+            total_weight: f64::INFINITY,
+            found: false,
+        };
     }
 
     if source_id == target_id {
-        return ShortestPathResult { path: vec![source_id.to_string()], total_weight: 0.0, found: true };
+        return ShortestPathResult {
+            path: vec![source_id.to_string()],
+            total_weight: 0.0,
+            found: true,
+        };
     }
 
     // Build undirected adjacency
     let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
-    for node in nodes { adj.entry(node.id.as_str()).or_default(); }
+    for node in nodes {
+        adj.entry(node.id.as_str()).or_default();
+    }
     for edge in edges {
-        adj.entry(edge.source.as_str()).or_default().push(edge.target.as_str());
-        adj.entry(edge.target.as_str()).or_default().push(edge.source.as_str());
+        adj.entry(edge.source.as_str())
+            .or_default()
+            .push(edge.target.as_str());
+        adj.entry(edge.target.as_str())
+            .or_default()
+            .push(edge.source.as_str());
     }
 
     // BFS
@@ -224,7 +286,11 @@ pub fn find_shortest_path(
         }
     }
 
-    ShortestPathResult { path: vec![], total_weight: f64::INFINITY, found: false }
+    ShortestPathResult {
+        path: vec![],
+        total_weight: f64::INFINITY,
+        found: false,
+    }
 }
 
 /// Degree distribution histogram: returns (degree, count) pairs.
@@ -249,15 +315,39 @@ mod tests {
 
     fn make_graph() -> (Vec<GraphNode>, Vec<GraphEdge>) {
         let nodes = vec![
-            GraphNode { id: "a".to_string(), name: "A".to_string() },
-            GraphNode { id: "b".to_string(), name: "B".to_string() },
-            GraphNode { id: "c".to_string(), name: "C".to_string() },
-            GraphNode { id: "d".to_string(), name: "D".to_string() },
+            GraphNode {
+                id: "a".to_string(),
+                name: "A".to_string(),
+            },
+            GraphNode {
+                id: "b".to_string(),
+                name: "B".to_string(),
+            },
+            GraphNode {
+                id: "c".to_string(),
+                name: "C".to_string(),
+            },
+            GraphNode {
+                id: "d".to_string(),
+                name: "D".to_string(),
+            },
         ];
         let edges = vec![
-            GraphEdge { source: "a".to_string(), target: "b".to_string(), weight: 1.0 },
-            GraphEdge { source: "b".to_string(), target: "c".to_string(), weight: 1.0 },
-            GraphEdge { source: "a".to_string(), target: "c".to_string(), weight: 1.0 },
+            GraphEdge {
+                source: "a".to_string(),
+                target: "b".to_string(),
+                weight: 1.0,
+            },
+            GraphEdge {
+                source: "b".to_string(),
+                target: "c".to_string(),
+                weight: 1.0,
+            },
+            GraphEdge {
+                source: "a".to_string(),
+                target: "c".to_string(),
+                weight: 1.0,
+            },
         ];
         (nodes, edges)
     }
@@ -267,7 +357,10 @@ mod tests {
         let (nodes, edges) = make_graph();
         let results = compute_pagerank(&nodes, &edges, 0.85, 100);
         let total: f64 = results.iter().map(|r| r.score).sum();
-        assert!((total - 1.0).abs() < 0.01, "PageRank should sum to ~1, got {total}");
+        assert!(
+            (total - 1.0).abs() < 0.01,
+            "PageRank should sum to ~1, got {total}"
+        );
     }
 
     #[test]

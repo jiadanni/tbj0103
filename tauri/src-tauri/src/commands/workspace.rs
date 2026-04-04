@@ -4,7 +4,7 @@ use crate::models::workspace::{Workspace, CreateWorkspaceRequest, UpdateWorkspac
 
 #[tauri::command]
 pub fn create_workspace(state: State<DbState>, req: CreateWorkspaceRequest) -> Result<Workspace, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let ws = Workspace::new(req.name, req.description.unwrap_or_default());
 
     let sig_json = serde_json::to_string(&ws.topic_signature).map_err(|e| e.to_string())?;
@@ -18,7 +18,7 @@ pub fn create_workspace(state: State<DbState>, req: CreateWorkspaceRequest) -> R
 
 #[tauri::command]
 pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at
          FROM workspaces
@@ -48,7 +48,7 @@ pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> 
 
 #[tauri::command]
 pub fn list_hidden_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at
          FROM workspaces
@@ -78,7 +78,7 @@ pub fn list_hidden_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, S
 
 #[tauri::command]
 pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspace>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
         "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at FROM workspaces WHERE id = ?1",
         rusqlite::params![id],
@@ -108,7 +108,7 @@ pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspa
 
 #[tauri::command]
 pub fn hide_workspace(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE workspaces SET is_hidden = 1, updated_at = ?1 WHERE id = ?2",
@@ -119,7 +119,7 @@ pub fn hide_workspace(state: State<DbState>, id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn unhide_workspace(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE workspaces SET is_hidden = 0, updated_at = ?1 WHERE id = ?2",
@@ -130,7 +130,7 @@ pub fn unhide_workspace(state: State<DbState>, id: String) -> Result<(), String>
 
 #[tauri::command]
 pub fn update_workspace(state: State<DbState>, req: UpdateWorkspaceRequest) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     // Always update name and updated_at; conditionally update description and prompt_instructions
     conn.execute(
@@ -154,7 +154,7 @@ pub fn update_workspace(state: State<DbState>, req: UpdateWorkspaceRequest) -> R
 
 #[tauri::command]
 pub fn delete_workspace(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM workspaces WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -168,9 +168,9 @@ mod tests {
     use tauri::test::{mock_builder, mock_context};
     use tauri::Manager;
 
-    fn get_mock_state(db: rusqlite::Connection) -> tauri::State<'static, DbState> {
+    fn get_mock_state(db: r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>) -> tauri::State<'static, DbState> {
         let app = mock_builder().build(tauri::generate_context!()).unwrap();
-        app.manage(DbState(Mutex::new(db)));
+        app.manage(DbState(db));
         // This is safe for a test environment as long as app stays alive
         // Wait, app is dropped at the end of the function, so state will be invalidated.
         // Let's just return the app handle and get state from it in each test.
@@ -181,7 +181,7 @@ mod tests {
     fn test_create_and_list_workspace() {
         let db = setup_test_db();
         let app = mock_builder().build(tauri::generate_context!()).unwrap();
-        app.manage(DbState(Mutex::new(db)));
+        app.manage(DbState(db));
         let state = app.state::<DbState>();
 
         let req = CreateWorkspaceRequest {
@@ -204,7 +204,7 @@ mod tests {
     fn test_hide_unhide_workspace() {
         let db = setup_test_db();
         let app = mock_builder().build(tauri::generate_context!()).unwrap();
-        app.manage(DbState(Mutex::new(db)));
+        app.manage(DbState(db));
         let state = app.state::<DbState>();
 
         let req = CreateWorkspaceRequest {
