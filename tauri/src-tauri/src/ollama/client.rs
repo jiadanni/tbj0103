@@ -572,13 +572,20 @@ impl OllamaClient {
 }
 
 /// Cosine similarity between two embedding vectors.
+use ndarray::ArrayView1;
+
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
-    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    let a_arr = ArrayView1::from(a);
+    let b_arr = ArrayView1::from(b);
+
+    let dot = a_arr.dot(&b_arr);
+    let norm_a = a_arr.dot(&a_arr).sqrt();
+    let norm_b = b_arr.dot(&b_arr).sqrt();
+
     if norm_a == 0.0 || norm_b == 0.0 {
         return 0.0;
     }

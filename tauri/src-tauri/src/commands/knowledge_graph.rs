@@ -26,7 +26,7 @@ fn row_to_concept(row: &rusqlite::Row) -> rusqlite::Result<ConceptNode> {
 
 #[tauri::command]
 pub fn create_concept(state: State<DbState>, req: CreateConceptRequest) -> Result<ConceptNode, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut c = ConceptNode::new(req.workspace_id, req.name);
     if let Some(d) = req.concept_description { c.concept_description = d; }
     if let Some(t) = req.concept_type { c.concept_type = t; }
@@ -46,7 +46,7 @@ pub fn create_concept(state: State<DbState>, req: CreateConceptRequest) -> Resul
 
 #[tauri::command]
 pub fn list_concepts(state: State<DbState>, workspace_id: String, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<ConceptNode>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(500).clamp(1, 5000);
     let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn.prepare(
@@ -63,7 +63,7 @@ pub fn list_concepts(state: State<DbState>, workspace_id: String, limit: Option<
 
 #[tauri::command]
 pub fn get_concept(state: State<DbState>, id: String) -> Result<Option<ConceptNode>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
         "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at
          FROM concept_nodes WHERE id = ?1",
@@ -79,7 +79,7 @@ pub fn get_concept(state: State<DbState>, id: String) -> Result<Option<ConceptNo
 
 #[tauri::command]
 pub fn update_concept(state: State<DbState>, id: String, name: Option<String>, concept_description: Option<String>, x_position: Option<f64>, y_position: Option<f64>) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE concept_nodes SET
@@ -96,7 +96,7 @@ pub fn update_concept(state: State<DbState>, id: String, name: Option<String>, c
 
 #[tauri::command]
 pub fn delete_concept(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM concept_nodes WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -104,7 +104,7 @@ pub fn delete_concept(state: State<DbState>, id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn create_concept_link(state: State<DbState>, req: CreateLinkRequest) -> Result<ConceptLink, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let link = ConceptLink {
         id: uuid::Uuid::new_v4().to_string(),
         source_id: req.source_id,
@@ -125,7 +125,7 @@ pub fn create_concept_link(state: State<DbState>, req: CreateLinkRequest) -> Res
 
 #[tauri::command]
 pub fn list_concept_links(state: State<DbState>, workspace_id: String, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<ConceptLink>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(1000).clamp(1, 10000);
     let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn.prepare(
@@ -154,7 +154,7 @@ pub fn list_concept_links(state: State<DbState>, workspace_id: String, limit: Op
 
 #[tauri::command]
 pub fn delete_concept_link(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM concept_links WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -162,7 +162,7 @@ pub fn delete_concept_link(state: State<DbState>, id: String) -> Result<(), Stri
 
 #[tauri::command]
 pub fn get_graph_stats(state: State<DbState>, workspace_id: String) -> Result<GraphStatistics, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let total_concepts: i64 = conn.query_row(
         "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = ?1",
         rusqlite::params![workspace_id], |r| r.get(0)

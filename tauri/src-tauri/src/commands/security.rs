@@ -141,7 +141,7 @@ fn verify_pin_hash(pin: &str, stored_hash: &str) -> Result<bool, String> {
 
 #[tauri::command]
 pub fn get_security_status(state: State<DbState>) -> Result<SecurityStatus, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let pin_enabled = get_setting(&conn, PIN_HASH_KEY)
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false);
@@ -173,7 +173,7 @@ pub fn set_pin_passcode(
 ) -> Result<(), String> {
     validate_pin(&new_pin)?;
 
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let existing_hash = get_setting(&conn, PIN_HASH_KEY).unwrap_or_default();
 
     if !existing_hash.trim().is_empty() {
@@ -192,7 +192,7 @@ pub fn set_pin_passcode(
 pub fn verify_pin_passcode(state: State<DbState>, pin: String) -> Result<bool, String> {
     validate_pin(&pin)?;
 
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let stored_hash = get_setting(&conn, PIN_HASH_KEY).unwrap_or_default();
 
     if stored_hash.trim().is_empty() {
@@ -206,7 +206,7 @@ pub fn verify_pin_passcode(state: State<DbState>, pin: String) -> Result<bool, S
 pub fn remove_pin_passcode(state: State<DbState>, current_pin: String) -> Result<(), String> {
     validate_pin(&current_pin)?;
 
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let stored_hash = get_setting(&conn, PIN_HASH_KEY).unwrap_or_default();
 
     if stored_hash.trim().is_empty() {

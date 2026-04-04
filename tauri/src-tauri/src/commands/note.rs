@@ -6,7 +6,7 @@ use crate::services::{linking_engine, note_template_engine};
 
 #[tauri::command]
 pub fn create_note(state: State<DbState>, req: CreateNoteRequest) -> Result<ProjectNote, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let note = ProjectNote {
         id: uuid::Uuid::new_v4().to_string(),
@@ -39,7 +39,7 @@ pub fn list_notes(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<ProjectNote>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(200).clamp(1, 1000);
     let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn.prepare(
@@ -66,7 +66,7 @@ pub fn list_notes(
 
 #[tauri::command]
 pub fn get_note(state: State<DbState>, id: String) -> Result<Option<ProjectNote>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
         "SELECT id, workspace_id, title, content, note_type, tags, created_at, updated_at FROM project_notes WHERE id = ?1",
         rusqlite::params![id],
@@ -93,7 +93,7 @@ pub fn get_note(state: State<DbState>, id: String) -> Result<Option<ProjectNote>
 
 #[tauri::command]
 pub fn update_note(state: State<DbState>, req: UpdateNoteRequest) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let tags_json = req.tags.as_ref().map(|t| serde_json::to_string(t).unwrap_or_default());
     conn.execute(
@@ -117,7 +117,7 @@ pub fn update_note(state: State<DbState>, req: UpdateNoteRequest) -> Result<(), 
 
 #[tauri::command]
 pub fn delete_note(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM project_notes WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -125,7 +125,7 @@ pub fn delete_note(state: State<DbState>, id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_or_create_daily_note(state: State<DbState>, req: GetOrCreateDailyNoteRequest) -> Result<DailyNote, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let date = req.date.unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
     // Try to find existing note for this date
     let result = conn.query_row(
@@ -165,7 +165,7 @@ pub fn list_daily_notes_in_range(
     start_date: String,
     end_date: String,
 ) -> Result<Vec<DailyNote>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, date, content, mood, productivity, template_id, created_at, updated_at
          FROM daily_notes
@@ -192,7 +192,7 @@ pub fn list_daily_notes_in_range(
 
 #[tauri::command]
 pub fn list_templates(state: State<DbState>, workspace_id: String) -> Result<Vec<NoteTemplate>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, name, template_description, content, icon, is_built_in, variables, created_at, updated_at
          FROM note_templates WHERE workspace_id = ?1 ORDER BY is_built_in DESC, name ASC"
@@ -219,7 +219,7 @@ pub fn list_templates(state: State<DbState>, workspace_id: String) -> Result<Vec
 
 #[tauri::command]
 pub fn create_template(state: State<DbState>, workspace_id: String, name: String, content: String, icon: Option<String>) -> Result<NoteTemplate, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let t = NoteTemplate {
         id: uuid::Uuid::new_v4().to_string(),
@@ -250,7 +250,7 @@ pub fn apply_template(
     template_id: String,
     extra_vars: HashMap<String, String>,
 ) -> Result<String, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let content: String = conn.query_row(
         "SELECT content FROM note_templates WHERE id = ?1",
         rusqlite::params![template_id],
@@ -266,14 +266,14 @@ pub fn get_backlinks(
     workspace_id: String,
     concept_name: String,
 ) -> Result<Vec<linking_engine::BacklinkEntry>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     linking_engine::get_backlinks_for_concept(&conn, &workspace_id, &concept_name)
 }
 
 /// Return all concept names linked from a specific note.
 #[tauri::command]
 pub fn get_note_outbound_links(state: State<DbState>, note_id: String) -> Result<Vec<String>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     linking_engine::get_outbound_links(&conn, "note", &note_id)
 }
 
@@ -286,7 +286,7 @@ pub fn update_daily_note(
     mood: Option<i64>,
     productivity: Option<i64>,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE daily_notes SET
@@ -303,7 +303,7 @@ pub fn update_daily_note(
 /// Delete a custom (non-built-in) note template.
 #[tauri::command]
 pub fn delete_template(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     // Prevent deletion of built-in templates
     let is_built_in: i32 = conn.query_row(
         "SELECT is_built_in FROM note_templates WHERE id = ?1",
@@ -327,7 +327,7 @@ pub fn update_template(
     content: Option<String>,
     icon: Option<String>,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE note_templates SET

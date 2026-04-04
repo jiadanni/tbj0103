@@ -5,7 +5,7 @@ use serde::Serialize;
 
 #[tauri::command]
 pub fn create_project(state: State<DbState>, req: CreateProjectRequest) -> Result<Project, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut p = Project::new(req.workspace_id.clone(), req.name);
     if let Some(d) = req.project_description { p.project_description = d; }
     if let Some(c) = req.custom_instructions { p.custom_instructions = c; }
@@ -21,7 +21,7 @@ pub fn create_project(state: State<DbState>, req: CreateProjectRequest) -> Resul
 
 #[tauri::command]
 pub fn list_projects(state: State<DbState>, workspace_id: String) -> Result<Vec<Project>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
          FROM projects WHERE workspace_id = ?1 ORDER BY created_at DESC"
@@ -46,7 +46,7 @@ pub fn list_projects(state: State<DbState>, workspace_id: String) -> Result<Vec<
 
 #[tauri::command]
 pub fn get_project(state: State<DbState>, id: String) -> Result<Option<Project>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
         "SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
          FROM projects WHERE id = ?1",
@@ -72,7 +72,7 @@ pub fn get_project(state: State<DbState>, id: String) -> Result<Option<Project>,
 
 #[tauri::command]
 pub fn update_project(state: State<DbState>, req: UpdateProjectRequest) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE projects SET
@@ -90,7 +90,7 @@ pub fn update_project(state: State<DbState>, req: UpdateProjectRequest) -> Resul
 
 #[tauri::command]
 pub fn delete_project(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM projects WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -192,7 +192,7 @@ pub struct ProjectStats {
 
 #[tauri::command]
 pub fn get_project_stats(state: State<DbState>, id: String) -> Result<ProjectStats, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let chat_session_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM chat_sessions WHERE project_id = ?1",
         rusqlite::params![id], |r| r.get(0)
