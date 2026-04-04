@@ -1,4 +1,4 @@
-import { Virtuoso } from "react-virtuoso";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -323,12 +323,13 @@ function SessionSidebar({
   }
 
   function renderSessionList(items: ChatSession[], depth = 0) {
-    if (items.length === 0) return null;
+    if (items.length === 0) { return null; }
     return (
       <div style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
         <Virtuoso
           data={items}
           style={{ height: "100%", flex: 1 }}
+          computeItemKey={(_, session) => session.id}
           itemContent={(index, session) => (
             <div className="pb-[2px]">
               <SessionItem
@@ -1847,10 +1848,9 @@ export default function ChatView() {
   const [isRefiningPhase, setIsRefiningPhase] = useState(false);
   const [draftSnapshot, setDraftSnapshot] = useState("");
   const refineContentRef = useRef("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const prevScrollChatIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const messagesScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const pendingSentScrollId = useRef<string | null>(null);
   const incognitoSessionIdsRef = useRef<Set<string>>(new Set());
 
@@ -2190,30 +2190,32 @@ export default function ChatView() {
     if (scrollToTopOnSend && pendingSentScrollId.current && !isCurrentlyStreaming && !isSessionSwitch) {
       const msgId = pendingSentScrollId.current;
       pendingSentScrollId.current = null;
-      const container = messagesScrollContainerRef.current;
-      if (container) {
+      const msgIndex = activeMessages.findIndex((m) => m.id === msgId);
+      if (msgIndex !== -1) {
         requestAnimationFrame(() => {
-          const el = container.querySelector(`[data-msg-id="${msgId}"]`);
-          if (el) { (el as HTMLElement).scrollIntoView({ behavior: "smooth", block: "start" }); }
+          virtuosoRef.current?.scrollToIndex({ index: msgIndex, behavior: "smooth", align: "start" });
         });
         return;
       }
     }
 
-    messagesEndRef.current?.scrollIntoView({
-      behavior: isSessionSwitch ? "instant" : "smooth",
-    });
-  }, [activeChatId, activeMessages.length, isCurrentlyStreaming, scrollToTopOnSend]);
+    if (activeMessages.length > 0) {
+      virtuosoRef.current?.scrollToIndex({
+        index: activeMessages.length - 1,
+        behavior: isSessionSwitch ? "auto" : "smooth",
+      });
+    }
+  }, [activeChatId, activeMessages, isCurrentlyStreaming, scrollToTopOnSend]);
 
   // Throttled scroll-to-bottom during streaming — runs at ~7 fps instead of
   // on every chunk, avoiding layout thrashing while keeping the view pinned.
   useEffect(() => {
-    if (!isCurrentlyStreaming) { return; }
+    if (!isCurrentlyStreaming || activeMessages.length === 0) { return; }
     const interval = setInterval(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+      virtuosoRef.current?.scrollToIndex({ index: activeMessages.length - 1, behavior: "auto" });
     }, 150);
     return () => clearInterval(interval);
-  }, [isCurrentlyStreaming]);
+  }, [isCurrentlyStreaming, activeMessages.length]);
 
   useEffect(() => {
     if (!activeChatId || !hasLoadedActiveMessages || activeMessages.length > 0 || isStreaming) {return;}
@@ -3383,14 +3385,16 @@ export default function ChatView() {
           )}
 
           {/* Messages */}
-          <div ref={messagesScrollContainerRef} className={`min-h-0 flex-1 flex flex-col ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
+          <div className={`min-h-0 flex-1 flex flex-col ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
             <div className="flex-1 min-h-0 flex flex-col">
               <Virtuoso
+                ref={virtuosoRef}
                 data={activeMessages}
                 initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
                 followOutput="smooth"
                 alignToBottom={true}
                 className="px-4 py-4 scroll-smooth"
+                computeItemKey={(_, msg) => msg.id}
                 itemContent={(i, msg) => (
                   <div className="pb-4">
                     <ChatMessageBubble
@@ -3490,8 +3494,6 @@ export default function ChatView() {
               modelDisplayName={modelDisplayName}
               selectedModel={selectedModel}
             />
-
-            <div ref={messagesEndRef} />
           </div>
 
           {/* Input / composer area */}
