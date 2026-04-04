@@ -10,7 +10,7 @@ pub fn upload_document(state: State<DbState>, req: UploadDocumentRequest) -> Res
         return Err("File exceeds 50MB limit".to_string());
     }
 
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let doc = UploadedDocument {
         id: uuid::Uuid::new_v4().to_string(),
@@ -45,7 +45,7 @@ pub fn upload_document(state: State<DbState>, req: UploadDocumentRequest) -> Res
 
 #[tauri::command]
 pub fn list_documents(state: State<DbState>, workspace_id: String) -> Result<Vec<UploadedDocument>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT s.id, s.workspace_id, s.filename, s.file_type, s.file_size, s.content, s.summary, s.is_processed,
                 (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
@@ -73,7 +73,7 @@ pub fn list_documents(state: State<DbState>, workspace_id: String) -> Result<Vec
 
 #[tauri::command]
 pub fn get_document(state: State<DbState>, id: String) -> Result<Option<UploadedDocument>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
         "SELECT s.id, s.workspace_id, s.filename, s.file_type, s.file_size, s.content, s.summary, s.is_processed,
                 (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
@@ -102,7 +102,7 @@ pub fn get_document(state: State<DbState>, id: String) -> Result<Option<Uploaded
 
 #[tauri::command]
 pub fn delete_document(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM sources WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -112,7 +112,7 @@ pub fn delete_document(state: State<DbState>, id: String) -> Result<(), String> 
 /// Full embedding generation happens asynchronously via the AI service.
 #[tauri::command]
 pub fn process_document(state: State<DbState>, req: ProcessDocumentRequest) -> Result<i64, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let content: String = conn.query_row(
         "SELECT content FROM sources WHERE id = ?1 AND source_type = 'document'",
         rusqlite::params![req.document_id],

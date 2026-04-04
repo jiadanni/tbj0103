@@ -20,7 +20,7 @@ fn row_to_model(row: &rusqlite::Row) -> rusqlite::Result<AiModel> {
 
 #[tauri::command]
 pub fn list_ai_models(state: State<DbState>) -> Result<Vec<AiModel>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at
          FROM ai_models ORDER BY priority ASC"
@@ -34,7 +34,7 @@ pub fn list_ai_models(state: State<DbState>) -> Result<Vec<AiModel>, String> {
 
 #[tauri::command]
 pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiModel, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
     let provider = req.provider.unwrap_or_else(|| "ollama".to_string());
     let role_tags = req.role_tags.unwrap_or_default();
@@ -74,7 +74,7 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
 
 #[tauri::command]
 pub fn update_ai_model(state: State<DbState>, req: UpdateAiModelRequest) -> Result<AiModel, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let role_tags_json = req
         .role_tags
         .as_ref()
@@ -110,7 +110,7 @@ pub fn update_ai_model(state: State<DbState>, req: UpdateAiModelRequest) -> Resu
 
 #[tauri::command]
 pub fn delete_ai_model(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM ai_models WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -118,7 +118,7 @@ pub fn delete_ai_model(state: State<DbState>, id: String) -> Result<(), String> 
 
 #[tauri::command]
 pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
         "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at
          FROM ai_models WHERE enabled = 1 ORDER BY priority ASC LIMIT 1",
@@ -155,7 +155,7 @@ pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
 
 #[tauri::command]
 pub fn record_model_token_usage(state: State<DbState>, model_id: String, provider: String, tokens: i64) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "UPDATE ai_models SET tokens_used_total = tokens_used_total + ?1 WHERE model_id = ?2 AND provider = ?3",
         rusqlite::params![tokens, model_id, provider],

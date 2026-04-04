@@ -4,7 +4,7 @@ use crate::models::alarm::{CalendarAlarm, CreateAlarmRequest};
 
 #[tauri::command]
 pub fn create_alarm(state: State<DbState>, req: CreateAlarmRequest) -> Result<CalendarAlarm, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let alarm = CalendarAlarm {
         id: uuid::Uuid::new_v4().to_string(),
         workspace_id: req.workspace_id,
@@ -25,7 +25,7 @@ pub fn create_alarm(state: State<DbState>, req: CreateAlarmRequest) -> Result<Ca
 
 #[tauri::command]
 pub fn list_alarms(state: State<DbState>, workspace_id: Option<String>) -> Result<Vec<CalendarAlarm>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let query = if workspace_id.is_some() {
         "SELECT id, workspace_id, title, fire_date, duration_seconds, input_prompt, is_dismissed, created_at
          FROM calendar_alarms WHERE workspace_id = ?1 AND is_dismissed = 0 ORDER BY fire_date ASC"
@@ -54,7 +54,7 @@ pub fn list_alarms(state: State<DbState>, workspace_id: Option<String>) -> Resul
 
 #[tauri::command]
 pub fn delete_alarm(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("UPDATE calendar_alarms SET is_dismissed = 1 WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())

@@ -11,7 +11,7 @@ pub fn create_web_capture(
     content: String,
     summary: Option<String>,
 ) -> Result<WebCapture, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let capture = WebCapture {
         id: uuid::Uuid::new_v4().to_string(),
@@ -49,7 +49,7 @@ pub fn list_web_captures(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<WebCapture>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(200).clamp(1, 1000);
     let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn.prepare(
@@ -76,7 +76,7 @@ pub fn list_web_captures(
 
 #[tauri::command]
 pub fn get_web_capture(state: State<DbState>, id: String) -> Result<Option<WebCapture>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
         "SELECT id, workspace_id, url, title, content, summary, favicon_data, is_processed, created_at
          FROM sources WHERE id = ?1 AND source_type = 'web_capture'",
@@ -102,7 +102,7 @@ pub fn get_web_capture(state: State<DbState>, id: String) -> Result<Option<WebCa
 
 #[tauri::command]
 pub fn delete_web_capture(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM sources WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -116,7 +116,7 @@ pub fn update_web_capture(
     summary: Option<String>,
     is_processed: Option<bool>,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "UPDATE sources SET
             title = COALESCE(?1, title),

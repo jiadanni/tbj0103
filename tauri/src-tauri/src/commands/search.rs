@@ -25,7 +25,7 @@ pub struct SearchRequest {
 /// Full semantic search requires embeddings from the Ollama service — handled async from the frontend.
 #[tauri::command]
 pub fn keyword_search(state: State<DbState>, req: SearchRequest) -> Result<Vec<SearchResult>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = req.limit.unwrap_or(20);
     let pattern = format!("%{}%", req.query.to_lowercase());
     let mut results: Vec<SearchResult> = Vec::new();
@@ -125,7 +125,7 @@ pub fn semantic_search(state: State<DbState>, req: SearchRequest, query_embeddin
     // Fetch raw rows from DB, then release the lock before computing cosine similarity.
     let raw_rows: Vec<(String, String, String, String, String)>;
     {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         let mut stmt = conn.prepare(
             "SELECT sc.id, sc.source_id, sc.content, sc.embedding, s.title
              FROM source_chunks sc
@@ -145,11 +145,15 @@ pub fn semantic_search(state: State<DbState>, req: SearchRequest, query_embeddin
         raw_rows = rows.filter_map(Result::ok).collect();
     } // DB lock released here
 
-    // Compute cosine similarity outside the lock
+    // Compute cosine similarity outside the lock in parallel
+    use rayon::prelude::*;
     let mut scored: Vec<(f64, SearchResult)> = raw_rows
-        .into_iter()
-        .filter_map(|(chunk_id, doc_id, content, emb_json, filename)| {
-            let embedding: Vec<f32> = serde_json::from_str(&emb_json).ok()?;
+        .into_par_iter()
+        .filter_map(|(chunk_id, doc_id, content, emb_blob, filename)| {
+            let embedding = crate::services::vector_index::bytes_to_f32_vec(emb_blob.as_bytes());
+            if embedding.is_empty() {
+                return None;
+            }
             let score = crate::ollama::client::cosine_similarity(&query_embedding, &embedding) as f64;
             let excerpt: String = content.chars().take(200).collect();
             Some((score, SearchResult {

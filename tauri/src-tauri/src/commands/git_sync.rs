@@ -18,7 +18,7 @@ pub struct GitSyncStatus {
 
 #[tauri::command]
 pub fn get_git_sync_status(state: State<DbState>) -> Result<GitSyncStatus, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let get = |key: &str| -> String {
         conn.query_row("SELECT value FROM settings WHERE key = ?1", rusqlite::params![key], |r| r.get(0))
             .unwrap_or_default()
@@ -43,7 +43,7 @@ pub fn configure_git_sync(
     }
 
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
 
     let set = |key: &str, val: &str| {
         conn.execute(
@@ -67,7 +67,7 @@ pub async fn trigger_git_sync(app: AppHandle, state: State<'_, DbState>) -> Resu
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
 
     let remote_url = {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         conn.query_row("SELECT value FROM settings WHERE key = 'git_sync_remote_url'", [], |r| r.get::<_, String>(0))
             .unwrap_or_default()
     };
@@ -86,7 +86,7 @@ pub async fn trigger_git_sync(app: AppHandle, state: State<'_, DbState>) -> Resu
     let error_str = result.error.clone().unwrap_or_default();
 
     {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         let set = |key: &str, val: &str| {
             let _ = conn.execute(
                 "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",

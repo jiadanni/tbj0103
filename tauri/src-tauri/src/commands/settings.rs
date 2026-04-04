@@ -102,7 +102,7 @@ fn set_setting(conn: &rusqlite::Connection, key: &str, value: &str) -> Result<()
 
 #[tauri::command]
 pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let def = Settings::default();
     let start_at_login = app
         .autolaunch()
@@ -210,7 +210,7 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
 
 #[tauri::command]
 pub fn update_settings(app: AppHandle, state: State<DbState>, settings: Settings) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let pin_configured = get_setting(&conn, "pin_passcode_hash")
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false);
