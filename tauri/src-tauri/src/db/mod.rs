@@ -1,13 +1,16 @@
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, Result};
 use std::path::Path;
-use std::sync::Mutex;
 
 #[cfg(test)]
 pub mod test_utils;
 
-pub struct DbState(pub Mutex<Connection>);
+pub struct DbState(pub Pool<SqliteConnectionManager>);
 
-pub fn initialize_database(path: &Path) -> Result<Connection> {
+pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
+    // We first open a direct connection to run pragmas, create tables and migrations,
+    // ensuring this happens sequentially before the pool is used by commands.
     let conn = Connection::open(path)?;
 
     // WAL mode first; foreign keys enabled AFTER migrations
@@ -22,7 +25,18 @@ pub fn initialize_database(path: &Path) -> Result<Connection> {
     // Now enforce foreign keys for normal operation
     conn.execute_batch("PRAGMA foreign_keys=ON;")?;
 
-    Ok(conn)
+    // Now create the pool
+    let manager = SqliteConnectionManager::file(path)
+        .with_init(|c| c.execute_batch("PRAGMA foreign_keys=ON;"));
+
+    let pool = r2d2::Pool::builder()
+        .max_size(10)
+        .build(manager)
+        .map_err(|e| {
+            rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string()))
+        })?;
+
+    Ok(pool)
 }
 
 /// Schema migrations — each is guarded by the _migrations table so they
@@ -126,12 +140,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
 
     if applied_v4 == 0 {
         // Ignore error if column already exists (fresh installs have it from schema.sql)
-        let _ = conn.execute_batch(
-            "ALTER TABLE messages ADD COLUMN duration_ms INTEGER;",
-        );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v4_messages_duration_ms');",
-        )?;
+        let _ = conn.execute_batch("ALTER TABLE messages ADD COLUMN duration_ms INTEGER;");
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v4_messages_duration_ms');")?;
     }
 
     // v5: add topic_signature and signature_updated_at to workspaces, plus new settings
@@ -163,8 +173,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
 
     if applied_v6 == 0 {
         // Safe to ignore error if project_id doesn't exist (e.g., fresh installations or manual edits)
-        let _ = conn.execute_batch("ALTER TABLE learning_cards RENAME COLUMN project_id TO workspace_id;");
-        
+        let _ = conn
+            .execute_batch("ALTER TABLE learning_cards RENAME COLUMN project_id TO workspace_id;");
+
         conn.execute_batch(
             "DROP INDEX IF EXISTS idx_learning_cards_project;
              CREATE INDEX IF NOT EXISTS idx_learning_cards_workspace ON learning_cards(workspace_id);
@@ -226,9 +237,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
              CREATE INDEX IF NOT EXISTS idx_audio_transcriptions_workspace ON audio_transcriptions(workspace_id);"
         );
 
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v7_chat_workspace_scope');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v7_chat_workspace_scope');")?;
     }
 
     // v8: add workspace_id to all remaining tables that need workspace scoping
@@ -240,18 +249,30 @@ fn run_migrations(conn: &Connection) -> Result<()> {
 
     if applied_v8 == 0 {
         let tables = [
-            "uploaded_documents", "web_captures", "project_notes", "learning_goals",
-            "concept_nodes", "note_templates", "daily_notes", "learning_paths",
-            "calendar_alarms", "thought_queue"
+            "uploaded_documents",
+            "web_captures",
+            "project_notes",
+            "learning_goals",
+            "concept_nodes",
+            "note_templates",
+            "daily_notes",
+            "learning_paths",
+            "calendar_alarms",
+            "thought_queue",
         ];
 
         for table in tables {
             // Check if column already exists first to be safe
-            let has_col: i64 = conn.query_row(
-                &format!("SELECT COUNT(*) FROM pragma_table_info('{}') WHERE name = 'workspace_id'", table),
-                [],
-                |row| row.get(0),
-            ).unwrap_or(0);
+            let has_col: i64 = conn
+                .query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM pragma_table_info('{}') WHERE name = 'workspace_id'",
+                        table
+                    ),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
 
             if has_col == 0 {
                 let _ = conn.execute_batch(&format!(
@@ -263,9 +284,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             }
         }
 
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v8_all_tables_workspace_id');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v8_all_tables_workspace_id');")?;
     }
 
     // v9: backfill indexes for existing databases; fresh installs get them from schema.sql
@@ -424,12 +443,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
     )?;
 
     if applied_v15 == 0 {
-        let _ = conn.execute_batch(
-            "ALTER TABLE memories ADD COLUMN project_id TEXT NOT NULL DEFAULT '';",
-        );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v15_project_scoped_memories');",
-        )?;
+        let _ = conn
+            .execute_batch("ALTER TABLE memories ADD COLUMN project_id TEXT NOT NULL DEFAULT '';");
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v15_project_scoped_memories');")?;
     }
 
     // v16: Context assembly snapshots
@@ -466,12 +482,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         let _ = conn.execute_batch(
             "ALTER TABLE chat_sessions ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;",
         );
-        let _ = conn.execute_batch(
-            "ALTER TABLE chat_sessions ADD COLUMN deleted_at TEXT;",
-        );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v17_chat_recycle_bin');",
-        )?;
+        let _ = conn.execute_batch("ALTER TABLE chat_sessions ADD COLUMN deleted_at TEXT;");
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v17_chat_recycle_bin');")?;
     }
 
     // v18: Git sync settings
@@ -504,9 +516,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('confirm_move_to_trash', 'true')",
             [],
         );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v19_confirm_move_to_trash');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v19_confirm_move_to_trash');")?;
     }
 
     // v20: PIN lock settings
@@ -552,9 +562,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         let _ = conn.execute_batch(
             "ALTER TABLE ai_models ADD COLUMN role_tags TEXT NOT NULL DEFAULT '[]';",
         );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v22_ai_model_role_tags');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v22_ai_model_role_tags');")?;
     }
 
     // v23: add scope column to memories (global vs workspace)
@@ -568,9 +576,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         let _ = conn.execute_batch(
             "ALTER TABLE memories ADD COLUMN scope TEXT NOT NULL DEFAULT 'workspace';",
         );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v23_memory_scope');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v23_memory_scope');")?;
     }
 
     // v24: add description column to workspaces
@@ -584,9 +590,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         let _ = conn.execute_batch(
             "ALTER TABLE workspaces ADD COLUMN description TEXT NOT NULL DEFAULT '';",
         );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v24_workspace_description');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v24_workspace_description');")?;
     }
 
     // v25: add prompt_instructions to workspaces and global settings
@@ -603,9 +607,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         let _ = conn.execute_batch(
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('prompt_instructions', '\"\"');",
         );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v25_prompt_instructions');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v25_prompt_instructions');")?;
     }
 
     // v26: add session_id to thought_queue for chat integration
@@ -618,9 +620,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         let _ = conn.execute_batch(
             "ALTER TABLE thought_queue ADD COLUMN session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL;",
         );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v26_thought_session_id');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v26_thought_session_id');")?;
     }
 
     // v27: add folder and token_count columns to sources
@@ -634,9 +634,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             "ALTER TABLE sources ADD COLUMN folder TEXT;
              ALTER TABLE sources ADD COLUMN token_count INTEGER;",
         );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v27_sources_folder_tokens');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v27_sources_folder_tokens');")?;
     }
 
     // v28: add is_hidden to workspaces for archive/hide support
@@ -649,9 +647,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         let _ = conn.execute_batch(
             "ALTER TABLE workspaces ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0;",
         );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v28_workspace_is_hidden');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v28_workspace_is_hidden');")?;
     }
 
     // v29: add compound indexes for common list/query paths
@@ -719,12 +715,44 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         |row| row.get(0),
     )?;
     if applied_v32 == 0 {
-        let _ = conn.execute_batch(
-            "ALTER TABLE chat_sessions ADD COLUMN last_accessed_at TEXT;",
-        );
+        let _ = conn.execute_batch("ALTER TABLE chat_sessions ADD COLUMN last_accessed_at TEXT;");
         conn.execute_batch(
             "INSERT INTO _migrations(name) VALUES('v32_chat_sessions_last_accessed_at');",
         )?;
+    }
+
+    // v33: convert text embeddings in source_chunks to blob
+    let applied_v33: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v33_source_chunks_embedding_blob'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v33 == 0 {
+        // Find chunks where embedding is text (JSON array like "[0.1, 0.2, ...]")
+        let text_chunks: Vec<(String, String)> = {
+            let mut stmt = conn.prepare(
+                "SELECT id, embedding FROM source_chunks WHERE typeof(embedding) = 'text'",
+            )?;
+            let iter = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            iter.filter_map(Result::ok).collect()
+        };
+
+        let tx = conn.unchecked_transaction()?;
+        for (id, emb_text) in text_chunks {
+            if let Ok(vec) = serde_json::from_str::<Vec<f32>>(&emb_text) {
+                let blob = crate::services::vector_index::f32_vec_to_bytes(&vec);
+                tx.execute(
+                    "UPDATE source_chunks SET embedding = ?1 WHERE id = ?2",
+                    rusqlite::params![blob, id],
+                )?;
+            }
+        }
+        tx.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v33_source_chunks_embedding_blob');",
+        )?;
+        tx.commit()?;
     }
 
     Ok(())

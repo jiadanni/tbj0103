@@ -1,3 +1,4 @@
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -324,43 +325,55 @@ function SessionSidebar({
   }
 
   function renderSessionList(items: ChatSession[], depth = 0) {
-    return items.map((session) => (
-      <SessionItem
-        key={session.id}
-        session={session}
-        activeChatId={activeChatId}
-        selectMode={selectMode}
-        isSelected={selectedIds.has(session.id)}
-        depth={depth}
-        canRefreshTitle={canRefreshSessionTitle(session, messages)}
-        renamingId={renamingId}
-        renameTitle={renameTitle}
-        setRenamingId={setRenamingId}
-        setRenameTitle={setRenameTitle}
-        openSession={(targetSession) => {
-          setActiveProjectId(targetSession.project_id || null);
-          setActiveChatId(targetSession.id);
-          api.chat.touchSessionAccessed(targetSession.id).catch(() => {});
-        }}
-        toggleSelect={(id) => {
-          setSelectedIds((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) {next.delete(id);} else {next.add(id);}
-            return next;
-          });
-        }}
-        openContextMenu={(event, targetSession) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setCtxMenu({ type: "session", x: event.clientX, y: event.clientY, session: targetSession });
-        }}
-        renameSession={renameSession}
-        refreshSessionTitle={refreshSessionTitle}
-        togglePin={togglePin}
-        saveSession={saveSession}
-        deleteSession={deleteSession}
-      />
-    ));
+    if (items.length === 0) { return null; }
+    return (
+      <div style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
+        <Virtuoso
+          data={items}
+          style={{ height: "100%", flex: 1 }}
+          computeItemKey={(_, session) => session.id}
+          itemContent={(index, session) => (
+            <div className="pb-[2px]">
+              <SessionItem
+                key={session.id}
+                session={session}
+                activeChatId={activeChatId}
+                isSelected={selectedIds.has(session.id)}
+                selectMode={selectMode}
+                canRefreshTitle={canRefreshSessionTitle(session, messages)}
+                toggleSelect={(id) => {
+                  setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(id)) {next.delete(id);} else {next.add(id);}
+                    return next;
+                  });
+                }}
+                openContextMenu={(event, targetSession) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setCtxMenu({ type: "session", x: event.clientX, y: event.clientY, session: targetSession });
+                }}
+                renameSession={renameSession}
+                refreshSessionTitle={refreshSessionTitle}
+                togglePin={togglePin}
+                saveSession={saveSession}
+                deleteSession={deleteSession}
+                renamingId={renamingId}
+                renameTitle={renameTitle}
+                setRenamingId={setRenamingId}
+                setRenameTitle={setRenameTitle}
+                openSession={(targetSession) => {
+                  setActiveProjectId(targetSession.project_id || null);
+                  setActiveChatId(targetSession.id);
+                  api.chat.touchSessionAccessed(targetSession.id).catch(() => {});
+                }}
+                depth={depth}
+              />
+            </div>
+          )}
+        />
+      </div>
+    );
   }
 
   function resetSelectionState() {
@@ -1837,10 +1850,9 @@ export default function ChatView() {
   const [isRefiningPhase, setIsRefiningPhase] = useState(false);
   const [draftSnapshot, setDraftSnapshot] = useState("");
   const refineContentRef = useRef("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const prevScrollChatIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const messagesScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const pendingSentScrollId = useRef<string | null>(null);
   const incognitoSessionIdsRef = useRef<Set<string>>(new Set());
 
@@ -1904,15 +1916,20 @@ export default function ChatView() {
     }
 
     const trimmedQuery = sessionQuery.trim();
-    const timeoutId = window.setTimeout(() => {
-      const request = trimmedQuery
-        ? api.chat.searchSessions(effectiveWorkspaceId, trimmedQuery, null)
-        : api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0 });
-
-      request.then(setSidebarSessions).catch(() => {});
-    }, trimmedQuery ? 150 : 0);
-
-    return () => window.clearTimeout(timeoutId);
+    if (trimmedQuery) {
+      // Allow searching to trigger queries for the current workspace
+      const timeoutId = window.setTimeout(() => {
+        api.chat.searchSessions(effectiveWorkspaceId, trimmedQuery, null)
+          .then(setSidebarSessions).catch(() => {});
+      }, 150);
+      return () => window.clearTimeout(timeoutId);
+    } else {
+      // When not searching, only fetch on initial mount or workspace change.
+      // Other updates (move, create, delete, rename) should handle UI updates via optimistic
+      // changes or explicit refresh events.
+      api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0 })
+        .then(setSidebarSessions).catch(() => {});
+    }
   }, [effectiveWorkspaceId, sessionQuery]);
 
   async function refreshProjectTree(workspaceId: string) {
@@ -2198,30 +2215,32 @@ export default function ChatView() {
     if (scrollToTopOnSend && pendingSentScrollId.current && !isCurrentlyStreaming && !isSessionSwitch) {
       const msgId = pendingSentScrollId.current;
       pendingSentScrollId.current = null;
-      const container = messagesScrollContainerRef.current;
-      if (container) {
+      const msgIndex = activeMessages.findIndex((m) => m.id === msgId);
+      if (msgIndex !== -1) {
         requestAnimationFrame(() => {
-          const el = container.querySelector(`[data-msg-id="${msgId}"]`);
-          if (el) { (el as HTMLElement).scrollIntoView({ behavior: "smooth", block: "start" }); }
+          virtuosoRef.current?.scrollToIndex({ index: msgIndex, behavior: "smooth", align: "start" });
         });
         return;
       }
     }
 
-    messagesEndRef.current?.scrollIntoView({
-      behavior: isSessionSwitch ? "instant" : "smooth",
-    });
-  }, [activeChatId, activeMessages.length, isCurrentlyStreaming, scrollToTopOnSend]);
+    if (activeMessages.length > 0) {
+      virtuosoRef.current?.scrollToIndex({
+        index: activeMessages.length - 1,
+        behavior: isSessionSwitch ? "auto" : "smooth",
+      });
+    }
+  }, [activeChatId, activeMessages, isCurrentlyStreaming, scrollToTopOnSend]);
 
   // Throttled scroll-to-bottom during streaming — runs at ~7 fps instead of
   // on every chunk, avoiding layout thrashing while keeping the view pinned.
   useEffect(() => {
-    if (!isCurrentlyStreaming) { return; }
+    if (!isCurrentlyStreaming || activeMessages.length === 0) { return; }
     const interval = setInterval(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+      virtuosoRef.current?.scrollToIndex({ index: activeMessages.length - 1, behavior: "auto" });
     }, 150);
     return () => clearInterval(interval);
-  }, [isCurrentlyStreaming]);
+  }, [isCurrentlyStreaming, activeMessages.length]);
 
   useEffect(() => {
     if (!activeChatId || !hasLoadedActiveMessages || activeMessages.length > 0 || isStreaming) {return;}
@@ -2785,31 +2804,51 @@ export default function ChatView() {
       .filter((session) => session.project_id === project.id)
       .map((session) => session.id);
 
-    const movedProject = await api.project.create(targetWorkspaceId, project.name, {
-      project_description: project.project_description,
-      custom_instructions: project.custom_instructions,
-      color: project.color,
-      icon: project.icon,
-    });
-    if (projectSessionIds.length > 0) {
-      await api.chat.moveSessions(projectSessionIds, targetWorkspaceId, movedProject.id);
-    }
-    await api.project.delete(project.id);
+    // Snapshot state for potential rollback
+    const prevSidebarSessions = [...sidebarSessions];
+    const prevSessions = [...sessions];
+    const prevWorkspaceProjects = useWorkspaceStore.getState().projectsByWorkspace[project.workspace_id] ?? [];
 
-    if (effectiveWorkspaceId) {
-      await Promise.all([
-        refreshProjectTree(effectiveWorkspaceId),
-        refreshScopedSessions(effectiveWorkspaceId, effectiveProjectId === project.id ? null : effectiveProjectId),
-      ]);
-    }
-    if (targetWorkspaceId !== effectiveWorkspaceId) {
+    // Optimistic UI update: remove from source workspace locally without doing a full refresh
+    // Instead we just remove it from sidebarSessions and sessions, and let the background refresh
+    // or navigation handle the rest, specifically avoiding refreshProjectTree(effectiveWorkspaceId).
+    setSidebarSessions((prev) => prev.filter((session) => session.project_id !== project.id));
+    setSessions(sessions.filter((session) => session.project_id !== project.id));
+
+    // For the projects list, we can optimistically update the workspace store
+    useWorkspaceStore.getState().setProjectsForWorkspace(
+      project.workspace_id,
+      prevWorkspaceProjects.filter(p => p.id !== project.id)
+    );
+
+    try {
+      // Use the single transaction Rust backend command
+      const movedProject = await api.project.moveToWorkspace(project.id, targetWorkspaceId);
+
+      // Now navigate to the target workspace and refresh only its tree.
+      setScopedWorkspaceId(targetWorkspaceId);
+      setScopedProjectId(movedProject.id);
       await refreshProjectTree(targetWorkspaceId);
-    }
-    if (effectiveProjectId === project.id) {
-      setScopedProjectId(null);
-    }
-    if (activeChatId && projectSessionIds.includes(activeChatId)) {
-      setActiveChatId(null);
+
+      if (activeChatId && projectSessionIds.includes(activeChatId)) {
+        // If we had the active chat open, keep it open if it was a single move, or reset if multiple
+        setActiveChatId(projectSessionIds.length === 1 ? activeChatId : null);
+      } else if (effectiveProjectId === project.id) {
+        // If we had the project open but not a chat, we navigate to the new project.
+        setScopedProjectId(movedProject.id);
+      }
+    } catch (error) {
+      // Rollback on failure
+      setSidebarSessions(prevSidebarSessions);
+      setSessions(prevSessions);
+      useWorkspaceStore.getState().setProjectsForWorkspace(project.workspace_id, prevWorkspaceProjects);
+
+      const description = error instanceof Error
+        ? error.message
+        : typeof error === "string" && error.trim()
+          ? error
+          : "Failed to move folder.";
+      showAlertDialog("Move failed", description, "danger");
     }
   }
 
@@ -3391,34 +3430,47 @@ export default function ChatView() {
           )}
 
           {/* Messages */}
-          <div ref={messagesScrollContainerRef} className={`min-h-0 overflow-y-auto px-4 py-4 space-y-4 ${activeMessages.length > 0 || isStreaming ? "flex-1" : "hidden"}`}>
-            {activeMessages.map((msg, i) => (
-              <ChatMessageBubble
-                key={msg.id}
-                msg={msg}
-                isLastMessage={i === activeMessages.length - 1}
-                isStreaming={isStreaming}
-                chatMessageStyle={chatMessageStyle}
-                expandChatToWindowWidth={expandChatToWindowWidth}
-                showGenInfo={showGenInfo}
-                editingMessageId={editingMessageId}
-                editContent={editContent}
-                copiedMessageId={copiedMessageId}
-                expandedThoughtIds={expandedThoughtIds}
-                messageSources={messageSources}
-                expandedSources={expandedSources}
-                contextSources={i === activeMessages.length - 1 && currentSessionId ? activeContextSources[currentSessionId] ?? null : null}
-                markdownComponents={markdownComponents}
-                onCopy={handleCopyMessage}
-                onStartEdit={handleStartEditing}
-                onSubmitEdit={submitEdit}
-                onSetEditContent={setEditContent}
-                onCancelEdit={handleCancelEdit}
-                onRedo={redoMessage}
-                onToggleThought={handleToggleThought}
-                onToggleSources={handleToggleSources}
+          <div className={`min-h-0 flex-1 flex flex-col ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
+            <div className="flex-1 min-h-0 flex flex-col">
+              <Virtuoso
+                ref={virtuosoRef}
+                data={activeMessages}
+                initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
+                followOutput="smooth"
+                alignToBottom={true}
+                className="px-4 py-4 scroll-smooth"
+                computeItemKey={(_, msg) => msg.id}
+                itemContent={(i, msg) => (
+                  <div className="pb-4">
+                    <ChatMessageBubble
+                      key={msg.id}
+                      msg={msg}
+                      isLastMessage={i === activeMessages.length - 1}
+                      isStreaming={isStreaming}
+                      chatMessageStyle={chatMessageStyle}
+                      expandChatToWindowWidth={expandChatToWindowWidth}
+                      showGenInfo={showGenInfo}
+                      editingMessageId={editingMessageId}
+                      editContent={editContent}
+                      copiedMessageId={copiedMessageId}
+                      expandedThoughtIds={expandedThoughtIds}
+                      messageSources={messageSources}
+                      expandedSources={expandedSources}
+                      contextSources={i === activeMessages.length - 1 && currentSessionId ? activeContextSources[currentSessionId] ?? null : null}
+                      markdownComponents={markdownComponents}
+                      onCopy={handleCopyMessage}
+                      onStartEdit={handleStartEditing}
+                      onSubmitEdit={submitEdit}
+                      onSetEditContent={setEditContent}
+                      onCancelEdit={handleCancelEdit}
+                      onRedo={redoMessage}
+                      onToggleThought={handleToggleThought}
+                      onToggleSources={handleToggleSources}
+                    />
+                  </div>
+                )}
               />
-            ))}
+            </div>
 
             {/* Draft snapshot bubble — shown during refine phase */}
             {isRefiningPhase && draftSnapshot && (
@@ -3487,8 +3539,6 @@ export default function ChatView() {
               modelDisplayName={modelDisplayName}
               selectedModel={selectedModel}
             />
-
-            <div ref={messagesEndRef} />
           </div>
 
           {toolbarState && (

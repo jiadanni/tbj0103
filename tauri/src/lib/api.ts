@@ -319,6 +319,7 @@ export const api = {
     get: (id: string) => invoke<Project | null>("get_project", { id }),
     update: (id: string, fields: Partial<Project>) => invoke<void>("update_project", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_project", { id }),
+    moveToWorkspace: (projectId: string, targetWorkspaceId: string) => invoke<Project>("move_project_to_workspace", { projectId, targetWorkspaceId }),
     getStats: (id: string) => invoke<{ note_count: number; document_count: number; chat_session_count: number; flashcard_count: number; web_capture_count: number }>("get_project_stats", { id }),
   },
 
@@ -598,17 +599,17 @@ export const api = {
 
   graphAlgo: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    pagerank: (nodes: any[], edges: any[]) =>
+    pagerank: (workspaceId: string, damping?: number, iterations?: number) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      invoke<any[]>("compute_pagerank", { input: { nodes, edges } }),
+      invoke<any[]>("compute_pagerank", { workspaceId, damping, iterations }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    communities: (nodes: any[], edges: any[]) =>
+    communities: (workspaceId: string) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      invoke<any[]>("detect_communities", { input: { nodes, edges } }),
+      invoke<any[]>("detect_communities", { workspaceId }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    shortestPath: (nodes: any[], edges: any[], sourceId: string, targetId: string) =>
+    shortestPath: (workspaceId: string, sourceId: string, targetId: string) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      invoke<any>("find_shortest_path", { input: { nodes, edges }, sourceId, targetId }),
+      invoke<any>("find_shortest_path", { workspaceId, sourceId, targetId }),
   },
 
   demo: {

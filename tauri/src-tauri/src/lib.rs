@@ -35,8 +35,10 @@ pub fn run() {
                 .map_err(|e| format!("Failed to get app data directory: {e}"))?;
             std::fs::create_dir_all(&app_dir)?;
             let db_path = app_dir.join("aetherium.db");
-            let conn = db::initialize_database(&db_path)
+            let pool = db::initialize_database(&db_path)
                 .map_err(|e| format!("Failed to initialize database: {e}"))?;
+
+            let conn = pool.get().map_err(|e| format!("Failed to get DB connection: {e}"))?;
 
             commands::settings::sync_autostart(&app.handle().clone(), &conn)
                 .map_err(|e| format!("Failed to synchronize autostart setting: {e}"))?;
@@ -46,7 +48,9 @@ pub fn run() {
             let chats_dir = app_dir.join("chats");
             let passphrase = commands::chat_file::load_crypto_state_from_keyring(&conn);
 
-            app.manage(db::DbState(std::sync::Mutex::new(conn)));
+            drop(conn);
+
+            app.manage(db::DbState(pool));
             app.manage(commands::chat_file::ChatsDirState(chats_dir));
             app.manage(commands::chat_file::ChatCryptoState(
                 std::sync::Mutex::new(passphrase),
@@ -97,7 +101,7 @@ pub fn run() {
                 loop {
                     let interval_minutes = {
                         let state = app_handle.state::<db::DbState>();
-                        let result = match state.0.lock() {
+                        let result = match state.0.get() {
                             Ok(conn) => {
                                 let val: String = conn.query_row(
                                     "SELECT value FROM settings WHERE key = 'topic_analysis_interval_minutes'",
@@ -114,7 +118,7 @@ pub fn run() {
                     {
                         let db = app_handle.state::<db::DbState>();
                         let workspace_ids: Vec<String> = {
-                            let Ok(conn) = db.0.lock() else {
+                            let Ok(conn) = db.0.get() else {
                                 tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
                                 continue;
                             };
@@ -152,6 +156,7 @@ pub fn run() {
             commands::project::get_project,
             commands::project::update_project,
             commands::project::delete_project,
+            commands::project::move_project_to_workspace,
             // Artifact commands
             commands::artifact::create_artifact,
             commands::artifact::get_artifact,

@@ -132,7 +132,7 @@ pub fn setup_chat_encryption(
     *crypto.0.lock().map_err(|e| e.to_string())? = Some(passphrase.clone());
 
     // Persist flag in settings DB
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let conn = db_state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('chat_encryption_enabled', 'true')",
         [],
@@ -159,7 +159,7 @@ pub fn disable_chat_encryption(
     keyring_delete();
     *crypto.0.lock().map_err(|e| e.to_string())? = None;
 
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let conn = db_state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('chat_encryption_enabled', 'false')",
         [],
@@ -176,7 +176,7 @@ pub fn export_chat_as_json(
     dest_path: String,
     db_state: State<DbState>,
 ) -> Result<(), String> {
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let conn = db_state.0.get().map_err(|e| e.to_string())?;
     let dest = std::path::Path::new(&dest_path);
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -205,7 +205,7 @@ pub fn import_chat_from_json(
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
 ) -> Result<ChatSession, String> {
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let conn = db_state.0.get().map_err(|e| e.to_string())?;
     let session_id = chat_file_store::import_session_from_file(
         &conn,
         std::path::Path::new(&path),
@@ -256,7 +256,7 @@ pub fn import_lmstudio_folder(
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let conn = db_state.0.get().map_err(|e| e.to_string())?;
     let folder = std::path::Path::new(&folder_path);
     if !folder.is_dir() {
         return Err(format!("{} is not a directory", folder_path));
@@ -487,7 +487,7 @@ pub fn sync_all_chats_to_files(
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
 ) -> Result<usize, String> {
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let conn = db_state.0.get().map_err(|e| e.to_string())?;
     let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
     sync_all_to_files_internal(&conn, &chats_dir_state.0, pass.as_deref())
 }

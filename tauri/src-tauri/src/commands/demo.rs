@@ -11,7 +11,7 @@ const DEMO_PROJECT_ID_3: &str = "demo-project-rome-0000000000000000000";
 
 #[tauri::command]
 pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
@@ -130,7 +130,7 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
 
 #[tauri::command]
 pub fn deactivate_demo_mode(state: State<DbState>) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     // CASCADE deletes all demo data (projects, chats, concepts, etc.)
     conn.execute("DELETE FROM workspaces WHERE id = ?1", rusqlite::params![DEMO_WORKSPACE_ID])
         .map_err(|e| e.to_string())?;
