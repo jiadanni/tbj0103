@@ -23,6 +23,8 @@ import {
   type ComposerSuggestion,
 } from "../lib/composerSuggestions";
 import { resolveChatTitle } from "../lib/chatTitles";
+import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
+import { SelectionToolbar } from "../components/SelectionToolbar";
 
 import type { ChatSubView } from "../components/navigationItems";
 
@@ -1877,6 +1879,24 @@ export default function ChatView() {
     chatgpt: "ChatGPT", deepseek: "DeepSeek", claude: "Claude", gemini: "Gemini",
   };
 
+  const { toolbarState, toolbarRef, dismiss: dismissToolbar } = useTextSelectionToolbar(messagesScrollContainerRef);
+
+  const pendingPromptText = useChatStore((s) => s.pendingPromptText);
+  const setPendingPromptText = useChatStore((s) => s.setPendingPromptText);
+
+  useEffect(() => {
+    if (pendingPromptText) {
+      const newText = input.trim() ? `${input}\n\n${pendingPromptText}` : pendingPromptText;
+      setInput(newText);
+      setPendingPromptText(null);
+      // Wait for React to update the state before focusing
+      setTimeout(() => {
+        inputRef.current?.focus();
+        window.getSelection()?.removeAllRanges();
+      }, 0);
+    }
+  }, [pendingPromptText, input, setPendingPromptText]);
+
   useEffect(() => {
     if (!effectiveWorkspaceId) {
       setSidebarSessions([]);
@@ -3470,6 +3490,16 @@ export default function ChatView() {
 
             <div ref={messagesEndRef} />
           </div>
+
+          {toolbarState && (
+            <SelectionToolbar
+              x={toolbarState.x}
+              y={toolbarState.y}
+              text={toolbarState.text}
+              onDismiss={dismissToolbar}
+              innerRef={toolbarRef}
+            />
+          )}
 
           {/* Input / composer area */}
           <div className={`px-4 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center py-4" : "pb-6 pt-2 flex-shrink-0"}`}>
