@@ -7,7 +7,7 @@ use crate::services::model_settings::{get_configured_chat_model, get_embedding_m
 /// This checks if the session length is a multiple of 5.
 pub async fn process_auto_memory_extraction(state: &DbState, ollama_url: Option<String>) -> Result<(), String> {
     let sessions = {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         // Only process sessions updated in the last 5 minutes that are not private.
         let mut stmt = conn.prepare(
             "SELECT id, workspace_id, project_id FROM chat_sessions 
@@ -25,7 +25,7 @@ pub async fn process_auto_memory_extraction(state: &DbState, ollama_url: Option<
 
     for (session_id, workspace_id, project_id) in sessions {
         let messages = {
-            let conn = state.0.lock().map_err(|e| e.to_string())?;
+            let conn = state.0.get().map_err(|e| e.to_string())?;
             let mut msg_stmt = conn.prepare(
                 "SELECT id, role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
             ).unwrap();
@@ -83,7 +83,7 @@ pub async fn extract_and_store_memories(
     
     // Fetch model config and existing embeddings in a SINGLE lock acquisition
     let (model, embedding_model, existing_embeddings) = {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         let model = get_configured_chat_model(&conn);
         let emb_model = get_embedding_model(&conn);
 
@@ -141,7 +141,7 @@ pub async fn extract_and_store_memories(
 
                     // Write all new memories in a SINGLE lock + transaction
                     if !new_memories.is_empty() {
-                        let conn = state.0.lock().map_err(|e| e.to_string())?;
+                        let conn = state.0.get().map_err(|e| e.to_string())?;
                         conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
                         let now = chrono::Utc::now().to_rfc3339();
                         for (fact, id, embedding_bytes) in &new_memories {

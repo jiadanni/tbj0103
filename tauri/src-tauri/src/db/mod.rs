@@ -1,13 +1,16 @@
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, Result};
 use std::path::Path;
-use std::sync::Mutex;
 
 #[cfg(test)]
 pub mod test_utils;
 
-pub struct DbState(pub Mutex<Connection>);
+pub struct DbState(pub Pool<SqliteConnectionManager>);
 
-pub fn initialize_database(path: &Path) -> Result<Connection> {
+pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
+    // We first open a direct connection to run pragmas, create tables and migrations,
+    // ensuring this happens sequentially before the pool is used by commands.
     let conn = Connection::open(path)?;
 
     // WAL mode first; foreign keys enabled AFTER migrations
@@ -22,7 +25,16 @@ pub fn initialize_database(path: &Path) -> Result<Connection> {
     // Now enforce foreign keys for normal operation
     conn.execute_batch("PRAGMA foreign_keys=ON;")?;
 
-    Ok(conn)
+    // Now create the pool
+    let manager = SqliteConnectionManager::file(path)
+        .with_init(|c| c.execute_batch("PRAGMA foreign_keys=ON;"));
+
+    let pool = r2d2::Pool::builder()
+        .max_size(10)
+        .build(manager)
+        .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
+
+    Ok(pool)
 }
 
 /// Schema migrations — each is guarded by the _migrations table so they
@@ -724,6 +736,37 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         );
         conn.execute_batch(
             "INSERT INTO _migrations(name) VALUES('v32_chat_sessions_last_accessed_at');",
+        )?;
+    }
+
+    // v33: convert text embeddings in source_chunks to blob
+    let applied_v33: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v33_source_chunks_embedding_blob'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v33 == 0 {
+        // Find chunks where embedding is text (JSON array like "[0.1, 0.2, ...]")
+        let text_chunks: Vec<(String, String)> = {
+            let mut stmt = conn.prepare("SELECT id, embedding FROM source_chunks WHERE typeof(embedding) = 'text'")?;
+            let iter = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            iter.filter_map(Result::ok).collect()
+        };
+
+        for (id, emb_text) in text_chunks {
+            if let Ok(vec) = serde_json::from_str::<Vec<f32>>(&emb_text) {
+                let blob = crate::services::vector_index::f32_vec_to_bytes(&vec);
+                let _ = conn.execute(
+                    "UPDATE source_chunks SET embedding = ?1 WHERE id = ?2",
+                    rusqlite::params![blob, id],
+                );
+            }
+        }
+
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v33_source_chunks_embedding_blob');",
         )?;
     }
 

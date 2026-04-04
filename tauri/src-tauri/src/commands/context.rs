@@ -126,7 +126,7 @@ pub async fn assemble_and_send(
     req: AssembleAndSendRequest,
 ) -> Result<String, String> {
     let use_fast_path = {
-        let conn_guard = state.0.lock().map_err(|e| e.to_string())?;
+        let conn_guard = state.0.get().map_err(|e| e.to_string())?;
         !workspace_has_enriched_context(&conn_guard, &req.workspace_id, &req.session_id)?
     };
 
@@ -135,7 +135,7 @@ pub async fn assemble_and_send(
 
     if use_fast_path {
         let messages = {
-            let conn_guard = state.0.lock().map_err(|e| e.to_string())?;
+            let conn_guard = state.0.get().map_err(|e| e.to_string())?;
             load_raw_history(&conn_guard, &req.session_id)?
         };
 
@@ -154,7 +154,7 @@ pub async fn assemble_and_send(
 
     // 0. Embed the latest user message for semantic memory retrieval
     let last_user_message = {
-        let conn_guard = state.0.lock().map_err(|e| e.to_string())?;
+        let conn_guard = state.0.get().map_err(|e| e.to_string())?;
         conn_guard.query_row(
             "SELECT content FROM messages WHERE session_id = ?1 AND role = 'user' ORDER BY created_at DESC LIMIT 1",
             rusqlite::params![req.session_id],
@@ -163,7 +163,7 @@ pub async fn assemble_and_send(
     };
 
     let embedding_model = {
-        let conn_guard = state.0.lock().map_err(|e| e.to_string())?;
+        let conn_guard = state.0.get().map_err(|e| e.to_string())?;
         get_embedding_model(&conn_guard)
     };
 
@@ -175,7 +175,7 @@ pub async fn assemble_and_send(
 
     // 1. Build context
     let (messages, sources) = {
-        let conn_guard = state.0.lock().map_err(|e| e.to_string())?;
+        let conn_guard = state.0.get().map_err(|e| e.to_string())?;
         assemble_context(
             &conn_guard,
             &req.workspace_id,
@@ -188,7 +188,7 @@ pub async fn assemble_and_send(
 
     // Save snapshot AFTER destructuring
     {
-        let conn_guard = state.0.lock().map_err(|e| e.to_string())?;
+        let conn_guard = state.0.get().map_err(|e| e.to_string())?;
         let snapshot_id = uuid::Uuid::new_v4().to_string();
         let assembled_text = serde_json::to_string(&messages).unwrap_or_default();
         let sources_json = serde_json::to_string(&sources).unwrap_or_default();

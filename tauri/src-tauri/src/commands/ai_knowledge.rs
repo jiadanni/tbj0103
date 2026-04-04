@@ -182,7 +182,7 @@ pub async fn analyze_workspace(
 ) -> Result<AnalysisResult, String> {
     // 1. Gather content — acquire + release lock before async call
     let snapshot = {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         gather_workspace_content(&conn, &req.workspace_id)
     };
 
@@ -245,7 +245,7 @@ pub async fn analyze_workspace(
         .map_err(|e| format!("Failed to parse AI JSON: {e}\nRaw snippet: {json_str}"))?;
 
     // 5. Insert concepts + relationships — re-acquire lock
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
 
     let mut concepts_created = 0usize;
@@ -334,7 +334,7 @@ pub async fn suggest_learning_goals(
 ) -> Result<Vec<SuggestedGoal>, String> {
     // Gather existing concepts and goals
     let (concept_names, existing_goal_titles) = {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
 
         let mut concepts: Vec<String> = Vec::new();
         if let Ok(mut stmt) = conn.prepare(
