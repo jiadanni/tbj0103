@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   confirm: vi.fn(),
@@ -98,6 +99,7 @@ const INITIAL = {
 describe("Layout", () => {
   beforeEach(() => {
     useWorkspaceStore.setState(INITIAL);
+    useSettingsStore.setState({ switchWorkspaceToChat: false });
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1280 });
     vi.restoreAllMocks();
   });
@@ -145,6 +147,30 @@ describe("Layout", () => {
 
     fireEvent.click(screen.getByText("Rust"));
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
+  });
+
+  it("opens chats when switching workspaces if the preference is enabled", () => {
+    useSettingsStore.setState({ switchWorkspaceToChat: true });
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/documents"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("Documents View")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Rust"));
+
+    expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
+    expect(screen.getByText("Chat View")).toBeInTheDocument();
   });
 
   it("opens a custom context menu for workspace tabs", () => {

@@ -213,6 +213,7 @@ export interface AppSettings {
   immediate_delete: boolean;
   confirm_move_to_trash: boolean;
   prompt_instructions: string;
+  switch_workspace_to_chat: boolean;
 }
 
 export interface GitSyncStatus {
