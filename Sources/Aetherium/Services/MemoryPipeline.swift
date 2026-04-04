@@ -27,9 +27,15 @@ final class MemoryPipeline {
         
         for session in sessions {
             let messages = session.messages.sorted { $0.createdAt < $1.createdAt }
-            // Run extraction if session length is a multiple of 5 turns
-            if !messages.isEmpty && messages.count % 5 == 0 {
-                try await extractAndStoreMemories(workspaceId: workspaceId, projectId: session.projectId, sessionId: session.id, recentMessages: messages)
+            // Run extraction if session has grown since last check
+            if !messages.isEmpty, messages.count >= 5, messages.count > session.lastProcessedMessageCount {
+                do {
+                    try await extractAndStoreMemories(workspaceId: workspaceId, projectId: session.projectId, sessionId: session.id, recentMessages: messages)
+                    session.lastProcessedMessageCount = messages.count
+                    try modelContext.save()
+                } catch {
+                    print("Memory extraction error: \(error)")
+                }
             }
         }
     }
