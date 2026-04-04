@@ -3,19 +3,31 @@
  * Mirrors WorkspaceListView.swift + workspace picker behaviour.
  */
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { message, ask } from "@tauri-apps/plugin-dialog";
 import { Plus, Trash2, Pencil, Check, X, LayoutGrid } from "lucide-react";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
 
 export default function WorkspaceSettingsView() {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces } = useWorkspaceStore();
+  const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
+  const navigate = useNavigate();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [showNew, setShowNew] = useState(false);
+
+  function activateWorkspace(workspaceId: string) {
+    const isChanged = workspaceId !== activeWorkspaceId;
+    setActiveWorkspaceId(workspaceId);
+    if (isChanged && switchWorkspaceToChat) {
+      navigate("/chat");
+    }
+  }
 
   async function createWorkspace() {
     if (!newName.trim()) {return;}
@@ -23,7 +35,7 @@ export default function WorkspaceSettingsView() {
     try {
       const ws = await api.workspace.create(newName.trim());
       addWorkspace(ws);
-      setActiveWorkspaceId(ws.id);
+      activateWorkspace(ws.id);
       setNewName("");
       setShowNew(false);
     } finally {
@@ -52,7 +64,12 @@ export default function WorkspaceSettingsView() {
     const remaining = workspaces.filter((w) => w.id !== ws.id);
     setWorkspaces(remaining);
     if (activeWorkspaceId === ws.id) {
-      setActiveWorkspaceId(remaining[0]?.id ?? null);
+      const nextWorkspaceId = remaining[0]?.id ?? null;
+      if (nextWorkspaceId) {
+        activateWorkspace(nextWorkspaceId);
+      } else {
+        setActiveWorkspaceId(null);
+      }
     }
   }
 
@@ -168,7 +185,7 @@ export default function WorkspaceSettingsView() {
                   <div className="flex items-center gap-1 shrink-0">
                     {!isActive && (
                       <button
-                        onClick={() => setActiveWorkspaceId(ws.id)}
+                        onClick={() => activateWorkspace(ws.id)}
                         className="px-2 py-1 text-[11px] rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
                       >
                         Switch

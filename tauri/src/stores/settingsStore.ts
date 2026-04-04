@@ -34,6 +34,7 @@ interface AppSettings {
   scrollToTopOnSend: boolean;
   chatMessageStyle: ChatMessageStyle;
   expandChatToWindowWidth: boolean;
+  switchWorkspaceToChat: boolean;
 }
 
 interface SettingsStore extends AppSettings {
@@ -63,6 +64,7 @@ interface SettingsStore extends AppSettings {
   setScrollToTopOnSend: (v: boolean) => void;
   setChatMessageStyle: (v: ChatMessageStyle) => void;
   setExpandChatToWindowWidth: (v: boolean) => void;
+  setSwitchWorkspaceToChat: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -95,6 +97,7 @@ export const useSettingsStore = create<SettingsStore>()(
       scrollToTopOnSend: false,
       chatMessageStyle: "bubble",
       expandChatToWindowWidth: false,
+      switchWorkspaceToChat: false,
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
@@ -121,6 +124,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setScrollToTopOnSend: (scrollToTopOnSend) => set({ scrollToTopOnSend }),
       setChatMessageStyle: (chatMessageStyle) => set({ chatMessageStyle }),
       setExpandChatToWindowWidth: (expandChatToWindowWidth) => set({ expandChatToWindowWidth }),
+      setSwitchWorkspaceToChat: (switchWorkspaceToChat) => set({ switchWorkspaceToChat }),
     }),
     { name: "aetherium-settings" }
   )

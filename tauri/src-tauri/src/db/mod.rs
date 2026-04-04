@@ -623,6 +623,21 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v26_thought_session_id');")?;
     }
 
+    // v27: workspace switch behavior preference
+    let applied_v27: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v27_switch_workspace_to_chat'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v27 == 0 {
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES ('switch_workspace_to_chat', 'false')",
+            [],
+        );
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v27_switch_workspace_to_chat');")?;
+    }
+
     // v27: add folder and token_count columns to sources
     let applied_v27: i64 = conn.query_row(
         "SELECT COUNT(*) FROM _migrations WHERE name = 'v27_sources_folder_tokens'",
