@@ -29,7 +29,7 @@ export interface Project {
 export type WorkspaceSortOrder = "name-asc" | "name-desc" | "created-newest" | "created-oldest" | "updated-newest" | "updated-oldest";
 
 export type PaneId = "primary" | "secondary";
-export type NavigationPresentation = "sidebar" | "top-tabs" | "top-dropdown";
+export type NavigationPresentation = "sidebar" | "icon-bar" | "top-tabs" | "top-dropdown";
 export type SplitNavigationPresentation = "match-main" | "tabs" | "dropdown";
 
 export type PaneView =

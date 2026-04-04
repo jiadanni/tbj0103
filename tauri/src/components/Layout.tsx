@@ -3,7 +3,7 @@ import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-
 import {
   Panel, PanelGroup, PanelResizeHandle,
 } from "react-resizable-panels";
-import { Plus, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon, Pencil, Trash2, ExternalLink } from "lucide-react";
+import { Plus, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ask, message } from "@tauri-apps/plugin-dialog";
 import Sidebar from "./Sidebar";
@@ -16,6 +16,7 @@ import { useSettingsStore } from "../stores/settingsStore";
 import AppHeaderMenu from "./AppHeaderMenu";
 import { api } from "../lib/api";
 import { isMac } from "../lib/platform";
+import SplitPaneLayout from "./SplitPaneLayout";
 import ChatView from "../views/ChatView";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
@@ -27,9 +28,10 @@ const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
 const WebCaptureView = React.lazy(() => import("../views/WebCaptureView"));
 import type { Workspace } from "../stores/workspaceStore";
 
-function WorkspaceTabBar() {
+function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
+  const splitMode = useWorkspaceStore((state) => state.splitMode);
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
   const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
@@ -254,14 +256,40 @@ function WorkspaceTabBar() {
             <SettingsIcon size={14} />
           </button>
           <button
-            onClick={() => setWorkspaceNavigation(workspaceNavigation === "sidebar" ? "top-tabs" : "sidebar")}
-            title={workspaceNavigation === "sidebar" ? "Switch to tab navigation" : "Switch to sidebar navigation"}
+            onClick={() => {
+              if (workspaceNavigation === "sidebar") {
+                setWorkspaceNavigation("icon-bar");
+              } else if (workspaceNavigation === "icon-bar") {
+                setWorkspaceNavigation("top-tabs");
+              } else {
+                setWorkspaceNavigation("sidebar");
+              }
+            }}
+            title={
+              workspaceNavigation === "sidebar"
+                ? "Switch to icon-only sidebar"
+                : workspaceNavigation === "icon-bar"
+                ? "Switch to tab navigation"
+                : "Switch to sidebar navigation"
+            }
             className="relative p-1.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
           >
             {workspaceNavigation === "sidebar" ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-            {workspaceNavigation !== "sidebar" && (
+            {workspaceNavigation !== "sidebar" && workspaceNavigation !== "icon-bar" && (
               <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-[var(--accent-color)] rounded-full ring-2 ring-[var(--bg-sidebar)]"></span>
             )}
+          </button>
+          <button
+            onClick={onToggleSplit}
+            disabled={workspaces.length < 2}
+            title={`Toggle Split View`}
+            className={`flex h-7 items-center gap-1.5 rounded-lg border px-2 text-xs font-medium transition-colors ${
+              splitMode
+                ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+                : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+            } disabled:opacity-40 disabled:hover:border-[var(--border-color)] disabled:hover:text-[var(--text-secondary)]`}
+          >
+            <Columns2 size={13} /> Split
           </button>
           <WindowControls />
         </div>
@@ -428,11 +456,39 @@ function NavigationTabBar() {
   );
 }
 
+function pathToPaneView(pathname: string): import("../stores/workspaceStore").PaneView {
+  const segment = pathname.split("/")[1];
+  switch (segment) {
+    case "chat": return "chat";
+    case "notes": return "notes";
+    case "documents": return "documents";
+    case "graph": return "graph";
+    default: return "project";
+  }
+}
+
 export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
+  const splitMode = useWorkspaceStore((state) => state.splitMode);
+  const { enterSplitMode, exitSplitMode, setPaneView, setPaneChatSession, workspaces } = useWorkspaceStore();
+
+  const toggleSplitModeFromShell = React.useCallback(() => {
+    if (splitMode) {
+      exitSplitMode();
+      return;
+    }
+    if (workspaces.length < 2) {
+      return;
+    }
+    setPaneView("primary", pathToPaneView(location.pathname));
+    const routeSessionId = location.pathname.startsWith("/chat/") ? location.pathname.split("/")[2] ?? null : null;
+    setPaneChatSession("primary", routeSessionId);
+    enterSplitMode();
+  }, [splitMode, location.pathname, workspaces.length, exitSplitMode, enterSplitMode, setPaneView, setPaneChatSession]);
 
   // Global Cmd+K shortcut
   useEffect(() => {
@@ -456,12 +512,23 @@ export default function Layout() {
         />
       )}
 
-      <WorkspaceTabBar />
+      <WorkspaceTabBar onToggleSplit={toggleSplitModeFromShell} />
 
-      {workspaceNavigation === "top-tabs" && <NavigationTabBar />}
+      {!splitMode && workspaceNavigation === "top-tabs" && <NavigationTabBar />}
 
       <div className="flex-1 overflow-hidden min-h-0">
-        {workspaceNavigation === "sidebar" ? (
+        {splitMode ? (
+          <SplitPaneLayout />
+        ) : workspaceNavigation === "icon-bar" ? (
+          <div className="flex h-full overflow-hidden min-h-0">
+            <div className="w-14 shrink-0 border-r border-[var(--border-color)] overflow-hidden">
+              <Sidebar onOpenCommandPalette={() => setCommandPaletteOpen(true)} iconOnly />
+            </div>
+            <div className="flex-1 overflow-hidden flex flex-col min-w-0">
+              <AppRoutes />
+            </div>
+          </div>
+        ) : workspaceNavigation === "sidebar" ? (
           <PanelGroup direction="horizontal" className="flex-1 flex overflow-hidden min-h-0">
             <Panel
               id="sidebar"
