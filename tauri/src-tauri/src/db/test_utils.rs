@@ -1,11 +1,11 @@
 #[cfg(test)]
 pub mod tests {
-    use rusqlite::Connection;
-    use std::path::Path;
     use crate::db::initialize_database;
+    use std::path::PathBuf;
 
     pub fn setup_test_db() -> r2d2::Pool<r2d2_sqlite::SqliteConnectionManager> {
-        let conn = initialize_database(Path::new(&format!("file:{}?mode=memory&cache=shared", uuid::Uuid::new_v4()))).expect("Failed to initialize test db");
-        conn
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let path: PathBuf = dir.into_path().join("test.db");
+        initialize_database(&path).expect("Failed to initialize test db")
     }
 }
