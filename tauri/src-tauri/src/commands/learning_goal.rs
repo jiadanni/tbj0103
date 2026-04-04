@@ -4,7 +4,7 @@ use crate::models::learning_goal::{LearningGoal, CreateLearningGoalRequest, Upda
 
 #[tauri::command]
 pub fn create_learning_goal(state: State<DbState>, req: CreateLearningGoalRequest) -> Result<LearningGoal, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut g = LearningGoal::new(req.workspace_id, req.title);
     if let Some(d) = req.goal_description { g.goal_description = d; }
     if let Some(date) = req.due_date { g.due_date = Some(date); }
@@ -21,7 +21,7 @@ pub fn create_learning_goal(state: State<DbState>, req: CreateLearningGoalReques
 
 #[tauri::command]
 pub fn list_learning_goals(state: State<DbState>, workspace_id: String) -> Result<Vec<LearningGoal>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, title, goal_description, progress, is_completed, due_date, prerequisite_ids, related_chat_ids, created_at, updated_at
          FROM learning_goals WHERE workspace_id = ?1 ORDER BY created_at DESC"
@@ -50,7 +50,7 @@ pub fn list_learning_goals(state: State<DbState>, workspace_id: String) -> Resul
 
 #[tauri::command]
 pub fn update_learning_goal(state: State<DbState>, req: UpdateLearningGoalRequest) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let prereq_json = req.prerequisite_ids.as_ref().map(|v| serde_json::to_string(v).unwrap_or_default());
     conn.execute(
@@ -71,7 +71,7 @@ pub fn update_learning_goal(state: State<DbState>, req: UpdateLearningGoalReques
 
 #[tauri::command]
 pub fn delete_learning_goal(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM learning_goals WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())

@@ -11,7 +11,7 @@ pub async fn generate_summary(
     _summary_type: String
 ) -> Result<(), String> {
     let ollama_url = {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         conn.query_row("SELECT value FROM settings WHERE key = 'ollama_base_url'", [], |row| row.get::<_, String>(0))
             .map(|v| v.trim_matches('"').to_string())
             .unwrap_or_else(|_| "http://localhost:11434".to_string())
@@ -25,7 +25,7 @@ pub fn list_summaries(
     state: State<'_, DbState>,
     session_id: String
 ) -> Result<Vec<ConversationSummary>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT id, session_id, workspace_id, summary_type, content, key_topics, 
                 message_range_start, message_range_end, token_count, created_at, updated_at 

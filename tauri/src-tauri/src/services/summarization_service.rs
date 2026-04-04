@@ -10,7 +10,7 @@ pub async fn generate_rolling_summary(
 ) -> Result<(), String> {
     // Skip imported sessions that haven't received new messages
     {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         let is_imported: i64 = conn.query_row(
             "SELECT is_imported FROM chat_sessions WHERE id = ?1",
             rusqlite::params![session_id],
@@ -20,7 +20,7 @@ pub async fn generate_rolling_summary(
     }
     // 1. Get messages that need summarization
     let messages: Vec<(String, String, String)> = {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         let mut stmt = conn.prepare(
             "SELECT id, role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
         ).unwrap();
@@ -36,7 +36,7 @@ pub async fn generate_rolling_summary(
 
     // Check if we already have a rolling summary covering this many messages
     {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         let existing_count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM conversation_summaries WHERE session_id = ?1 AND message_range_end >= ?2",
             rusqlite::params![session_id, messages.len() as i32],
@@ -63,7 +63,7 @@ pub async fn generate_rolling_summary(
     
     // Use the configured background/chat model and skip quietly if none is available.
     let model = {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         get_configured_chat_model(&conn)
     };
 
@@ -72,7 +72,7 @@ pub async fn generate_rolling_summary(
     };
 
     if let Ok(summary_content) = client.send_message_with_options(&model, msgs, Some("0s")).await {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let conn = state.0.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
         

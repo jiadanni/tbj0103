@@ -37,7 +37,7 @@ pub async fn handle_read_resource(
 }
 
 async fn read_workspaces(db_state: &Arc<DbState>) -> Result<ReadResourceResult, JsonRpcError> {
-    let conn = db_state.0.lock().map_err(|_| JsonRpcError {
+    let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
         data: None,
@@ -80,7 +80,7 @@ async fn read_workspace_notes(
     db_state: &Arc<DbState>,
     workspace_id: &str,
 ) -> Result<ReadResourceResult, JsonRpcError> {
-    let conn = db_state.0.lock().map_err(|_| JsonRpcError {
+    let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
         data: None,
@@ -127,7 +127,7 @@ async fn read_workspace_concepts(
     db_state: &Arc<DbState>,
     workspace_id: &str,
 ) -> Result<ReadResourceResult, JsonRpcError> {
-    let conn = db_state.0.lock().map_err(|_| JsonRpcError {
+    let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
         data: None,
@@ -170,7 +170,7 @@ async fn read_workspace_concepts(
 }
 
 async fn read_note(db_state: &Arc<DbState>, note_id: &str) -> Result<ReadResourceResult, JsonRpcError> {
-    let conn = db_state.0.lock().map_err(|_| JsonRpcError {
+    let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
         data: None,
@@ -215,7 +215,7 @@ async fn read_concept(
     db_state: &Arc<DbState>,
     concept_id: &str,
 ) -> Result<ReadResourceResult, JsonRpcError> {
-    let conn = db_state.0.lock().map_err(|_| JsonRpcError {
+    let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
         data: None,
