@@ -14,12 +14,12 @@ import { type NavigationPresentation, type SplitNavigationPresentation, useWorks
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import PluginManagerView from "./PluginManagerView";
-import { MOD_KEY } from "../lib/platform";
+import { MOD_KEY, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
-const DEFAULT_FONT_SIZE = 14;
+const DEFAULT_FONT_SIZE = 16;
 
 const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[] = [
   { id: "general",     label: "General",     Icon: SettingsIcon },
@@ -74,7 +74,6 @@ export default function PreferencesView() {
   const expandChatToWindowWidth = useSettingsStore((state) => state.expandChatToWindowWidth);
   const setExpandChatToWindowWidth = useSettingsStore((state) => state.setExpandChatToWindowWidth);
   const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
-  const setSwitchWorkspaceToChat = useSettingsStore((state) => state.setSwitchWorkspaceToChat);
   const location = useLocation();
   const {
     workspaceNavigation,
@@ -757,7 +756,23 @@ export default function PreferencesView() {
                   >
                     Reset
                   </button>
+                  <span className="ml-2 text-xs font-medium text-[var(--text-muted)] w-8 text-center bg-[var(--bg-hover)] px-2 py-1 rounded-md">
+                    {dbSettings.font_size}
+                  </span>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between py-1 mt-4 border-t border-[var(--border-color)] pt-5">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Hide Native Window Menu</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Use an in-app hamburger menu instead of the OS native menu bar. Note: requires app restart to apply correctly.
+                  </p>
+                </div>
+                <Toggle
+                  on={dbSettings.hide_native_menu}
+                  onToggle={() => set("hide_native_menu", !dbSettings.hide_native_menu)}
+                />
               </div>
             </>
           )}
@@ -825,47 +840,49 @@ export default function PreferencesView() {
               </div>
 
               {/* MLX Section */}
-              <div className="pt-4 border-t border-[var(--border-color)]">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs text-[var(--text-secondary)]">MLX Server URL</label>
-                  <button
-                    onClick={async () => {
-                      setTestingMlx(true);
-                      setMlxTestResult(null);
-                      try {
-                        const m = await api.mlx.listModels(dbSettings.mlx_base_url || undefined);
-                        setMlxTestResult({ success: true, msg: `Success! ${m.length} models found.` });
-                        setMlxModels(m.map((model) => model.id));
-                      } catch {
-                        setMlxTestResult({ success: false, msg: `Connection failed. Is MLX server running?` });
-                      } finally {
-                        setTestingMlx(false);
-                      }
+              {isMac && (
+                <div className="pt-4 border-t border-[var(--border-color)]">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs text-[var(--text-secondary)]">MLX Server URL</label>
+                    <button
+                      onClick={async () => {
+                        setTestingMlx(true);
+                        setMlxTestResult(null);
+                        try {
+                          const m = await api.mlx.listModels(dbSettings.mlx_base_url || undefined);
+                          setMlxTestResult({ success: true, msg: `Success! ${m.length} models found.` });
+                          setMlxModels(m.map((model) => model.id));
+                        } catch {
+                          setMlxTestResult({ success: false, msg: `Connection failed. Is MLX server running?` });
+                        } finally {
+                          setTestingMlx(false);
+                        }
+                      }}
+                      disabled={testingMlx}
+                      className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
+                    >
+                      {testingMlx ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
+                      Test Connection
+                    </button>
+                  </div>
+                  <input
+                    value={dbSettings.mlx_base_url}
+                    onChange={(e) => {
+                      set("mlx_base_url", e.target.value);
                     }}
-                    disabled={testingMlx}
-                    className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
-                  >
-                    {testingMlx ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
-                    Test Connection
-                  </button>
-                </div>
-                <input
-                  value={dbSettings.mlx_base_url}
-                  onChange={(e) => {
-                    set("mlx_base_url", e.target.value);
-                  }}
-                  placeholder="http://localhost:8080"
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                />
-                {mlxTestResult && (
-                  <p className={`text-[10px] mt-1.5 font-medium ${mlxTestResult.success ? "text-green-400" : "text-red-400"}`}>
-                    {mlxTestResult.msg}
+                    placeholder="http://localhost:8080"
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                  />
+                  {mlxTestResult && (
+                    <p className={`text-[10px] mt-1.5 font-medium ${mlxTestResult.success ? "text-green-400" : "text-red-400"}`}>
+                      {mlxTestResult.msg}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
+                    Local Apple Silicon acceleration. Run via: <code className="bg-[var(--bg-primary)] px-1 rounded">mlx_lm.server --model ...</code>
                   </p>
-                )}
-                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
-                  Local Apple Silicon acceleration. Run via: <code className="bg-[var(--bg-primary)] px-1 rounded">mlx_lm.server --model ...</code>
-                </p>
-              </div>
+                </div>
+              )}
 
               {/* llama.cpp Section */}
               <div className="pt-4 border-t border-[var(--border-color)]">
@@ -1073,7 +1090,7 @@ export default function PreferencesView() {
                         <optgroup label="Ollama">
                           {ollamaModels.map((m) => <option key={`ollama-${m}`} value={m}>{m}</option>)}
                         </optgroup>
-                        {mlxModels.length > 0 && (
+                        {isMac && mlxModels.length > 0 && (
                           <optgroup label="MLX">
                             {mlxModels.map((m) => <option key={`mlx-${m}`} value={`mlx:${m}`}>{m}</option>)}
                           </optgroup>
