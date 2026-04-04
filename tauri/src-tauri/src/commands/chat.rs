@@ -40,7 +40,7 @@ fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatSession> {
 
 #[tauri::command]
 pub fn create_chat_session(state: State<DbState>, req: CreateChatSessionRequest) -> Result<ChatSession, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut session = ChatSession::new(req.workspace_id, req.project_id);
     if let Some(title) = req.title {
         session.title = title;
@@ -96,7 +96,7 @@ pub fn list_chat_sessions(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<ChatSession>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(200).clamp(1, 1000);
     let offset = offset.unwrap_or(0).max(0);
     let sql = if project_id.is_empty() {
@@ -135,7 +135,7 @@ pub fn search_chat_sessions(
     state: State<DbState>,
     req: SearchChatSessionsRequest,
 ) -> Result<Vec<ChatSession>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let pattern = format!("%{}%", req.query.trim());
     let sql = if req.project_id.as_deref().unwrap_or_default().is_empty() {
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
@@ -170,7 +170,7 @@ pub fn search_chat_sessions(
 
 #[tauri::command]
 pub fn get_chat_session(state: State<DbState>, id: String) -> Result<Option<ChatSession>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
@@ -190,7 +190,7 @@ pub fn get_chat_session(state: State<DbState>, id: String) -> Result<Option<Chat
 
 #[tauri::command]
 pub fn delete_chat_session(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE chat_sessions
@@ -204,7 +204,7 @@ pub fn delete_chat_session(state: State<DbState>, id: String) -> Result<(), Stri
 
 #[tauri::command]
 pub fn hard_delete_chat_session(state: State<DbState>, workspace_id: String, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2",
         rusqlite::params![id, workspace_id],
@@ -215,7 +215,7 @@ pub fn hard_delete_chat_session(state: State<DbState>, workspace_id: String, id:
 
 #[tauri::command]
 pub fn list_deleted_chat_sessions(state: State<DbState>, workspace_id: String) -> Result<Vec<ChatSession>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
@@ -233,7 +233,7 @@ pub fn list_deleted_chat_sessions(state: State<DbState>, workspace_id: String) -
 
 #[tauri::command]
 pub fn restore_chat_session(state: State<DbState>, workspace_id: String, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE chat_sessions
@@ -247,7 +247,7 @@ pub fn restore_chat_session(state: State<DbState>, workspace_id: String, id: Str
 
 #[tauri::command]
 pub fn empty_recycle_bin(state: State<DbState>, workspace_id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM chat_sessions WHERE workspace_id = ?1 AND is_deleted = 1",
         rusqlite::params![workspace_id],
@@ -266,7 +266,7 @@ pub fn move_chat_sessions(
     if session_ids.is_empty() {
         return Ok(());
     }
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let target_project_id = target_project_id.unwrap_or_default();
 
@@ -325,7 +325,7 @@ pub fn batch_move_sessions(
         return Ok(BatchMoveSessionsResult::default());
     }
     
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     
     conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
@@ -473,7 +473,7 @@ pub fn batch_move_sessions(
 
 #[tauri::command]
 pub fn add_message(state: State<DbState>, req: AddMessageRequest) -> Result<Message, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let msg = Message {
         id: uuid::Uuid::new_v4().to_string(),
         session_id: req.session_id.clone(),
@@ -511,7 +511,7 @@ pub fn add_message(state: State<DbState>, req: AddMessageRequest) -> Result<Mess
 
 #[tauri::command]
 pub fn get_messages(state: State<DbState>, session_id: String, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<Message>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(200).clamp(1, 2000);
     let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn.prepare(
@@ -546,7 +546,7 @@ pub fn update_chat_session(
     is_pinned: Option<bool>,
     system_prompt: Option<String>,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE chat_sessions SET
@@ -573,7 +573,7 @@ pub fn get_token_usage_by_date(
     workspace_id: String,
     days: Option<i64>,
 ) -> Result<Vec<TokenUsageByDate>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let days = days.unwrap_or(30).max(1);
     let mut stmt = conn.prepare(
         "SELECT substr(m.created_at, 1, 10) AS day, COALESCE(SUM(m.tokens_used), 0) AS total_tokens
@@ -596,7 +596,7 @@ pub fn get_token_usage_by_date(
 
 #[tauri::command]
 pub fn touch_session_accessed(state: State<DbState>, session_id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE chat_sessions SET last_accessed_at = ?1 WHERE id = ?2",
@@ -612,7 +612,7 @@ pub fn get_recent_sessions(
     workspace_id: String,
     limit: Option<i64>,
 ) -> Result<Vec<ChatSession>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(10).clamp(1, 100);
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,

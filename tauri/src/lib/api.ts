@@ -592,17 +592,17 @@ export const api = {
 
   graphAlgo: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    pagerank: (nodes: any[], edges: any[]) =>
+    pagerank: (workspaceId: string, damping?: number, iterations?: number) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      invoke<any[]>("compute_pagerank", { input: { nodes, edges } }),
+      invoke<any[]>("compute_pagerank", { workspaceId, damping, iterations }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    communities: (nodes: any[], edges: any[]) =>
+    communities: (workspaceId: string) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      invoke<any[]>("detect_communities", { input: { nodes, edges } }),
+      invoke<any[]>("detect_communities", { workspaceId }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    shortestPath: (nodes: any[], edges: any[], sourceId: string, targetId: string) =>
+    shortestPath: (workspaceId: string, sourceId: string, targetId: string) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      invoke<any>("find_shortest_path", { input: { nodes, edges }, sourceId, targetId }),
+      invoke<any>("find_shortest_path", { workspaceId, sourceId, targetId }),
   },
 
   demo: {
