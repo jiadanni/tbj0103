@@ -47,7 +47,7 @@ pub fn upload_document(state: State<DbState>, req: UploadDocumentRequest) -> Res
 pub fn list_documents(state: State<DbState>, workspace_id: String) -> Result<Vec<UploadedDocument>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT s.id, s.workspace_id, s.filename, s.file_type, s.file_size, s.content, s.summary, s.is_processed,
+        "SELECT s.id, s.workspace_id, s.filename, s.file_type, s.file_size, s.summary, s.is_processed,
                 (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
          FROM sources s WHERE s.workspace_id = ?1 AND s.source_type = 'document' ORDER BY s.created_at DESC"
     ).map_err(|e| e.to_string())?;
@@ -58,12 +58,12 @@ pub fn list_documents(state: State<DbState>, workspace_id: String) -> Result<Vec
             filename: row.get(2)?,
             file_type: row.get(3)?,
             file_size: row.get(4)?,
-            content: row.get(5)?,
-            summary: row.get(6)?,
-            is_processed: row.get::<_, i32>(7)? != 0,
-            chunk_count: row.get(8)?,
-            created_at: row.get(9)?,
-            updated_at: row.get(10)?,
+            content: "".to_string(), // Omit full content for listing metadata
+            summary: row.get(5)?,
+            is_processed: row.get::<_, i32>(6)? != 0,
+            chunk_count: row.get(7)?,
+            created_at: row.get(8)?,
+            updated_at: row.get(9)?,
         })
     }).map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>()

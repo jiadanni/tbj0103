@@ -10,8 +10,8 @@ pub async fn process_auto_memory_extraction(state: &DbState, ollama_url: Option<
         let conn = state.0.get().map_err(|e| e.to_string())?;
         // Only process sessions updated in the last 5 minutes that are not private.
         let mut stmt = conn.prepare(
-            "SELECT id, workspace_id, project_id FROM chat_sessions 
-             WHERE updated_at > datetime('now', '-5 minutes') 
+            "SELECT id, workspace_id, project_id, last_processed_message_count FROM chat_sessions 
+             WHERE datetime(updated_at) > datetime('now', '-5 minutes') 
              AND is_incognito = 0
              AND exclude_from_analytics = 0
              AND is_imported = 0
@@ -19,11 +19,16 @@ pub async fn process_auto_memory_extraction(state: &DbState, ollama_url: Option<
              LIMIT 5"
         ).unwrap();
         stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            Ok((
+                row.get::<_, String>(0)?, 
+                row.get::<_, String>(1)?, 
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?
+            ))
         }).unwrap().filter_map(Result::ok).collect::<Vec<_>>()
     };
 
-    for (session_id, workspace_id, project_id) in sessions {
+    for (session_id, workspace_id, project_id, last_count) in sessions {
         let messages = {
             let conn = state.0.get().map_err(|e| e.to_string())?;
             let mut msg_stmt = conn.prepare(
@@ -44,8 +49,15 @@ pub async fn process_auto_memory_extraction(state: &DbState, ollama_url: Option<
             }).unwrap().filter_map(Result::ok).collect::<Vec<_>>()
         };
 
-        if !messages.is_empty() && messages.len() % 5 == 0 {
-            extract_and_store_memories(state, &workspace_id, &project_id, &session_id, &messages, ollama_url.clone()).await?;
+        if !messages.is_empty() && messages.len() >= 5 && messages.len() > last_count as usize {
+            if extract_and_store_memories(state, &workspace_id, &project_id, &session_id, &messages, ollama_url.clone()).await.is_ok() {
+                if let Ok(conn) = state.0.get() {
+                    let _ = conn.execute(
+                        "UPDATE chat_sessions SET last_processed_message_count = ?1 WHERE id = ?2",
+                        rusqlite::params![messages.len() as i64, session_id]
+                    );
+                }
+            }
         }
     }
 

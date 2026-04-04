@@ -145,7 +145,7 @@ class SemanticSearchEngine: ObservableObject {
 
         guard let chats = try? modelContext.fetch(descriptor) else { return [] }
 
-        // Collect all messages that need embedding
+        // Only do keyword search for now since messages don't have persisted vectors
         struct MessageItem {
             let chat: ChatSession
             let message: Message
@@ -153,35 +153,21 @@ class SemanticSearchEngine: ObservableObject {
         let items = chats.flatMap { chat in chat.messages.map { MessageItem(chat: chat, message: $0) } }
         guard !items.isEmpty else { return [] }
 
-        // Fan out embedding calls concurrently
-        typealias ScoredItem = (item: MessageItem, similarity: Double)
-        let scored: [ScoredItem] = await withTaskGroup(of: ScoredItem?.self) { group in
-            for item in items {
-                group.addTask {
-                    guard let msgEmbedding = try? await self.ollamaService.generateEmbedding(item.message.content) else { return nil }
-                    return (item, self.cosineSimilarity(embedding, msgEmbedding))
-                }
-            }
-            var out: [ScoredItem] = []
-            for await result in group {
-                if let r = result { out.append(r) }
-            }
-            return out
-        }
+        let queryLower = query.lowercased()
+        let exactMatches = items.filter { $0.message.content.lowercased().contains(queryLower) }
 
-        return scored
-            .filter { $0.similarity > 0.7 }
-            .map { scored in
+        return exactMatches
+            .map { item in
                 SearchResult(
                     type: .chatMessage,
-                    title: "Chat: \(scored.item.chat.title)",
-                    excerpt: String(scored.item.message.content.prefix(200)),
-                    similarity: scored.similarity,
-                    sourceID: scored.item.message.id.uuidString,
-                    timestamp: scored.item.message.timestamp,
+                    title: "Chat: \(item.chat.title)",
+                    excerpt: String(item.message.content.prefix(200)),
+                    similarity: 0.9,
+                    sourceID: item.message.id.uuidString,
+                    timestamp: item.message.timestamp,
                     metadata: SearchMetadata(
-                        chatID: scored.item.chat.id.uuidString,
-                        messageRole: scored.item.message.role.rawValue
+                        chatID: item.chat.id.uuidString,
+                        messageRole: item.message.role.rawValue
                     )
                 )
             }
@@ -202,12 +188,11 @@ class SemanticSearchEngine: ObservableObject {
 
         guard let concepts = try? modelContext.fetch(descriptor) else { return [] }
 
-        // Separate exact-name matches from ones needing semantic search
+        let queryLower = query.lowercased()
         var exactMatches: [SearchResult] = []
-        var needsEmbedding: [(concept: ConceptNode, description: String)] = []
 
         for concept in concepts {
-            if concept.name.localizedCaseInsensitiveContains(query) {
+            if concept.name.localizedCaseInsensitiveContains(query) || (concept.conceptDescription?.lowercased().contains(queryLower) == true) {
                 exactMatches.append(SearchResult(
                     type: .concept,
                     title: concept.name,
@@ -217,38 +202,10 @@ class SemanticSearchEngine: ObservableObject {
                     timestamp: concept.lastReferencedAt,
                     metadata: SearchMetadata(conceptType: concept.type.rawValue, referenceCount: concept.referenceCount)
                 ))
-            } else if let description = concept.conceptDescription {
-                needsEmbedding.append((concept, description))
             }
         }
 
-        // Fan out semantic search concurrently for the remaining concepts
-        let semanticMatches: [SearchResult] = await withTaskGroup(of: SearchResult?.self) { group in
-            for item in needsEmbedding {
-                group.addTask {
-                    guard let conceptEmbedding = try? await self.ollamaService.generateEmbedding(item.description) else { return nil }
-                    let similarity = self.cosineSimilarity(embedding, conceptEmbedding)
-                    guard similarity > 0.7 else { return nil }
-                    return SearchResult(
-                        type: .concept,
-                        title: item.concept.name,
-                        excerpt: item.description,
-                        similarity: similarity,
-                        sourceID: item.concept.id.uuidString,
-                        timestamp: item.concept.lastReferencedAt,
-                        metadata: SearchMetadata(
-                            conceptType: item.concept.type.rawValue,
-                            referenceCount: item.concept.referenceCount
-                        )
-                    )
-                }
-            }
-            var out: [SearchResult] = []
-            for await r in group { if let r { out.append(r) } }
-            return out
-        }
-
-        return exactMatches + semanticMatches
+        return exactMatches
     }
 
     private func searchNotes(_ embedding: [Float], query: String, in project: Workspace?) async -> [SearchResult] {
@@ -267,29 +224,21 @@ class SemanticSearchEngine: ObservableObject {
         guard let notes = try? modelContext.fetch(descriptor) else { return [] }
         guard !notes.isEmpty else { return [] }
 
-        // Fan out embedding calls concurrently for all notes
-        return await withTaskGroup(of: SearchResult?.self) { group in
-            for note in notes {
-                group.addTask {
-                    let combinedText = "\(note.title) \(note.content)"
-                    guard let noteEmbedding = try? await self.ollamaService.generateEmbedding(combinedText) else { return nil }
-                    let similarity = self.cosineSimilarity(embedding, noteEmbedding)
-                    guard similarity > 0.7 else { return nil }
-                    return SearchResult(
-                        type: .note,
-                        title: note.title,
-                        excerpt: String(note.content.prefix(200)),
-                        similarity: similarity,
-                        sourceID: note.id.uuidString,
-                        timestamp: note.updatedAt,
-                        metadata: SearchMetadata(noteType: note.noteType)
-                    )
-                }
+        let queryLower = query.lowercased()
+        let exactMatches = notes.filter { $0.title.lowercased().contains(queryLower) || $0.content.lowercased().contains(queryLower) }
+
+        return exactMatches
+            .map { note in
+                SearchResult(
+                    type: .note,
+                    title: note.title,
+                    excerpt: String(note.content.prefix(200)),
+                    similarity: 0.85,
+                    sourceID: note.id.uuidString,
+                    timestamp: note.updatedAt,
+                    metadata: SearchMetadata(noteType: note.noteType)
+                )
             }
-            var out: [SearchResult] = []
-            for await r in group { if let r { out.append(r) } }
-            return out
-        }
     }
 
     // MARK: - Semantic Deduplication

@@ -69,8 +69,7 @@ pub fn keyword_search(
     } else {
         "SELECT m.id, cs.title, m.content, cs.project_id FROM messages m
          JOIN chat_sessions cs ON m.session_id = cs.id
-         JOIN projects p ON cs.project_id = p.id
-         WHERE p.workspace_id = ?1 AND lower(m.content) LIKE ?2
+         WHERE cs.workspace_id = ?1 AND lower(m.content) LIKE ?2
          ORDER BY m.created_at DESC LIMIT ?4"
     };
     let project_filter = req.project_id.as_deref().unwrap_or("");
@@ -145,12 +144,12 @@ pub fn semantic_search(
     let limit = req.limit.unwrap_or(10) as usize;
 
     // Fetch raw rows from DB, then release the lock before computing cosine similarity.
-    let raw_rows: Vec<(String, String, String, Vec<u8>, String)>;
+    let raw_rows: Vec<(String, Vec<u8>)>;
     {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare(
-                "SELECT sc.id, sc.source_id, sc.content, sc.embedding, s.title
+                "SELECT sc.id, sc.embedding
              FROM source_chunks sc
              JOIN sources s ON sc.source_id = s.id
              WHERE s.workspace_id = ?1 AND sc.embedding IS NOT NULL",
@@ -161,10 +160,7 @@ pub fn semantic_search(
             .query_map(rusqlite::params![workspace_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Vec<u8>>(3)?,
-                    row.get::<_, String>(4)?,
+                    row.get::<_, Vec<u8>>(1)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
@@ -173,32 +169,72 @@ pub fn semantic_search(
 
     // Compute cosine similarity outside the lock in parallel
     use rayon::prelude::*;
-    let mut scored: Vec<(f64, SearchResult)> = raw_rows
+    let mut scored: Vec<(f64, String)> = raw_rows
         .into_par_iter()
-        .filter_map(|(chunk_id, doc_id, content, emb_blob, filename)| {
+        .filter_map(|(chunk_id, emb_blob)| {
             let embedding = crate::services::vector_index::bytes_to_f32_vec(&emb_blob);
             if embedding.is_empty() {
                 return None;
             }
             let score =
                 crate::ollama::client::cosine_similarity(&query_embedding, &embedding) as f64;
-            let excerpt: String = content.chars().take(200).collect();
-            Some((
-                score,
-                SearchResult {
-                    id: chunk_id,
-                    result_type: "document_chunk".to_string(),
-                    title: filename,
-                    excerpt,
-                    score,
-                    source_id: Some(doc_id),
-                    project_id: None,
-                },
-            ))
+            Some((score, chunk_id))
         })
         .collect();
 
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    let results = scored.into_iter().take(limit).map(|(_, r)| r).collect();
+    scored.truncate(limit);
+
+    if scored.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let chunk_ids: Vec<String> = scored.iter().map(|(_, id)| id.clone()).collect();
+    let placeholders = chunk_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!(
+        "SELECT sc.id, sc.source_id, sc.content, s.title
+         FROM source_chunks sc
+         JOIN sources s ON sc.source_id = s.id
+         WHERE sc.id IN ({})",
+        placeholders
+    );
+
+    let mut results = Vec::new();
+    {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let mut fetch_stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
+        
+        let mut chunk_map = std::collections::HashMap::new();
+        let params = rusqlite::params_from_iter(chunk_ids.iter());
+        
+        let rows = fetch_stmt.query_map(params, |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        }).map_err(|e| e.to_string())?;
+        
+        for row in rows.filter_map(Result::ok) {
+            chunk_map.insert(row.0.clone(), row);
+        }
+        
+        for (score, chunk_id) in scored {
+            if let Some((id, source_id, content, title)) = chunk_map.remove(&chunk_id) {
+                let excerpt: String = content.chars().take(200).collect();
+                results.push(SearchResult {
+                    id,
+                    result_type: "document_chunk".to_string(),
+                    title,
+                    excerpt,
+                    score,
+                    source_id: Some(source_id),
+                    project_id: None,
+                });
+            }
+        }
+    }
+
     Ok(results)
 }

@@ -160,12 +160,8 @@ pub async fn generate_flashcards(state: State<'_, DbState>, req: GenerateCardsRe
     let pairs: Vec<CardPair> = serde_json::from_str(json_str)
         .map_err(|e| format!("Failed to parse AI-generated cards: {e}\nRaw: {json_str}"))?;
 
-<<<<<<< HEAD
-    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-=======
-    let conn = state.0.get().map_err(|e| e.to_string())?;
->>>>>>> origin/jules
     let mut cards = Vec::new();
     for pair in pairs {
         if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
@@ -236,12 +232,8 @@ pub async fn generate_flashcards_from_concept(state: State<'_, DbState>, req: Ge
     let pairs: Vec<CardPair> = serde_json::from_str(json_str)
         .map_err(|e| format!("Failed to parse AI-generated cards: {e}\nRaw: {json_str}"))?;
 
-<<<<<<< HEAD
-    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-=======
-    let conn = state.0.get().map_err(|e| e.to_string())?;
->>>>>>> origin/jules
     let mut cards = Vec::new();
     for pair in pairs {
         if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
@@ -341,12 +333,8 @@ pub async fn extract_flashcards_from_content(state: State<'_, DbState>, req: Ext
     let pairs: Vec<CardPair> = serde_json::from_str(json_str).unwrap_or_default();
     if pairs.is_empty() { return Ok(vec![]); }
 
-<<<<<<< HEAD
-    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-=======
-    let conn = state.0.get().map_err(|e| e.to_string())?;
->>>>>>> origin/jules
     let mut cards = Vec::new();
     for pair in pairs {
         if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
