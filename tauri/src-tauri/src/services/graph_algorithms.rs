@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
 /// Knowledge Graph Algorithms
 /// Ported from Models/GraphAlgorithms.swift
 ///
 /// Algorithms: PageRank, community detection (label propagation),
 /// centrality, degree distribution, shortest path (BFS/Dijkstra)
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
