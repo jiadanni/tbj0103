@@ -93,3 +93,7 @@ conversations-mac/
 
 # Override global gitignore for source ollama module
 !**/src/ollama/
+
+# Patch artifacts
+*.orig
+*.rej

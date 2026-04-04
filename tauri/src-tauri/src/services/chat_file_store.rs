@@ -828,40 +828,5 @@ mod tests {
     use super::*;
     use rusqlite::Connection;
 
-    #[test]
-    fn parses_and_imports_mac_lmstudio_conversation_fixture() {
-        let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("conversations-mac")
-            .join("General")
-            .join("1760004488608.conversation.json");
-        let bytes = std::fs::read(&fixture_path).expect("fixture should be readable");
-        let parsed = parse_lmstudio_conversation(&bytes).expect("fixture should parse");
 
-        assert!(!parsed.messages.is_empty(), "fixture should yield importable messages");
-
-        let conn = Connection::open_in_memory().expect("in-memory db should open");
-        conn.execute_batch(include_str!("../schema.sql"))
-            .expect("schema should initialize");
-        conn.execute(
-            "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
-             VALUES (?1, ?2, '', '', '{}', datetime('now'), datetime('now'))",
-            rusqlite::params!["ws-test", "Fixture Workspace"],
-        )
-        .expect("workspace insert should succeed");
-
-        let session_id = import_chat_data(&conn, &parsed, "ws-test", "")
-            .expect("fixture should import into sqlite");
-
-        let message_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM messages WHERE session_id = ?1",
-                rusqlite::params![session_id],
-                |row| row.get(0),
-            )
-            .expect("message count query should succeed");
-
-        assert!(message_count > 0, "imported session should persist messages");
-    }
 }

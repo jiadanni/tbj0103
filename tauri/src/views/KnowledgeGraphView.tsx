@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useLocation } from "react-router-dom";
-import * as d3 from "d3";
+import ForceGraph2D from "react-force-graph-2d";
 import {
   Plus, Search, X, Trash2, ZoomIn, ZoomOut,
   Sparkles, Loader2, Check, Target, GitMerge,
@@ -146,9 +146,9 @@ export default function KnowledgeGraphView() {
   const [newConceptType, setNewConceptType] = useState("topic");
 
   // D3 refs
-  const svgRef = useRef<SVGSVGElement>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
-  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const fgRef = useRef<any>(null);
   const [graphSearch, setGraphSearch] = useState("");
 
   // Dedup
@@ -330,93 +330,19 @@ export default function KnowledgeGraphView() {
     api.learningGoal.list(activeWorkspaceId).then(setExistingGoals).catch(() => {});
   }, [tab, activeWorkspaceId]);
 
-  // ── D3 force simulation ───────────────────────────────────────────────────
-  const filteredD3Nodes = useMemo(
-    () => graphSearch
-      ? nodes.filter((n) => n.name.toLowerCase().includes(graphSearch.toLowerCase()))
-      : nodes,
+  // ── ForceGraph variables ──────────────────────────────────────────────────
+  const filteredNodes = useMemo(
+    () => graphSearch ? nodes.filter((n) => n.name.toLowerCase().includes(graphSearch.toLowerCase())) : nodes,
     [nodes, graphSearch],
   );
 
-  useEffect(() => {
-    if (!svgRef.current || !containerRef.current) {return;}
-    const { width, height } = containerRef.current.getBoundingClientRect();
-    const svg = d3.select(svgRef.current);
-    svg.selectAll("*").remove();
-
-    const g = svg.append("g").attr("class", "graph-container");
-
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 4])
-      .on("zoom", (event) => g.attr("transform", event.transform));
-    svg.call(zoom);
-    zoomRef.current = zoom;
-
-    const d3Nodes: D3Node[] = filteredD3Nodes.map((n) => ({
-      ...n, x: n.x_position || Math.random() * width, y: n.y_position || Math.random() * height,
-    }));
-    const nodeById = new Map(d3Nodes.map((n) => [n.id, n]));
-    const d3Links: D3Link[] = links
-      .filter((l) => nodeById.has(l.source_id) && nodeById.has(l.target_id))
-      .map((l) => ({
-        id: l.id, link_type: l.link_type, strength: l.strength,
-        source: l.source_id, target: l.target_id,
-      }));
-
-    const sim = d3.forceSimulation<D3Node>(d3Nodes)
-      .force("link", d3.forceLink<D3Node, D3Link>(d3Links).id((d) => d.id).distance(120))
-      .force("charge", d3.forceManyBody().strength(-200))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide(30));
-
-    const linkEl = g.append("g").selectAll<SVGLineElement, D3Link>("line")
-      .data(d3Links).join("line")
-      .attr("stroke", "#475569").attr("stroke-opacity", 0.6)
-      .attr("stroke-width", (d) => Math.max(1, d.strength * 2));
-
-    const linkLabel = g.append("g").selectAll<SVGTextElement, D3Link>("text")
-      .data(d3Links).join("text")
-      .text((d) => d.link_type)
-      .attr("fill", "#64748b").attr("font-size", "10px").attr("text-anchor", "middle");
-
-    const node = g.append("g").selectAll<SVGGElement, D3Node>("g")
-      .data(d3Nodes).join("g")
-      .attr("cursor", "pointer")
-      .on("click", (_, d) => setSelectedConcept(nodes.find((n) => n.id === d.id) ?? null))
-      .call(
-        d3.drag<SVGGElement, D3Node>()
-          .on("start", (event, d) => { if (!event.active) {sim.alphaTarget(0.3).restart();} d.fx = d.x; d.fy = d.y; })
-          .on("drag",  (event, d) => { d.fx = event.x; d.fy = event.y; })
-          .on("end",   (event, d) => { if (!event.active) {sim.alphaTarget(0);} d.fx = null; d.fy = null; })
-      );
-
-    node.append("circle")
-      .attr("r", 18)
-      .attr("fill",   (d) => colorFor(d.concept_type) + "33")
-      .attr("stroke", (d) => colorFor(d.concept_type))
-      .attr("stroke-width", 1.5);
-
-    node.append("text")
-      .text((d) => d.name.slice(0, 14) + (d.name.length > 14 ? "…" : ""))
-      .attr("text-anchor", "middle").attr("dy", "0.35em")
-      .attr("fill", "#e2e8f0").attr("font-size", "11px").attr("pointer-events", "none");
-
-    node.on("mouseover", function () { d3.select(this).select("circle").attr("r", 22); })
-        .on("mouseout",  function () { d3.select(this).select("circle").attr("r", 18); });
-
-    sim.on("tick", () => {
-      linkEl
-        .attr("x1", (d) => (d.source as D3Node).x).attr("y1", (d) => (d.source as D3Node).y)
-        .attr("x2", (d) => (d.target as D3Node).x).attr("y2", (d) => (d.target as D3Node).y);
-      linkLabel
-        .attr("x", (d) => ((d.source as D3Node).x + (d.target as D3Node).x) / 2)
-        .attr("y", (d) => ((d.source as D3Node).y + (d.target as D3Node).y) / 2);
-      node.attr("transform", (d) => `translate(${d.x},${d.y})`);
-    });
-
-    return () => { sim.stop(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredD3Nodes, links]);
+  const graphData = useMemo(() => {
+    const nodeById = new Set(filteredNodes.map(n => n.id));
+    return {
+      nodes: filteredNodes.map(n => ({...n, val: 1})),
+      links: links.filter(l => nodeById.has(l.source_id) && nodeById.has(l.target_id)).map(l => ({...l, source: l.source_id, target: l.target_id}))
+    };
+  }, [filteredNodes, links]);
 
   // ── AI: analyze workspace ─────────────────────────────────────────────────
   async function handleAnalyze() {
@@ -458,8 +384,8 @@ export default function KnowledgeGraphView() {
   }
 
   // ── Zoom ──────────────────────────────────────────────────────────────────
-  function zoomIn()  { if (svgRef.current && zoomRef.current) {d3.select(svgRef.current).transition().call(zoomRef.current.scaleBy, 1.4);} }
-  function zoomOut() { if (svgRef.current && zoomRef.current) {d3.select(svgRef.current).transition().call(zoomRef.current.scaleBy, 1 / 1.4);} }
+  function zoomIn()  { if (fgRef.current) { fgRef.current.zoom(fgRef.current.zoom() * 1.4, 400); } }
+  function zoomOut() { if (fgRef.current) { fgRef.current.zoom(fgRef.current.zoom() / 1.4, 400); } }
 
   // ── Dedup ─────────────────────────────────────────────────────────────────
   async function runDedup() {
@@ -554,12 +480,9 @@ export default function KnowledgeGraphView() {
 
   // ── PageRank & communities ─────────────────────────────────────────────────
   async function runPagerank() {
-    if (nodes.length === 0) {return;}
+    if (!activeWorkspaceId || nodes.length === 0) {return;}
     try {
-      const result = await api.graphAlgo.pagerank(
-        nodes.map((n) => ({ id: n.id, name: n.name })),
-        links.map((l) => ({ source: l.source_id, target: l.target_id })),
-      );
+      const result = await api.graphAlgo.pagerank(activeWorkspaceId, 0.85, 100);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sorted = [...result].sort((a: any, b: any) => b.score - a.score).slice(0, 10);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -572,12 +495,9 @@ export default function KnowledgeGraphView() {
   }
 
   async function runCommunities() {
-    if (nodes.length === 0) {return;}
+    if (!activeWorkspaceId || nodes.length === 0) {return;}
     try {
-      const result = await api.graphAlgo.communities(
-        nodes.map((n) => ({ id: n.id })),
-        links.map((l) => ({ source: l.source_id, target: l.target_id })),
-      );
+      const result = await api.graphAlgo.communities(activeWorkspaceId);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setCommunities((result as any[]).slice(0, 6).map((c: any, i: number) => ({
         id: String(i),
@@ -824,7 +744,31 @@ export default function KnowledgeGraphView() {
               </div>
             )}
 
-            <svg ref={svgRef} className="w-full h-full bg-[var(--bg-primary)]" />
+            {containerRef.current && (
+              <ForceGraph2D
+                ref={fgRef}
+                width={containerRef.current.clientWidth}
+                height={containerRef.current.clientHeight}
+                graphData={graphData}
+                nodeRelSize={6}
+                nodeColor={(n: any) => colorFor(n.concept_type)}
+                linkColor={() => "#475569"}
+                linkWidth={(l: any) => Math.max(1, l.strength * 2)}
+                linkLabel="link_type"
+                nodeCanvasObjectMode={() => "after"}
+                nodeCanvasObject={(node: any, ctx, globalScale) => {
+                  const label = node.name.slice(0, 14) + (node.name.length > 14 ? "…" : "");
+                  const fontSize = 12/globalScale;
+                  ctx.font = `${fontSize}px Sans-Serif`;
+                  ctx.fillStyle = '#e2e8f0';
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'middle';
+                  ctx.fillText(label, node.x, node.y);
+                }}
+                onNodeClick={(node: any) => setSelectedConcept(nodes.find(n => n.id === node.id) ?? null)}
+                backgroundColor="transparent"
+              />
+            )}
 
             {/* Create concept overlay */}
             {showCreateForm && (

@@ -31,24 +31,32 @@ pub fn get_relevant_chunks(
          WHERE s.workspace_id = ?1 AND s.source_type = 'document' AND sc.embedding IS NOT NULL"
     ).map_err(|e| e.to_string())?;
 
-    let mut scored: Vec<(f32, RetrievedChunk)> = stmt.query_map(
+    let raw_rows: Vec<(String, String, String, String, Vec<u8>, i64)> = stmt.query_map(
         rusqlite::params![workspace_id],
         |row| Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
             row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
+            row.get::<_, Vec<u8>>(4)?,
             row.get::<_, i64>(5)?,
         ))
     ).map_err(|e| e.to_string())?
     .filter_map(Result::ok)
-    .filter_map(|(chunk_id, doc_id, filename, content, emb_json, chunk_index)| {
-        let embedding: Vec<f32> = serde_json::from_str(&emb_json).ok()?;
-        let score = cosine_similarity(query_embedding, &embedding);
-        Some((score, RetrievedChunk { chunk_id, document_id: doc_id, filename, content, score, chunk_index }))
-    })
     .collect();
+
+    use rayon::prelude::*;
+    let mut scored: Vec<(f32, RetrievedChunk)> = raw_rows
+        .into_par_iter()
+        .filter_map(|(chunk_id, doc_id, filename, content, emb_blob, chunk_index)| {
+            let embedding = crate::services::vector_index::bytes_to_f32_vec(&emb_blob);
+            if embedding.is_empty() {
+                return None;
+            }
+            let score = cosine_similarity(query_embedding, &embedding);
+            Some((score, RetrievedChunk { chunk_id, document_id: doc_id, filename, content, score, chunk_index }))
+        })
+        .collect();
 
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     Ok(scored.into_iter().take(top_k).map(|(_, c)| c).collect())

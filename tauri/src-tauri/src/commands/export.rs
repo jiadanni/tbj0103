@@ -13,7 +13,7 @@ pub struct ExportRequest {
 
 #[tauri::command]
 pub fn export_markdown(state: State<DbState>, req: ExportRequest) -> Result<String, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut output = String::new();
 
     // Workspace header
@@ -93,7 +93,7 @@ pub fn export_markdown(state: State<DbState>, req: ExportRequest) -> Result<Stri
 
 #[tauri::command]
 pub fn export_json(state: State<DbState>, req: ExportRequest) -> Result<String, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let workspace: serde_json::Value = conn.query_row(
         "SELECT id, name FROM workspaces WHERE id = ?1",
         rusqlite::params![req.workspace_id],
@@ -113,7 +113,7 @@ pub fn export_json(state: State<DbState>, req: ExportRequest) -> Result<String, 
 
 #[tauri::command]
 pub fn export_obsidian_vault(state: State<DbState>, req: ExportRequest) -> Result<Vec<serde_json::Value>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut files: Vec<serde_json::Value> = Vec::new();
 
     // Concepts as individual markdown files with YAML frontmatter

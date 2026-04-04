@@ -86,10 +86,12 @@ function makeProject(overrides: Partial<Project> = {}): Project {
 // ─── navigation initialisation ────────────────────────────────────────────
 
 describe("navigation settings", () => {
-  it("defaults to top-tabs/top-tabs when localStorage is empty", () => {
-    const state = useWorkspaceStore.getState();
-    expect(state.workspaceNavigation).toBe("top-tabs");
-    expect(state.sectionNavigation).toBe("top-tabs");
+  it("defaults to top-tabs/top-tabs when localStorage is empty", async () => {
+    localStorage.clear();
+    vi.resetModules();
+    const { useWorkspaceStore: freshStore } = await import("@/stores/workspaceStore");
+    expect(freshStore.getState().workspaceNavigation).toBe("top-tabs");
+    expect(freshStore.getState().sectionNavigation).toBe("top-tabs");
   });
 
   it("reads independent navigation settings from localStorage on module init", async () => {
@@ -280,6 +282,10 @@ describe("split layout", () => {
   });
 
   it("persists split sizes and mode", () => {
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace({ id: "ws-1" }), makeWorkspace({ id: "ws-2" })],
+      activeWorkspaceId: "ws-1",
+    });
     useWorkspaceStore.getState().setSplitSizes([40, 60]);
     useWorkspaceStore.getState().enterSplitMode();
 

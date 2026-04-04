@@ -16,7 +16,7 @@ pub struct BackupInfo {
 /// Create a full JSON backup of the workspace and return the backup JSON string.
 #[tauri::command]
 pub fn create_backup(state: State<DbState>, workspace_id: String) -> Result<String, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     
     // Serialize workspace
     let (ws_name,): (String,) = conn.query_row(
@@ -73,7 +73,7 @@ pub fn list_backups(_state: State<DbState>) -> Result<Vec<BackupInfo>, String> {
 
 #[tauri::command]
 pub fn restore_backup(state: State<DbState>, backup_json: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     let backup: serde_json::Value = serde_json::from_str(&backup_json)
         .map_err(|e| format!("Invalid backup JSON: {e}"))?;
 

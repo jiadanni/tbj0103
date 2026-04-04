@@ -8,7 +8,7 @@ pub async fn create_artifact(
     state: State<'_, DbState>,
     req: CreateArtifactRequest,
 ) -> Result<Artifact, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     artifact_service::create_artifact(&conn, req)
 }
 
@@ -17,7 +17,7 @@ pub async fn get_artifact(
     state: State<'_, DbState>,
     id: String,
 ) -> Result<Artifact, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     artifact_service::get_artifact(&conn, &id)
 }
 
@@ -28,7 +28,7 @@ pub async fn list_artifacts(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<ArtifactSummary>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     artifact_service::list_artifacts(&conn, &workspace_id, limit, offset)
 }
 
@@ -37,7 +37,7 @@ pub async fn get_artifact_versions(
     state: State<'_, DbState>,
     id: String,
 ) -> Result<Vec<ArtifactSummary>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     
     let mut stmt = conn.prepare(
         "WITH RECURSIVE chain AS (
@@ -75,7 +75,7 @@ pub async fn update_artifact(
     id: String,
     updates: serde_json::Value,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     
     if let Some(is_pinned) = updates.get("is_pinned").and_then(|v| v.as_bool()) {
         artifact_service::update_artifact_pin(&conn, &id, is_pinned)?;
@@ -90,7 +90,7 @@ pub async fn search_artifacts(
     workspace_id: String,
     query: String,
 ) -> Result<Vec<ArtifactSummary>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     
     // For Phase 3, we'd generate embedding first then call search_artifacts_semantic.
     // For now, let's just do a keyword search as fallback.
@@ -128,7 +128,7 @@ pub async fn create_artifact_version(
     parent_id: String,
     content: String,
 ) -> Result<Artifact, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     
     // 1. Get parent details
     let parent = artifact_service::get_artifact(&conn, &parent_id)?;
@@ -164,6 +164,6 @@ pub async fn delete_artifact(
     state: State<'_, DbState>,
     id: String,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
     artifact_service::delete_artifact(&conn, &id)
 }

@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let conn = db::initialize_database(&db_path_buf)?;
-    let db_state = db::DbState(std::sync::Mutex::new(conn));
+    let db_state = db::DbState(conn);
     let db_state = std::sync::Arc::new(db_state);
 
     // Create MCP service
