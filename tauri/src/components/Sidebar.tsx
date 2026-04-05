@@ -20,7 +20,22 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const activeSegment = "/" + location.pathname.split("/")[1];
   const [contextMenu, setContextMenu] = useState<{ item: NavigationItem; x: number; y: number } | null>(null);
+  const [tooltip, setTooltip] = useState<{ label: string; top: number; left: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+
+  function showTooltip(label: string, element: HTMLElement) {
+    if (!iconOnly) {return;}
+    const rect = element.getBoundingClientRect();
+    setTooltip({
+      label,
+      top: rect.top + rect.height / 2,
+      left: rect.right + 12,
+    });
+  }
+
+  function hideTooltip() {
+    setTooltip(null);
+  }
 
   useEffect(() => {
     if (!contextMenu) {return;}
@@ -46,6 +61,26 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
       window.removeEventListener("keydown", handleEscape);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!tooltip) {return;}
+
+    function handleViewportChange() {
+      setTooltip(null);
+    }
+
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [tooltip]);
+
+  useEffect(() => {
+    setTooltip(null);
+  }, [location.pathname, iconOnly]);
 
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) {return;}
@@ -82,13 +117,19 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
                 onClick={() => {
                   navigate(item.path);
                   setContextMenu(null);
+                  setTooltip(null);
                 }}
+                onMouseEnter={(event) => showTooltip(item.label, event.currentTarget)}
+                onMouseLeave={hideTooltip}
+                onFocus={(event) => showTooltip(item.label, event.currentTarget)}
+                onBlur={hideTooltip}
                 onContextMenu={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
+                  setTooltip(null);
                   setContextMenu({ item, x: event.clientX, y: event.clientY });
                 }}
-                title={iconOnly ? item.label : undefined}
+                aria-label={iconOnly ? item.label : undefined}
                 className={
                   iconOnly
                     ? `flex items-center justify-center w-10 h-10 rounded-xl transition-colors select-none ${
@@ -114,8 +155,15 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
       {/* Fixed bottom actions */}
       <div className={`border-t border-[var(--border-color)] ${iconOnly ? "p-2 flex flex-col items-center gap-1" : "p-4 space-y-2"}`}>
         <button
-          onClick={() => navigate("/preferences")}
-          title={iconOnly ? "Preferences" : undefined}
+          onClick={() => {
+            setTooltip(null);
+            navigate("/preferences");
+          }}
+          onMouseEnter={(event) => showTooltip("Preferences", event.currentTarget)}
+          onMouseLeave={hideTooltip}
+          onFocus={(event) => showTooltip("Preferences", event.currentTarget)}
+          onBlur={hideTooltip}
+          aria-label={iconOnly ? "Preferences" : undefined}
           className={
             iconOnly
               ? `flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
@@ -135,8 +183,15 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
         </button>
 
         <button
-          onClick={onOpenCommandPalette}
-          title={iconOnly ? "Command Palette (⌘K)" : undefined}
+          onClick={() => {
+            setTooltip(null);
+            onOpenCommandPalette();
+          }}
+          onMouseEnter={(event) => showTooltip("Command Palette (⌘K)", event.currentTarget)}
+          onMouseLeave={hideTooltip}
+          onFocus={(event) => showTooltip("Command Palette (⌘K)", event.currentTarget)}
+          onBlur={hideTooltip}
+          aria-label={iconOnly ? "Command Palette (⌘K)" : undefined}
           className={
             iconOnly
               ? "flex items-center justify-center w-10 h-10 rounded-xl text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)] transition-colors"
@@ -152,6 +207,16 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
           )}
         </button>
       </div>
+
+      {iconOnly && tooltip && (
+        <div
+          role="tooltip"
+          className="pointer-events-none fixed z-40 -translate-y-1/2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] shadow-lg"
+          style={{ top: tooltip.top, left: tooltip.left }}
+        >
+          {tooltip.label}
+        </div>
+      )}
 
       {contextMenu && (
         <div

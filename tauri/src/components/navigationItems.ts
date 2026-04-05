@@ -23,7 +23,7 @@ export const PRIMARY_NAV_ITEMS: NavigationItem[] = [
   { path: "/graph", icon: Network, label: "Knowledge Graph" },
 ];
 
-export type ChatSubView = "chat" | "grounded" | "compare" | "sessions";
+export type ChatSubView = "chat" | "compare" | "sessions";
 export type NotesSubView = "notes" | "daily";
 export type GraphSubView = "graph" | "backlinks" | "dedup" | "flashcards" | "learning";
 export type PreferencesSection = "general" | "appearance" | "chat" | "ai" | "webai" | "security" | "workspaces" | "backup" | "plugins" | "mcp" | "sync";

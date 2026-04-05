@@ -34,11 +34,10 @@ tauri/
 │   │   ├── AuthenticationView.tsx
 │   │   ├── BacklinksView.tsx        # Wiki-link backlink graph
 │   │   ├── BackupSettingsSection.tsx
-│   │   ├── ChatView.tsx
+│   │   ├── ChatView.tsx            # Main AI chat interface (with RAG support)
 │   │   ├── DailyNotesView.tsx
 │   │   ├── DocumentBrowserView.tsx
 │   │   ├── FlashcardReviewView.tsx
-│   │   ├── GroundedChatView.tsx    # RAG-powered chat
 │   │   ├── KnowledgeGraphView.tsx  # D3 force graph
 │   │   ├── LearningPathView.tsx
 │   │   ├── ProjectDashboardView.tsx
@@ -151,8 +150,7 @@ The schema is defined in [src-tauri/src/schema.sql](src-tauri/src/schema.sql) an
 ## Key Features
 
 - **Notes** with full `[[wiki-link]]` backlink indexing (auto-updated on save)
-- **Chat** — streaming Ollama chat sessions scoped to projects
-- **Grounded Chat** — RAG pipeline: retrieves relevant notes before answering
+- **Chat** — streaming Ollama chat sessions (with RAG support)
 - **Knowledge Graph** — interactive D3 force-directed concept graph
 - **Flashcards** — spaced repetition (SM-2 algorithm)
 - **Learning Goals** — progress tracking with prerequisite chains
