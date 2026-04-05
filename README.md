@@ -133,17 +133,18 @@ The Tauri port is the primary development target and receives all new features.
 
 ### Prerequisites (both apps)
 
-- **Ollama** installed and running ([ollama.ai](https://ollama.ai))
+- **Ollama** installed ([ollama.ai](https://ollama.ai))
 
 ```bash
-# Install and start Ollama
+# Install Ollama
 brew install ollama
-ollama serve
 
 # Pull required models
 ollama pull qwen2.5
 ollama pull nomic-embed-text
 ```
+
+> **Note:** The active Tauri app can auto-start Ollama for the default local URL from **Preferences → AI**. The legacy Swift app still expects Ollama to already be running.
 
 ---
 
@@ -162,7 +163,10 @@ cd aetherium/tauri
 # Install JS dependencies
 npm install
 
-# Run in development mode
+# Run in development mode (best-effort Ollama startup)
+npm run dev:app
+
+# Or run Tauri manually if you prefer to manage Ollama yourself
 npm run tauri dev
 ```
 

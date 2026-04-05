@@ -1,13 +1,15 @@
-use tauri::{AppHandle, State};
-use tauri_plugin_autostart::ManagerExt;
-use serde::{Deserialize, Serialize};
+use crate::commands::quick_search::QuickSearchRuntimeState;
 use crate::db::DbState;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_autostart::ManagerExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     pub preferred_model: String,
     pub background_model: String,
     pub quick_search_models: Vec<String>,
+    pub quick_search_shortcut: String,
     pub backup_enabled: bool,
     pub touch_id_enabled: bool,
     pub pin_lock_enabled: bool,
@@ -17,6 +19,7 @@ pub struct Settings {
     pub font_size: i64,
     pub sidebar_width: i64,
     pub ollama_base_url: String,
+    pub auto_start_ollama: bool,
     pub mlx_base_url: String,
     pub llamacpp_model_paths: Vec<String>,
     pub embedding_model: String,
@@ -32,6 +35,7 @@ pub struct Settings {
     pub compare_model_b: String,
     pub start_at_login: bool,
     pub open_in_background: bool,
+    pub keep_running_in_tray: bool,
     pub immediate_delete: bool,
     pub confirm_move_to_trash: bool,
     pub prompt_instructions: String,
@@ -45,6 +49,7 @@ impl Default for Settings {
             preferred_model: "".to_string(),
             background_model: "".to_string(),
             quick_search_models: Vec::new(),
+            quick_search_shortcut: "CmdOrCtrl+Shift+K".to_string(),
             backup_enabled: true,
             touch_id_enabled: false,
             pin_lock_enabled: false,
@@ -54,6 +59,7 @@ impl Default for Settings {
             font_size: 16,
             sidebar_width: 240,
             ollama_base_url: "http://localhost:11434".to_string(),
+            auto_start_ollama: false,
             mlx_base_url: "http://localhost:8080".to_string(),
             llamacpp_model_paths: Vec::new(),
             embedding_model: "nomic-embed-text".to_string(),
@@ -69,6 +75,7 @@ impl Default for Settings {
             compare_model_b: "".to_string(),
             start_at_login: false,
             open_in_background: false,
+            keep_running_in_tray: false,
             immediate_delete: false,
             confirm_move_to_trash: true,
             prompt_instructions: String::new(),
@@ -93,14 +100,20 @@ fn biometric_available() -> bool {
 }
 
 fn get_setting(conn: &rusqlite::Connection, key: &str) -> Option<String> {
-    conn.query_row("SELECT value FROM settings WHERE key = ?1", rusqlite::params![key], |r| r.get(0)).ok()
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        rusqlite::params![key],
+        |r| r.get(0),
+    )
+    .ok()
 }
 
 fn set_setting(conn: &rusqlite::Connection, key: &str, value: &str) -> Result<(), String> {
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
         rusqlite::params![key, value],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -108,10 +121,7 @@ fn set_setting(conn: &rusqlite::Connection, key: &str, value: &str) -> Result<()
 pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let def = Settings::default();
-    let start_at_login = app
-        .autolaunch()
-        .is_enabled()
-        .map_err(|e| e.to_string())?;
+    let start_at_login = app.autolaunch().is_enabled().map_err(|e| e.to_string())?;
     let pin_configured = get_setting(&conn, "pin_passcode_hash")
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false);
@@ -131,6 +141,9 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         quick_search_models: get_setting(&conn, "quick_search_models")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.quick_search_models),
+        quick_search_shortcut: get_setting(&conn, "quick_search_shortcut")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.quick_search_shortcut),
         backup_enabled: get_setting(&conn, "backup_enabled")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.backup_enabled),
@@ -158,6 +171,9 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         ollama_base_url: get_setting(&conn, "ollama_base_url")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.ollama_base_url),
+        auto_start_ollama: get_setting(&conn, "auto_start_ollama")
+            .map(|v| v == "true")
+            .unwrap_or(def.auto_start_ollama),
         mlx_base_url: get_setting(&conn, "mlx_base_url")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.mlx_base_url),
@@ -200,6 +216,9 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         open_in_background: get_setting(&conn, "open_in_background")
             .map(|v| v == "true")
             .unwrap_or(def.open_in_background),
+        keep_running_in_tray: get_setting(&conn, "keep_running_in_tray")
+            .map(|v| v == "true")
+            .unwrap_or(def.keep_running_in_tray),
         immediate_delete: get_setting(&conn, "immediate_delete")
             .map(|v| v == "true")
             .unwrap_or(def.immediate_delete),
@@ -219,45 +238,190 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
 }
 
 #[tauri::command]
-pub fn update_settings(app: AppHandle, state: State<DbState>, settings: Settings) -> Result<(), String> {
+pub fn update_settings(
+    app: AppHandle,
+    state: State<DbState>,
+    quick_search_state: State<QuickSearchRuntimeState>,
+    settings: Settings,
+) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let pin_configured = get_setting(&conn, "pin_passcode_hash")
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false);
     let biometric_available = biometric_available();
     let effective_pin_lock_enabled = settings.pin_lock_enabled && pin_configured;
+    let normalized_quick_search_shortcut =
+        crate::commands::quick_search::normalize_shortcut(&settings.quick_search_shortcut);
 
-    set_setting(&conn, "preferred_model", &serde_json::to_string(&settings.preferred_model).unwrap())?;
-    set_setting(&conn, "background_model", &serde_json::to_string(&settings.background_model).unwrap())?;
-    set_setting(&conn, "quick_search_models", &serde_json::to_string(&settings.quick_search_models).unwrap())?;
-    set_setting(&conn, "backup_enabled", &settings.backup_enabled.to_string())?;
-    set_setting(&conn, "touch_id_enabled", &(settings.touch_id_enabled && biometric_available && effective_pin_lock_enabled).to_string())?;
-    set_setting(&conn, "pin_lock_enabled", &effective_pin_lock_enabled.to_string())?;
-    set_setting(&conn, "auto_lock_minutes", &settings.auto_lock_minutes.to_string())?;
-    set_setting(&conn, "theme", &serde_json::to_string(&settings.theme).unwrap())?;
-    set_setting(&conn, "accent_color", &serde_json::to_string(&settings.accent_color).unwrap())?;
+    crate::commands::quick_search::apply_shortcut(
+        &app,
+        &quick_search_state,
+        normalized_quick_search_shortcut.clone(),
+    )?;
+
+    set_setting(
+        &conn,
+        "preferred_model",
+        &serde_json::to_string(&settings.preferred_model).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "background_model",
+        &serde_json::to_string(&settings.background_model).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "quick_search_models",
+        &serde_json::to_string(&settings.quick_search_models).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "quick_search_shortcut",
+        &serde_json::to_string(&normalized_quick_search_shortcut.unwrap_or_default()).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "backup_enabled",
+        &settings.backup_enabled.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "touch_id_enabled",
+        &(settings.touch_id_enabled && biometric_available && effective_pin_lock_enabled)
+            .to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "pin_lock_enabled",
+        &effective_pin_lock_enabled.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "auto_lock_minutes",
+        &settings.auto_lock_minutes.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "theme",
+        &serde_json::to_string(&settings.theme).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "accent_color",
+        &serde_json::to_string(&settings.accent_color).unwrap(),
+    )?;
     set_setting(&conn, "font_size", &settings.font_size.to_string())?;
     set_setting(&conn, "sidebar_width", &settings.sidebar_width.to_string())?;
-    set_setting(&conn, "ollama_base_url", &serde_json::to_string(&settings.ollama_base_url).unwrap())?;
-    set_setting(&conn, "mlx_base_url", &serde_json::to_string(&settings.mlx_base_url).unwrap())?;
-    set_setting(&conn, "llamacpp_model_paths", &serde_json::to_string(&settings.llamacpp_model_paths).unwrap())?;
-    set_setting(&conn, "embedding_model", &serde_json::to_string(&settings.embedding_model).unwrap())?;
-    set_setting(&conn, "chat_title_auto_refresh", &settings.chat_title_auto_refresh)?;
-    set_setting(&conn, "chat_title_refresh_interval", &settings.chat_title_refresh_interval.to_string())?;
-    set_setting(&conn, "chat_json_storage", &settings.chat_json_storage.to_string())?;
-    set_setting(&conn, "web_session_preserve", &settings.web_session_preserve.to_string())?;
-    set_setting(&conn, "dual_model_enabled", &settings.dual_model_enabled.to_string())?;
-    set_setting(&conn, "draft_model", &serde_json::to_string(&settings.draft_model).unwrap())?;
-    set_setting(&conn, "dual_model_execution_mode", &serde_json::to_string(&settings.dual_model_execution_mode).unwrap())?;
-    set_setting(&conn, "compare_model_a", &serde_json::to_string(&settings.compare_model_a).unwrap())?;
-    set_setting(&conn, "compare_model_b", &serde_json::to_string(&settings.compare_model_b).unwrap())?;
-    set_setting(&conn, "start_at_login", &settings.start_at_login.to_string())?;
-    set_setting(&conn, "open_in_background", &settings.open_in_background.to_string())?;
-    set_setting(&conn, "immediate_delete", &settings.immediate_delete.to_string())?;
-    set_setting(&conn, "confirm_move_to_trash", &settings.confirm_move_to_trash.to_string())?;
-    set_setting(&conn, "prompt_instructions", &serde_json::to_string(&settings.prompt_instructions).unwrap())?;
-    set_setting(&conn, "switch_workspace_to_chat", &settings.switch_workspace_to_chat.to_string())?;
-    set_setting(&conn, "hide_native_menu", &settings.hide_native_menu.to_string())?;
+    set_setting(
+        &conn,
+        "ollama_base_url",
+        &serde_json::to_string(&settings.ollama_base_url).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "auto_start_ollama",
+        &settings.auto_start_ollama.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "mlx_base_url",
+        &serde_json::to_string(&settings.mlx_base_url).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "llamacpp_model_paths",
+        &serde_json::to_string(&settings.llamacpp_model_paths).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "embedding_model",
+        &serde_json::to_string(&settings.embedding_model).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "chat_title_auto_refresh",
+        &settings.chat_title_auto_refresh,
+    )?;
+    set_setting(
+        &conn,
+        "chat_title_refresh_interval",
+        &settings.chat_title_refresh_interval.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "chat_json_storage",
+        &settings.chat_json_storage.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "web_session_preserve",
+        &settings.web_session_preserve.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "dual_model_enabled",
+        &settings.dual_model_enabled.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "draft_model",
+        &serde_json::to_string(&settings.draft_model).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "dual_model_execution_mode",
+        &serde_json::to_string(&settings.dual_model_execution_mode).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "compare_model_a",
+        &serde_json::to_string(&settings.compare_model_a).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "compare_model_b",
+        &serde_json::to_string(&settings.compare_model_b).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "start_at_login",
+        &settings.start_at_login.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "open_in_background",
+        &settings.open_in_background.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "keep_running_in_tray",
+        &settings.keep_running_in_tray.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "immediate_delete",
+        &settings.immediate_delete.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "confirm_move_to_trash",
+        &settings.confirm_move_to_trash.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "prompt_instructions",
+        &serde_json::to_string(&settings.prompt_instructions).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "switch_workspace_to_chat",
+        &settings.switch_workspace_to_chat.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "hide_native_menu",
+        &settings.hide_native_menu.to_string(),
+    )?;
 
     if settings.start_at_login {
         app.autolaunch().enable().map_err(|e| e.to_string())?;
@@ -298,4 +462,14 @@ pub fn should_open_in_background(conn: &rusqlite::Connection) -> bool {
         .unwrap_or(false);
 
     launched_from_autostart && open_in_background
+}
+
+pub fn should_keep_running_in_tray(app: &AppHandle) -> bool {
+    let db_state = app.state::<DbState>();
+    match db_state.0.get() {
+        Ok(conn) => get_setting(&conn, "keep_running_in_tray")
+            .map(|v| v == "true")
+            .unwrap_or(false),
+        Err(_) => false,
+    }
 }

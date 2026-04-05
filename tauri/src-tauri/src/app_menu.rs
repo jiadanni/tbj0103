@@ -24,7 +24,13 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[
             &PredefinedMenuItem::about(app, Some("About Aetherium"), Some(about_meta))?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "preferences", "Preferences…", true, Some("CmdOrCtrl+,"))?,
+            &MenuItem::with_id(
+                app,
+                "preferences",
+                "Preferences…",
+                true,
+                Some("CmdOrCtrl+,"),
+            )?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::services(app, None)?,
             &PredefinedMenuItem::separator(app)?,
@@ -72,7 +78,21 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         "View",
         true,
         &[
-            &MenuItem::with_id(app, "cmd-palette", "Command Palette", true, Some("CmdOrCtrl+K"))?,
+            &MenuItem::with_id(
+                app,
+                "quick-search",
+                "Quick Search…",
+                true,
+                Some("CmdOrCtrl+Shift+K"),
+            )?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(
+                app,
+                "cmd-palette",
+                "Command Palette",
+                true,
+                Some("CmdOrCtrl+K"),
+            )?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "nav-dashboard", "Dashboard", true, None::<&str>)?,
             &MenuItem::with_id(app, "nav-chat", "Chat", true, None::<&str>)?,
@@ -104,9 +124,13 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         app,
         "Help",
         true,
-        &[
-            &MenuItem::with_id(app, "help-release-notes", "Release Notes", true, None::<&str>)?,
-        ],
+        &[&MenuItem::with_id(
+            app,
+            "help-release-notes",
+            "Release Notes",
+            true,
+            None::<&str>,
+        )?],
     )?;
 
     Menu::with_items(
@@ -135,6 +159,9 @@ pub fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         }
         "cmd-palette" => {
             let _ = app.emit("menu-action", "cmd-palette");
+        }
+        "quick-search" => {
+            let _ = crate::commands::quick_search::show_window(app);
         }
         "nav-dashboard" => {
             let _ = app.emit("menu-navigate", "/project");

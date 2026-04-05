@@ -375,6 +375,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('preferred_model', '""'),
     ('background_model', '""'),
     ('quick_search_models', '[]'),
+    ('quick_search_shortcut', '"CmdOrCtrl+Shift+K"'),
     ('backup_enabled', 'true'),
     ('touch_id_enabled', 'false'),
     ('pin_lock_enabled', 'false'),
@@ -385,6 +386,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('font_size', '14'),
     ('sidebar_width', '240'),
     ('ollama_base_url', '"http://localhost:11434"'),
+    ('auto_start_ollama', 'false'),
     ('embedding_model', '"nomic-embed-text"'),
     ('demo_mode', 'false'),
     ('topic_analysis_interval_minutes', '30'),
@@ -395,6 +397,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('dual_model_execution_mode', '"serial"'),
     ('compare_model_a', '""'),
     ('compare_model_b', '""'),
+    ('open_in_background', 'false'),
+    ('keep_running_in_tray', 'false'),
     ('immediate_delete', 'false'),
     ('confirm_move_to_trash', 'true'),
     ('prompt_instructions', '""'),
@@ -467,6 +471,390 @@ CREATE TABLE IF NOT EXISTS context_snapshots (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Quick search document index (FTS-backed)
+CREATE TABLE IF NOT EXISTS quick_search_documents (
+    rowid INTEGER PRIMARY KEY,
+    doc_id TEXT NOT NULL UNIQUE,
+    target_id TEXT NOT NULL,
+    kind TEXT NOT NULL
+        CHECK(kind IN ('conversation', 'message', 'artifact', 'memory', 'summary')),
+    workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+    project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    session_id TEXT REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    source_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
+    title TEXT NOT NULL DEFAULT '',
+    subtitle TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS quick_search_documents_fts
+USING fts5(
+    title,
+    subtitle,
+    body,
+    content='quick_search_documents',
+    content_rowid='rowid',
+    tokenize='unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER IF NOT EXISTS quick_search_documents_ai
+AFTER INSERT ON quick_search_documents BEGIN
+    INSERT INTO quick_search_documents_fts(rowid, title, subtitle, body)
+    VALUES (NEW.rowid, NEW.title, NEW.subtitle, NEW.body);
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_documents_ad
+AFTER DELETE ON quick_search_documents BEGIN
+    INSERT INTO quick_search_documents_fts(quick_search_documents_fts, rowid, title, subtitle, body)
+    VALUES ('delete', OLD.rowid, OLD.title, OLD.subtitle, OLD.body);
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_documents_au
+AFTER UPDATE ON quick_search_documents BEGIN
+    INSERT INTO quick_search_documents_fts(quick_search_documents_fts, rowid, title, subtitle, body)
+    VALUES ('delete', OLD.rowid, OLD.title, OLD.subtitle, OLD.body);
+    INSERT INTO quick_search_documents_fts(rowid, title, subtitle, body)
+    VALUES (NEW.rowid, NEW.title, NEW.subtitle, NEW.body);
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_chat_sessions_ai
+AFTER INSERT ON chat_sessions BEGIN
+    INSERT INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    SELECT
+        'session:' || NEW.id,
+        NEW.id,
+        'conversation',
+        NEW.workspace_id,
+        NULLIF(NEW.project_id, ''),
+        NEW.id,
+        NULL,
+        NEW.title,
+        'Conversation',
+        '',
+        NEW.updated_at
+    WHERE NEW.is_deleted = 0;
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_chat_sessions_au
+AFTER UPDATE ON chat_sessions BEGIN
+    DELETE FROM quick_search_documents
+    WHERE doc_id = 'session:' || OLD.id
+       OR (session_id = OLD.id AND kind IN ('message', 'artifact', 'summary'));
+
+    INSERT INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    SELECT
+        'session:' || NEW.id,
+        NEW.id,
+        'conversation',
+        NEW.workspace_id,
+        NULLIF(NEW.project_id, ''),
+        NEW.id,
+        NULL,
+        NEW.title,
+        'Conversation',
+        '',
+        NEW.updated_at
+    WHERE NEW.is_deleted = 0;
+
+    INSERT INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    SELECT
+        'message:' || m.id,
+        m.id,
+        'message',
+        NEW.workspace_id,
+        NULLIF(NEW.project_id, ''),
+        NEW.id,
+        NULL,
+        NEW.title,
+        CASE m.role
+            WHEN 'assistant' THEN 'Assistant reply'
+            WHEN 'system' THEN 'System message'
+            ELSE 'User message'
+        END,
+        m.content,
+        m.created_at
+    FROM messages m
+    WHERE m.session_id = NEW.id
+      AND NEW.is_deleted = 0;
+
+    INSERT INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    SELECT
+        'artifact:' || a.id,
+        a.id,
+        'artifact',
+        a.workspace_id,
+        NULLIF(NEW.project_id, ''),
+        a.session_id,
+        NULL,
+        a.title,
+        CASE
+            WHEN a.language IS NOT NULL AND a.language != '' THEN a.artifact_type || ' • ' || a.language
+            ELSE a.artifact_type
+        END,
+        TRIM(COALESCE(a.description, '') || CHAR(10) || CHAR(10) || COALESCE(a.content, '')),
+        a.updated_at
+    FROM artifacts a
+    WHERE a.session_id = NEW.id
+      AND NEW.is_deleted = 0;
+
+    INSERT INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    SELECT
+        'summary:' || s.id,
+        s.id,
+        'summary',
+        s.workspace_id,
+        NULLIF(NEW.project_id, ''),
+        s.session_id,
+        NULL,
+        NEW.title,
+        s.summary_type || ' summary',
+        s.content,
+        s.updated_at
+    FROM conversation_summaries s
+    WHERE s.session_id = NEW.id
+      AND NEW.is_deleted = 0;
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_chat_sessions_ad
+AFTER DELETE ON chat_sessions BEGIN
+    DELETE FROM quick_search_documents
+    WHERE doc_id = 'session:' || OLD.id
+       OR (session_id = OLD.id AND kind IN ('message', 'artifact', 'summary'));
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_messages_ai
+AFTER INSERT ON messages BEGIN
+    INSERT OR REPLACE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    SELECT
+        'message:' || NEW.id,
+        NEW.id,
+        'message',
+        cs.workspace_id,
+        NULLIF(cs.project_id, ''),
+        NEW.session_id,
+        NULL,
+        cs.title,
+        CASE NEW.role
+            WHEN 'assistant' THEN 'Assistant reply'
+            WHEN 'system' THEN 'System message'
+            ELSE 'User message'
+        END,
+        NEW.content,
+        NEW.created_at
+    FROM chat_sessions cs
+    WHERE cs.id = NEW.session_id
+      AND cs.is_deleted = 0;
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_messages_au
+AFTER UPDATE ON messages BEGIN
+    DELETE FROM quick_search_documents WHERE doc_id = 'message:' || OLD.id;
+    INSERT OR REPLACE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    SELECT
+        'message:' || NEW.id,
+        NEW.id,
+        'message',
+        cs.workspace_id,
+        NULLIF(cs.project_id, ''),
+        NEW.session_id,
+        NULL,
+        cs.title,
+        CASE NEW.role
+            WHEN 'assistant' THEN 'Assistant reply'
+            WHEN 'system' THEN 'System message'
+            ELSE 'User message'
+        END,
+        NEW.content,
+        NEW.created_at
+    FROM chat_sessions cs
+    WHERE cs.id = NEW.session_id
+      AND cs.is_deleted = 0;
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_messages_ad
+AFTER DELETE ON messages BEGIN
+    DELETE FROM quick_search_documents WHERE doc_id = 'message:' || OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_artifacts_ai
+AFTER INSERT ON artifacts BEGIN
+    INSERT OR REPLACE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    SELECT
+        'artifact:' || NEW.id,
+        NEW.id,
+        'artifact',
+        NEW.workspace_id,
+        NULLIF(COALESCE(cs.project_id, ''), ''),
+        NEW.session_id,
+        NULL,
+        NEW.title,
+        CASE
+            WHEN NEW.language IS NOT NULL AND NEW.language != '' THEN NEW.artifact_type || ' • ' || NEW.language
+            ELSE NEW.artifact_type
+        END,
+        TRIM(COALESCE(NEW.description, '') || CHAR(10) || CHAR(10) || COALESCE(NEW.content, '')),
+        NEW.updated_at
+    FROM (SELECT 1) stub
+    LEFT JOIN chat_sessions cs ON cs.id = NEW.session_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_artifacts_au
+AFTER UPDATE ON artifacts BEGIN
+    DELETE FROM quick_search_documents WHERE doc_id = 'artifact:' || OLD.id;
+    INSERT OR REPLACE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    SELECT
+        'artifact:' || NEW.id,
+        NEW.id,
+        'artifact',
+        NEW.workspace_id,
+        NULLIF(COALESCE(cs.project_id, ''), ''),
+        NEW.session_id,
+        NULL,
+        NEW.title,
+        CASE
+            WHEN NEW.language IS NOT NULL AND NEW.language != '' THEN NEW.artifact_type || ' • ' || NEW.language
+            ELSE NEW.artifact_type
+        END,
+        TRIM(COALESCE(NEW.description, '') || CHAR(10) || CHAR(10) || COALESCE(NEW.content, '')),
+        NEW.updated_at
+    FROM (SELECT 1) stub
+    LEFT JOIN chat_sessions cs ON cs.id = NEW.session_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_artifacts_ad
+AFTER DELETE ON artifacts BEGIN
+    DELETE FROM quick_search_documents WHERE doc_id = 'artifact:' || OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_memories_ai
+AFTER INSERT ON memories BEGIN
+    INSERT OR REPLACE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    VALUES (
+        'memory:' || NEW.id,
+        NEW.id,
+        'memory',
+        NEW.workspace_id,
+        NULLIF(NEW.project_id, ''),
+        NULL,
+        NEW.source_session_id,
+        CASE NEW.memory_type
+            WHEN 'preference' THEN 'Preference'
+            WHEN 'context' THEN 'Context'
+            ELSE 'Fact'
+        END,
+        CASE NEW.scope
+            WHEN 'global' THEN 'Global memory'
+            ELSE 'Workspace memory'
+        END,
+        NEW.content,
+        NEW.updated_at
+    );
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_memories_au
+AFTER UPDATE ON memories BEGIN
+    DELETE FROM quick_search_documents WHERE doc_id = 'memory:' || OLD.id;
+    INSERT OR REPLACE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    VALUES (
+        'memory:' || NEW.id,
+        NEW.id,
+        'memory',
+        NEW.workspace_id,
+        NULLIF(NEW.project_id, ''),
+        NULL,
+        NEW.source_session_id,
+        CASE NEW.memory_type
+            WHEN 'preference' THEN 'Preference'
+            WHEN 'context' THEN 'Context'
+            ELSE 'Fact'
+        END,
+        CASE NEW.scope
+            WHEN 'global' THEN 'Global memory'
+            ELSE 'Workspace memory'
+        END,
+        NEW.content,
+        NEW.updated_at
+    );
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_memories_ad
+AFTER DELETE ON memories BEGIN
+    DELETE FROM quick_search_documents WHERE doc_id = 'memory:' || OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_summaries_ai
+AFTER INSERT ON conversation_summaries BEGIN
+    INSERT OR REPLACE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    SELECT
+        'summary:' || NEW.id,
+        NEW.id,
+        'summary',
+        NEW.workspace_id,
+        NULLIF(cs.project_id, ''),
+        NEW.session_id,
+        NULL,
+        cs.title,
+        NEW.summary_type || ' summary',
+        NEW.content,
+        NEW.updated_at
+    FROM chat_sessions cs
+    WHERE cs.id = NEW.session_id
+      AND cs.is_deleted = 0;
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_summaries_au
+AFTER UPDATE ON conversation_summaries BEGIN
+    DELETE FROM quick_search_documents WHERE doc_id = 'summary:' || OLD.id;
+    INSERT OR REPLACE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    )
+    SELECT
+        'summary:' || NEW.id,
+        NEW.id,
+        'summary',
+        NEW.workspace_id,
+        NULLIF(cs.project_id, ''),
+        NEW.session_id,
+        NULL,
+        cs.title,
+        NEW.summary_type || ' summary',
+        NEW.content,
+        NEW.updated_at
+    FROM chat_sessions cs
+    WHERE cs.id = NEW.session_id
+      AND cs.is_deleted = 0;
+END;
+
+CREATE TRIGGER IF NOT EXISTS quick_search_summaries_ad
+AFTER DELETE ON conversation_summaries BEGIN
+    DELETE FROM quick_search_documents WHERE doc_id = 'summary:' || OLD.id;
+END;
+
 -- Base indexes for fresh installs; existing databases are backfilled in v9.
 CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace ON chat_sessions(workspace_id);
@@ -502,6 +890,9 @@ CREATE INDEX IF NOT EXISTS idx_sources_workspace_processed ON sources(workspace_
 CREATE INDEX IF NOT EXISTS idx_source_chunks_source ON source_chunks(source_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_workspace ON artifacts(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id);
+CREATE INDEX IF NOT EXISTS idx_quick_search_documents_kind_updated ON quick_search_documents(kind, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quick_search_documents_session ON quick_search_documents(session_id);
+CREATE INDEX IF NOT EXISTS idx_quick_search_documents_workspace ON quick_search_documents(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_concept_mentions_source ON concept_mentions(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_thought_queue_status ON thought_queue(workspace_id, status, process_at);
 CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(workspace_id, is_active, scope);
