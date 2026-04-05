@@ -195,9 +195,7 @@ PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v22.22.1/bin:$PATH" npm run taur
 
 ## Debugging Runtime Bugs
 
-- When the user reports a runtime bug (blank screen, crash, unexpected behavior), **ask for the devtools console output first** before reading code. Right-click → Inspect Element → Console. The error message almost always points to the exact file and line.
-- Only start reading source files once the error location is known.
-
+-**ask for the devtools console output first** before reading code. 
 ## What to Avoid
 
 - Do **not** add `@tailwind` directives outside `src/styles/`.
