@@ -1,8 +1,8 @@
-use tauri::State;
 use crate::mcp_client::MCPClientManager;
-use crate::models::mcp::{MCPServerConfig, MCPTool, MCPResource, MCPResourceTemplate};
+use crate::models::mcp::{MCPResource, MCPResourceTemplate, MCPServerConfig, MCPTool};
 use serde_json::Value;
 use std::sync::Arc;
+use tauri::State;
 use tokio::sync::Mutex;
 
 #[tauri::command]

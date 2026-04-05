@@ -47,15 +47,19 @@ The Tauri port is the primary development target and receives all new features.
 - Auto-detect concept mentions across all content
 - Backlinks panel showing where concepts are referenced
 
-### 🔍 Semantic Search
-- **Cmd+K command palette** for instant search
+### 🖥️ Native UI & Navigation
+- **Split-pane layout** for side-by-side multitasking
+- Three navigation modes: Sidebar, Icon-only, or Top-tab bar
+- Full support for hidden native menus (Linux/Windows)
+
+### 🔍 Full-Text & Semantic Search
+- **Cmd+K command palette** for instant FTS-powered global quick search
 - Semantic search using Ollama embeddings (nomic-embed-text)
-- Search across documents, chats, concepts, and notes
-- Cosine similarity matching with fallback to keyword search
+- Search across documents, chats, concepts, notes, and memories
+- Hybrid cosine similarity matching with fallback to keyword search
 
 ### ✍️ Smart Editor
 - **Live Obsidian-style linking** with auto-complete
-- Three modes: Live, Preview, Split view
 - Markdown rendering with syntax highlighting
 - Auto-save with 2-second debounce
 - Real-time `[[concept]]` detection

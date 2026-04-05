@@ -1,4 +1,17 @@
-export const THEMES = ["system", "light", "dark", "oled", "sepia", "hacker", "glasscode"] as const;
+export const THEMES = ["system", "light", "dark", "sepia", "hacker", "glasscode"] as const;
+export type Theme = typeof THEMES[number];
+
+const LEGACY_THEME_ALIASES: Record<string, Theme> = {
+  oled: "dark",
+};
+
+export function normalizeTheme(theme: string): Theme {
+  if ((THEMES as readonly string[]).includes(theme)) {
+    return theme as Theme;
+  }
+
+  return LEGACY_THEME_ALIASES[theme] ?? "system";
+}
 
 export const ACCENT_COLORS = [
   { label: "Aether Blue", value: "#007AFF" },

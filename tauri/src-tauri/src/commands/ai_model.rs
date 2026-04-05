@@ -1,6 +1,6 @@
-use tauri::State;
 use crate::db::DbState;
-use crate::models::ai_model::{AiModel, AddAiModelRequest, UpdateAiModelRequest};
+use crate::models::ai_model::{AddAiModelRequest, AiModel, UpdateAiModelRequest};
+use tauri::State;
 
 fn row_to_model(row: &rusqlite::Row) -> rusqlite::Result<AiModel> {
     let role_tags_json: String = row.get(4)?;
@@ -25,7 +25,8 @@ pub fn list_ai_models(state: State<DbState>) -> Result<Vec<AiModel>, String> {
         "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at
          FROM ai_models ORDER BY priority ASC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map([], row_to_model)
+    let items = stmt
+        .query_map([], row_to_model)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -47,7 +48,8 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
             "SELECT COALESCE(MAX(priority) + 1, 0) FROM ai_models",
             [],
             |row| row.get(0),
-        ).map_err(|e| e.to_string())?
+        )
+        .map_err(|e| e.to_string())?
     };
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -73,7 +75,10 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
 }
 
 #[tauri::command]
-pub fn update_ai_model(state: State<DbState>, req: UpdateAiModelRequest) -> Result<AiModel, String> {
+pub fn update_ai_model(
+    state: State<DbState>,
+    req: UpdateAiModelRequest,
+) -> Result<AiModel, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let role_tags_json = req
         .role_tags
@@ -96,7 +101,8 @@ pub fn update_ai_model(state: State<DbState>, req: UpdateAiModelRequest) -> Resu
             req.enabled.map(|v| v as i32),
             req.id,
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     let model = conn.query_row(
         "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at
@@ -130,11 +136,13 @@ pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
         Ok(model) => Ok(model),
         Err(rusqlite::Error::QueryReturnedNoRows) => {
             // Fall back to preferred_model setting
-            let preferred: String = conn.query_row(
-                "SELECT value FROM settings WHERE key = 'preferred_model'",
-                [],
-                |row| row.get(0),
-            ).unwrap_or_else(|_| "".to_string());
+            let preferred: String = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'preferred_model'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or_else(|_| "".to_string());
             let model_id = preferred.trim_matches('"').to_string();
             Ok(AiModel {
                 id: String::new(),
@@ -154,7 +162,12 @@ pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
 }
 
 #[tauri::command]
-pub fn record_model_token_usage(state: State<DbState>, model_id: String, provider: String, tokens: i64) -> Result<(), String> {
+pub fn record_model_token_usage(
+    state: State<DbState>,
+    model_id: String,
+    provider: String,
+    tokens: i64,
+) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "UPDATE ai_models SET tokens_used_total = tokens_used_total + ?1 WHERE model_id = ?2 AND provider = ?3",

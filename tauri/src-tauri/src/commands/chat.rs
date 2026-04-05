@@ -1,7 +1,9 @@
 use tauri::State;
 
 use crate::db::DbState;
-use crate::models::chat::{AddMessageRequest, ChatSession, CreateChatSessionRequest, Message, MessageRole};
+use crate::models::chat::{
+    AddMessageRequest, ChatSession, CreateChatSessionRequest, Message, MessageRole,
+};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct SearchChatSessionsRequest {
@@ -40,7 +42,10 @@ fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatSession> {
 }
 
 #[tauri::command]
-pub fn create_chat_session(state: State<DbState>, req: CreateChatSessionRequest) -> Result<ChatSession, String> {
+pub fn create_chat_session(
+    state: State<DbState>,
+    req: CreateChatSessionRequest,
+) -> Result<ChatSession, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut session = ChatSession::new(req.workspace_id, req.project_id);
     if let Some(title) = req.title {
@@ -123,13 +128,20 @@ pub fn list_chat_sessions(
 
     let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
     let rows = if project_id.is_empty() {
-        stmt.query_map(rusqlite::params![workspace_id, limit, offset], row_to_session)
+        stmt.query_map(
+            rusqlite::params![workspace_id, limit, offset],
+            row_to_session,
+        )
     } else {
-        stmt.query_map(rusqlite::params![workspace_id, project_id, limit, offset], row_to_session)
+        stmt.query_map(
+            rusqlite::params![workspace_id, project_id, limit, offset],
+            row_to_session,
+        )
     }
     .map_err(|e| e.to_string())?;
 
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -161,13 +173,17 @@ pub fn search_chat_sessions(
 
     let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
     let rows = if let Some(project_id) = req.project_id.filter(|id| !id.is_empty()) {
-        stmt.query_map(rusqlite::params![req.workspace_id, project_id, pattern], row_to_session)
+        stmt.query_map(
+            rusqlite::params![req.workspace_id, project_id, pattern],
+            row_to_session,
+        )
     } else {
         stmt.query_map(rusqlite::params![req.workspace_id, pattern], row_to_session)
     }
     .map_err(|e| e.to_string())?;
 
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -205,7 +221,11 @@ pub fn delete_chat_session(state: State<DbState>, id: String) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub fn hard_delete_chat_session(state: State<DbState>, workspace_id: String, id: String) -> Result<(), String> {
+pub fn hard_delete_chat_session(
+    state: State<DbState>,
+    workspace_id: String,
+    id: String,
+) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2",
@@ -216,7 +236,10 @@ pub fn hard_delete_chat_session(state: State<DbState>, workspace_id: String, id:
 }
 
 #[tauri::command]
-pub fn list_deleted_chat_sessions(state: State<DbState>, workspace_id: String) -> Result<Vec<ChatSession>, String> {
+pub fn list_deleted_chat_sessions(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<Vec<ChatSession>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
@@ -230,11 +253,16 @@ pub fn list_deleted_chat_sessions(state: State<DbState>, workspace_id: String) -
     let rows = stmt
         .query_map(rusqlite::params![workspace_id], row_to_session)
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn restore_chat_session(state: State<DbState>, workspace_id: String, id: String) -> Result<(), String> {
+pub fn restore_chat_session(
+    state: State<DbState>,
+    workspace_id: String,
+    id: String,
+) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
@@ -272,9 +300,12 @@ pub fn move_chat_sessions(
     let now = chrono::Utc::now().to_rfc3339();
     let target_project_id = target_project_id.unwrap_or_default();
 
-    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| e.to_string())?;
     let result = (|| {
-        let placeholders: String = session_ids.iter().enumerate()
+        let placeholders: String = session_ids
+            .iter()
+            .enumerate()
             .map(|(i, _)| format!("?{}", i + 4))
             .collect::<Vec<_>>()
             .join(", ");
@@ -282,20 +313,29 @@ pub fn move_chat_sessions(
             "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2, updated_at = ?3 WHERE id IN ({})",
             placeholders
         );
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::with_capacity(3 + session_ids.len());
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+            Vec::with_capacity(3 + session_ids.len());
         params.push(Box::new(target_workspace_id.clone()));
         params.push(Box::new(target_project_id.clone()));
         params.push(Box::new(now.clone()));
         for sid in &session_ids {
             params.push(Box::new(sid.clone()));
         }
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-        conn.execute(&sql, param_refs.as_slice()).map_err(|e| e.to_string())?;
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        conn.execute(&sql, param_refs.as_slice())
+            .map_err(|e| e.to_string())?;
         Ok(())
     })();
     match result {
-        Ok(()) => { conn.execute_batch("COMMIT").map_err(|e| e.to_string())?; Ok(()) }
-        Err(e) => { let _ = conn.execute_batch("ROLLBACK"); Err(e) }
+        Ok(()) => {
+            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
     }
 }
 
@@ -326,48 +366,61 @@ pub fn batch_move_sessions(
     if req.session_ids.is_empty() {
         return Ok(BatchMoveSessionsResult::default());
     }
-    
+
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
-    
-    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
-    
+
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| e.to_string())?;
+
     let result = (|| -> Result<BatchMoveSessionsResult, String> {
         use crate::models::project::Project;
-        
+
         let mut res = BatchMoveSessionsResult::default();
-        
+
         // Get session details with their source project info
-        let placeholders: String = req.session_ids.iter().enumerate()
+        let placeholders: String = req
+            .session_ids
+            .iter()
+            .enumerate()
             .map(|(i, _)| format!("?{}", i + 1))
             .collect::<Vec<_>>()
             .join(", ");
-        
+
         let sql = format!(
             "SELECT id, project_id FROM chat_sessions WHERE id IN ({})",
             placeholders
         );
-        
-        let params: Vec<&dyn rusqlite::types::ToSql> = req.session_ids.iter()
+
+        let params: Vec<&dyn rusqlite::types::ToSql> = req
+            .session_ids
+            .iter()
             .map(|s| s as &dyn rusqlite::types::ToSql)
             .collect();
-        
+
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-        let session_project_pairs: Vec<(String, String)> = stmt.query_map(params.as_slice(), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1).unwrap_or_default()))
-        }).map_err(|e| e.to_string())?
-          .collect::<Result<Vec<_>, _>>()
-          .map_err(|e| e.to_string())?;
-        
+        let session_project_pairs: Vec<(String, String)> = stmt
+            .query_map(params.as_slice(), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1).unwrap_or_default(),
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+
         if req.preserve_folder_structure {
             // Get unique source project IDs (excluding empty/root)
-            let source_project_ids: std::collections::HashSet<String> = session_project_pairs.iter()
+            let source_project_ids: std::collections::HashSet<String> = session_project_pairs
+                .iter()
                 .filter(|(_, pid)| !pid.is_empty())
                 .map(|(_, pid)| pid.clone())
                 .collect();
-            
+
             // Load source projects
-            let mut source_projects: std::collections::HashMap<String, Project> = std::collections::HashMap::new();
+            let mut source_projects: std::collections::HashMap<String, Project> =
+                std::collections::HashMap::new();
             for pid in &source_project_ids {
                 let project: Option<Project> = conn.query_row(
                     "SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at 
@@ -389,21 +442,23 @@ pub fn batch_move_sessions(
                     source_projects.insert(pid.clone(), p);
                 }
             }
-            
+
             // Load existing projects in target workspace
-            let existing_projects: Vec<(String, String)> = conn.prepare(
-                "SELECT id, name FROM projects WHERE workspace_id = ?1"
-            ).map_err(|e| e.to_string())?
-             .query_map(rusqlite::params![&req.target_workspace_id], |row| {
-                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-             }).map_err(|e| e.to_string())?
-              .collect::<Result<Vec<_>, _>>()
-              .map_err(|e| e.to_string())?;
-            
-            let existing_by_name: std::collections::HashMap<String, String> = existing_projects.iter()
+            let existing_projects: Vec<(String, String)> = conn
+                .prepare("SELECT id, name FROM projects WHERE workspace_id = ?1")
+                .map_err(|e| e.to_string())?
+                .query_map(rusqlite::params![&req.target_workspace_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+
+            let existing_by_name: std::collections::HashMap<String, String> = existing_projects
+                .iter()
                 .map(|(id, name)| (name.trim().to_lowercase(), id.clone()))
                 .collect();
-            
+
             // Create or match projects
             for (source_pid, source_project) in &source_projects {
                 let normalized_name = source_project.name.trim().to_lowercase();
@@ -411,7 +466,8 @@ pub fn batch_move_sessions(
                     existing_id.clone()
                 } else {
                     // Create new project
-                    let new_project = Project::new(req.target_workspace_id.clone(), source_project.name.clone());
+                    let new_project =
+                        Project::new(req.target_workspace_id.clone(), source_project.name.clone());
                     conn.execute(
                         "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -432,15 +488,18 @@ pub fn batch_move_sessions(
                 };
                 res.project_mapping.insert(source_pid.clone(), target_pid);
             }
-            
+
             // Move sessions to their mapped projects
             for (session_id, source_pid) in &session_project_pairs {
                 let target_pid = if source_pid.is_empty() {
                     String::new()
                 } else {
-                    res.project_mapping.get(source_pid).cloned().unwrap_or_default()
+                    res.project_mapping
+                        .get(source_pid)
+                        .cloned()
+                        .unwrap_or_default()
                 };
-                
+
                 conn.execute(
                     "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2, updated_at = ?3 WHERE id = ?4",
                     rusqlite::params![&req.target_workspace_id, &target_pid, &now, session_id],
@@ -452,24 +511,33 @@ pub fn batch_move_sessions(
                 "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2, updated_at = ?3 WHERE id IN ({})",
                 placeholders
             );
-            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::with_capacity(3 + req.session_ids.len());
+            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+                Vec::with_capacity(3 + req.session_ids.len());
             params.push(Box::new(req.target_workspace_id.clone()));
             params.push(Box::new(String::new())); // Empty project_id = root
             params.push(Box::new(now.clone()));
             for sid in &req.session_ids {
                 params.push(Box::new(sid.clone()));
             }
-            let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-            conn.execute(&sql, param_refs.as_slice()).map_err(|e| e.to_string())?;
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                params.iter().map(|p| p.as_ref()).collect();
+            conn.execute(&sql, param_refs.as_slice())
+                .map_err(|e| e.to_string())?;
         }
-        
+
         res.sessions_moved = session_project_pairs.len();
         Ok(res)
     })();
-    
+
     match result {
-        Ok(r) => { conn.execute_batch("COMMIT").map_err(|e| e.to_string())?; Ok(r) }
-        Err(e) => { let _ = conn.execute_batch("ROLLBACK"); Err(e) }
+        Ok(r) => {
+            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            Ok(r)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
     }
 }
 
@@ -512,32 +580,40 @@ pub fn add_message(state: State<DbState>, req: AddMessageRequest) -> Result<Mess
 }
 
 #[tauri::command]
-pub fn get_messages(state: State<DbState>, session_id: String, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<Message>, String> {
+pub fn get_messages(
+    state: State<DbState>,
+    session_id: String,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<Message>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(200).clamp(1, 2000);
     let offset = offset.unwrap_or(0).max(0);
-    let mut stmt = conn.prepare(
-        "SELECT id, session_id, role, content, model_name, tokens_used, duration_ms, created_at
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, session_id, role, content, model_name, tokens_used, duration_ms, created_at
          FROM messages WHERE session_id = ?1 ORDER BY created_at ASC
-         LIMIT ?2 OFFSET ?3"
-    ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(rusqlite::params![session_id, limit, offset], |row| {
-        let role_str: String = row.get(2)?;
-        let role = role_str
-            .parse::<MessageRole>()
-            .unwrap_or(MessageRole::User);
-        Ok(Message {
-            id: row.get(0)?,
-            session_id: row.get(1)?,
-            role,
-            content: row.get(3)?,
-            model_name: row.get(4)?,
-            tokens_used: row.get(5)?,
-            duration_ms: row.get(6)?,
-            created_at: row.get(7)?,
+         LIMIT ?2 OFFSET ?3",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![session_id, limit, offset], |row| {
+            let role_str: String = row.get(2)?;
+            let role = role_str.parse::<MessageRole>().unwrap_or(MessageRole::User);
+            Ok(Message {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                role,
+                content: row.get(3)?,
+                model_name: row.get(4)?,
+                tokens_used: row.get(5)?,
+                duration_ms: row.get(6)?,
+                created_at: row.get(7)?,
+            })
         })
-    }).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -587,13 +663,16 @@ pub fn get_token_usage_by_date(
          GROUP BY substr(m.created_at, 1, 10)
          ORDER BY day ASC"
     ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(rusqlite::params![workspace_id, days], |row| {
-        Ok(TokenUsageByDate {
-            day: row.get(0)?,
-            total_tokens: row.get(1)?,
+    let rows = stmt
+        .query_map(rusqlite::params![workspace_id, days], |row| {
+            Ok(TokenUsageByDate {
+                day: row.get(0)?,
+                total_tokens: row.get(1)?,
+            })
         })
-    }).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -629,5 +708,6 @@ pub fn get_recent_sessions(
     let rows = stmt
         .query_map(rusqlite::params![workspace_id, limit], row_to_session)
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }

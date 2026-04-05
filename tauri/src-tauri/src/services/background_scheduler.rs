@@ -1,8 +1,8 @@
+use crate::db::DbState;
+use crate::services::{git_sync, memory_pipeline, summarization_service};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
-use crate::db::DbState;
-use crate::services::{memory_pipeline, summarization_service, git_sync};
 
 static SCHEDULER_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -16,7 +16,10 @@ pub fn start_scheduler(app: AppHandle) {
             git_sync_tick += 1;
 
             // Guard: skip this tick if the previous one is still running
-            if SCHEDULER_RUNNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            if SCHEDULER_RUNNING
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
+            {
                 continue;
             }
 
@@ -31,7 +34,7 @@ pub fn start_scheduler(app: AppHandle) {
                 };
                 result
             };
-            
+
             let is_active_chatting = {
                 if let Ok(conn) = db.0.get() {
                     let count: i64 = conn.query_row(
@@ -44,21 +47,27 @@ pub fn start_scheduler(app: AppHandle) {
                     false
                 }
             };
-            
+
             // Read Ollama URL from settings
             let ollama_url = {
                 match db.0.get() {
-                    Ok(conn) => conn.query_row("SELECT value FROM settings WHERE key = 'ollama_base_url'", [], |row| row.get::<_, String>(0))
+                    Ok(conn) => conn
+                        .query_row(
+                            "SELECT value FROM settings WHERE key = 'ollama_base_url'",
+                            [],
+                            |row| row.get::<_, String>(0),
+                        )
                         .map(|v| v.trim_matches('"').to_string())
                         .ok(),
                     Err(_) => None,
                 }
             };
-            
+
             // If user is NOT chatting, run AI tasks
             if !is_streaming && !is_active_chatting {
                 // 1. Process memory extraction
-                let _ = memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone()).await;
+                let _ =
+                    memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone()).await;
 
                 // 2. Process summarization — only sessions with recent activity
                 let sessions = {
@@ -71,7 +80,7 @@ pub fn start_scheduler(app: AppHandle) {
                                    AND cs.exclude_from_analytics = 0
                                    AND cs.is_imported = 0
                                  ORDER BY cs.updated_at DESC
-                                 LIMIT 5"
+                                 LIMIT 5",
                             ) {
                                 Ok(mut stmt) => stmt
                                     .query_map([], |row| {
@@ -87,28 +96,39 @@ pub fn start_scheduler(app: AppHandle) {
                 };
 
                 for (session_id, workspace_id) in sessions {
-                    let _ = summarization_service::generate_rolling_summary(&db, &session_id, &workspace_id, ollama_url.clone()).await;
+                    let _ = summarization_service::generate_rolling_summary(
+                        &db,
+                        &session_id,
+                        &workspace_id,
+                        ollama_url.clone(),
+                    )
+                    .await;
                 }
             }
 
             // 3. Git sync — every 10 ticks (5 minutes at 30s interval)
             if git_sync_tick % 10 == 0 {
-                let (sync_enabled, remote_url) = {
-                    match db.0.get() {
-                        Ok(conn) => {
-                            let enabled = conn.query_row(
-                                "SELECT value FROM settings WHERE key = 'git_sync_enabled'", [],
-                                |r| r.get::<_, String>(0)
-                            ).unwrap_or_default() == "true";
-                            let url = conn.query_row(
+                let (sync_enabled, remote_url) =
+                    {
+                        match db.0.get() {
+                            Ok(conn) => {
+                                let enabled = conn
+                                    .query_row(
+                                        "SELECT value FROM settings WHERE key = 'git_sync_enabled'",
+                                        [],
+                                        |r| r.get::<_, String>(0),
+                                    )
+                                    .unwrap_or_default()
+                                    == "true";
+                                let url = conn.query_row(
                                 "SELECT value FROM settings WHERE key = 'git_sync_remote_url'", [],
                                 |r| r.get::<_, String>(0)
                             ).unwrap_or_default();
-                            (enabled, url)
+                                (enabled, url)
+                            }
+                            Err(_) => (false, String::new()),
                         }
-                        Err(_) => (false, String::new()),
-                    }
-                };
+                    };
 
                 if sync_enabled && !remote_url.is_empty() {
                     if let Ok(app_dir) = app.path().app_data_dir() {
@@ -121,7 +141,8 @@ pub fn start_scheduler(app: AppHandle) {
                             } else {
                                 None
                             }
-                        }).await;
+                        })
+                        .await;
 
                         if let Ok(Some(result)) = sync_result {
                             let now = chrono::Utc::now().to_rfc3339();

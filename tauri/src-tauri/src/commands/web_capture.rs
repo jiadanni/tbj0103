@@ -1,6 +1,6 @@
-use tauri::State;
 use crate::db::DbState;
 use crate::models::source::WebCapture;
+use tauri::State;
 
 #[tauri::command]
 pub fn create_web_capture(
@@ -56,21 +56,23 @@ pub fn list_web_captures(
         "SELECT id, workspace_id, url, title, content, summary, favicon_data, is_processed, created_at
          FROM sources WHERE workspace_id = ?1 AND source_type = 'web_capture' ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id, limit, offset], |row| {
-        Ok(WebCapture {
-            id: row.get(0)?,
-            workspace_id: row.get(1)?,
-            url: row.get(2)?,
-            title: row.get(3)?,
-            content: row.get(4)?,
-            summary: row.get(5)?,
-            favicon_data: row.get(6)?,
-            is_processed: row.get::<_, i32>(7)? != 0,
-            created_at: row.get(8)?,
+    let items = stmt
+        .query_map(rusqlite::params![workspace_id, limit, offset], |row| {
+            Ok(WebCapture {
+                id: row.get(0)?,
+                workspace_id: row.get(1)?,
+                url: row.get(2)?,
+                title: row.get(3)?,
+                content: row.get(4)?,
+                summary: row.get(5)?,
+                favicon_data: row.get(6)?,
+                is_processed: row.get::<_, i32>(7)? != 0,
+                created_at: row.get(8)?,
+            })
         })
-    }).map_err(|e| e.to_string())?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
     Ok(items)
 }
 
@@ -131,6 +133,7 @@ pub fn update_web_capture(
             chrono::Utc::now().to_rfc3339(),
             id
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }

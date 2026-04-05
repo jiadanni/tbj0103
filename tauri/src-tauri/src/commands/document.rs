@@ -1,11 +1,14 @@
-use tauri::State;
 use crate::db::DbState;
-use crate::models::source::{UploadedDocument, UploadDocumentRequest, ProcessDocumentRequest};
+use crate::models::source::{ProcessDocumentRequest, UploadDocumentRequest, UploadedDocument};
+use tauri::State;
 
 const MAX_UPLOAD_FILE_SIZE_BYTES: i64 = 50 * 1024 * 1024;
 
 #[tauri::command]
-pub fn upload_document(state: State<DbState>, req: UploadDocumentRequest) -> Result<UploadedDocument, String> {
+pub fn upload_document(
+    state: State<DbState>,
+    req: UploadDocumentRequest,
+) -> Result<UploadedDocument, String> {
     if req.file_size > MAX_UPLOAD_FILE_SIZE_BYTES {
         return Err("File exceeds 50MB limit".to_string());
     }
@@ -44,30 +47,35 @@ pub fn upload_document(state: State<DbState>, req: UploadDocumentRequest) -> Res
 }
 
 #[tauri::command]
-pub fn list_documents(state: State<DbState>, workspace_id: String) -> Result<Vec<UploadedDocument>, String> {
+pub fn list_documents(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<Vec<UploadedDocument>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT s.id, s.workspace_id, s.filename, s.file_type, s.file_size, s.summary, s.is_processed,
                 (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
          FROM sources s WHERE s.workspace_id = ?1 AND s.source_type = 'document' ORDER BY s.created_at DESC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], |row| {
-        Ok(UploadedDocument {
-            id: row.get(0)?,
-            workspace_id: row.get(1)?,
-            filename: row.get(2)?,
-            file_type: row.get(3)?,
-            file_size: row.get(4)?,
-            content: "".to_string(), // Omit full content for listing metadata
-            summary: row.get(5)?,
-            is_processed: row.get::<_, i32>(6)? != 0,
-            chunk_count: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
+    let items = stmt
+        .query_map(rusqlite::params![workspace_id], |row| {
+            Ok(UploadedDocument {
+                id: row.get(0)?,
+                workspace_id: row.get(1)?,
+                filename: row.get(2)?,
+                file_type: row.get(3)?,
+                file_size: row.get(4)?,
+                content: "".to_string(), // Omit full content for listing metadata
+                summary: row.get(5)?,
+                is_processed: row.get::<_, i32>(6)? != 0,
+                chunk_count: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+            })
         })
-    }).map_err(|e| e.to_string())?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
     Ok(items)
 }
 
@@ -113,19 +121,24 @@ pub fn delete_document(state: State<DbState>, id: String) -> Result<(), String> 
 #[tauri::command]
 pub fn process_document(state: State<DbState>, req: ProcessDocumentRequest) -> Result<i64, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let content: String = conn.query_row(
-        "SELECT content FROM sources WHERE id = ?1 AND source_type = 'document'",
-        rusqlite::params![req.document_id],
-        |r| r.get(0),
-    ).map_err(|e| e.to_string())?;
+    let content: String = conn
+        .query_row(
+            "SELECT content FROM sources WHERE id = ?1 AND source_type = 'document'",
+            rusqlite::params![req.document_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
 
     // Chunk by ~512 words with 50-word overlap
     let chunks = chunk_text(&content, 512, 50);
     let chunk_count = chunks.len() as i64;
     let now = chrono::Utc::now().to_rfc3339();
 
-    conn.execute("DELETE FROM source_chunks WHERE source_id = ?1", rusqlite::params![req.document_id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM source_chunks WHERE source_id = ?1",
+        rusqlite::params![req.document_id],
+    )
+    .map_err(|e| e.to_string())?;
 
     for (i, chunk) in chunks.iter().enumerate() {
         let chunk_id = uuid::Uuid::new_v4().to_string();
@@ -138,7 +151,8 @@ pub fn process_document(state: State<DbState>, req: ProcessDocumentRequest) -> R
     conn.execute(
         "UPDATE sources SET is_processed = 1, updated_at = ?1 WHERE id = ?2",
         rusqlite::params![now, req.document_id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(chunk_count)
 }
@@ -146,14 +160,18 @@ pub fn process_document(state: State<DbState>, req: ProcessDocumentRequest) -> R
 /// Split text into overlapping word chunks.
 fn chunk_text(text: &str, chunk_words: usize, overlap_words: usize) -> Vec<String> {
     let words: Vec<&str> = text.split_whitespace().collect();
-    if words.is_empty() { return vec![]; }
+    if words.is_empty() {
+        return vec![];
+    }
     let step = chunk_words.saturating_sub(overlap_words).max(1);
     let mut chunks = Vec::new();
     let mut start = 0;
     while start < words.len() {
         let end = (start + chunk_words).min(words.len());
         chunks.push(words[start..end].join(" "));
-        if end >= words.len() { break; }
+        if end >= words.len() {
+            break;
+        }
         start += step;
     }
     chunks

@@ -1,16 +1,24 @@
-use tauri::State;
 use crate::db::DbState;
-use crate::models::project::{Project, CreateProjectRequest, UpdateProjectRequest};
+use crate::models::project::{CreateProjectRequest, Project, UpdateProjectRequest};
 use serde::Serialize;
+use tauri::State;
 
 #[tauri::command]
 pub fn create_project(state: State<DbState>, req: CreateProjectRequest) -> Result<Project, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut p = Project::new(req.workspace_id.clone(), req.name);
-    if let Some(d) = req.project_description { p.project_description = d; }
-    if let Some(c) = req.custom_instructions { p.custom_instructions = c; }
-    if let Some(col) = req.color { p.color = col; }
-    if let Some(icon) = req.icon { p.icon = icon; }
+    if let Some(d) = req.project_description {
+        p.project_description = d;
+    }
+    if let Some(c) = req.custom_instructions {
+        p.custom_instructions = c;
+    }
+    if let Some(col) = req.color {
+        p.color = col;
+    }
+    if let Some(icon) = req.icon {
+        p.icon = icon;
+    }
     conn.execute(
         "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -26,21 +34,23 @@ pub fn list_projects(state: State<DbState>, workspace_id: String) -> Result<Vec<
         "SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
          FROM projects WHERE workspace_id = ?1 ORDER BY created_at DESC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], |row| {
-        Ok(Project {
-            id: row.get(0)?,
-            workspace_id: row.get(1)?,
-            name: row.get(2)?,
-            project_description: row.get(3)?,
-            custom_instructions: row.get(4)?,
-            color: row.get(5)?,
-            icon: row.get(6)?,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
+    let items = stmt
+        .query_map(rusqlite::params![workspace_id], |row| {
+            Ok(Project {
+                id: row.get(0)?,
+                workspace_id: row.get(1)?,
+                name: row.get(2)?,
+                project_description: row.get(3)?,
+                custom_instructions: row.get(4)?,
+                color: row.get(5)?,
+                icon: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
         })
-    }).map_err(|e| e.to_string())?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
     Ok(items)
 }
 
@@ -83,8 +93,17 @@ pub fn update_project(state: State<DbState>, req: UpdateProjectRequest) -> Resul
             icon = COALESCE(?5, icon),
             updated_at = ?6
          WHERE id = ?7",
-        rusqlite::params![req.name, req.project_description, req.custom_instructions, req.color, req.icon, now, req.id],
-    ).map_err(|e| e.to_string())?;
+        rusqlite::params![
+            req.name,
+            req.project_description,
+            req.custom_instructions,
+            req.color,
+            req.icon,
+            now,
+            req.id
+        ],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -152,18 +171,15 @@ pub fn move_project_to_workspace(
         "UPDATE chat_sessions
          SET workspace_id = ?1, project_id = ?2, updated_at = ?3
          WHERE project_id = ?4",
-        rusqlite::params![
-            target_workspace_id,
-            new_project.id,
-            now,
-            project_id
-        ],
-    ).map_err(|e| e.to_string())?;
+        rusqlite::params![target_workspace_id, new_project.id, now, project_id],
+    )
+    .map_err(|e| e.to_string())?;
 
     tx.execute(
         "DELETE FROM projects WHERE id = ?1",
         rusqlite::params![project_id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;
 
@@ -193,10 +209,13 @@ pub struct ProjectStats {
 #[tauri::command]
 pub fn get_project_stats(state: State<DbState>, id: String) -> Result<ProjectStats, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let chat_session_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM chat_sessions WHERE project_id = ?1",
-        rusqlite::params![id], |r| r.get(0)
-    ).unwrap_or(0);
+    let chat_session_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chat_sessions WHERE project_id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
     Ok(ProjectStats {
         note_count: 0,
         document_count: 0,

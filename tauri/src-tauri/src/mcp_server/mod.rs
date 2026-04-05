@@ -1,10 +1,10 @@
 use crate::db::DbState;
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 
-pub mod tools;
 pub mod resources;
+pub mod tools;
 
 #[derive(Clone)]
 pub struct MCPService {

@@ -1,5 +1,5 @@
 use crate::db::DbState;
-use crate::mcp_server::{Tool, ToolContent, CallToolResult, JsonRpcError};
+use crate::mcp_server::{CallToolResult, JsonRpcError, Tool, ToolContent};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -114,7 +114,8 @@ pub fn search_chat_messages_tool() -> Tool {
 pub fn get_workspace_stats_tool() -> Tool {
     Tool {
         name: "get_workspace_stats".to_string(),
-        description: "Get statistics about a workspace (note count, card count, graph size, etc.)".to_string(),
+        description: "Get statistics about a workspace (note count, card count, graph size, etc.)"
+            .to_string(),
         input_schema: json!({
             "type": "object",
             "properties": {

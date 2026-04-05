@@ -108,7 +108,15 @@ describe("navigation settings", () => {
     vi.resetModules();
     const { useWorkspaceStore: freshStore } = await import("@/stores/workspaceStore");
     expect(freshStore.getState().workspaceNavigation).toBe("top-dropdown");
-    expect(freshStore.getState().sectionNavigation).toBe("top-tabs");
+    expect(freshStore.getState().sectionNavigation).toBe("top-dropdown");
+  });
+
+  it("falls back to the workspace navigation when no explicit section setting exists", async () => {
+    localStorage.setItem("workspaceNavigation", "icon-bar");
+    vi.resetModules();
+    const { useWorkspaceStore: freshStore } = await import("@/stores/workspaceStore");
+    expect(freshStore.getState().workspaceNavigation).toBe("icon-bar");
+    expect(freshStore.getState().sectionNavigation).toBe("icon-bar");
   });
 });
 

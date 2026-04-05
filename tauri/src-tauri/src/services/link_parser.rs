@@ -24,13 +24,13 @@ pub struct MarkdownSpan {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MarkdownSpanType {
-    WikiLink,   // [[concept]]
-    Bold,       // **text**
-    Italic,     // *text* or _text_
-    Code,       // `code`
-    Header,     // # heading
-    ListItem,   // - item
-    BlockCode,  // ```code```
+    WikiLink,  // [[concept]]
+    Bold,      // **text**
+    Italic,    // *text* or _text_
+    Code,      // `code`
+    Header,    // # heading
+    ListItem,  // - item
+    BlockCode, // ```code```
 }
 
 static WIKI_LINK_RE: OnceLock<Regex> = OnceLock::new();
@@ -66,7 +66,11 @@ pub fn extract_wiki_links(text: &str) -> Vec<ParsedLink> {
         .map(|cap| {
             let m = cap.get(0).unwrap();
             let name = cap.get(1).unwrap().as_str().trim().to_string();
-            ParsedLink { name, start: m.start(), end: m.end() }
+            ParsedLink {
+                name,
+                start: m.start(),
+                end: m.end(),
+            }
         })
         .collect()
 }
@@ -146,9 +150,11 @@ pub fn find_concept_mentions<'a>(text: &str, known_concepts: &[&'a str]) -> Vec<
         while let Some(pos) = lower_text[start..].find(&lower_concept) {
             let abs_pos = start + pos;
             // Word boundary check
-            let before_ok = abs_pos == 0 || !lower_text.as_bytes()[abs_pos - 1].is_ascii_alphanumeric();
+            let before_ok =
+                abs_pos == 0 || !lower_text.as_bytes()[abs_pos - 1].is_ascii_alphanumeric();
             let after = abs_pos + lower_concept.len();
-            let after_ok = after >= lower_text.len() || !lower_text.as_bytes()[after].is_ascii_alphanumeric();
+            let after_ok =
+                after >= lower_text.len() || !lower_text.as_bytes()[after].is_ascii_alphanumeric();
             if before_ok && after_ok {
                 mentions.push((concept, abs_pos));
             }
@@ -162,7 +168,11 @@ pub fn find_concept_mentions<'a>(text: &str, known_concepts: &[&'a str]) -> Vec<
 /// Autocomplete candidates: concepts whose name starts with prefix (case-insensitive).
 pub fn autocomplete_concepts<'a>(prefix: &str, concepts: &[&'a str]) -> Vec<&'a str> {
     let lower = prefix.to_lowercase();
-    concepts.iter().filter(|&&c| c.to_lowercase().starts_with(&lower)).copied().collect()
+    concepts
+        .iter()
+        .filter(|&&c| c.to_lowercase().starts_with(&lower))
+        .copied()
+        .collect()
 }
 
 #[cfg(test)]

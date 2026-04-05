@@ -1,3 +1,5 @@
+use crate::commands::ollama::StreamAbortState;
+use crate::ollama::client::StreamEvent;
 /// MLX LM HTTP Client
 /// Connects to a local MLX server (mlx_lm.server) (default: http://localhost:8080).
 /// Supports OpenAI-compatible chat completions with streaming.
@@ -6,8 +8,6 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
-use crate::commands::ollama::StreamAbortState;
-use crate::ollama::client::StreamEvent;
 
 const DEFAULT_BASE_URL: &str = "http://localhost:8080";
 
@@ -84,23 +84,14 @@ impl MlxClient {
 
     fn should_abort(app: &AppHandle, session_id: &str) -> Result<bool, String> {
         let abort_state = app.state::<StreamAbortState>();
-        let abort_map = abort_state
-            .0
-            .lock()
-            .map_err(|e| e.to_string())?;
-        let should_abort = abort_map
-            .get(session_id)
-            .copied()
-            .unwrap_or(false);
+        let abort_map = abort_state.0.lock().map_err(|e| e.to_string())?;
+        let should_abort = abort_map.get(session_id).copied().unwrap_or(false);
         Ok(should_abort)
     }
 
     pub(crate) fn clear_abort_flag(app: &AppHandle, session_id: &str) -> Result<(), String> {
         let abort_state = app.state::<StreamAbortState>();
-        let mut abort_map = abort_state
-            .0
-            .lock()
-            .map_err(|e| e.to_string())?;
+        let mut abort_map = abort_state.0.lock().map_err(|e| e.to_string())?;
         abort_map.remove(session_id);
         Ok(())
     }
@@ -123,7 +114,8 @@ impl MlxClient {
             "stream": true
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&body)
             .send()
@@ -161,7 +153,9 @@ impl MlxClient {
 
             for line in text.lines() {
                 let line = line.trim();
-                if line.is_empty() { continue; }
+                if line.is_empty() {
+                    continue;
+                }
                 if line == "data: [DONE]" {
                     stream_done = true;
                     break;
@@ -173,13 +167,16 @@ impl MlxClient {
                             if let Some(delta) = &choice.delta {
                                 if let Some(content) = &delta.content {
                                     full_response.push_str(content);
-                                    let _ = app.emit(&event_name, StreamEvent {
-                                        session_id: session_id.to_string(),
-                                        chunk: content.clone(),
-                                        done: false,
-                                        tokens_used: None,
-                                        duration_ms: None,
-                                    });
+                                    let _ = app.emit(
+                                        &event_name,
+                                        StreamEvent {
+                                            session_id: session_id.to_string(),
+                                            chunk: content.clone(),
+                                            done: false,
+                                            tokens_used: None,
+                                            duration_ms: None,
+                                        },
+                                    );
                                 }
                             }
 
@@ -191,17 +188,22 @@ impl MlxClient {
                     }
                 }
             }
-            if stream_done { break; }
+            if stream_done {
+                break;
+            }
         }
 
         // Final event
-        let _ = app.emit(&event_name, StreamEvent {
-            session_id: session_id.to_string(),
-            chunk: String::new(),
-            done: true,
-            tokens_used: None,
-            duration_ms: None,
-        });
+        let _ = app.emit(
+            &event_name,
+            StreamEvent {
+                session_id: session_id.to_string(),
+                chunk: String::new(),
+                done: true,
+                tokens_used: None,
+                duration_ms: None,
+            },
+        );
 
         Self::clear_abort_flag(app, session_id)?;
         Ok(full_response)
@@ -210,7 +212,8 @@ impl MlxClient {
     /// Fetch list of available models from MLX server.
     pub async fn list_models(&self) -> Result<Vec<MlxModelInfo>, String> {
         let url = format!("{}/v1/models", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await

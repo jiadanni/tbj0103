@@ -1,7 +1,7 @@
-use tauri::{AppHandle, Manager, State};
-use serde::{Deserialize, Serialize};
 use crate::db::DbState;
 use crate::services::git_sync;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager, State};
 
 fn is_ssh_remote(remote_url: &str) -> bool {
     let trimmed = remote_url.trim();
@@ -20,8 +20,12 @@ pub struct GitSyncStatus {
 pub fn get_git_sync_status(state: State<DbState>) -> Result<GitSyncStatus, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let get = |key: &str| -> String {
-        conn.query_row("SELECT value FROM settings WHERE key = ?1", rusqlite::params![key], |r| r.get(0))
-            .unwrap_or_default()
+        conn.query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            rusqlite::params![key],
+            |r| r.get(0),
+        )
+        .unwrap_or_default()
     };
     Ok(GitSyncStatus {
         enabled: get("git_sync_enabled") == "true",
@@ -49,7 +53,9 @@ pub fn configure_git_sync(
         conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
             rusqlite::params![key, val],
-        ).map(|_| ()).map_err(|e| e.to_string())
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
     };
 
     set("git_sync_enabled", if enabled { "true" } else { "false" })?;
@@ -63,13 +69,20 @@ pub fn configure_git_sync(
 }
 
 #[tauri::command]
-pub async fn trigger_git_sync(app: AppHandle, state: State<'_, DbState>) -> Result<GitSyncStatus, String> {
+pub async fn trigger_git_sync(
+    app: AppHandle,
+    state: State<'_, DbState>,
+) -> Result<GitSyncStatus, String> {
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
 
     let remote_url = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        conn.query_row("SELECT value FROM settings WHERE key = 'git_sync_remote_url'", [], |r| r.get::<_, String>(0))
-            .unwrap_or_default()
+        conn.query_row(
+            "SELECT value FROM settings WHERE key = 'git_sync_remote_url'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .unwrap_or_default()
     };
 
     if remote_url.is_empty() {
@@ -102,7 +115,11 @@ pub async fn trigger_git_sync(app: AppHandle, state: State<'_, DbState>) -> Resu
     Ok(GitSyncStatus {
         enabled: true,
         remote_url,
-        last_synced_at: if result.error.is_none() { now } else { String::new() },
+        last_synced_at: if result.error.is_none() {
+            now
+        } else {
+            String::new()
+        },
         last_error: error_str,
     })
 }

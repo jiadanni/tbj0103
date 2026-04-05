@@ -1,21 +1,20 @@
-use std::path::PathBuf;
+use serde_json::json;
 use std::env;
 use std::io::{self, BufRead, Write};
-use serde_json::json;
+use std::path::PathBuf;
 
 // Import from library
 use aetherium_lib::db;
-use aetherium_lib::mcp_server::{MCPService, tools, JsonRpcRequest, JsonRpcResponse, JsonRpcError};
+use aetherium_lib::mcp_server::{tools, JsonRpcError, JsonRpcRequest, JsonRpcResponse, MCPService};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get database path from environment or use default
-    let db_path = env::var("AETHERIUM_DB_PATH")
-        .unwrap_or_else(|_| {
-            let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-            home.join(".aetherium/aetherium.db")
-                .to_string_lossy()
-                .to_string()
-        });
+    let db_path = env::var("AETHERIUM_DB_PATH").unwrap_or_else(|_| {
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        home.join(".aetherium/aetherium.db")
+            .to_string_lossy()
+            .to_string()
+    });
 
     // Initialize database
     let db_path_buf = PathBuf::from(&db_path);
@@ -69,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         message: format!("Method not found: {}", request.method),
                         data: None,
                     }),
-                }
+                },
             };
 
             if let Ok(json) = serde_json::to_string(&response) {

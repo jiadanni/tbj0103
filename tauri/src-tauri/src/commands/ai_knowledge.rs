@@ -1,10 +1,10 @@
+use crate::db::DbState;
+use crate::ollama::client::{OllamaClient, OllamaMessage};
+use serde::{Deserialize, Serialize};
 /// AI-powered knowledge graph analysis commands.
 /// analyze_workspace — infers concepts & relationships from workspace content via Ollama.
 /// suggest_learning_goals — proposes goals from the existing concept landscape.
 use tauri::State;
-use crate::db::DbState;
-use crate::ollama::client::{OllamaClient, OllamaMessage};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 pub struct AnalysisResult {
@@ -41,11 +41,42 @@ struct WorkspaceContentSnapshot {
 }
 
 const GENERIC_CONCEPTS: &[&str] = &[
-    "algorithm", "artifact", "attribute", "bug", "code", "condition", "constraint",
-    "data", "details", "error", "evaluation", "example", "function", "functions",
-    "implementation", "input", "method", "methods", "output", "phase", "process",
-    "programming", "question", "questions", "result", "results", "step", "steps",
-    "system", "task", "tasks", "test", "tests", "topic", "topics", "variable",
+    "algorithm",
+    "artifact",
+    "attribute",
+    "bug",
+    "code",
+    "condition",
+    "constraint",
+    "data",
+    "details",
+    "error",
+    "evaluation",
+    "example",
+    "function",
+    "functions",
+    "implementation",
+    "input",
+    "method",
+    "methods",
+    "output",
+    "phase",
+    "process",
+    "programming",
+    "question",
+    "questions",
+    "result",
+    "results",
+    "step",
+    "steps",
+    "system",
+    "task",
+    "tasks",
+    "test",
+    "tests",
+    "topic",
+    "topics",
+    "variable",
     "variables",
 ];
 
@@ -61,7 +92,10 @@ fn is_specific_concept(name: &str) -> bool {
 }
 
 /// Collect recent workspace content (notes, daily notes, chat messages, docs, web) capped at ~16 000 chars.
-fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> WorkspaceContentSnapshot {
+fn gather_workspace_content(
+    conn: &rusqlite::Connection,
+    workspace_id: &str,
+) -> WorkspaceContentSnapshot {
     let mut parts: Vec<String> = Vec::new();
     let mut total_len = 0usize;
     let mut source_items = 0usize;
@@ -79,20 +113,24 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
         "SELECT title, content FROM project_notes WHERE workspace_id = ?1 \
          ORDER BY updated_at DESC LIMIT 40",
     ) {
-        let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
-            let title: String = row.get(0)?;
-            let content: String = row.get(1)?;
-            Ok((title, content))
-        }).map(|rows| {
-            for item in rows.flatten() {
-                if total_len >= CAP { return; }
-                let snippet = safe_truncate(&item.1, 400);
-                let entry = format!("Note: {}\n{}\n", item.0, snippet);
-                total_len += entry.len();
-                parts.push(entry);
-                source_items += 1;
-            }
-        });
+        let _ = stmt
+            .query_map(rusqlite::params![workspace_id], |row| {
+                let title: String = row.get(0)?;
+                let content: String = row.get(1)?;
+                Ok((title, content))
+            })
+            .map(|rows| {
+                for item in rows.flatten() {
+                    if total_len >= CAP {
+                        return;
+                    }
+                    let snippet = safe_truncate(&item.1, 400);
+                    let entry = format!("Note: {}\n{}\n", item.0, snippet);
+                    total_len += entry.len();
+                    parts.push(entry);
+                    source_items += 1;
+                }
+            });
     }
 
     // --- daily_notes ---
@@ -101,20 +139,24 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
             "SELECT date, content FROM daily_notes WHERE workspace_id = ?1 \
              ORDER BY date DESC LIMIT 20",
         ) {
-            let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
-                let date: String = row.get(0)?;
-                let content: String = row.get(1)?;
-                Ok((date, content))
-            }).map(|rows| {
-                for item in rows.flatten() {
-                    if total_len >= CAP { return; }
-                    let snippet = safe_truncate(&item.1, 300);
-                    let entry = format!("Daily note ({}): {}\n", item.0, snippet);
-                    total_len += entry.len();
-                    parts.push(entry);
-                    source_items += 1;
-                }
-            });
+            let _ = stmt
+                .query_map(rusqlite::params![workspace_id], |row| {
+                    let date: String = row.get(0)?;
+                    let content: String = row.get(1)?;
+                    Ok((date, content))
+                })
+                .map(|rows| {
+                    for item in rows.flatten() {
+                        if total_len >= CAP {
+                            return;
+                        }
+                        let snippet = safe_truncate(&item.1, 300);
+                        let entry = format!("Daily note ({}): {}\n", item.0, snippet);
+                        total_len += entry.len();
+                        parts.push(entry);
+                        source_items += 1;
+                    }
+                });
         }
     }
 
@@ -148,24 +190,32 @@ fn gather_workspace_content(conn: &rusqlite::Connection, workspace_id: &str) -> 
             "SELECT source_type, title, content, summary FROM sources WHERE workspace_id = ?1 \
              ORDER BY updated_at DESC LIMIT 30",
         ) {
-            let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
-                let source_type: String = row.get(0)?;
-                let title: String = row.get(1)?;
-                let content: String = row.get(2)?;
-                let summary: Option<String> = row.get(3)?;
-                Ok((source_type, title, content, summary))
-            }).map(|rows| {
-                for (source_type, title, content, summary) in rows.flatten() {
-                    if total_len >= CAP { return; }
-                    let text = summary.unwrap_or(content);
-                    let snippet = safe_truncate(&text, 500);
-                    let label = if source_type == "document" { "Document" } else { "Web Capture" };
-                    let entry = format!("{} ({}): {}\n", label, title, snippet);
-                    total_len += entry.len();
-                    parts.push(entry);
-                    source_items += 1;
-                }
-            });
+            let _ = stmt
+                .query_map(rusqlite::params![workspace_id], |row| {
+                    let source_type: String = row.get(0)?;
+                    let title: String = row.get(1)?;
+                    let content: String = row.get(2)?;
+                    let summary: Option<String> = row.get(3)?;
+                    Ok((source_type, title, content, summary))
+                })
+                .map(|rows| {
+                    for (source_type, title, content, summary) in rows.flatten() {
+                        if total_len >= CAP {
+                            return;
+                        }
+                        let text = summary.unwrap_or(content);
+                        let snippet = safe_truncate(&text, 500);
+                        let label = if source_type == "document" {
+                            "Document"
+                        } else {
+                            "Web Capture"
+                        };
+                        let entry = format!("{} ({}): {}\n", label, title, snippet);
+                        total_len += entry.len();
+                        parts.push(entry);
+                        source_items += 1;
+                    }
+                });
         }
     }
 
@@ -194,7 +244,8 @@ pub async fn analyze_workspace(
     }
 
     // 2. Build prompt
-    let focus_clause = req.focus_topic
+    let focus_clause = req
+        .focus_topic
         .as_deref()
         .filter(|s| !s.trim().is_empty())
         .map(|t| format!(" Focus especially on concepts related to: {t}."))
@@ -216,14 +267,22 @@ pub async fn analyze_workspace(
 
     // 3. Call Ollama (no DB lock held)
     let client = OllamaClient::new(req.ollama_url)?;
-    let messages = vec![OllamaMessage { role: "user".to_string(), content: prompt }];
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
     let raw = client.send_message(&req.model, messages).await?;
 
     // 4. Parse JSON — find first { / last }
     let trimmed = raw.trim();
     let json_str = match (trimmed.find('{'), trimmed.rfind('}')) {
         (Some(s), Some(e)) if e > s => &trimmed[s..=e],
-        _ => return Err(format!("AI response did not contain valid JSON. Raw: {}", &raw[..raw.len().min(300)])),
+        _ => {
+            return Err(format!(
+                "AI response did not contain valid JSON. Raw: {}",
+                &raw[..raw.len().min(300)]
+            ))
+        }
     };
 
     #[derive(Deserialize)]
@@ -239,7 +298,9 @@ pub async fn analyze_workspace(
         #[serde(default = "default_rel_type")]
         r#type: String,
     }
-    fn default_rel_type() -> String { "related".to_string() }
+    fn default_rel_type() -> String {
+        "related".to_string()
+    }
 
     let output: AiOutput = serde_json::from_str(json_str)
         .map_err(|e| format!("Failed to parse AI JSON: {e}\nRaw snippet: {json_str}"))?;
@@ -250,24 +311,29 @@ pub async fn analyze_workspace(
 
     let mut concepts_created = 0usize;
     let mut concepts_skipped = 0usize;
-    let mut name_to_id: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut name_to_id: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
 
     // Load existing concepts into name_to_id map
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT id, LOWER(name) FROM concept_nodes WHERE workspace_id = ?1",
-    ) {
-        let _ = stmt.query_map(rusqlite::params![req.workspace_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        }).map(|rows| {
-            for (id, lower_name) in rows.flatten() {
-                name_to_id.insert(lower_name, id);
-            }
-        });
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT id, LOWER(name) FROM concept_nodes WHERE workspace_id = ?1")
+    {
+        let _ = stmt
+            .query_map(rusqlite::params![req.workspace_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map(|rows| {
+                for (id, lower_name) in rows.flatten() {
+                    name_to_id.insert(lower_name, id);
+                }
+            });
     }
 
     for raw_name in &output.concepts {
         let name = raw_name.trim().to_string();
-        if name.is_empty() { continue; }
+        if name.is_empty() {
+            continue;
+        }
         if !is_specific_concept(&name) {
             concepts_skipped += 1;
             continue;
@@ -291,7 +357,14 @@ pub async fn analyze_workspace(
     }
 
     let mut links_created = 0usize;
-    let valid_types = ["related", "part_of", "prerequisite", "contradicts", "supports", "example"];
+    let valid_types = [
+        "related",
+        "part_of",
+        "prerequisite",
+        "contradicts",
+        "supports",
+        "example",
+    ];
 
     for rel in &output.relationships {
         let src_lower = rel.source.trim().to_lowercase();
@@ -302,15 +375,24 @@ pub async fn analyze_workspace(
             "related"
         };
 
-        let src_id = match name_to_id.get(&src_lower) { Some(id) => id.clone(), None => continue };
-        let tgt_id = match name_to_id.get(&tgt_lower) { Some(id) => id.clone(), None => continue };
+        let src_id = match name_to_id.get(&src_lower) {
+            Some(id) => id.clone(),
+            None => continue,
+        };
+        let tgt_id = match name_to_id.get(&tgt_lower) {
+            Some(id) => id.clone(),
+            None => continue,
+        };
 
         // Check for existing link
-        let exists: bool = conn.query_row(
-            "SELECT COUNT(*) FROM concept_links WHERE source_id = ?1 AND target_id = ?2",
-            rusqlite::params![src_id, tgt_id],
-            |row| row.get::<_, i64>(0),
-        ).unwrap_or(0) > 0;
+        let exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM concept_links WHERE source_id = ?1 AND target_id = ?2",
+                rusqlite::params![src_id, tgt_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+            > 0;
 
         if !exists {
             let link_id = uuid::Uuid::new_v4().to_string();
@@ -324,7 +406,11 @@ pub async fn analyze_workspace(
         }
     }
 
-    Ok(AnalysisResult { concepts_created, links_created, concepts_skipped })
+    Ok(AnalysisResult {
+        concepts_created,
+        links_created,
+        concepts_skipped,
+    })
 }
 
 #[tauri::command]
@@ -348,14 +434,16 @@ pub async fn suggest_learning_goals(
         }
 
         let mut goals: Vec<String> = Vec::new();
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT title FROM learning_goals WHERE workspace_id = ?1",
-        ) {
-            let _ = stmt.query_map(rusqlite::params![req.workspace_id], |row| {
-                row.get::<_, String>(0)
-            }).map(|rows| {
-                goals = rows.flatten().collect();
-            });
+        if let Ok(mut stmt) =
+            conn.prepare("SELECT title FROM learning_goals WHERE workspace_id = ?1")
+        {
+            let _ = stmt
+                .query_map(rusqlite::params![req.workspace_id], |row| {
+                    row.get::<_, String>(0)
+                })
+                .map(|rows| {
+                    goals = rows.flatten().collect();
+                });
         }
 
         (concepts, goals)
@@ -368,7 +456,10 @@ pub async fn suggest_learning_goals(
     let existing_clause = if existing_goal_titles.is_empty() {
         String::new()
     } else {
-        format!("\nAlready existing goals (do NOT repeat): {}", existing_goal_titles.join(", "))
+        format!(
+            "\nAlready existing goals (do NOT repeat): {}",
+            existing_goal_titles.join(", ")
+        )
     };
 
     let prompt = format!(
@@ -384,13 +475,21 @@ pub async fn suggest_learning_goals(
     );
 
     let client = OllamaClient::new(req.ollama_url)?;
-    let messages = vec![OllamaMessage { role: "user".to_string(), content: prompt }];
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
     let raw = client.send_message(&req.model, messages).await?;
 
     let trimmed = raw.trim();
     let json_str = match (trimmed.find('['), trimmed.rfind(']')) {
         (Some(s), Some(e)) if e > s => &trimmed[s..=e],
-        _ => return Err(format!("AI response did not contain valid JSON array. Raw: {}", &raw[..raw.len().min(300)])),
+        _ => {
+            return Err(format!(
+                "AI response did not contain valid JSON array. Raw: {}",
+                &raw[..raw.len().min(300)]
+            ))
+        }
     };
 
     let goals: Vec<SuggestedGoal> = serde_json::from_str(json_str)

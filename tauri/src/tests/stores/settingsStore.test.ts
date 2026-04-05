@@ -109,6 +109,11 @@ describe("setters", () => {
     expect(useSettingsStore.getState().theme).toBe("dark");
   });
 
+  it("setTheme normalizes legacy oled to dark", () => {
+    useSettingsStore.getState().setTheme("oled" as unknown as "dark");
+    expect(useSettingsStore.getState().theme).toBe("dark");
+  });
+
   it("setAccentColor updates accentColor", () => {
     useSettingsStore.getState().setAccentColor("#f59e0b");
     expect(useSettingsStore.getState().accentColor).toBe("#f59e0b");
@@ -165,5 +170,19 @@ describe("zustand/persist", () => {
     localStorage.clear();
     useSettingsStore.setState(SETTINGS_INITIAL, true);
     expect(useSettingsStore.getState().fontSize).toBe(16);
+  });
+
+  it("rehydrates legacy oled theme as dark", async () => {
+    localStorage.setItem("aetherium-settings", JSON.stringify({
+      state: {
+        ...SETTINGS_INITIAL,
+        theme: "oled",
+      },
+      version: 0,
+    }));
+
+    await useSettingsStore.persist.rehydrate();
+
+    expect(useSettingsStore.getState().theme).toBe("dark");
   });
 });

@@ -1,7 +1,7 @@
-use tauri::AppHandle;
+use crate::ollama::client::{ModelInfo, OllamaClient, OllamaMessage};
 use serde::{Deserialize, Serialize};
 use std::process::{Command, Stdio};
-use crate::ollama::client::{OllamaClient, OllamaMessage, ModelInfo};
+use tauri::AppHandle;
 
 pub struct StreamAbortState(pub std::sync::Mutex<std::collections::HashMap<String, bool>>);
 const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
@@ -13,6 +13,7 @@ pub struct SendMessageRequest {
     pub messages: Vec<OllamaMessage>,
     pub stream: bool,
     pub ollama_url: Option<String>,
+    pub request_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +21,7 @@ pub struct EmbeddingRequest {
     pub text: String,
     pub model: Option<String>,
     pub ollama_url: Option<String>,
+    pub request_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +32,7 @@ pub struct DualModelRequest {
     pub messages: Vec<OllamaMessage>,
     pub execution_mode: Option<String>,
     pub ollama_url: Option<String>,
+    pub request_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,36 +43,72 @@ pub struct OllamaRuntimeStatus {
     pub models: Vec<ModelInfo>,
 }
 
+fn context(
+    request_id: Option<String>,
+    command_name: &'static str,
+    session_id: Option<&str>,
+    model: Option<&str>,
+    stream: Option<bool>,
+) -> crate::ollama::client::RequestContext {
+    crate::ollama::client::RequestContext {
+        request_id,
+        command_name: Some(command_name),
+        session_id: session_id.map(ToOwned::to_owned),
+        model: model.map(ToOwned::to_owned),
+        stream,
+    }
+}
+
 /// Send a chat message (streaming or non-streaming).
 /// For streaming: emits "ollama-stream-{session_id}" events to frontend.
 #[tauri::command]
 pub async fn send_message(app: AppHandle, req: SendMessageRequest) -> Result<String, String> {
     let client = OllamaClient::new(req.ollama_url)?;
+    let ctx = context(
+        req.request_id.clone(),
+        "send_message",
+        Some(&req.session_id),
+        Some(&req.model),
+        Some(req.stream),
+    );
     if req.stream {
-        client.stream_message(&app, &req.session_id, &req.model, req.messages).await
+        client
+            .stream_message_observed(&app, &req.session_id, &req.model, req.messages, &ctx)
+            .await
     } else {
-        client.send_message(&req.model, req.messages).await
+        client
+            .send_message_observed(&req.model, req.messages, &ctx)
+            .await
     }
 }
 
 #[tauri::command]
-pub async fn list_models(ollama_url: Option<String>) -> Result<Vec<ModelInfo>, String> {
+pub async fn list_models(
+    ollama_url: Option<String>,
+    request_id: Option<String>,
+) -> Result<Vec<ModelInfo>, String> {
     let client = OllamaClient::new(ollama_url)?;
-    client.list_models().await
+    let ctx = context(request_id, "list_models", None, None, Some(false));
+    client.list_models_observed(&ctx).await
 }
 
 /// Same as list_models but bypasses the process-level cache.
 /// Called from the frontend's `listModelsFresh` (e.g., Preferences refresh button).
 #[tauri::command]
-pub async fn list_models_fresh(ollama_url: Option<String>) -> Result<Vec<ModelInfo>, String> {
+pub async fn list_models_fresh(
+    ollama_url: Option<String>,
+    request_id: Option<String>,
+) -> Result<Vec<ModelInfo>, String> {
     let client = OllamaClient::new(ollama_url)?;
     client.invalidate_model_cache();
-    client.list_models().await
+    let ctx = context(request_id, "list_models_fresh", None, None, Some(false));
+    client.list_models_observed(&ctx).await
 }
 
 #[tauri::command]
 pub async fn ensure_ollama_running(
     ollama_url: Option<String>,
+    request_id: Option<String>,
 ) -> Result<OllamaRuntimeStatus, String> {
     let normalized_url = ollama_url
         .clone()
@@ -78,7 +117,14 @@ pub async fn ensure_ollama_running(
         .to_string();
 
     let client = OllamaClient::new(Some(normalized_url.clone()))?;
-    if let Ok(models) = client.list_models().await {
+    let ctx = context(
+        request_id.clone(),
+        "ensure_ollama_running",
+        None,
+        None,
+        Some(false),
+    );
+    if let Ok(models) = client.list_models_observed(&ctx).await {
         return Ok(runtime_status(models, false));
     }
 
@@ -93,7 +139,7 @@ pub async fn ensure_ollama_running(
     for _ in 0..10 {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         let retry_client = OllamaClient::new(Some(normalized_url.clone()))?;
-        if let Ok(models) = retry_client.list_models().await {
+        if let Ok(models) = retry_client.list_models_observed(&ctx).await {
             return Ok(runtime_status(models, true));
         }
     }
@@ -102,9 +148,23 @@ pub async fn ensure_ollama_running(
 }
 
 #[tauri::command]
-pub async fn generate_title(model: String, first_message: String, ollama_url: Option<String>) -> Result<String, String> {
+pub async fn generate_title(
+    model: String,
+    first_message: String,
+    ollama_url: Option<String>,
+    request_id: Option<String>,
+) -> Result<String, String> {
     let client = OllamaClient::new(ollama_url)?;
-    client.generate_title(&model, &first_message).await
+    let ctx = context(
+        request_id,
+        "generate_title",
+        None,
+        Some(&model),
+        Some(false),
+    );
+    client
+        .generate_title_observed(&model, &first_message, &ctx)
+        .await
 }
 
 #[tauri::command]
@@ -112,36 +172,100 @@ pub async fn generate_title_from_conversation(
     model: String,
     conversation: Vec<OllamaMessage>,
     ollama_url: Option<String>,
+    request_id: Option<String>,
 ) -> Result<String, String> {
     let client = OllamaClient::new(ollama_url)?;
-    client.generate_title_from_conversation(&model, conversation).await
+    let ctx = context(
+        request_id,
+        "generate_title_from_conversation",
+        None,
+        Some(&model),
+        Some(false),
+    );
+    client
+        .generate_title_from_conversation_observed(&model, conversation, &ctx)
+        .await
 }
 
 #[tauri::command]
 pub async fn generate_embedding(req: EmbeddingRequest) -> Result<Vec<f32>, String> {
     let client = OllamaClient::new(req.ollama_url)?;
     let model = req.model.as_deref().unwrap_or("nomic-embed-text");
-    client.generate_embedding(model, &req.text).await
+    let ctx = context(
+        req.request_id,
+        "generate_embedding",
+        None,
+        Some(model),
+        Some(false),
+    );
+    client
+        .generate_embedding_observed(model, &req.text, &ctx)
+        .await
 }
 
 /// Dual-model chat: streams the draft (small) model first via "ollama-stream-{session_id}",
 /// then streams the refine (large) model via "ollama-refine-{session_id}" events.
 /// The frontend shows the draft answer instantly and upgrades it when the refinement arrives.
 #[tauri::command]
-pub async fn send_dual_model_message(app: AppHandle, req: DualModelRequest) -> Result<String, String> {
+pub async fn send_dual_model_message(
+    app: AppHandle,
+    req: DualModelRequest,
+) -> Result<String, String> {
     let client = OllamaClient::new(req.ollama_url)?;
     let execution_mode = req.execution_mode.as_deref().unwrap_or("serial");
+    let draft_ctx = context(
+        req.request_id.clone(),
+        "send_dual_model_message:draft",
+        Some(&req.session_id),
+        Some(&req.draft_model),
+        Some(true),
+    );
+    let refine_ctx = context(
+        req.request_id.clone(),
+        "send_dual_model_message:refine",
+        Some(&req.session_id),
+        Some(&req.refine_model),
+        Some(true),
+    );
 
     match execution_mode {
         "serial" => {
-            client.stream_message(&app, &req.session_id, &req.draft_model, req.messages.clone()).await?;
-            client.stream_refine_message(&app, &req.session_id, &req.refine_model, req.messages).await
+            client
+                .stream_message_observed(
+                    &app,
+                    &req.session_id,
+                    &req.draft_model,
+                    req.messages.clone(),
+                    &draft_ctx,
+                )
+                .await?;
+            client
+                .stream_refine_message_observed(
+                    &app,
+                    &req.session_id,
+                    &req.refine_model,
+                    req.messages,
+                    &refine_ctx,
+                )
+                .await
         }
         "parallel" => {
             OllamaClient::clear_abort_flag(&app, &req.session_id)?;
             let result = tokio::try_join!(
-                client.stream_message_unmanaged(&app, &req.session_id, &req.draft_model, req.messages.clone()),
-                client.stream_refine_message_unmanaged(&app, &req.session_id, &req.refine_model, req.messages)
+                client.stream_message_unmanaged_observed(
+                    &app,
+                    &req.session_id,
+                    &req.draft_model,
+                    req.messages.clone(),
+                    &draft_ctx
+                ),
+                client.stream_refine_message_unmanaged_observed(
+                    &app,
+                    &req.session_id,
+                    &req.refine_model,
+                    req.messages,
+                    &refine_ctx
+                )
             );
             OllamaClient::clear_abort_flag(&app, &req.session_id)?;
             let (_, refine_response) = result?;
@@ -156,8 +280,16 @@ pub async fn generate_follow_ups(
     model: String,
     messages: Vec<OllamaMessage>,
     ollama_url: Option<String>,
+    request_id: Option<String>,
 ) -> Result<Vec<String>, String> {
     let client = OllamaClient::new(ollama_url)?;
+    let ctx = context(
+        request_id,
+        "generate_follow_ups",
+        None,
+        Some(&model),
+        Some(false),
+    );
 
     let mut prompt_messages = messages;
     prompt_messages.push(OllamaMessage {
@@ -165,7 +297,9 @@ pub async fn generate_follow_ups(
         content: "Based on this conversation, suggest exactly 3 short follow-up questions the user might ask next.\nReturn ONLY a JSON array of strings, no markdown: [\"question 1\", \"question 2\", \"question 3\"]".to_string(),
     });
 
-    let raw = client.send_message(&model, prompt_messages).await?;
+    let raw = client
+        .send_message_observed(&model, prompt_messages, &ctx)
+        .await?;
     let json_str = extract_json_array(&raw);
     serde_json::from_str::<Vec<String>>(&json_str)
         .map_err(|e| format!("Failed to parse follow-ups: {e} — raw: {raw}"))
@@ -179,6 +313,7 @@ pub async fn extract_topics(
     texts: Vec<String>,
     model: String,
     ollama_url: Option<String>,
+    request_id: Option<String>,
 ) -> Result<Vec<TopicEntry>, String> {
     if texts.is_empty() {
         return Ok(vec![]);
@@ -201,12 +336,19 @@ pub async fn extract_topics(
     );
 
     let client = OllamaClient::new(ollama_url)?;
+    let ctx = context(
+        request_id,
+        "extract_topics",
+        None,
+        Some(&model),
+        Some(false),
+    );
     let messages = vec![OllamaMessage {
         role: "user".to_string(),
         content: prompt,
     }];
 
-    let raw = client.send_message(&model, messages).await?;
+    let raw = client.send_message_observed(&model, messages, &ctx).await?;
 
     // Parse the JSON array from the response (model may wrap it in markdown)
     let json_str = extract_json_array(&raw);
@@ -231,7 +373,10 @@ fn extract_json_array(s: &str) -> String {
 
 /// Cancel an in-progress stream for the given session.
 #[tauri::command]
-pub async fn stop_stream(session_id: String, state: tauri::State<'_, StreamAbortState>) -> Result<(), String> {
+pub async fn stop_stream(
+    session_id: String,
+    state: tauri::State<'_, StreamAbortState>,
+) -> Result<(), String> {
     state
         .0
         .lock()

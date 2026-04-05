@@ -172,14 +172,14 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                     </button>
                     {thoughtExpanded && (
                       <div className="border-t border-[var(--border-color)] px-3 py-2">
-                        <div className="prose prose-sm prose-invert max-w-none overflow-x-auto text-[var(--text-secondary)]">
+                        <div className="prose prose-sm prose-invert min-w-0 max-w-none text-[var(--text-secondary)]">
                           <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>{parts.thought}</ReactMarkdown>
                         </div>
                       </div>
                     )}
                   </div>
                 )}
-                <div className="prose prose-sm prose-invert max-w-none overflow-x-auto" ref={assistantProseRef}>
+                <div className="prose prose-sm prose-invert min-w-0 max-w-none" ref={assistantProseRef}>
                   <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>
                     {parts?.answer || msg.content}
                   </ReactMarkdown>

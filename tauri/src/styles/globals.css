@@ -207,6 +207,8 @@ body {
    ===================================================== */
 .prose {
   color: var(--text-primary);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .prose a {
   color: var(--accent-color);
@@ -219,6 +221,8 @@ body {
   @apply rounded-lg text-sm;
   background-color: var(--bg-secondary);
   color: var(--text-primary);
+  max-width: 100%;
+  overflow-x: auto;
 }
 .prose code:not(pre code) {
   @apply px-1.5 py-0.5 rounded text-sm;
@@ -227,7 +231,10 @@ body {
   font-weight: normal;
 }
 .prose table {
-  @apply w-full text-sm border-collapse my-3;
+  @apply my-3 w-full text-sm border-collapse;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 .prose th {
   @apply px-3 py-1.5 text-left font-semibold border-b-2;

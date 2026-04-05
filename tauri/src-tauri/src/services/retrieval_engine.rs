@@ -2,8 +2,8 @@
 //! Fetches the most relevant document chunks for a query embedding
 //! and builds a grounded prompt string for Ollama.
 
-use rusqlite::Connection;
 use crate::services::semantic_search::cosine_similarity;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,22 +24,22 @@ pub fn get_relevant_chunks(
     query_embedding: &[f32],
     top_k: usize,
 ) -> Result<Vec<RetrievedChunk>, String> {
-    let mut stmt = conn.prepare(
-        "SELECT sc.id, sc.embedding
+    let mut stmt = conn
+        .prepare(
+            "SELECT sc.id, sc.embedding
          FROM source_chunks sc
          JOIN sources s ON sc.source_id = s.id
-         WHERE s.workspace_id = ?1 AND s.source_type = 'document' AND sc.embedding IS NOT NULL"
-    ).map_err(|e| e.to_string())?;
+         WHERE s.workspace_id = ?1 AND s.source_type = 'document' AND sc.embedding IS NOT NULL",
+        )
+        .map_err(|e| e.to_string())?;
 
-    let raw_rows: Vec<(String, Vec<u8>)> = stmt.query_map(
-        rusqlite::params![workspace_id],
-        |row| Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, Vec<u8>>(1)?,
-        ))
-    ).map_err(|e| e.to_string())?
-    .filter_map(Result::ok)
-    .collect();
+    let raw_rows: Vec<(String, Vec<u8>)> = stmt
+        .query_map(rusqlite::params![workspace_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
 
     use rayon::prelude::*;
     let mut scored: Vec<(f32, String)> = raw_rows
@@ -71,31 +71,40 @@ pub fn get_relevant_chunks(
         placeholders
     );
     let mut fetch_stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
-    
+
     let mut chunk_map = std::collections::HashMap::new();
     let params = rusqlite::params_from_iter(chunk_ids.iter());
-    
-    let rows = fetch_stmt.query_map(params, |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, i64>(4)?,
-        ))
-    }).map_err(|e| e.to_string())?;
-    
+
+    let rows = fetch_stmt
+        .query_map(params, |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
     for row in rows.filter_map(Result::ok) {
         chunk_map.insert(row.0.clone(), row);
     }
-    
+
     let mut results = Vec::new();
     for (score, id) in scored {
         if let Some((chunk_id, doc_id, filename, content, chunk_index)) = chunk_map.remove(&id) {
-            results.push(RetrievedChunk { chunk_id, document_id: doc_id, filename, content, score, chunk_index });
+            results.push(RetrievedChunk {
+                chunk_id,
+                document_id: doc_id,
+                filename,
+                content,
+                score,
+                chunk_index,
+            });
         }
     }
-    
+
     Ok(results)
 }
 
@@ -109,7 +118,13 @@ pub fn build_grounded_prompt(user_message: &str, chunks: &[RetrievedChunk]) -> S
         .enumerate()
         .map(|(i, c)| {
             let excerpt: String = c.content.chars().take(600).collect();
-            format!("[{}] **{}** (chunk {}): {}", i + 1, c.filename, c.chunk_index, excerpt)
+            format!(
+                "[{}] **{}** (chunk {}): {}",
+                i + 1,
+                c.filename,
+                c.chunk_index,
+                excerpt
+            )
         })
         .collect::<Vec<_>>()
         .join("\n\n");
