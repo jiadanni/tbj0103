@@ -219,9 +219,41 @@ export default function ThoughtQueueView() {
   const done = thoughts.filter((t) => t.status === "done");
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* ---- Left: input panel ---------------------------------------------- */}
-      <div className="w-80 shrink-0 border-r border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)]">
+    <div className="flex h-full min-h-0 overflow-hidden">
+      {/* ---- Main: queue list ----------------------------------------------- */}
+      <div className="flex-1 min-w-0 overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
+            <Loader2 size={18} className="animate-spin mr-2" /> Loading…
+          </div>
+        ) : thoughts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--text-muted)]">
+            <Inbox size={40} className="opacity-30" />
+            <p className="text-sm">Your thought queue is empty.</p>
+            <p className="text-xs opacity-60">Add a thought from the right sidebar to get started.</p>
+          </div>
+        ) : (
+          <div className="p-4 space-y-3 max-w-3xl mx-auto">
+            {/* Ordered: processing → scheduled → pending → done */}
+            {[...processing, ...scheduled, ...pending, ...done].map((thought) => (
+              <ThoughtCard
+                key={thought.id}
+                thought={thought}
+                modelLabels={modelLabels}
+                expanded={expandedId === thought.id}
+                onToggleExpand={() =>
+                  setExpandedId((prev) => (prev === thought.id ? null : thought.id))
+                }
+                onProcessNow={() => processNow(thought)}
+                onDelete={() => deleteThought(thought.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ---- Right: input sidebar ------------------------------------------- */}
+      <aside className="w-80 shrink-0 border-l border-[var(--border-color)] flex min-h-0 flex-col bg-[var(--bg-sidebar)]">
         <div className="p-4 border-b border-[var(--border-color)]">
           <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
             <Inbox size={15} />
@@ -233,7 +265,6 @@ export default function ThoughtQueueView() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* content */}
           <div>
             <label className="block text-[11px] text-[var(--text-muted)] mb-1">
               Thought / idea
@@ -251,7 +282,6 @@ export default function ThoughtQueueView() {
             />
           </div>
 
-          {/* prompt prefix */}
           <div>
             <label className="block text-[11px] text-[var(--text-muted)] mb-1">
               AI instruction <span className="opacity-60">(optional)</span>
@@ -265,7 +295,6 @@ export default function ThoughtQueueView() {
             />
           </div>
 
-          {/* model */}
           <div>
             <label className="block text-[11px] text-[var(--text-muted)] mb-1">Model</label>
             <input
@@ -276,7 +305,6 @@ export default function ThoughtQueueView() {
             />
           </div>
 
-          {/* schedule toggle */}
           <div>
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
@@ -312,7 +340,6 @@ export default function ThoughtQueueView() {
           </p>
         </div>
 
-        {/* stats */}
         <div className="p-3 border-t border-[var(--border-color)] grid grid-cols-4 gap-1 text-center">
           {[
             { label: "pending", count: pending.length, color: "text-[var(--text-muted)]" },
@@ -326,39 +353,7 @@ export default function ThoughtQueueView() {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* ---- Right: queue list ---------------------------------------------- */}
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
-            <Loader2 size={18} className="animate-spin mr-2" /> Loading…
-          </div>
-        ) : thoughts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--text-muted)]">
-            <Inbox size={40} className="opacity-30" />
-            <p className="text-sm">Your thought queue is empty.</p>
-            <p className="text-xs opacity-60">Add a thought on the left to get started.</p>
-          </div>
-        ) : (
-          <div className="p-4 space-y-3 max-w-3xl mx-auto">
-            {/* Ordered: processing → scheduled → pending → done */}
-            {[...processing, ...scheduled, ...pending, ...done].map((thought) => (
-              <ThoughtCard
-                key={thought.id}
-                thought={thought}
-                modelLabels={modelLabels}
-                expanded={expandedId === thought.id}
-                onToggleExpand={() =>
-                  setExpandedId((prev) => (prev === thought.id ? null : thought.id))
-                }
-                onProcessNow={() => processNow(thought)}
-                onDelete={() => deleteThought(thought.id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      </aside>
     </div>
   );
 }
