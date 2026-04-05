@@ -252,6 +252,7 @@ function SessionSidebar({
 }: SessionSidebarProps) {
   const isSplitPane = useWorkspacePane() !== null;
   const sidebarWidth = useSettingsStore((state) => state.sidebarWidth);
+  const clampedSidebarWidth = clampSessionSidebarWidth(sidebarWidth);
   const messages = useChatStore((state) => state.messages);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectMode, setSelectMode] = useState(false);
@@ -635,8 +636,13 @@ function SessionSidebar({
 
   return (
     <div
-      className="relative z-10 flex shrink-0 flex-col overflow-hidden border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]"
-      style={{ width: `${clampSessionSidebarWidth(sidebarWidth)}px` }}
+      className="relative z-10 flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]"
+      style={{
+        flexBasis: `${clampedSidebarWidth}px`,
+        width: `${clampedSidebarWidth}px`,
+        minWidth: `${clampedSidebarWidth}px`,
+        maxWidth: `${clampedSidebarWidth}px`,
+      }}
     >
       {/* Header */}
       <div className="px-3 py-2.5 border-b border-[var(--border-color)]">
@@ -3100,7 +3106,7 @@ export default function ChatView() {
 
   // ── Main render ──────────────────────────────────────────────────────────
   return (
-    <div ref={chatViewRef} className="flex h-full min-w-0 overflow-hidden">
+    <div ref={chatViewRef} className="flex h-full min-h-0 w-full min-w-0 overflow-hidden">
       <SessionSidebar
         sidebarSessions={sidebarSessions}
         workspaces={workspaces}
@@ -3344,7 +3350,7 @@ export default function ChatView() {
       ) : (
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {/* Slim title bar */}
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
+          <div className="flex min-w-0 items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
             <span className="text-sm font-medium text-[var(--text-primary)] flex-1 truncate flex items-center gap-2">
               {activeSession?.title || "New Chat"}
               {activeSession?.is_incognito && (
@@ -3407,15 +3413,15 @@ export default function ChatView() {
           )}
 
           {/* Messages */}
-          <div className={`min-h-0 flex-1 flex flex-col ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
-            <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 flex flex-col">
+          <div className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
+            <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 flex flex-col">
               <Virtuoso
                 ref={virtuosoRef}
                 data={activeMessages}
                 initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
                 followOutput="smooth"
                 alignToBottom={true}
-                className="px-4 py-4 scroll-smooth"
+                className="min-w-0 px-4 py-4 scroll-smooth"
                 computeItemKey={(_, msg) => msg.id}
                 itemContent={(i, msg) => (
                   <div className="pb-4">
@@ -3529,7 +3535,7 @@ export default function ChatView() {
           )}
 
           {/* Input / composer area */}
-          <div className={`px-4 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center py-4" : "pb-6 pt-2 flex-shrink-0"}`}>
+          <div className={`min-w-0 px-4 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center py-4" : "pb-6 pt-2 flex-shrink-0"}`}>
             <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-4xl"} min-w-0 flex flex-col bg-[var(--bg-elevated)]/80 border border-[var(--border-color)] rounded-2xl p-2.5 shadow-lg backdrop-blur-md`}>
               {activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
                 <div className="px-2 pt-1 pb-2">
@@ -3781,7 +3787,7 @@ export default function ChatView() {
 
             </div>
             </div>
-            <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-4xl"} mt-3`}>
+            <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-4xl"} min-w-0 mt-3`}>
               <WorkspaceMigrationBanner />
             </div>
           </div>
