@@ -305,7 +305,7 @@ export default function PreferencesView() {
       .then((models) => {
         if (requestId !== ollamaModelsRequestRef.current) {return;}
         setOllamaReachable(true);
-        setOllamaModels(models.map((model) => model.name));
+        setOllamaModels(models.filter((m) => !m.name.toLowerCase().includes("embed")).map((model) => model.name));
       })
       .catch(() => {
         if (requestId !== ollamaModelsRequestRef.current) {return;}
@@ -321,7 +321,7 @@ export default function PreferencesView() {
 
   function applyOllamaRuntimeStatus(status: { available: boolean; message: string; models: Array<{ name: string }> }) {
     setOllamaReachable(status.available);
-    setOllamaModels(status.models.map((model) => model.name));
+    setOllamaModels(status.models.filter((m) => !m.name.toLowerCase().includes("embed")).map((model) => model.name));
     setHasLoadedOllamaModels(true);
     setOllamaModelsLoading(false);
     setOllamaTestResult({ success: status.available, msg: status.message });
@@ -928,7 +928,7 @@ export default function PreferencesView() {
                         try {
                           const models = await api.ollama.listModelsFresh(dbSettings.ollama_base_url || undefined);
                           setOllamaReachable(true);
-                          setOllamaModels(models.map((model) => model.name));
+                          setOllamaModels(models.filter((m) => !m.name.toLowerCase().includes("embed")).map((model) => model.name));
                           setHasLoadedOllamaModels(true);
                           setOllamaTestResult({ success: true, msg: `Success! ${models.length} model(s) found.` });
                         } catch (error) {
@@ -1678,9 +1678,9 @@ export default function PreferencesView() {
               </div>
 
               <div className="pt-3 space-y-2">
-                <p className="text-xs text-[var(--text-secondary)] font-medium">Quick Search Buttons</p>
+                <p className="text-xs text-[var(--text-secondary)] font-medium">Quick Send Models</p>
                 <p className="text-xs text-[var(--text-muted)]">
-                  Pin enabled models as one-tap buttons in the chat composer. They send the current prompt with that model without changing your main dropdown selection.
+                  Pin enabled models as alternate actions in the chat composer send-button dropdown. They send the current prompt with that model without changing your main dropdown selection.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {aiModels.filter((model) => model.enabled).map((model) => {
@@ -1701,7 +1701,7 @@ export default function PreferencesView() {
                   })}
                 </div>
                 {aiModels.filter((model) => model.enabled).length === 0 && (
-                  <p className="text-[10px] text-[var(--text-muted)]">Enable models in the AI tab first to use them as quick search buttons.</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">Enable models in the AI tab first to add them to the send-button dropdown.</p>
                 )}
               </div>
             </>

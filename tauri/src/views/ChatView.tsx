@@ -1,9 +1,7 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
+import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
@@ -1276,20 +1274,10 @@ function StreamingBubble({
   activeChatId,
   chatMessageStyle,
   expandChatToWindowWidth,
-  dualModelEnabled,
-  draftModel,
-  isRefiningPhase,
-  modelDisplayName,
-  selectedModel
 }: {
   activeChatId: string | null;
   chatMessageStyle: string;
   expandChatToWindowWidth: boolean;
-  dualModelEnabled: boolean;
-  draftModel: string | null;
-  isRefiningPhase: boolean;
-  modelDisplayName: (id: string) => string;
-  selectedModel: string;
 }) {
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
   const streamingContent = useChatStore((s) => s.streamingContent);
@@ -1299,55 +1287,12 @@ function StreamingBubble({
 
   return (
     <div className="flex flex-col gap-1 items-start">
-      <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${
+      <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} overflow-hidden break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${
         chatMessageStyle === "flat"
           ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]"
           : ""
       }`}>
-        {dualModelEnabled && draftModel && !isRefiningPhase && (
-          <div className="flex items-center gap-1 mb-1 text-[10px] text-amber-400">
-            <Zap size={9} /> Drafting with {modelDisplayName(draftModel)}…
-          </div>
-        )}
-        {isRefiningPhase && (
-          <div className="flex items-center gap-1 mb-1 text-[10px] text-[var(--accent-color)]">
-            <Zap size={9} /> Refining with {modelDisplayName(selectedModel)}…
-          </div>
-        )}
         <p className="whitespace-pre-wrap">{streamingContent}</p>
-        <span className="streaming-cursor" />
-      </div>
-    </div>
-  );
-}
-
-function RefineBubble({
-  isRefiningPhase,
-  chatMessageStyle,
-  expandChatToWindowWidth,
-  modelDisplayName,
-  selectedModel
-}: {
-  isRefiningPhase: boolean;
-  chatMessageStyle: string;
-  expandChatToWindowWidth: boolean;
-  modelDisplayName: (id: string) => string;
-  selectedModel: string;
-}) {
-  const refineContent = useChatStore((s) => s.refineContent);
-  const isCurrentlyRefining = useChatStore((s) => s.refineContent.length > 0) && isRefiningPhase;
-
-  if (!isCurrentlyRefining) { return null; }
-
-  return (
-    <div className="flex flex-col gap-1 items-start">
-      <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant border border-[var(--accent-color)]/20 ${
-        chatMessageStyle === "flat" ? "bg-[var(--bg-elevated)]" : "bg-[var(--bg-primary)]"
-      }`}>
-        <div className="flex items-center gap-1 mb-1 text-[10px] text-[var(--accent-color)]">
-          <Zap size={9} /> Refining with {modelDisplayName(selectedModel)}…
-        </div>
-        <p className="whitespace-pre-wrap">{refineContent}</p>
         <span className="streaming-cursor" />
       </div>
     </div>
@@ -1367,9 +1312,7 @@ export default function ChatView() {
   const appendStreamChunk = useChatStore((s) => s.appendStreamChunk);
   const finalizeStream = useChatStore((s) => s.finalizeStream);
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
-  const setStreamingSession = useChatStore((s) => s.setStreamingSession);
   const updateMessage = useChatStore((s) => s.updateMessage);
-  const appendRefineChunkGlobal = useChatStore((s) => s.appendRefineChunk);
   const { activeChatId, setActiveChatId } = useScopedChat();
 
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
@@ -1392,11 +1335,6 @@ export default function ChatView() {
   const preferredModel = useSettingsStore((s) => s.preferredModel);
   const setPreferredModel = useSettingsStore((s) => s.setPreferredModel);
   const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
-  const dualModelEnabled = useSettingsStore((s) => s.dualModelEnabled);
-  const draftModel = useSettingsStore((s) => s.draftModel);
-  const dualModelExecutionMode = useSettingsStore((s) => s.dualModelExecutionMode);
-  const setDualModelEnabled = useSettingsStore((s) => s.setDualModelEnabled);
-  const setDraftModel = useSettingsStore((s) => s.setDraftModel);
   const savedCompareA = useSettingsStore((s) => s.compareModelA);
   const savedCompareB = useSettingsStore((s) => s.compareModelB);
   const saveCompareA = useSettingsStore((s) => s.setCompareModelA);
@@ -1411,8 +1349,11 @@ export default function ChatView() {
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
   const topSelectClassName = "h-8 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-8 text-xs font-medium text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
-  const composerToggleBaseClass = "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium shadow-sm transition-colors";
-  const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]";
+  const composerSelectClassName = "h-9 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 pl-3.5 pr-9 text-xs font-semibold text-[var(--text-primary)] shadow-sm outline-none transition-all hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] focus:border-[var(--accent-color)]";
+  const composerToggleBaseClass = "inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold shadow-sm transition-all";
+  const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-primary)]/75 text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]";
+  const composerToggleActiveClass = "border-[rgba(var(--accent-color-rgb),0.28)] bg-[rgba(var(--accent-color-rgb),0.11)] text-[var(--accent-color)]";
+  const composerUtilitySelectClassName = "h-9 appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 pl-3.5 pr-9 text-xs font-semibold text-[var(--text-secondary)] shadow-sm outline-none transition-all hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)] focus:border-[var(--accent-color)]";
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -1421,6 +1362,7 @@ export default function ChatView() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [ollamaModelStatus, setOllamaModelStatus] = useState<"idle" | "available" | "empty" | "unreachable">("idle");
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
+  const [isModelSendMenuOpen, setIsModelSendMenuOpen] = useState(false);
   type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
   const [activeContextSources, setActiveContextSources] = useState<Record<string, ContextSources>>({});
   const [loadedSessionScopeKey, setLoadedSessionScopeKey] = useState<string | null>(null);
@@ -1850,10 +1792,6 @@ export default function ChatView() {
     api.settings.get().then((s) => setPreserveWebSession(s.web_session_preserve)).catch(() => {});
   }, []);
 
-  // Dual-model (draft + refine) state
-  const [isRefiningPhase, setIsRefiningPhase] = useState(false);
-  const [draftSnapshot, setDraftSnapshot] = useState("");
-  const refineContentRef = useRef("");
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const prevScrollChatIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1864,27 +1802,19 @@ export default function ChatView() {
     () => (activeChatId ? (messages[activeChatId] ?? []) : []),
     [activeChatId, messages]
   );
+  const pinnedQuickSendModels = useMemo(
+    () => quickSearchModels.filter((modelId) =>
+      modelId !== selectedModel && aiModelList.some((model) => model.model_id === modelId && model.enabled)
+    ),
+    [aiModelList, quickSearchModels, selectedModel]
+  );
   const hasLoadedActiveMessages = activeChatId
     ? Object.prototype.hasOwnProperty.call(messages, activeChatId)
     : false;
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
-  const isCurrentlyRefining = useChatStore((s) => s.refineContent.length > 0) && isRefiningPhase;
   const activeSession = activeChatId ? sessions.find((s) => s.id === activeChatId) ?? null : null;
   const activeSessionWorkspaceId = activeSession?.workspace_id ?? effectiveWorkspaceId;
-
-  function resetDualStreamingState() {
-    setIsRefiningPhase(false);
-    setDraftSnapshot("");
-    refineContentRef.current = "";
-  }
-
-  function appendRefineChunk(chunk: string) {
-    refineContentRef.current += chunk;
-    if (activeChatId) {
-      appendRefineChunkGlobal(activeChatId, chunk);
-    }
-  }
 
   // Web AI provider detection
   const selectedModelMeta = aiModelList.find((m) => m.model_id === selectedModel);
@@ -1912,6 +1842,29 @@ export default function ChatView() {
       }, 0);
     }
   }, [pendingPromptText, input, setPendingPromptText]);
+
+  useEffect(() => {
+    if (!isModelSendMenuOpen) {return;}
+
+    function handleClick(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-send-model-menu]")) {return;}
+      setIsModelSendMenuOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsModelSendMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isModelSendMenuOpen]);
 
   useEffect(() => {
     if (!effectiveWorkspaceId) {
@@ -2168,7 +2121,9 @@ export default function ChatView() {
     ]).then(([aiModelsResult, ollamaModelsResult]) => {
       const aiModels = aiModelsResult.status === "fulfilled" ? aiModelsResult.value : [];
       const installedOllamaModels = ollamaModelsResult.status === "fulfilled"
-        ? ollamaModelsResult.value.map((model) => model.name)
+        ? ollamaModelsResult.value
+            .filter((model) => !model.name.toLowerCase().includes("embed"))
+            .map((model) => model.name)
         : [];
 
       if (ollamaModelsResult.status === "fulfilled") {
@@ -2544,65 +2499,6 @@ export default function ChatView() {
         const errMsg = err instanceof Error ? err.message : String(err);
         appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
         finalizeStream(sid, modelId);
-      }
-    } else if (dualModelEnabled && draftModel && draftModel !== modelId) {
-      resetDualStreamingState();
-      try {
-        clearActiveStreamListeners();
-        let draftUnlisten: (() => void) | null = null;
-        draftUnlisten = await api.listenStream(sid!, (chunk, done) => {
-          if (done) {
-            const draftText = useChatStore.getState().streamingContent;
-            setDraftSnapshot(draftText);
-            setStreamingSession(null);
-            if (dualModelExecutionMode === "serial") {
-              setIsRefiningPhase(true);
-            }
-            clearStreamListener();
-          } else {
-            appendStreamChunk(sid!, chunk);
-          }
-        });
-        streamUnlistenRef.current = draftUnlisten;
-
-        let refineUnlisten: (() => void) | null = null;
-        refineUnlisten = await api.listenRefineStream(sid!, (chunk, done, tokensUsed, durationMs) => {
-          if (done) {
-            const refineText = refineContentRef.current;
-            appendMessage(sid!, {
-              id: window.crypto.randomUUID(),
-              session_id: sid!,
-              role: "assistant",
-              content: refineText,
-              model_name: modelId,
-              tokens_used: tokensUsed,
-              duration_ms: durationMs,
-              created_at: new Date().toISOString(),
-            });
-            resetDualStreamingState();
-            setIsStreaming(false);
-            clearRefineListener();
-            api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", refineText, modelId, tokensUsed, durationMs)
-              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
-              .catch(() => {});
-            if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(modelId, "ollama", tokensUsed).catch(() => {});
-            }
-          } else {
-            setIsRefiningPhase(true);
-            appendRefineChunk(chunk);
-          }
-        });
-        refineUnlistenRef.current = refineUnlisten;
-
-        await api.ollama.sendDualModelMessage(sid!, draftModel, modelId, history, dualModelExecutionMode, ollamaUrl);
-      } catch (err) {
-        clearActiveStreamListeners();
-        setIsStreaming(false);
-        resetDualStreamingState();
-        const errMsg = err instanceof Error ? err.message : String(err);
-        appendStreamChunk(sid!, `\n\n⚠️ Error: ${errMsg}`);
-        finalizeStream(sid!, modelId);
       }
     } else {
       try {
@@ -3031,14 +2927,15 @@ export default function ChatView() {
   useEffect(() => {
     if (activeSubView !== "compare") {return;}
     api.ollama.listModels(ollamaUrl || undefined).then((list) => {
-      setCompareModels(list);
-      if (list.length > 0) {
-        setCompareModelA((current) => current || list[0].name);
+      const filtered = list.filter((m) => !m.name.toLowerCase().includes("embed"));
+      setCompareModels(filtered);
+      if (filtered.length > 0) {
+        setCompareModelA((current) => current || filtered[0].name);
       }
-      if (list.length > 1) {
-        setCompareModelB((current) => current || list[1].name);
-      } else if (list.length === 1) {
-        setCompareModelB((current) => current || list[0].name);
+      if (filtered.length > 1) {
+        setCompareModelB((current) => current || filtered[1].name);
+      } else if (filtered.length === 1) {
+        setCompareModelB((current) => current || filtered[0].name);
       }
     }).catch(() => {});
   }, [activeSubView, ollamaUrl]);
@@ -3111,6 +3008,10 @@ export default function ChatView() {
   const canRefreshActiveSessionTitle = activeSession
     ? canRefreshSessionTitle(activeSession, messages)
     : false;
+  const isComparePanelOpen = activeSubView === "compare";
+  const chatWorkspaceClassName = isComparePanelOpen
+    ? "grid flex-1 min-w-0 min-h-0 overflow-hidden grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]"
+    : "flex flex-1 min-w-0 min-h-0 overflow-hidden";
 
   // ── Main render ──────────────────────────────────────────────────────────
   return (
@@ -3166,654 +3067,607 @@ export default function ChatView() {
         <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--border-color)] transition-colors group-hover:bg-[var(--accent-color)]" />
       </div>
 
-      {/* Main content area */}
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0">
-
-        {activeSubView === "compare" ? (
-          <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0">
-            <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)] flex-shrink-0">
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-[var(--text-primary)]">Compare Models</div>
-                <div className="text-xs text-[var(--text-muted)]">Opened from the composer compare button.</div>
-              </div>
+      <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
+        <div className={chatWorkspaceClassName}>
+          {/* Main content area */}
+          <div className="min-w-0 flex flex-col overflow-hidden min-h-0">
+          {!activeChatId ? (
+          <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center">
+            <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
+            <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
+            <div className="flex flex-wrap justify-center gap-2">
               <button
-                onClick={() => setActiveSubView("chat")}
-                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)] transition-colors"
+                onClick={() => createNewSession({
+                  isIncognito: emptyStatePrivacyMode === "incognito",
+                  excludeFromAnalytics: emptyStatePrivacyMode === "exclude",
+                })}
+                className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
               >
-                <ArrowLeft size={14} />
-                Back to chat
+                Start a new chat
               </button>
             </div>
+            <div className="w-full max-w-xs rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3 text-left">
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                  <input
+                    type="radio"
+                    name="empty-state-privacy"
+                    checked={emptyStatePrivacyMode === "incognito"}
+                    onChange={() => setEmptyStatePrivacyMode("incognito")}
+                    className="accent-[var(--accent-color)]"
+                  />
+                  <Ghost size={14} className="text-purple-400" />
+                  Incognito
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                  <input
+                    type="radio"
+                    name="empty-state-privacy"
+                    checked={emptyStatePrivacyMode === "exclude"}
+                    onChange={() => setEmptyStatePrivacyMode("exclude")}
+                    className="accent-[var(--accent-color)]"
+                  />
+                  <Shield size={14} className="text-sky-400" />
+                  Exclude from analytics
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                  <input
+                    type="radio"
+                    name="empty-state-privacy"
+                    checked={emptyStatePrivacyMode === "standard"}
+                    onChange={() => setEmptyStatePrivacyMode("standard")}
+                    className="accent-[var(--accent-color)]"
+                  />
+                  <MessageSquare size={14} className="text-[var(--text-muted)]" />
+                  Standard
+                </label>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+            {/* Slim title bar */}
+            <div className="flex min-w-0 items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
+              <span className="text-sm font-medium text-[var(--text-primary)] flex-1 truncate flex items-center gap-2">
+                {activeSession?.title || "New Chat"}
+                {activeSession?.is_incognito && (
+                  <span title="Incognito thread"><Ghost size={14} className="text-purple-400" /></span>
+                )}
+                {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
+                  <span title="Excluded from analytics"><Shield size={14} className="text-sky-400" /></span>
+                )}
+              </span>
+              {activeSession && (
+                <button
+                  onClick={() => { if (canRefreshActiveSessionTitle) {refreshSessionTitle(activeSession);} }}
+                  disabled={!canRefreshActiveSessionTitle}
+                  className={`p-1.5 rounded-lg text-[var(--text-muted)] transition-colors ${
+                    canRefreshActiveSessionTitle
+                      ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
+                      : "cursor-not-allowed opacity-40"
+                  }`}
+                  title={canRefreshActiveSessionTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"}
+                >
+                  <RefreshCw size={14} />
+                </button>
+              )}
+              {availableModels.length === 0 && ollamaModelStatus === "unreachable" && (
+                <span className="text-xs text-red-400">Ollama unavailable</span>
+              )}
+              {availableModels.length === 0 && ollamaModelStatus !== "unreachable" && (
+                <span className="text-xs text-amber-400">No Ollama models installed</span>
+              )}
+            </div>
 
-            {/* Model selectors header */}
-            <div className="flex items-stretch border-b border-[var(--border-color)] flex-shrink-0 bg-[var(--bg-elevated)]">
-            <div className="flex-1 px-4 py-3 flex flex-col gap-1 border-r border-[var(--border-color)]">
-              <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Model A</label>
-              {compareModels.length === 0 ? (
-                <input
-                  value={compareModelA}
-                  onChange={(e) => {
-                    setCompareModelA(e.target.value);
-                    saveCompareA(e.target.value);
-                    persistSetting("compare_model_a", e.target.value);
-                  }}
-                  placeholder="e.g. llama3"
+            {activeSession?.is_incognito && (
+              <div className="mx-4 mt-2 px-3 py-2 rounded bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-300 flex items-start gap-2">
+                <Ghost size={12} className="mt-0.5 flex-shrink-0" />
+                <span>This incognito chat is excluded from analytics, memory, and topic discovery. Leaving this chat deletes it.</span>
+              </div>
+            )}
 
-                  className="text-sm bg-transparent border-b border-[var(--border-color)] text-[var(--text-primary)] outline-none py-0.5 w-full placeholder:text-[var(--text-muted)]"
+            {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
+              <div className="mx-4 mt-2 px-3 py-2 rounded bg-sky-500/10 border border-sky-500/20 text-[11px] text-sky-300 flex items-start gap-2">
+                <Shield size={12} className="mt-0.5 flex-shrink-0" />
+                <span>This chat stays saved, but it is excluded from analytics, memory extraction, and topic discovery.</span>
+              </div>
+            )}
+
+            {/* Web AI provider notice */}
+            {isWebProvider && webProviderKey && (
+              <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-400 flex items-center gap-1.5">
+                <Globe size={12} />
+                A browser window will open — log in to {webProviderLabel[webProviderKey] ?? webProviderKey} and your query will be submitted automatically.
+                {!preserveWebSession && (
+                  <span className="ml-auto text-[10px] opacity-60">Session cleared after query</span>
+                )}
+              </div>
+            )}
+
+            {/* Grounded mode warning if no processed docs */}
+            {groundedEnabled && processedDocCount === 0 && effectiveProjectId && (
+              <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-500 flex items-center gap-1.5">
+                <FileText size={12} />
+                No processed documents. Upload and process docs in the Document Browser.
+              </div>
+            )}
+
+            {/* Messages */}
+            <div className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
+              <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
+                <Virtuoso
+                  ref={virtuosoRef}
+                  data={activeMessages}
+                  initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
+                  followOutput="smooth"
+                  alignToBottom={true}
+                  className="w-full min-w-0 overflow-x-hidden px-4 py-4 scroll-smooth"
+                  computeItemKey={(_, msg) => msg.id}
+                  itemContent={(i, msg) => (
+                    <div className="pb-4">
+                      <ChatMessageBubble
+                        key={msg.id}
+                        msg={msg}
+                        isLastMessage={i === activeMessages.length - 1}
+                        isStreaming={isStreaming}
+                        chatMessageStyle={chatMessageStyle}
+                        expandChatToWindowWidth={expandChatToWindowWidth}
+                        showGenInfo={showGenInfo}
+                        editingMessageId={editingMessageId}
+                        editContent={editContent}
+                        copiedMessageId={copiedMessageId}
+                        expandedThoughtIds={expandedThoughtIds}
+                        messageSources={messageSources}
+                        expandedSources={expandedSources}
+                        contextSources={i === activeMessages.length - 1 && currentSessionId ? activeContextSources[currentSessionId] ?? null : null}
+                        markdownComponents={markdownComponents}
+                        onCopy={handleCopyMessage}
+                        onStartEdit={handleStartEditing}
+                        onSubmitEdit={submitEdit}
+                        onSetEditContent={setEditContent}
+                        onCancelEdit={handleCancelEdit}
+                        onRedo={redoMessage}
+                        onToggleThought={handleToggleThought}
+                        onToggleSources={handleToggleSources}
+                      />
+                    </div>
+                  )}
                 />
-              ) : (
-                <div className="relative">
-                  <select
+              </div>
+
+              {/* Thinking indicator — spinner shown before the first token arrives */}
+              {isStreaming && !isCurrentlyStreaming && (
+                <div className="flex flex-col gap-1 items-start">
+                  <div className="flex items-center gap-2.5 max-w-[75%] overflow-hidden rounded-2xl px-4 py-3 text-sm message-assistant">
+                    <span className="flex gap-1 items-center">
+                      <span
+                        className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
+                        style={{ animation: "thinking-dot 1.2s ease-in-out infinite" }}
+                      />
+                      <span
+                        className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
+                        style={{ animation: "thinking-dot 1.2s ease-in-out 0.2s infinite" }}
+                      />
+                      <span
+                        className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
+                        style={{ animation: "thinking-dot 1.2s ease-in-out 0.4s infinite" }}
+                      />
+                    </span>
+                  </div>
+                </div>
+              )}
+              {/* Normal Streaming bubble */}
+              <StreamingBubble
+                activeChatId={activeChatId}
+                chatMessageStyle={chatMessageStyle}
+                expandChatToWindowWidth={expandChatToWindowWidth}
+              />
+            </div>
+
+            {toolbarState && (
+              <SelectionToolbar
+                x={toolbarState.x}
+                y={toolbarState.y}
+                text={toolbarState.text}
+                onDismiss={dismissToolbar}
+                innerRef={toolbarRef}
+              />
+            )}
+
+            {/* Input / composer area */}
+            <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-5"}`}>
+              <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[var(--border-color)] bg-[var(--bg-elevated)]/90 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur-xl`}>
+                <div className="flex flex-col gap-3.5">
+                  {activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
+                    <div className="px-1 pt-1">
+                      <TopicChips
+                        tags={activeTopicSignature.domain_tags}
+                        onChipClick={(tag) => setInput(prev => `[${tag}] ${prev}`)}
+                      />
+                    </div>
+                  )}
+
+                  <ComposerSuggestionRows
+                    rows={composerSuggestionRows}
+                    disabled={isStreaming}
+                    disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
+                    onSuggestionClick={handleComposerSuggestion}
+                  />
+
+                  <div className="rounded-[24px] border border-[var(--border-color)] bg-[var(--bg-primary)]/80 p-2.5 shadow-[0_18px_45px_-35px_rgba(15,23,42,0.5)] transition-all focus-within:border-[var(--accent-color)] focus-within:shadow-[0_0_0_4px_rgba(var(--accent-color-rgb),0.11),0_18px_45px_-35px_rgba(15,23,42,0.5)]">
+                    {/* Textarea + send button */}
+                    <div className="flex items-end gap-2">
+                      <textarea
+                        ref={inputRef}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        disabled={isStreaming}
+                        placeholder={
+                          isStreaming
+                            ? "Waiting for response…"
+                            : !selectedModel
+                              ? ollamaModelStatus === "unreachable"
+                                ? "Ollama is unavailable — start it or enable auto-start in Preferences > AI"
+                                : "No models available — install one via ollama pull"
+                              : activeMessages.length > 0
+                                ? "Message this thread…"
+                                : "Start a new thread…"
+                        }
+                        rows={1}
+                        className="flex-1 resize-none bg-transparent px-3.5 py-3 text-[15px] leading-6 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors max-h-40 overflow-y-auto"
+                        style={{ minHeight: 56 }}
+                        onInput={(e) => {
+                          const el = e.currentTarget;
+                          el.style.height = "auto";
+                          el.style.height = Math.min(el.scrollHeight, 160) + "px";
+                        }}
+                      />
+                      {isStreaming ? (
+                        <button
+                          onClick={() => {
+                            if (activeChatId) {
+                              api.ollama.stopStream(activeChatId).catch(() => {});
+                              api.llamacpp.stopStream(activeChatId).catch(() => {});
+                              api.webAI.stopStream(activeChatId).catch(() => {});
+                            }
+                          }}
+                          className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-red-500 text-white shadow-sm transition-opacity hover:opacity-90"
+                          title="Stop generation"
+                        >
+                          <X size={16} />
+                        </button>
+                      ) : (
+                        <div className="mb-1 mr-0.5 flex items-center gap-1.5">
+                          <div className="relative flex flex-shrink-0 items-center" data-send-model-menu>
+                            <button
+                              onClick={async () => {
+                                setIsModelSendMenuOpen(false);
+                                await sendMessage();
+                              }}
+                              disabled={!input.trim() || !selectedModel}
+                              className={`flex h-10 items-center justify-center bg-[var(--accent-color)] text-white shadow-sm transition-all hover:-translate-y-px hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${
+                                pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
+                              }`}
+                              title={selectedModel ? `Send with ${modelDisplayName(selectedModel)}` : "Send"}
+                            >
+                              <ArrowUpCircle size={18} />
+                            </button>
+                            {pinnedQuickSendModels.length > 0 && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsModelSendMenuOpen((open) => !open)}
+                                  disabled={!input.trim() || isStreaming}
+                                  className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border-l border-white/20 bg-[var(--accent-color)] text-white shadow-sm transition-all hover:-translate-y-px hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                  title="Send with another pinned model"
+                                  aria-label="Send with another pinned model"
+                                  aria-haspopup="menu"
+                                  aria-expanded={isModelSendMenuOpen}
+                                >
+                                  <ChevronDown size={14} />
+                                </button>
+                                {isModelSendMenuOpen && (
+                                  <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                                    <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                                      Send With
+                                    </div>
+                                    {pinnedQuickSendModels.map((modelId) => (
+                                      <button
+                                        key={modelId}
+                                        type="button"
+                                        onClick={async () => {
+                                          setIsModelSendMenuOpen(false);
+                                          await sendMessageWithModel(modelId);
+                                        }}
+                                        disabled={!input.trim() || isStreaming}
+                                        title={`Send with ${modelDisplayName(modelId)}`}
+                                        className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                                      >
+                                        <span className="truncate">{modelDisplayName(modelId)}</span>
+                                        <Globe size={14} className="shrink-0 text-[var(--text-muted)]" />
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <button
+                            onClick={async () => {
+                              if (!input.trim() || !effectiveWorkspaceId || !selectedModel) {return;}
+                              let sid = activeChatId;
+                              if (!sid) {
+                                const session = await api.chat.createSession(effectiveWorkspaceId, effectiveProjectId, { modelName: selectedModel });
+                                useChatStore.getState().addSession(session);
+                                sid = session.id;
+                                setActiveChatId(session.id);
+                                api.chat.touchSessionAccessed(session.id).catch(() => {});
+                                setMessages(session.id, []);
+                              }
+                              await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
+                                modelName: selectedModel,
+                                sessionId: sid,
+                                processAt: new Date(Date.now() + 60_000).toISOString(),
+                              });
+                              setInput("");
+                            }}
+                            disabled={!input.trim() || !selectedModel}
+                            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/75 text-[var(--text-muted)] shadow-sm transition-all hover:-translate-y-px hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                            title="Schedule for background processing"
+                          >
+                            <Clock size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Composer tool row ─────────────────────────────────────── */}
+                  <div className="flex items-center gap-2 border-t border-[var(--border-color)] px-1 pt-0.5 flex-wrap">
+                    {/* Model picker */}
+                    <div className="relative max-w-[220px]">
+                      <select
+                        value={selectedModel}
+                        onChange={(e) => {
+                          setSelectedModel(e.target.value);
+                          persistModelChoice(e.target.value);
+                        }}
+                        className={`${composerSelectClassName} max-w-[220px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
+                        title="Active model"
+                      >
+                        {availableModels.length > 0
+                          ? availableModels.map((m) => <option key={m} value={m}>{modelDisplayName(m)}</option>)
+                          : <option value={selectedModel}>{modelDisplayName(selectedModel)}</option>
+                        }
+                      </select>
+                      <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                    </div>
+
+                    {/* Try better model */}
+                    {nextModel && !isStreaming && activeMessages.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setSelectedModel(nextModel.model_id);
+                          persistModelChoice(nextModel.model_id);
+                          if (lastUserMessage) {setInput(lastUserMessage);}
+                        }}
+                        title={`Try ${modelDisplayName(nextModel.model_id)}`}
+                        className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
+                      >
+                        <ArrowUpCircle size={13} />
+                        <span>Try better</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setActiveSubView(isComparePanelOpen ? "chat" : "compare")}
+                      title={isComparePanelOpen ? "Close model comparison" : "Compare two models side by side"}
+                      className={`${composerToggleBaseClass} ${
+                        isComparePanelOpen ? composerToggleActiveClass : composerToggleInactiveClass
+                      }`}
+                    >
+                      <SplitSquareHorizontal size={13} />
+                      <span>Compare</span>
+                    </button>
+
+                    {/* Grounded (RAG) toggle */}
+                    <button
+                      onClick={() => setGroundedEnabled((v) => !v)}
+                      title={groundedEnabled ? `Grounded ON (${processedDocCount} docs)` : "Grounded mode — use your documents as context (RAG)"}
+                      className={`relative ${composerToggleBaseClass} ${
+                        groundedEnabled
+                          ? composerToggleActiveClass
+                          : composerToggleInactiveClass
+                      }`}
+                    >
+                      <BookOpen size={13} />
+                      <span>Docs</span>
+                      {groundedEnabled && processedDocCount > 0 && (
+                        <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                          {processedDocCount > 9 ? "9+" : processedDocCount}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Top-K picker (only when grounded is on) */}
+                    {groundedEnabled && (
+                      <div className="relative">
+                        <select
+                          value={groundedTopK}
+                          onChange={(e) => setGroundedTopK(Number(e.target.value))}
+                          className={composerUtilitySelectClassName}
+                          title="Document chunks to retrieve"
+                        >
+                          {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
+                        </select>
+                        <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                      </div>
+                    )}
+
+                    {/* Thought queue toggle */}
+                    <button
+                      onClick={() => setThoughtPanelOpen((v) => !v)}
+                      title="Thought Queue — schedule follow-up questions to process in background"
+                      className={`relative ${composerToggleBaseClass} ${
+                        thoughtPanelOpen
+                          ? composerToggleActiveClass
+                          : composerToggleInactiveClass
+                      }`}
+                    >
+                      <Inbox size={13} />
+                      <span>Queue</span>
+                      {(() => {
+                        const pending = thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length;
+                        return pending > 0 ? (
+                          <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                            {pending > 9 ? "9+" : pending}
+                          </span>
+                        ) : null;
+                      })()}
+                    </button>
+
+                    {sessionTokensUsed > 0 && (
+                      <div className="ml-auto flex h-9 items-center gap-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 px-3 text-[11px] text-[var(--text-secondary)] shadow-sm">
+                        <span className="text-[var(--text-muted)]">Tokens</span>
+                        <span className="font-mono text-[var(--text-primary)]">
+                          {sessionTokensUsed >= 1000 ? `${(sessionTokensUsed / 1000).toFixed(1)}k` : sessionTokensUsed}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 mt-3`}>
+                <WorkspaceMigrationBanner />
+              </div>
+            </div>
+          </div>
+        )}
+          </div>
+
+          {isComparePanelOpen && (
+            <div className="col-span-2 grid min-h-0 min-w-0 grid-cols-2 grid-rows-[auto_1fr_auto_auto] overflow-hidden border-l border-[var(--border-color)] bg-[var(--bg-primary)]">
+              <div className="flex min-w-0 flex-col gap-1 border-b border-r border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Model A</label>
+                </div>
+                {compareModels.length === 0 ? (
+                  <input
                     value={compareModelA}
                     onChange={(e) => {
                       setCompareModelA(e.target.value);
                       saveCompareA(e.target.value);
                       persistSetting("compare_model_a", e.target.value);
                     }}
-                    className={topSelectClassName}
-                  >
-                    {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
-                  </select>
-                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                </div>
+                    placeholder="e.g. llama3"
+                    className="w-full border-b border-[var(--border-color)] bg-transparent py-0.5 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+                  />
+                ) : (
+                  <div className="relative">
+                    <select
+                      value={compareModelA}
+                      onChange={(e) => {
+                        setCompareModelA(e.target.value);
+                        saveCompareA(e.target.value);
+                        persistSetting("compare_model_a", e.target.value);
+                      }}
+                      className={topSelectClassName}
+                    >
+                      {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                  </div>
+                )}
+              </div>
 
-              )}
-            </div>
-            <div className="flex items-center px-3">
-              <button onClick={() => api.ollama.listModelsFresh(ollamaUrl || undefined).then(setCompareModels).catch(() => {})} title="Refresh models" className="p-1.5 rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors">
-                <RefreshCw size={14} />
-              </button>
-            </div>
-            <div className="flex-1 px-4 py-3 flex flex-col gap-1 border-l border-[var(--border-color)]">
-              <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Model B</label>
-              {compareModels.length === 0 ? (
-                <input
-                  value={compareModelB}
-                  onChange={(e) => {
-                    setCompareModelB(e.target.value);
-                    saveCompareB(e.target.value);
-                    persistSetting("compare_model_b", e.target.value);
-                  }}
-                  placeholder="e.g. llama3:8b"
-                  className="text-sm bg-transparent border-b border-[var(--border-color)] text-[var(--text-primary)] outline-none py-0.5 w-full placeholder:text-[var(--text-muted)]"
-                />
-              ) : (
-                <div className="relative">
-                  <select
+              <div className="flex min-w-0 flex-col gap-1 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Model B</label>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => api.ollama.listModelsFresh(ollamaUrl || undefined).then((list) => {
+                        const filtered = list.filter((m) => !m.name.toLowerCase().includes("embed"));
+                        setCompareModels(filtered);
+                      }).catch(() => {})}
+                      title="Refresh models"
+                      className="rounded-lg p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)]"
+                    >
+                      <RefreshCw size={14} />
+                    </button>
+                  </div>
+                </div>
+                {compareModels.length === 0 ? (
+                  <input
                     value={compareModelB}
                     onChange={(e) => {
                       setCompareModelB(e.target.value);
                       saveCompareB(e.target.value);
                       persistSetting("compare_model_b", e.target.value);
                     }}
-                    className={topSelectClassName}
-                  >
-                    {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
-                  </select>
-                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                </div>
-
-              )}
-            </div>
-          </div>
-
-          {/* Side-by-side responses */}
-          <div className="flex flex-1 min-w-0 overflow-hidden divide-x divide-[var(--border-color)]">
-            {[{ label: "Model A", model: compareModelA, text: compareResponseA }, { label: "Model B", model: compareModelB, text: compareResponseB }].map((panel) => (
-              <div key={panel.label} className="flex-1 min-w-0 flex flex-col overflow-hidden">
-                <div className="px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] flex-shrink-0">
-                  <span className="text-xs font-medium text-[var(--text-primary)]">{panel.label}</span>
-                  {panel.model && <span className="ml-2 text-xs text-[var(--text-muted)]">{modelDisplayName(panel.model)}</span>}
-                </div>
-
-                <div className="flex-1 overflow-y-auto px-4 py-4">
-                  {compareLoading && !panel.text ? (
-                    <div className="flex items-center gap-2 text-[var(--text-muted)] text-sm"><span className="animate-pulse">●</span> Generating…</div>
-                  ) : panel.text ? (
-                    <pre className="text-sm text-[var(--text-primary)] whitespace-pre-wrap font-[inherit] leading-relaxed">{panel.text}</pre>
-                  ) : (
-                    <p className="text-sm text-[var(--text-muted)] italic">Response will appear here…</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {compareError && (
-            <div className="px-4 py-2 text-xs text-red-400 bg-red-500/10 border-t border-red-500/20 flex-shrink-0">{compareError}</div>
-          )}
-
-          {/* Compare input */}
-          <div className="border-t border-[var(--border-color)] px-4 py-3 flex gap-3 items-end flex-shrink-0">
-            <textarea
-              rows={2}
-              value={comparePrompt}
-              onChange={(e) => setComparePrompt(e.target.value)}
-              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runComparison(); } }}
-              placeholder="Enter prompt to compare… (⌘↵ to send)"
-              className="flex-1 resize-none px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] min-h-[40px] max-h-[120px]"
-            />
-            <button
-              onClick={runComparison}
-              disabled={!comparePrompt.trim() || compareLoading}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-white bg-[var(--accent-color)] hover:opacity-90 disabled:opacity-40 transition-opacity"
-            >
-              <Send size={14} /> {compareLoading ? "Running…" : "Compare"}
-            </button>
-          </div>
-        </div>
-      ) : !activeChatId ? (
-        <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center">
-          <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
-          <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            <button
-              onClick={() => createNewSession({
-                isIncognito: emptyStatePrivacyMode === "incognito",
-                excludeFromAnalytics: emptyStatePrivacyMode === "exclude",
-              })}
-              className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
-            >
-              Start a new chat
-            </button>
-          </div>
-          <div className="w-full max-w-xs rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3 text-left">
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                <input
-                  type="radio"
-                  name="empty-state-privacy"
-                  checked={emptyStatePrivacyMode === "incognito"}
-                  onChange={() => setEmptyStatePrivacyMode("incognito")}
-                  className="accent-[var(--accent-color)]"
-                />
-                <Ghost size={14} className="text-purple-400" />
-                Incognito
-              </label>
-              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                <input
-                  type="radio"
-                  name="empty-state-privacy"
-                  checked={emptyStatePrivacyMode === "exclude"}
-                  onChange={() => setEmptyStatePrivacyMode("exclude")}
-                  className="accent-[var(--accent-color)]"
-                />
-                <Shield size={14} className="text-sky-400" />
-                Exclude from analytics
-              </label>
-              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                <input
-                  type="radio"
-                  name="empty-state-privacy"
-                  checked={emptyStatePrivacyMode === "standard"}
-                  onChange={() => setEmptyStatePrivacyMode("standard")}
-                  className="accent-[var(--accent-color)]"
-                />
-                <MessageSquare size={14} className="text-[var(--text-muted)]" />
-                Standard
-              </label>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-          {/* Slim title bar */}
-          <div className="flex min-w-0 items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
-            <span className="text-sm font-medium text-[var(--text-primary)] flex-1 truncate flex items-center gap-2">
-              {activeSession?.title || "New Chat"}
-              {activeSession?.is_incognito && (
-                <span title="Incognito thread"><Ghost size={14} className="text-purple-400" /></span>
-              )}
-              {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
-                <span title="Excluded from analytics"><Shield size={14} className="text-sky-400" /></span>
-              )}
-            </span>
-            {activeSession && (
-              <button
-                onClick={() => { if (canRefreshActiveSessionTitle) {refreshSessionTitle(activeSession);} }}
-                disabled={!canRefreshActiveSessionTitle}
-                className={`p-1.5 rounded-lg text-[var(--text-muted)] transition-colors ${
-                  canRefreshActiveSessionTitle
-                    ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
-                    : "cursor-not-allowed opacity-40"
-                }`}
-                title={canRefreshActiveSessionTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"}
-              >
-                <RefreshCw size={14} />
-              </button>
-            )}
-            {availableModels.length === 0 && ollamaModelStatus === "unreachable" && (
-              <span className="text-xs text-red-400">Ollama unavailable</span>
-            )}
-            {availableModels.length === 0 && ollamaModelStatus !== "unreachable" && (
-              <span className="text-xs text-amber-400">No Ollama models installed</span>
-            )}
-          </div>
-
-          {activeSession?.is_incognito && (
-            <div className="mx-4 mt-2 px-3 py-2 rounded bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-300 flex items-start gap-2">
-              <Ghost size={12} className="mt-0.5 flex-shrink-0" />
-              <span>This incognito chat is excluded from analytics, memory, and topic discovery. Leaving this chat deletes it.</span>
-            </div>
-          )}
-
-          {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
-            <div className="mx-4 mt-2 px-3 py-2 rounded bg-sky-500/10 border border-sky-500/20 text-[11px] text-sky-300 flex items-start gap-2">
-              <Shield size={12} className="mt-0.5 flex-shrink-0" />
-              <span>This chat stays saved, but it is excluded from analytics, memory extraction, and topic discovery.</span>
-            </div>
-          )}
-
-          {/* Web AI provider notice */}
-          {isWebProvider && webProviderKey && (
-            <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-400 flex items-center gap-1.5">
-              <Globe size={12} />
-              A browser window will open — log in to {webProviderLabel[webProviderKey] ?? webProviderKey} and your query will be submitted automatically.
-              {!preserveWebSession && (
-                <span className="ml-auto text-[10px] opacity-60">Session cleared after query</span>
-              )}
-            </div>
-          )}
-
-          {/* Grounded mode warning if no processed docs */}
-          {groundedEnabled && processedDocCount === 0 && effectiveProjectId && (
-            <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-500 flex items-center gap-1.5">
-              <FileText size={12} />
-              No processed documents. Upload and process docs in the Document Browser.
-            </div>
-          )}
-
-          {/* Messages */}
-          <div className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
-            <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 flex flex-col">
-              <Virtuoso
-                ref={virtuosoRef}
-                data={activeMessages}
-                initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
-                followOutput="smooth"
-                alignToBottom={true}
-                className="min-w-0 px-4 py-4 scroll-smooth"
-                computeItemKey={(_, msg) => msg.id}
-                itemContent={(i, msg) => (
-                  <div className="pb-4">
-                    <ChatMessageBubble
-                      key={msg.id}
-                      msg={msg}
-                      isLastMessage={i === activeMessages.length - 1}
-                      isStreaming={isStreaming}
-                      chatMessageStyle={chatMessageStyle}
-                      expandChatToWindowWidth={expandChatToWindowWidth}
-                      showGenInfo={showGenInfo}
-                      editingMessageId={editingMessageId}
-                      editContent={editContent}
-                      copiedMessageId={copiedMessageId}
-                      expandedThoughtIds={expandedThoughtIds}
-                      messageSources={messageSources}
-                      expandedSources={expandedSources}
-                      contextSources={i === activeMessages.length - 1 && currentSessionId ? activeContextSources[currentSessionId] ?? null : null}
-                      markdownComponents={markdownComponents}
-                      onCopy={handleCopyMessage}
-                      onStartEdit={handleStartEditing}
-                      onSubmitEdit={submitEdit}
-                      onSetEditContent={setEditContent}
-                      onCancelEdit={handleCancelEdit}
-                      onRedo={redoMessage}
-                      onToggleThought={handleToggleThought}
-                      onToggleSources={handleToggleSources}
-                    />
-                  </div>
-                )}
-              />
-            </div>
-
-            {/* Draft snapshot bubble — shown during refine phase */}
-            {isRefiningPhase && draftSnapshot && (
-              <div className="flex flex-col gap-1 items-start">
-                <div className="max-w-[75%] break-words rounded-2xl px-4 py-2.5 text-sm message-assistant opacity-60 border border-amber-500/20">
-                  <div className="flex items-center gap-1 mb-1 text-[10px] text-amber-400">
-                    <Zap size={9} /> Draft ({draftModel})
-                  </div>
-                  <div className="prose prose-sm prose-invert min-w-0 max-w-none">
-                    <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>{draftSnapshot}</ReactMarkdown>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Refining indicator — between draft done and first refine chunk */}
-            {isRefiningPhase && !isCurrentlyRefining && (
-              <div className="flex items-center gap-2 text-xs text-amber-400 px-1">
-                <Zap size={11} className="animate-pulse" />
-                <span className="animate-pulse">
-                  {dualModelExecutionMode === "parallel" && isCurrentlyStreaming
-                    ? `Refining in parallel with ${modelDisplayName(selectedModel)}…`
-                    : `Refining with ${modelDisplayName(selectedModel)}…`}
-                </span>
-              </div>
-            )}
-
-            {/* Thinking indicator — spinner shown before the first token arrives */}
-            {isStreaming && !isCurrentlyStreaming && !isRefiningPhase && (
-              <div className="flex flex-col gap-1 items-start">
-                <div className="flex items-center gap-2.5 max-w-[75%] rounded-2xl px-4 py-3 text-sm message-assistant">
-                  <span className="flex gap-1 items-center">
-                    <span
-                      className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
-                      style={{ animation: "thinking-dot 1.2s ease-in-out infinite" }}
-                    />
-                    <span
-                      className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
-                      style={{ animation: "thinking-dot 1.2s ease-in-out 0.2s infinite" }}
-                    />
-                    <span
-                      className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
-                      style={{ animation: "thinking-dot 1.2s ease-in-out 0.4s infinite" }}
-                    />
-                  </span>
-                </div>
-              </div>
-            )}
-            {/* Normal Streaming bubble */}
-            <StreamingBubble
-              activeChatId={activeChatId}
-              chatMessageStyle={chatMessageStyle}
-              expandChatToWindowWidth={expandChatToWindowWidth}
-              dualModelEnabled={dualModelEnabled}
-              draftModel={draftModel}
-              isRefiningPhase={isRefiningPhase}
-              modelDisplayName={modelDisplayName}
-              selectedModel={selectedModel}
-            />
-
-            {/* Refining bubble */}
-            <RefineBubble
-              isRefiningPhase={isRefiningPhase}
-              chatMessageStyle={chatMessageStyle}
-              expandChatToWindowWidth={expandChatToWindowWidth}
-              modelDisplayName={modelDisplayName}
-              selectedModel={selectedModel}
-            />
-          </div>
-
-          {toolbarState && (
-            <SelectionToolbar
-              x={toolbarState.x}
-              y={toolbarState.y}
-              text={toolbarState.text}
-              onDismiss={dismissToolbar}
-              innerRef={toolbarRef}
-            />
-          )}
-
-          {/* Input / composer area */}
-          <div className={`min-w-0 px-4 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center py-4" : "pb-6 pt-2 flex-shrink-0"}`}>
-            <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-4xl"} min-w-0 flex flex-col bg-[var(--bg-elevated)]/80 border border-[var(--border-color)] rounded-2xl p-2.5 shadow-lg backdrop-blur-md`}>
-              {activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
-                <div className="px-2 pt-1 pb-2">
-                  <TopicChips
-                    tags={activeTopicSignature.domain_tags}
-                    onChipClick={(tag) => setInput(prev => `[${tag}] ${prev}`)}
+                    placeholder="e.g. llama3:8b"
+                    className="w-full border-b border-[var(--border-color)] bg-transparent py-0.5 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
                   />
-                </div>
-              )}
-
-              <ComposerSuggestionRows
-                rows={composerSuggestionRows}
-                disabled={isStreaming}
-                disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
-                onSuggestionClick={handleComposerSuggestion}
-              />
-
-              {/* Textarea + send button */}              <div className="flex items-end gap-2 px-1">
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  disabled={isStreaming}
-                  placeholder={
-                    isStreaming
-                      ? "Waiting for response…"
-                      : !selectedModel
-                        ? ollamaModelStatus === "unreachable"
-                          ? "Ollama is unavailable — start it or enable auto-start in Preferences > AI"
-                          : "No models available — install one via ollama pull"
-                        : activeMessages.length > 0
-                          ? "Message this thread…"
-                          : "Start a new thread…"
-                  }
-                  rows={1}
-                  className="flex-1 resize-none px-3 py-2 text-sm bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors max-h-40 overflow-y-auto"
-                  style={{ minHeight: 40 }}
-                  onInput={(e) => {
-                    const el = e.currentTarget;
-                    el.style.height = "auto";
-                    el.style.height = Math.min(el.scrollHeight, 160) + "px";
-                  }}
-                />
-                {isStreaming ? (
-                  <button
-                    onClick={() => {
-                      if (activeChatId) {
-                        api.ollama.stopStream(activeChatId).catch(() => {});
-                        api.llamacpp.stopStream(activeChatId).catch(() => {});
-                        api.webAI.stopStream(activeChatId).catch(() => {});
-                      }
-                    }}
-                    className="flex-shrink-0 rounded-full w-8 h-8 flex items-center justify-center bg-red-500 text-white hover:opacity-90 transition-opacity mb-1 mr-1"                    title="Stop generation"
-                  >
-                    <X size={16} />
-                  </button>
                 ) : (
-                  <div className="flex items-center gap-1 mb-1 mr-1">
-                    <button
-                      onClick={sendMessage}
-                      disabled={!input.trim() || !selectedModel}
-                      className="flex-shrink-0 rounded-full w-8 h-8 flex items-center justify-center bg-[var(--accent-color)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
-                    >
-                      <ArrowUpCircle size={18} />
-                    </button>
-                    <button
-                      onClick={async () => {
-                        if (!input.trim() || !effectiveWorkspaceId || !selectedModel) {return;}
-                        let sid = activeChatId;
-                        if (!sid) {
-                          const session = await api.chat.createSession(effectiveWorkspaceId, effectiveProjectId, { modelName: selectedModel });
-                          useChatStore.getState().addSession(session);
-                          sid = session.id;
-                          setActiveChatId(session.id);
-                          api.chat.touchSessionAccessed(session.id).catch(() => {});
-                          setMessages(session.id, []);
-                        }
-                        await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
-                          modelName: selectedModel,
-                          sessionId: sid,
-                          processAt: new Date(Date.now() + 60_000).toISOString(),
-                        });
-                        setInput("");
+                  <div className="relative">
+                    <select
+                      value={compareModelB}
+                      onChange={(e) => {
+                        setCompareModelB(e.target.value);
+                        saveCompareB(e.target.value);
+                        persistSetting("compare_model_b", e.target.value);
                       }}
-                      disabled={!input.trim() || !selectedModel}
-                      className="flex-shrink-0 rounded-full w-8 h-8 flex items-center justify-center border border-[var(--border-color)] text-[var(--text-muted)] disabled:opacity-40 hover:text-[var(--accent-color)] hover:border-[var(--accent-color)] transition-colors"
-                      title="Schedule for background processing"
+                      className={topSelectClassName}
                     >
-                      <Clock size={14} />
-                    </button>
+                      {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                   </div>
                 )}
               </div>
 
-              {/* ── Composer tool row ─────────────────────────────────────── */}
-              <div className="flex items-center gap-1.5 mt-1 px-2 pb-1 flex-wrap">
-              {quickSearchModels
-                .filter((modelId) => aiModelList.some((model) => model.model_id === modelId && model.enabled))
-                .map((modelId) => (
-                  <button
-                    key={modelId}
-                    onClick={() => sendMessageWithModel(modelId)}
-                    disabled={!input.trim() || isStreaming}
-                    title={`Send with ${modelDisplayName(modelId)}`}
-                    className={`${composerToggleBaseClass} ${composerToggleInactiveClass} disabled:opacity-40`}
-                  >
-                    <Globe size={13} />
-                    <span>{modelDisplayName(modelId)}</span>
-                  </button>
-                ))}
-              {/* Model picker */}
-              <div className="relative max-w-[190px]">
-                <select
-                  value={selectedModel}
-                  onChange={(e) => {
-                    setSelectedModel(e.target.value);
-                    persistModelChoice(e.target.value);
-                  }}
-                  className={`${topSelectClassName} max-w-[190px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
-                  title="Active model"
-                >
-                  {availableModels.length > 0
-                    ? availableModels.map((m) => <option key={m} value={m}>{modelDisplayName(m)}</option>)
-                    : <option value={selectedModel}>{modelDisplayName(selectedModel)}</option>
-                  }
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-              </div>
+              {[{ label: "Model A", model: compareModelA, text: compareResponseA, className: "border-r border-[var(--border-color)]" }, { label: "Model B", model: compareModelB, text: compareResponseB, className: "" }].map((panel) => (
+                <div key={panel.label} className={`flex min-w-0 flex-col overflow-hidden ${panel.className}`}>
+                  <div className="border-b border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2">
+                    <span className="text-xs font-medium text-[var(--text-primary)]">{panel.label}</span>
+                    {panel.model && <span className="ml-2 text-xs text-[var(--text-muted)]">{modelDisplayName(panel.model)}</span>}
+                  </div>
+                  <div className="flex-1 overflow-y-auto px-4 py-4">
+                    {compareLoading && !panel.text ? (
+                      <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]"><span className="animate-pulse">●</span> Generating…</div>
+                    ) : panel.text ? (
+                      <pre className="whitespace-pre-wrap text-sm font-[inherit] leading-relaxed text-[var(--text-primary)]">{panel.text}</pre>
+                    ) : (
+                      <p className="text-sm italic text-[var(--text-muted)]">Response will appear here…</p>
+                    )}
+                  </div>
+                </div>
+              ))}
 
-              {/* Try better model */}
-              {nextModel && !isStreaming && activeMessages.length > 0 && (
+              {compareError && (
+                <div className="col-span-2 border-t border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-400">{compareError}</div>
+              )}
+
+              <div className="col-span-2 flex items-end gap-3 border-t border-[var(--border-color)] px-4 py-3">
+                <textarea
+                  rows={2}
+                  value={comparePrompt}
+                  onChange={(e) => setComparePrompt(e.target.value)}
+                  onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runComparison(); } }}
+                  placeholder="Enter prompt to compare… (⌘↵ to send)"
+                  className="min-h-[40px] max-h-[120px] flex-1 resize-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                />
                 <button
-                  onClick={() => {
-                    setSelectedModel(nextModel.model_id);
-                    persistModelChoice(nextModel.model_id);
-                    if (lastUserMessage) {setInput(lastUserMessage);}
-                  }}
-                  title={`Try ${modelDisplayName(nextModel.model_id)}`}
-                  className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
+                  onClick={runComparison}
+                  disabled={!comparePrompt.trim() || compareLoading}
+                  className="flex items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-2 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                 >
-                  <ArrowUpCircle size={13} />
-                  <span>Try better</span>
+                  <Send size={14} /> {compareLoading ? "Running…" : "Compare"}
                 </button>
-              )}
-
-              {/* Dual-model toggle */}
-              <button
-                onClick={() => {
-                  const newValue = !dualModelEnabled;
-                  setDualModelEnabled(newValue);
-                  persistSetting("dual_model_enabled", newValue);
-                }}
-                title={dualModelEnabled ? `Dual model ON — draft: ${draftModel || "(none)"} → refine: ${selectedModel}` : "Dual-model mode (draft + refine)"}
-                className={`${composerToggleBaseClass} ${
-                  dualModelEnabled
-                    ? "border-amber-400/60 bg-amber-500/20 text-amber-200"
-                    : composerToggleInactiveClass
-                }`}
-              >
-                <Zap size={13} />
-                <span>Dual</span>
-              </button>
-
-              <button
-                onClick={() => setActiveSubView("compare")}
-                title="Compare two models side by side"
-                className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
-              >
-                <SplitSquareHorizontal size={13} />
-                <span>Compare</span>
-              </button>
-
-              {/* Draft model picker (only when dual is on) */}
-              {dualModelEnabled && (
-                <div className="relative max-w-[148px]">
-                  <select
-                    value={draftModel}
-                    onChange={(e) => {
-                      setDraftModel(e.target.value);
-                      persistSetting("draft_model", e.target.value);
-                    }}
-                    title="Draft model (small/fast)"
-                    className="h-8 w-full appearance-none rounded-full border border-amber-500/30 bg-amber-500/10 pl-3 pr-8 text-xs font-medium text-amber-300 outline-none transition-colors hover:border-amber-400/60 focus:border-amber-400/60"
-                  >
-                    <option value="">Draft…</option>
-                    {availableModels.map((m) => (
-                      <option key={m} value={m}>{modelDisplayName(m)}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-amber-300/80" />
-                </div>
-              )}
-
-              {/* Grounded (RAG) toggle */}
-              <button
-                onClick={() => setGroundedEnabled((v) => !v)}
-                title={groundedEnabled ? `Grounded ON (${processedDocCount} docs)` : "Grounded mode — use your documents as context (RAG)"}
-                className={`relative ${composerToggleBaseClass} ${
-                  groundedEnabled
-                    ? "border-[var(--accent-color)] bg-[var(--accent-color)]/18 text-[var(--accent-color)]"
-                    : composerToggleInactiveClass
-                }`}
-              >
-                <BookOpen size={13} />
-                <span>Docs</span>
-                {groundedEnabled && processedDocCount > 0 && (
-                  <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
-                    {processedDocCount > 9 ? "9+" : processedDocCount}
-                  </span>
-                )}
-              </button>
-
-              {/* Top-K picker (only when grounded is on) */}
-              {groundedEnabled && (
-                <div className="relative">
-                  <select
-                    value={groundedTopK}
-                    onChange={(e) => setGroundedTopK(Number(e.target.value))}
-                    className="h-8 appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-8 text-xs font-medium text-[var(--text-secondary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
-                    title="Document chunks to retrieve"
-                  >
-                    {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
-                  </select>
-                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                </div>
-              )}
-
-              {/* Thought queue toggle */}
-              <button
-                onClick={() => setThoughtPanelOpen((v) => !v)}
-                title="Thought Queue — schedule follow-up questions to process in background"
-                className={`relative ${composerToggleBaseClass} ${
-                  thoughtPanelOpen
-                    ? "border-[var(--accent-color)] bg-[var(--accent-color)]/18 text-[var(--accent-color)]"
-                    : composerToggleInactiveClass
-                }`}
-              >
-                <Inbox size={13} />
-                <span>Queue</span>
-                {(() => {
-                  const pending = thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length;
-                  return pending > 0 ? (
-                    <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
-                      {pending > 9 ? "9+" : pending}
-                    </span>
-                  ) : null;
-                })()}
-              </button>
-
-              {sessionTokensUsed > 0 && (
-                <div className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[11px] text-[var(--text-secondary)]">
-                  <span className="text-[var(--text-muted)]">Tokens</span>
-                  <span className="font-mono text-[var(--text-primary)]">
-                    {sessionTokensUsed >= 1000 ? `${(sessionTokensUsed / 1000).toFixed(1)}k` : sessionTokensUsed}
-                  </span>
-                </div>
-              )}
-
+              </div>
             </div>
-            </div>
-            <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-4xl"} min-w-0 mt-3`}>
-              <WorkspaceMigrationBanner />
-            </div>
-          </div>
+          )}
         </div>
-      )}
 
       {/* ── Thought Queue right panel ─────────────────────────────────────── */}
       {thoughtPanelOpen && (

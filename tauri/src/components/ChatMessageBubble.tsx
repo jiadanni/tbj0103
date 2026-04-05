@@ -146,7 +146,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
       ) : (
         <>
           <div
-            className={`min-w-0 ${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words px-4 py-2.5 text-sm ${
+            className={`min-w-0 overflow-hidden ${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words px-4 py-2.5 text-sm ${
               chatMessageStyle === "flat"
                 ? msg.role === "user"
                   ? "rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)]"
