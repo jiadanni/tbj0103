@@ -3,16 +3,21 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-route
 import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useWorkspaceStore } from "./stores/workspaceStore";
-import { api } from "./lib/api";
+import { api, type QuickSearchResult } from "./lib/api";
 import Layout from "./components/Layout";
 import AuthenticationView from "./views/AuthenticationView";
 
 /** Listens for native menu-bar events and translates them into navigation/actions. */
 function MenuEventHandler() {
   const navigate = useNavigate();
+  const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
   // Keep a stable ref to avoid re-subscribing on every render
   const navigateRef = useRef(navigate);
   useEffect(() => { navigateRef.current = navigate; }, [navigate]);
+
+  useEffect(() => {
+    api.quickSearch.markMainWindowReady().catch(() => {});
+  }, []);
 
   useEffect(() => {
     const unlistenNav = listen<string>("menu-navigate", (event) => {
@@ -36,11 +41,57 @@ function MenuEventHandler() {
       }
     });
 
+    const unlistenQuickSearch = listen<QuickSearchResult>("app:navigate-target", (event) => {
+      const target = event.payload;
+      if (target.workspace_id) {
+        setActiveWorkspaceId(target.workspace_id);
+      }
+
+      switch (target.kind) {
+        case "artifact":
+          if (target.session_id) {
+            navigateRef.current(`/chat/${target.session_id}`);
+          } else {
+            navigateRef.current("/chat");
+          }
+          window.setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("aetherium:open-artifact", {
+              detail: { artifactId: target.target_id },
+            }));
+          }, 0);
+          break;
+        case "memory":
+          if (target.source_session_id) {
+            navigateRef.current(`/chat/${target.source_session_id}`);
+          } else {
+            navigateRef.current("/memory");
+          }
+          break;
+        case "message":
+        case "summary":
+          if (target.session_id) {
+            navigateRef.current(`/chat/${target.session_id}`);
+          } else {
+            navigateRef.current("/chat");
+          }
+          break;
+        case "conversation":
+        default:
+          if (target.session_id ?? target.target_id) {
+            navigateRef.current(`/chat/${target.session_id ?? target.target_id}`);
+          } else {
+            navigateRef.current("/chat");
+          }
+          break;
+      }
+    });
+
     return () => {
       unlistenNav.then((fn) => fn());
       unlistenAction.then((fn) => fn());
+      unlistenQuickSearch.then((fn) => fn());
     };
-  }, []);
+  }, [setActiveWorkspaceId]);
 
   return null;
 }
@@ -53,6 +104,7 @@ export default function App() {
   const setProjects = useWorkspaceStore((state) => state.setProjects);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState("Loading…");
 
   // Apply theme class to <html> element — also applies font-size and accent-color reactively
   useEffect(() => {
@@ -68,21 +120,42 @@ export default function App() {
 
   // Boot: load settings + workspaces
   useEffect(() => {
+    let cancelled = false;
+
     async function boot() {
       try {
-        const workspaces = await api.workspace.list();
+        setLoadingMessage("Loading workspace…");
+        const [workspaces, settings] = await Promise.all([
+          api.workspace.list(),
+          api.settings.get(),
+        ]);
+        if (cancelled) {return;}
+
         setWorkspaces(workspaces);
+
+        if (settings.auto_start_ollama) {
+          setLoadingMessage("Starting local Ollama…");
+          await api.ollama.ensureRunning(settings.ollama_base_url || undefined).catch(() => null);
+          if (cancelled) {return;}
+        }
+
         // Auto-authenticate if neither lock method is active
-        const settings = await api.settings.get();
         if (!settings.touch_id_enabled && !settings.pin_lock_enabled) {setIsAuthenticated(true);}
       } catch {
         // First run or Ollama not available — still OK
         setIsAuthenticated(true);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setLoadingMessage("Loading…");
+          setIsLoading(false);
+        }
       }
     }
     boot();
+
+    return () => {
+      cancelled = true;
+    };
   }, [setWorkspaces]);
 
   // Reload projects whenever active workspace changes
@@ -95,7 +168,7 @@ export default function App() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
-        <div className="text-sm opacity-50">Loading…</div>
+        <div className="text-sm opacity-50">{loadingMessage}</div>
       </div>
     );
   }

@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "local": true,
-  "windows": ["main"],
+  "windows": ["main", "quick-search"],
   "permissions": [
     "core:default",
     "store:allow-get",
@@ -12,6 +12,9 @@
     "autostart:allow-enable",
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
+    "global-shortcut:allow-is-registered",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
     "fs:default",
     "fs:allow-read-file",
     "fs:allow-read-text-file",

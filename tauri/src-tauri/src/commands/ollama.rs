@@ -1,8 +1,10 @@
 use tauri::AppHandle;
 use serde::{Deserialize, Serialize};
+use std::process::{Command, Stdio};
 use crate::ollama::client::{OllamaClient, OllamaMessage, ModelInfo};
 
 pub struct StreamAbortState(pub std::sync::Mutex<std::collections::HashMap<String, bool>>);
+const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMessageRequest {
@@ -30,6 +32,14 @@ pub struct DualModelRequest {
     pub ollama_url: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaRuntimeStatus {
+    pub available: bool,
+    pub launched: bool,
+    pub message: String,
+    pub models: Vec<ModelInfo>,
+}
+
 /// Send a chat message (streaming or non-streaming).
 /// For streaming: emits "ollama-stream-{session_id}" events to frontend.
 #[tauri::command]
@@ -55,6 +65,40 @@ pub async fn list_models_fresh(ollama_url: Option<String>) -> Result<Vec<ModelIn
     let client = OllamaClient::new(ollama_url)?;
     client.invalidate_model_cache();
     client.list_models().await
+}
+
+#[tauri::command]
+pub async fn ensure_ollama_running(
+    ollama_url: Option<String>,
+) -> Result<OllamaRuntimeStatus, String> {
+    let normalized_url = ollama_url
+        .clone()
+        .unwrap_or_else(|| DEFAULT_OLLAMA_URL.to_string())
+        .trim_end_matches('/')
+        .to_string();
+
+    let client = OllamaClient::new(Some(normalized_url.clone()))?;
+    if let Ok(models) = client.list_models().await {
+        return Ok(runtime_status(models, false));
+    }
+
+    if normalized_url != DEFAULT_OLLAMA_URL {
+        return Err(format!(
+            "Ollama is not reachable at {normalized_url}. Automatic startup is only supported for {DEFAULT_OLLAMA_URL}."
+        ));
+    }
+
+    launch_ollama_process()?;
+
+    for _ in 0..10 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let retry_client = OllamaClient::new(Some(normalized_url.clone()))?;
+        if let Ok(models) = retry_client.list_models().await {
+            return Ok(runtime_status(models, true));
+        }
+    }
+
+    Err("Tried to launch Ollama, but it did not become reachable. Run `ollama serve` manually and try again.".to_string())
 }
 
 #[tauri::command]
@@ -194,4 +238,31 @@ pub async fn stop_stream(session_id: String, state: tauri::State<'_, StreamAbort
         .map_err(|e| e.to_string())?
         .insert(session_id, true);
     Ok(())
+}
+
+fn runtime_status(models: Vec<ModelInfo>, launched: bool) -> OllamaRuntimeStatus {
+    let model_count = models.len();
+    let message = if launched {
+        format!("Ollama started successfully. {model_count} model(s) found.")
+    } else {
+        format!("Ollama is running. {model_count} model(s) found.")
+    };
+
+    OllamaRuntimeStatus {
+        available: true,
+        launched,
+        message,
+        models,
+    }
+}
+
+fn launch_ollama_process() -> Result<(), String> {
+    Command::new("ollama")
+        .arg("serve")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to launch `ollama serve`: {e}"))
 }

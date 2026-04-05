@@ -1,16 +1,20 @@
 pub mod app_menu;
-pub mod db;
-pub mod models;
-pub mod services;
 pub mod commands;
-pub mod ollama;
-pub mod mlx;
+pub mod db;
 pub mod llamacpp;
-pub mod mcp_server;
 pub mod mcp_client;
+pub mod mcp_server;
+pub mod mlx;
+pub mod models;
+pub mod ollama;
+pub mod services;
 
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
+use tauri::{WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_global_shortcut::ShortcutState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,6 +25,15 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        let _ = commands::quick_search::toggle_window(app);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_autostart::init(
@@ -43,10 +56,21 @@ pub fn run() {
             commands::settings::sync_autostart(&app.handle().clone(), &conn)
                 .map_err(|e| format!("Failed to synchronize autostart setting: {e}"))?;
             let should_open_in_background = commands::settings::should_open_in_background(&conn);
+            let quick_search_shortcut: String = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'quick_search_shortcut'",
+                    [],
+                    |row| row.get(0),
+                )
+                .ok()
+                .and_then(|value: String| serde_json::from_str(&value).ok())
+                .unwrap_or_else(|| "CmdOrCtrl+Shift+K".to_string());
 
             // Resolve the chats directory and try to load encryption passphrase
             let chats_dir = app_dir.join("chats");
             let passphrase = commands::chat_file::load_crypto_state_from_keyring(&conn);
+            crate::services::quick_search_index::ensure_populated(&conn)
+                .map_err(|e| format!("Failed to populate quick search index: {e}"))?;
 
             drop(conn);
 
@@ -58,6 +82,7 @@ pub fn run() {
             app.manage(commands::ollama::StreamAbortState(
                 std::sync::Mutex::new(std::collections::HashMap::new()),
             ));
+            app.manage(commands::quick_search::QuickSearchRuntimeState::default());
 
             #[cfg(feature = "llamacpp")]
             {
@@ -75,7 +100,33 @@ pub fn run() {
             ));
             app.manage(mcp_manager);
 
+            ensure_quick_search_window(app)
+                .map_err(|e| format!("Failed to create quick search window: {e}"))?;
+            build_tray_icon(app)
+                .map_err(|e| format!("Failed to create tray icon: {e}"))?;
+
+            {
+                let runtime_state = app.state::<commands::quick_search::QuickSearchRuntimeState>();
+                commands::quick_search::apply_shortcut(
+                    app.handle(),
+                    &runtime_state,
+                    commands::quick_search::normalize_shortcut(&quick_search_shortcut),
+                )
+                .map_err(|e| format!("Failed to register quick search shortcut: {e}"))?;
+            }
+
             if let Some(window) = app.get_webview_window("main") {
+                let app_handle = app.handle().clone();
+                let main_window = window.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        if commands::settings::should_keep_running_in_tray(&app_handle) {
+                            api.prevent_close();
+                            let _ = main_window.hide();
+                        }
+                    }
+                });
+
                 if should_open_in_background {
                     let _ = window.hide();
                 } else {
@@ -104,10 +155,10 @@ pub fn run() {
                 app.set_menu(menu)
                     .map_err(|e| format!("Failed to set menu: {e}"))?;
             }
-            
+
             // Start background scheduler
             crate::services::background_scheduler::start_scheduler(app.handle().clone());
-            
+
             // Spawn background timer for topic signatures
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -249,6 +300,7 @@ pub fn run() {
             commands::ollama::send_message,
             commands::ollama::list_models,
             commands::ollama::list_models_fresh,
+            commands::ollama::ensure_ollama_running,
             commands::ollama::generate_title,
             commands::ollama::generate_title_from_conversation,
             commands::ollama::generate_embedding,
@@ -374,10 +426,104 @@ pub fn run() {
             commands::git_sync::get_git_sync_status,
             commands::git_sync::configure_git_sync,
             commands::git_sync::trigger_git_sync,
+            // Quick search
+            commands::quick_search::show_quick_search,
+            commands::quick_search::hide_quick_search,
+            commands::quick_search::query_quick_search,
+            commands::quick_search::open_quick_search_result,
+            commands::quick_search::mark_main_window_ready,
         ])
         .run(tauri::generate_context!());
 
     if let Err(err) = run_result {
         eprintln!("error while running tauri application: {err}");
     }
+}
+
+fn ensure_quick_search_window(app: &tauri::App) -> Result<(), String> {
+    if app.get_webview_window("quick-search").is_some() {
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(
+        app,
+        "quick-search",
+        WebviewUrl::App("quick-search.html".into()),
+    )
+    .title("Quick Search")
+    .inner_size(540.0, 420.0)
+    .min_inner_size(420.0, 260.0)
+    .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .decorations(false)
+    .skip_taskbar(true)
+    .always_on_top(true)
+    .visible(false)
+    .focused(false)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+fn build_tray_icon(app: &tauri::App) -> Result<(), String> {
+    let Some(icon) = app.default_window_icon().cloned() else {
+        return Ok(());
+    };
+
+    let tray_menu = Menu::with_items(
+        app,
+        &[
+            &MenuItem::with_id(
+                app,
+                "tray-quick-search",
+                "Quick Search…",
+                true,
+                None::<&str>,
+            )
+            .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(app, "tray-show-main", "Show Aetherium", true, None::<&str>)
+                .map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?,
+            &MenuItem::with_id(app, "tray-quit", "Quit", true, None::<&str>)
+                .map_err(|e| e.to_string())?,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    TrayIconBuilder::with_id("aetherium-tray")
+        .icon(icon)
+        .tooltip("Aetherium")
+        .menu(&tray_menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "tray-quick-search" => {
+                let _ = commands::quick_search::show_window(app);
+            }
+            "tray-show-main" => {
+                let _ = commands::quick_search::show_main_window(app);
+            }
+            "tray-quit" => {
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            #[cfg(not(target_os = "linux"))]
+            {
+                if let TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } = event
+                {
+                    let _ = commands::quick_search::toggle_window(tray.app_handle());
+                }
+            }
+        })
+        .build(app)
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }

@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
@@ -20,6 +20,7 @@ tauri-plugin-shell = "2"
 tauri-plugin-http = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-global-shortcut = "2"
 
 rayon = "1.10"
 ndarray = "0.15"
