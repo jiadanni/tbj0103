@@ -2,6 +2,7 @@ import { Command } from "cmdk";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, MessageSquare, FileText, Brain, ScrollText, Clock } from "lucide-react";
 import { api, type AppSettings, type QuickSearchResult } from "../lib/api";
+import { normalizeTheme } from "../lib/theme";
 
 const ICON_BY_KIND = {
   conversation: MessageSquare,
@@ -37,7 +38,7 @@ export default function QuickSearchWindow() {
         const settings = await api.settings.get();
         if (!cancelled) {
           setDisplaySettings({
-            theme: settings.theme,
+            theme: normalizeTheme(settings.theme),
             accent_color: settings.accent_color,
             font_size: settings.font_size,
           });
@@ -66,10 +67,11 @@ export default function QuickSearchWindow() {
 
   useEffect(() => {
     const root = document.documentElement;
+    const normalizedTheme = normalizeTheme(displaySettings.theme);
     root.classList.forEach((cls) => {
       if (cls.startsWith("theme-")) {root.classList.remove(cls);}
     });
-    root.classList.add(`theme-${displaySettings.theme}`);
+    root.classList.add(`theme-${normalizedTheme}`);
     if (displaySettings.accent_color) {
       root.style.setProperty("--accent-color", displaySettings.accent_color);
     }

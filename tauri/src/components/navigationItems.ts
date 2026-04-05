@@ -26,4 +26,4 @@ export const PRIMARY_NAV_ITEMS: NavigationItem[] = [
 export type ChatSubView = "chat" | "compare" | "sessions";
 export type NotesSubView = "notes" | "daily";
 export type GraphSubView = "graph" | "backlinks" | "dedup" | "flashcards" | "learning";
-export type PreferencesSection = "general" | "appearance" | "chat" | "ai" | "webai" | "security" | "workspaces" | "backup" | "plugins" | "mcp" | "sync";
+export type PreferencesSection = "app" | "navigation" | "appearance" | "chat" | "ai" | "webai" | "security" | "workspaces" | "backup" | "import" | "mcp" | "sync";

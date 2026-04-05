@@ -11,12 +11,16 @@ pub async fn generate_rolling_summary(
     // Skip imported sessions that haven't received new messages
     {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let is_imported: i64 = conn.query_row(
-            "SELECT is_imported FROM chat_sessions WHERE id = ?1",
-            rusqlite::params![session_id],
-            |row| row.get(0),
-        ).unwrap_or(0);
-        if is_imported != 0 { return Ok(()); }
+        let is_imported: i64 = conn
+            .query_row(
+                "SELECT is_imported FROM chat_sessions WHERE id = ?1",
+                rusqlite::params![session_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        if is_imported != 0 {
+            return Ok(());
+        }
     }
     // 1. Get messages that need summarization
     let messages: Vec<(String, String, String)> = {
@@ -24,10 +28,13 @@ pub async fn generate_rolling_summary(
         let mut stmt = conn.prepare(
             "SELECT id, role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
         ).unwrap();
-        
+
         stmt.query_map(rusqlite::params![session_id], |row| {
             Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        }).unwrap().filter_map(Result::ok).collect()
+        })
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect()
     };
 
     if messages.len() < 10 {
@@ -42,7 +49,9 @@ pub async fn generate_rolling_summary(
             rusqlite::params![session_id, messages.len() as i32],
             |row| row.get(0)
         ).unwrap_or(0);
-        if existing_count > 0 { return Ok(()); }
+        if existing_count > 0 {
+            return Ok(());
+        }
     }
 
     let mut conversation_text = String::new();
@@ -59,8 +68,11 @@ pub async fn generate_rolling_summary(
         conversation_text
     );
 
-    let msgs = vec![OllamaMessage { role: "user".to_string(), content: prompt }];
-    
+    let msgs = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+
     // Use the configured background/chat model and skip quietly if none is available.
     let model = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -71,11 +83,14 @@ pub async fn generate_rolling_summary(
         return Ok(());
     };
 
-    if let Ok(summary_content) = client.send_message_with_options(&model, msgs, Some("0s")).await {
+    if let Ok(summary_content) = client
+        .send_message_with_options(&model, msgs, Some("0s"))
+        .await
+    {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
-        
+
         conn.execute(
             "INSERT INTO conversation_summaries (id, session_id, workspace_id, summary_type, content, message_range_start, message_range_end, created_at, updated_at)
              VALUES (?1, ?2, ?3, 'rolling', ?4, 0, ?5, ?6, ?7)",

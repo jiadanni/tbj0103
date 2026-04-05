@@ -1,5 +1,5 @@
-use tauri::State;
 use crate::db::DbState;
+use tauri::State;
 
 /// Demo mode: seeds a temporary in-memory workspace with demo data.
 /// This is implemented by inserting demo data into the real DB under a special workspace ID,
@@ -16,7 +16,10 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
     // Remove any previous demo data
-    let _ = conn.execute("DELETE FROM workspaces WHERE id = ?1", rusqlite::params![DEMO_WORKSPACE_ID]);
+    let _ = conn.execute(
+        "DELETE FROM workspaces WHERE id = ?1",
+        rusqlite::params![DEMO_WORKSPACE_ID],
+    );
 
     // Workspace
     conn.execute(
@@ -86,10 +89,26 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
 
     // Concept links
     let links: Vec<(&str, &str, &str)> = vec![
-        ("demo-concept-attention-0000000000001", "demo-concept-transformer-000000000001", "supports"),
-        ("demo-concept-qkv-00000000000000000001", "demo-concept-attention-0000000000001", "part_of"),
-        ("demo-concept-mlh-00000000000000000001", "demo-concept-attention-0000000000001", "related"),
-        ("demo-concept-caesar-000000000000000001", "demo-concept-republic-00000000000000001", "related"),
+        (
+            "demo-concept-attention-0000000000001",
+            "demo-concept-transformer-000000000001",
+            "supports",
+        ),
+        (
+            "demo-concept-qkv-00000000000000000001",
+            "demo-concept-attention-0000000000001",
+            "part_of",
+        ),
+        (
+            "demo-concept-mlh-00000000000000000001",
+            "demo-concept-attention-0000000000001",
+            "related",
+        ),
+        (
+            "demo-concept-caesar-000000000000000001",
+            "demo-concept-republic-00000000000000001",
+            "related",
+        ),
     ];
     for (src, tgt, ltype) in links {
         let lid = uuid::Uuid::new_v4().to_string();
@@ -116,7 +135,9 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
 
     // Daily notes for the past 7 days
     for days_ago in 0..7i64 {
-        let date = (chrono::Utc::now() - chrono::Duration::days(days_ago)).format("%Y-%m-%d").to_string();
+        let date = (chrono::Utc::now() - chrono::Duration::days(days_ago))
+            .format("%Y-%m-%d")
+            .to_string();
         let dnid = uuid::Uuid::new_v4().to_string();
         let content = format!("## Daily Note — {date}\n\nLearned about transformer architectures today. Key insight: attention is all you need.\n\n- Read 2 papers\n- Reviewed flashcards\n- Created 3 new concept links");
         conn.execute(
@@ -132,7 +153,10 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
 pub fn deactivate_demo_mode(state: State<DbState>) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     // CASCADE deletes all demo data (projects, chats, concepts, etc.)
-    conn.execute("DELETE FROM workspaces WHERE id = ?1", rusqlite::params![DEMO_WORKSPACE_ID])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM workspaces WHERE id = ?1",
+        rusqlite::params![DEMO_WORKSPACE_ID],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }

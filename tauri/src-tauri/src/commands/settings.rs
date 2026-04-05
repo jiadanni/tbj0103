@@ -87,6 +87,14 @@ impl Default for Settings {
 
 const AUTOSTART_ARG: &str = "--autostart";
 
+fn normalize_theme(theme: &str) -> &str {
+    match theme {
+        "system" | "light" | "dark" | "sepia" | "hacker" | "glasscode" => theme,
+        "oled" => "dark",
+        _ => "system",
+    }
+}
+
 fn biometric_available() -> bool {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
@@ -130,6 +138,16 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         .unwrap_or(def.pin_lock_enabled)
         && pin_configured;
     let biometric_available = biometric_available();
+    let stored_theme = get_setting(&conn, "theme")
+        .and_then(|v| serde_json::from_str(&v).ok())
+        .unwrap_or_else(|| def.theme.clone());
+    let normalized_theme = normalize_theme(&stored_theme).to_string();
+
+    if normalized_theme != stored_theme {
+        let serialized_theme =
+            serde_json::to_string(&normalized_theme).map_err(|e| e.to_string())?;
+        set_setting(&conn, "theme", &serialized_theme)?;
+    }
 
     Ok(Settings {
         preferred_model: get_setting(&conn, "preferred_model")
@@ -156,9 +174,7 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         auto_lock_minutes: get_setting(&conn, "auto_lock_minutes")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.auto_lock_minutes),
-        theme: get_setting(&conn, "theme")
-            .and_then(|v| serde_json::from_str(&v).ok())
-            .unwrap_or(def.theme),
+        theme: normalized_theme,
         accent_color: get_setting(&conn, "accent_color")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.accent_color),
@@ -252,6 +268,7 @@ pub fn update_settings(
     let effective_pin_lock_enabled = settings.pin_lock_enabled && pin_configured;
     let normalized_quick_search_shortcut =
         crate::commands::quick_search::normalize_shortcut(&settings.quick_search_shortcut);
+    let normalized_theme = normalize_theme(&settings.theme).to_string();
 
     crate::commands::quick_search::apply_shortcut(
         &app,
@@ -303,7 +320,7 @@ pub fn update_settings(
     set_setting(
         &conn,
         "theme",
-        &serde_json::to_string(&settings.theme).unwrap(),
+        &serde_json::to_string(&normalized_theme).map_err(|e| e.to_string())?,
     )?;
     set_setting(
         &conn,

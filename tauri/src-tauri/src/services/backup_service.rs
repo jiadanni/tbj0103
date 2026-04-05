@@ -21,7 +21,10 @@ pub struct BackupEntry {
 
 impl BackupManifest {
     pub fn new() -> Self {
-        Self { version: "1.0".into(), entries: Vec::new() }
+        Self {
+            version: "1.0".into(),
+            entries: Vec::new(),
+        }
     }
 
     /// Keep only the newest `keep` entries, deleting older ones.

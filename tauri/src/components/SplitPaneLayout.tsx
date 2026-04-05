@@ -18,6 +18,17 @@ const PANE_NAV_ITEMS: { view: PaneView; icon: LucideIcon; label: string }[] = [
   { view: "graph", icon: Network, label: "Graph" },
 ];
 
+function resolveSplitSectionNavigation(
+  splitSectionNavigation: ReturnType<typeof useWorkspaceStore.getState>["splitSectionNavigation"],
+  sectionNavigation: ReturnType<typeof useWorkspaceStore.getState>["sectionNavigation"]
+) {
+  if (splitSectionNavigation === "tabs" || splitSectionNavigation === "dropdown") {
+    return splitSectionNavigation;
+  }
+
+  return sectionNavigation === "top-dropdown" ? "dropdown" : "tabs";
+}
+
 function PaneViewRenderer({ view }: { view: PaneView }) {
   let Content;
   switch (view) {
@@ -65,9 +76,41 @@ function SplitWorkspaceSelector({ paneId }: { paneId: PaneId }) {
   );
 }
 
-function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
-  const { setPaneView, setActivePaneId } = useWorkspaceStore();
+function SplitSectionDropdown({ paneId }: { paneId: PaneId }) {
+  const { setPaneView } = useWorkspaceStore();
   const { activeView } = useScopedWorkspace();
+  const selectedView = PANE_NAV_ITEMS.some((item) => item.view === activeView)
+    ? activeView
+    : "project";
+
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 border-b border-[var(--border-color)] bg-[var(--bg-elevated)]">
+      <label
+        htmlFor={`split-section-navigation-${paneId}`}
+        className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]"
+      >
+        Section
+      </label>
+      <select
+        id={`split-section-navigation-${paneId}`}
+        value={selectedView}
+        onChange={(event) => setPaneView(paneId, event.target.value as PaneView)}
+        className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+      >
+        {PANE_NAV_ITEMS.map(({ view, label }) => (
+          <option key={`${paneId}-${view}`} value={view}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
+  const { sectionNavigation, splitSectionNavigation, setPaneView, setActivePaneId } = useWorkspaceStore();
+  const { activeView } = useScopedWorkspace();
+  const resolvedSplitSectionNavigation = resolveSplitSectionNavigation(splitSectionNavigation, sectionNavigation);
 
   return (
     <div
@@ -79,24 +122,28 @@ function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
         <div className="flex items-center min-w-0 px-2 h-10 gap-2 border-b border-[var(--border-color)]">
           <SplitWorkspaceSelector paneId={paneId} />
         </div>
-        <div className="flex items-center min-w-0 px-2 py-1.5 bg-[var(--bg-elevated)] border-b border-[var(--border-color)]">
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-            {PANE_NAV_ITEMS.map(({ view, icon: Icon, label }) => (
-              <button
-                key={`${paneId}-${view}`}
-                onClick={() => setPaneView(paneId, view)}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs whitespace-nowrap transition-colors ${
-                  activeView === view
-                    ? "bg-[var(--accent-color)] text-white"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                }`}
-              >
-                <Icon size={13} />
-                {label}
-              </button>
-            ))}
+        {resolvedSplitSectionNavigation === "dropdown" ? (
+          <SplitSectionDropdown paneId={paneId} />
+        ) : (
+          <div className="flex items-center min-w-0 px-2 py-1.5 bg-[var(--bg-elevated)] border-b border-[var(--border-color)]">
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+              {PANE_NAV_ITEMS.map(({ view, icon: Icon, label }) => (
+                <button
+                  key={`${paneId}-${view}`}
+                  onClick={() => setPaneView(paneId, view)}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs whitespace-nowrap transition-colors ${
+                    activeView === view
+                      ? "bg-[var(--accent-color)] text-white"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  <Icon size={13} />
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
         <PaneViewRenderer view={activeView} />

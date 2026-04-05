@@ -635,7 +635,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('switch_workspace_to_chat', 'false')",
             [],
         );
-        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v27_switch_workspace_to_chat');")?;
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v27_switch_workspace_to_chat');",
+        )?;
     }
 
     // v27: add folder and token_count columns to sources

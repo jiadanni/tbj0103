@@ -1,7 +1,7 @@
-use rusqlite::Connection;
-use crate::models::context::{TokenBudget, ContextSources};
+use crate::models::context::{ContextSources, TokenBudget};
 use crate::ollama::client::OllamaMessage;
 use crate::services::vector_index;
+use rusqlite::Connection;
 
 const MEMORY_SIMILARITY_THRESHOLD: f32 = 0.3;
 const MEMORY_RETRIEVAL_TOP_K: usize = 5;
@@ -67,7 +67,9 @@ pub fn assemble_context(
         let mut stmt = conn
             .prepare("SELECT prompt_instructions FROM workspaces WHERE id = ?1")
             .map_err(|e| e.to_string())?;
-        if let Ok(instr) = stmt.query_row(rusqlite::params![workspace_id], |row| row.get::<_, String>(0)) {
+        if let Ok(instr) = stmt.query_row(rusqlite::params![workspace_id], |row| {
+            row.get::<_, String>(0)
+        }) {
             if !instr.is_empty() {
                 system_parts.push(instr);
             }
@@ -105,7 +107,14 @@ pub fn assemble_context(
     let mut memory_tokens = 0usize;
 
     // Helper: append a memory line, respecting token budget. Returns true if added.
-    let append_memory = |id: String, content: &str, scope: &str, tokens: &mut usize, text: &mut String, used: &mut Vec<String>, budget_limit: usize| -> bool {
+    let append_memory = |id: String,
+                         content: &str,
+                         scope: &str,
+                         tokens: &mut usize,
+                         text: &mut String,
+                         used: &mut Vec<String>,
+                         budget_limit: usize|
+     -> bool {
         let prefix = if scope == "global" { "[global] " } else { "" };
         let line = format!("- {}{}\n", prefix, content);
         let line_tokens = estimate_tokens(&line);
@@ -129,7 +138,11 @@ pub fn assemble_context(
             )
             .map_err(|e| e.to_string())?
             .query_map(rusqlite::params![workspace_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
             })
             .map_err(|e| e.to_string())?
             .flatten()
@@ -157,14 +170,26 @@ pub fn assemble_context(
             )
             .map_err(|e| e.to_string())?
             .query_map(rusqlite::params![workspace_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
             })
             .map_err(|e| e.to_string())?
             .flatten()
             .collect();
 
         for (id, content, scope) in unembedded {
-            if !append_memory(id, &content, &scope, &mut memory_tokens, &mut memories_text, &mut sources.memories_used, budget.memories) {
+            if !append_memory(
+                id,
+                &content,
+                &scope,
+                &mut memory_tokens,
+                &mut memories_text,
+                &mut sources.memories_used,
+                budget.memories,
+            ) {
                 break;
             }
         }
@@ -183,13 +208,19 @@ pub fn assemble_context(
                 )
                 .map_err(|e| e.to_string())?
                 .query_map(rusqlite::params![workspace_id], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, Vec<u8>>(3)?))
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, Vec<u8>>(3)?,
+                    ))
                 })
                 .map_err(|e| e.to_string())?
                 .flatten()
                 .collect();
 
-            let mut scored: Vec<(f32, String, String, String)> = candidates.into_iter()
+            let mut scored: Vec<(f32, String, String, String)> = candidates
+                .into_iter()
                 .filter_map(|(id, content, scope, emb_bytes)| {
                     let stored_emb = vector_index::bytes_to_f32_vec(&emb_bytes);
                     let similarity = vector_index::cosine_similarity(qe, &stored_emb);
@@ -203,7 +234,15 @@ pub fn assemble_context(
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
             for (_, id, content, scope) in scored.into_iter().take(MEMORY_RETRIEVAL_TOP_K) {
-                if !append_memory(id, &content, &scope, &mut memory_tokens, &mut memories_text, &mut sources.memories_used, budget.memories) {
+                if !append_memory(
+                    id,
+                    &content,
+                    &scope,
+                    &mut memory_tokens,
+                    &mut memories_text,
+                    &mut sources.memories_used,
+                    budget.memories,
+                ) {
                     break;
                 }
             }
@@ -219,14 +258,26 @@ pub fn assemble_context(
                 )
                 .map_err(|e| e.to_string())?
                 .query_map(rusqlite::params![workspace_id], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
                 })
                 .map_err(|e| e.to_string())?
                 .flatten()
                 .collect();
 
             for (id, content, scope) in fallback {
-                if !append_memory(id, &content, &scope, &mut memory_tokens, &mut memories_text, &mut sources.memories_used, budget.memories) {
+                if !append_memory(
+                    id,
+                    &content,
+                    &scope,
+                    &mut memory_tokens,
+                    &mut memories_text,
+                    &mut sources.memories_used,
+                    budget.memories,
+                ) {
                     break;
                 }
             }
@@ -243,10 +294,12 @@ pub fn assemble_context(
         let mut stmt = conn.prepare(
             "SELECT id, content FROM conversation_summaries WHERE workspace_id = ?1 AND session_id != ?2 ORDER BY created_at DESC LIMIT 3"
         ).map_err(|e| e.to_string())?;
-        
-        let rows = stmt.query_map(rusqlite::params![workspace_id, session_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        }).map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![workspace_id, session_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
 
         for row in rows.flatten() {
             let (id, content) = row;
@@ -255,7 +308,10 @@ pub fn assemble_context(
         }
     }
     if !summaries_text.is_empty() {
-        system_parts.push(format!("Relevant Context from Past Conversations:\n{}", summaries_text));
+        system_parts.push(format!(
+            "Relevant Context from Past Conversations:\n{}",
+            summaries_text
+        ));
     }
 
     // 4. Referenced artifacts (pinned artifacts always included)
@@ -265,9 +321,15 @@ pub fn assemble_context(
             "SELECT id, title, content FROM artifacts WHERE workspace_id = ?1 AND is_pinned = 1 LIMIT 5"
         ).map_err(|e| e.to_string())?;
 
-        let rows = stmt.query_map(rusqlite::params![workspace_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
-        }).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![workspace_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
 
         for row in rows.flatten() {
             let (id, title, content) = row;
@@ -291,10 +353,10 @@ pub fn assemble_context(
 
     // 6. Conversation history
     let mut history: Vec<OllamaMessage> = vec![];
-    let mut stmt = conn.prepare(
-        "SELECT role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
-    ).unwrap();
-    
+    let mut stmt = conn
+        .prepare("SELECT role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC")
+        .unwrap();
+
     if let Ok(iter) = stmt.query_map(rusqlite::params![session_id], |row| {
         Ok(OllamaMessage {
             role: row.get(0)?,
@@ -309,7 +371,7 @@ pub fn assemble_context(
     // Truncate history to fit budget
     let mut truncated_history = vec![];
     let mut current_history_tokens = 0;
-    
+
     // Always keep first user message (establishes context)
     if let Some(first) = history.first() {
         if first.role == "user" {
@@ -321,9 +383,21 @@ pub fn assemble_context(
     // Keep most recent 4 messages (2 turns)
     let recent_count = 4;
     let skip_first = if !truncated_history.is_empty() { 1 } else { 0 };
-    let recent_messages: Vec<OllamaMessage> = history.iter().skip(skip_first).rev().take(recent_count).cloned().collect();
-    
-    let mut middle_messages: Vec<OllamaMessage> = history.iter().skip(skip_first).rev().skip(recent_count).cloned().collect();
+    let recent_messages: Vec<OllamaMessage> = history
+        .iter()
+        .skip(skip_first)
+        .rev()
+        .take(recent_count)
+        .cloned()
+        .collect();
+
+    let mut middle_messages: Vec<OllamaMessage> = history
+        .iter()
+        .skip(skip_first)
+        .rev()
+        .skip(recent_count)
+        .cloned()
+        .collect();
     middle_messages.reverse(); // put back in chronological order
 
     // Build the final history keeping token limit in mind
@@ -331,7 +405,7 @@ pub fn assemble_context(
     if !truncated_history.is_empty() {
         combined.push(truncated_history[0].clone());
     }
-    
+
     // Add middle messages if they fit budget
     for msg in middle_messages {
         let tokens = estimate_tokens(&msg.content);

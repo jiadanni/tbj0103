@@ -71,7 +71,11 @@ pub struct ExtractFlashcardsRequest {
 }
 
 impl LearningCard {
-    pub fn new(workspace_id: impl Into<String>, front: impl Into<String>, back: impl Into<String>) -> Self {
+    pub fn new(
+        workspace_id: impl Into<String>,
+        front: impl Into<String>,
+        back: impl Into<String>,
+    ) -> Self {
         let now = chrono::Utc::now().to_rfc3339();
         let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
         Self {

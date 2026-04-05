@@ -3473,7 +3473,7 @@ export default function ChatView() {
                   <div className="flex items-center gap-1 mb-1 text-[10px] text-amber-400">
                     <Zap size={9} /> Draft ({draftModel})
                   </div>
-                  <div className="prose prose-sm prose-invert max-w-none overflow-x-auto">
+                  <div className="prose prose-sm prose-invert min-w-0 max-w-none">
                     <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>{draftSnapshot}</ReactMarkdown>
                   </div>
                 </div>

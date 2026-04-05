@@ -59,7 +59,12 @@ pub struct SyncResult {
 
 /// Full sync cycle: pull --rebase, then push.
 pub fn sync(repo_dir: &Path) -> SyncResult {
-    let mut result = SyncResult { pulled: false, pushed: false, conflict: false, error: None };
+    let mut result = SyncResult {
+        pulled: false,
+        pushed: false,
+        conflict: false,
+        error: None,
+    };
 
     // Commit local changes first
     if let Err(e) = commit_if_dirty(repo_dir) {
@@ -73,8 +78,13 @@ pub fn sync(repo_dir: &Path) -> SyncResult {
         Err(e) => {
             if e.contains("CONFLICT") || e.contains("conflict") {
                 result.conflict = true;
-                result.error = Some("Rebase conflict — open a terminal and resolve manually in the data directory.".to_string());
-            } else if e.contains("couldn't find remote ref") || e.contains("does not appear to be a git") {
+                result.error = Some(
+                    "Rebase conflict — open a terminal and resolve manually in the data directory."
+                        .to_string(),
+                );
+            } else if e.contains("couldn't find remote ref")
+                || e.contains("does not appear to be a git")
+            {
                 // Remote has no commits yet — first push
             } else {
                 result.error = Some(e);

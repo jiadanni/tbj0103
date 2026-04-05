@@ -1,10 +1,10 @@
 //! Tauri commands for file-based chat storage and optional encryption.
 
-use tauri::State;
 use crate::db::DbState;
 use crate::models::chat::ChatSession;
 use crate::services::chat_file_store;
 use std::process::Command;
+use tauri::State;
 
 /// In-memory passphrase state — populated at startup from keyring if
 /// encryption is enabled, or when the user calls `setup_chat_encryption`.
@@ -62,7 +62,8 @@ pub fn reveal_chat_file(
 ) -> Result<(), String> {
     let encrypted = crypto.0.lock().map_err(|e| e.to_string())?.is_some();
     let path = chat_file_store::session_file_path(&chats_dir_state.0, &session_id, encrypted);
-    let fallback_path = chat_file_store::session_file_path(&chats_dir_state.0, &session_id, !encrypted);
+    let fallback_path =
+        chat_file_store::session_file_path(&chats_dir_state.0, &session_id, !encrypted);
     let reveal_path = if path.exists() { path } else { fallback_path };
 
     if !reveal_path.exists() {
@@ -91,7 +92,9 @@ pub fn reveal_chat_file(
 
     #[cfg(target_os = "linux")]
     {
-        let parent = reveal_path.parent().ok_or_else(|| "Chat folder not found".to_string())?;
+        let parent = reveal_path
+            .parent()
+            .ok_or_else(|| "Chat folder not found".to_string())?;
         Command::new("xdg-open")
             .arg(parent)
             .status()
@@ -153,8 +156,7 @@ pub fn disable_chat_encryption(
     db_state: State<DbState>,
 ) -> Result<usize, String> {
     let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
-    let count =
-        chat_file_store::reencrypt_all_files(&chats_dir_state.0, pass.as_deref(), None)?;
+    let count = chat_file_store::reencrypt_all_files(&chats_dir_state.0, pass.as_deref(), None)?;
 
     keyring_delete();
     *crypto.0.lock().map_err(|e| e.to_string())? = None;
@@ -215,7 +217,12 @@ pub fn import_chat_from_json(
     )?;
 
     let pass = crypto.0.lock().ok().and_then(|g| g.clone());
-    let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, &session_id, pass.as_deref());
+    let _ = chat_file_store::write_session_file(
+        &conn,
+        &chats_dir_state.0,
+        &session_id,
+        pass.as_deref(),
+    );
 
     conn.query_row(
         "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id, created_at, updated_at
@@ -264,7 +271,8 @@ pub fn import_lmstudio_folder(
     }
 
     // Root folder name becomes the workspace name.
-    let workspace_name = folder.file_name()
+    let workspace_name = folder
+        .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("Imported Chats")
         .to_string();
@@ -277,17 +285,20 @@ pub fn import_lmstudio_folder(
 
     let now = chrono::Utc::now().to_rfc3339();
     let normalized_workspace_name = workspace_name.trim();
-    let existing_workspace_id = conn.query_row(
-        "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
-        rusqlite::params![normalized_workspace_name],
-        |row| row.get::<_, String>(0),
-    ).ok();
+    let existing_workspace_id = conn
+        .query_row(
+            "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
+            rusqlite::params![normalized_workspace_name],
+            |row| row.get::<_, String>(0),
+        )
+        .ok();
 
     let mut workspace_id: Option<String> = existing_workspace_id;
     let mut created_workspace = false;
 
     // Build project map lazily: subfolder name -> project ID.
-    let mut project_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut project_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
 
     let mut session_ids = Vec::new();
     let mut errors = Vec::new();
@@ -335,7 +346,12 @@ pub fn import_lmstudio_folder(
                         project_id
                     };
 
-                    match chat_file_store::import_chat_data(&conn, &data, &workspace_id, &project_id) {
+                    match chat_file_store::import_chat_data(
+                        &conn,
+                        &data,
+                        &workspace_id,
+                        &project_id,
+                    ) {
                         Ok(sid) => session_ids.push(sid),
                         Err(e) => errors.push(format!("{}: {e}", conv.path.display())),
                     }
@@ -355,13 +371,23 @@ pub fn import_lmstudio_folder(
     if session_ids.is_empty() {
         if created_workspace {
             if let Some(workspace_id) = workspace_id.as_ref() {
-                let _ = conn.execute("DELETE FROM workspaces WHERE id = ?1", rusqlite::params![workspace_id]);
+                let _ = conn.execute(
+                    "DELETE FROM workspaces WHERE id = ?1",
+                    rusqlite::params![workspace_id],
+                );
             }
         }
 
-        let mut message = "LM Studio import found conversation files, but none contained importable messages.".to_string();
+        let mut message =
+            "LM Studio import found conversation files, but none contained importable messages."
+                .to_string();
         if !errors.is_empty() {
-            let sample = errors.iter().take(3).cloned().collect::<Vec<_>>().join("\n");
+            let sample = errors
+                .iter()
+                .take(3)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n");
             message.push_str("\n\nExamples:\n");
             message.push_str(&sample);
             if errors.len() > 3 {
@@ -390,14 +416,15 @@ pub fn import_gemini_takeout(
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
-    
+
     let path = std::path::Path::new(&file_path);
     if !path.is_file() {
         return Err(format!("{} is not a file", file_path));
     }
 
     let html_bytes = std::fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
-    let html = String::from_utf8(html_bytes).map_err(|e| format!("Invalid UTF-8 in HTML: {}", e))?;
+    let html =
+        String::from_utf8(html_bytes).map_err(|e| format!("Invalid UTF-8 in HTML: {}", e))?;
 
     let sessions = chat_file_store::parse_gemini_takeout(&html)?;
     if sessions.is_empty() {
@@ -406,12 +433,14 @@ pub fn import_gemini_takeout(
 
     let workspace_name = "Gemini Apps".to_string();
     let now = chrono::Utc::now().to_rfc3339();
-    
-    let existing_workspace_id = conn.query_row(
-        "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
-        rusqlite::params!["gemini apps"],
-        |row| row.get::<_, String>(0),
-    ).ok();
+
+    let existing_workspace_id = conn
+        .query_row(
+            "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
+            rusqlite::params!["gemini apps"],
+            |row| row.get::<_, String>(0),
+        )
+        .ok();
 
     let workspace_id = if let Some(id) = existing_workspace_id {
         id
@@ -443,7 +472,8 @@ pub fn import_gemini_takeout(
                 data.system_prompt,
                 data.created_at
             ],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
         for fmsg in &data.messages {
             conn.execute(
@@ -460,7 +490,8 @@ pub fn import_gemini_takeout(
                     fmsg.tokens_used,
                     data.created_at
                 ],
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
             messages_count += 1;
         }
         session_ids.push(data.id.clone());
@@ -518,9 +549,7 @@ fn sync_all_to_files_internal(
 }
 
 /// Called by lib.rs during app setup.
-pub fn load_crypto_state_from_keyring(
-    conn: &rusqlite::Connection,
-) -> Option<String> {
+pub fn load_crypto_state_from_keyring(conn: &rusqlite::Connection) -> Option<String> {
     // Check if encryption is marked as enabled in settings
     let enabled: bool = conn
         .query_row(

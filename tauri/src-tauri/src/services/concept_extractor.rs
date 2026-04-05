@@ -10,9 +10,15 @@ static WIKI_RE: OnceLock<Regex> = OnceLock::new();
 static CAMEL_RE: OnceLock<Regex> = OnceLock::new();
 static PHRASE_RE: OnceLock<Regex> = OnceLock::new();
 
-fn wiki_re()   -> &'static Regex { WIKI_RE.get_or_init(||   Regex::new(r"\[\[([^\[\]]+)\]\]").unwrap()) }
-fn camel_re()  -> &'static Regex { CAMEL_RE.get_or_init(||  Regex::new(r"\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b").unwrap()) }
-fn phrase_re() -> &'static Regex { PHRASE_RE.get_or_init(|| Regex::new(r"\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){1,3}\b").unwrap()) }
+fn wiki_re() -> &'static Regex {
+    WIKI_RE.get_or_init(|| Regex::new(r"\[\[([^\[\]]+)\]\]").unwrap())
+}
+fn camel_re() -> &'static Regex {
+    CAMEL_RE.get_or_init(|| Regex::new(r"\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b").unwrap())
+}
+fn phrase_re() -> &'static Regex {
+    PHRASE_RE.get_or_init(|| Regex::new(r"\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){1,3}\b").unwrap())
+}
 
 /// Extract deduplicated concept name candidates from text.
 /// Priority order: [[wiki-links]] > CamelCase > Title Case phrases.
@@ -52,5 +58,8 @@ pub fn extract_concepts(text: &str) -> Vec<String> {
 /// Filter `candidates` against `existing_names` (case-insensitive) and return novel ones.
 pub fn filter_new_concepts(candidates: Vec<String>, existing_names: &[String]) -> Vec<String> {
     let existing_lower: HashSet<String> = existing_names.iter().map(|n| n.to_lowercase()).collect();
-    candidates.into_iter().filter(|c| !existing_lower.contains(&c.to_lowercase())).collect()
+    candidates
+        .into_iter()
+        .filter(|c| !existing_lower.contains(&c.to_lowercase()))
+        .collect()
 }

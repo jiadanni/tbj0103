@@ -69,7 +69,6 @@ vi.mock("@/views/PreferencesView", () => ({ default: () => <div>Preferences View
 vi.mock("@/views/DocumentBrowserView", () => ({ default: () => <div>Documents View</div> }));
 vi.mock("@/views/LearningPathView", () => ({ default: () => <div>Learning Path View</div> }));
 vi.mock("@/views/MemoryView", () => ({ default: () => <div>Memory View</div> }));
-vi.mock("@/views/PluginManagerView", () => ({ default: () => <div>Plugins View</div> }));
 vi.mock("@/views/NoteEditorView", () => ({ default: () => <div>Notes View</div> }));
 vi.mock("@/views/WebCaptureView", () => ({ default: () => <div>Web Capture View</div> }));
 
@@ -135,7 +134,7 @@ describe("Layout", () => {
   });
 
   it("renders the sidebar in sidebar navigation mode", () => {
-    useWorkspaceStore.setState({ workspaceNavigation: "sidebar" });
+    useWorkspaceStore.setState({ sectionNavigation: "sidebar" });
 
     render(
       <MemoryRouter initialEntries={["/project"]}>
@@ -214,7 +213,7 @@ describe("Layout", () => {
   });
 
   it("opens a custom context menu for top section tabs", () => {
-    useWorkspaceStore.setState({ workspaceNavigation: "top-tabs" });
+    useWorkspaceStore.setState({ sectionNavigation: "top-tabs" });
 
     render(
       <MemoryRouter initialEntries={["/project"]}>
@@ -229,7 +228,7 @@ describe("Layout", () => {
   });
 
   it("keeps the main route containers shrinkable for scrollable views", () => {
-    useWorkspaceStore.setState({ workspaceNavigation: "icon-bar" });
+    useWorkspaceStore.setState({ sectionNavigation: "icon-bar" });
 
     const { container, rerender } = render(
       <MemoryRouter initialEntries={["/chat"]}>
@@ -239,7 +238,7 @@ describe("Layout", () => {
 
     expect(container.querySelector("div.flex-1.overflow-hidden.flex.flex-col.min-w-0.min-h-0")).not.toBeNull();
 
-    useWorkspaceStore.setState({ workspaceNavigation: "sidebar" });
+    useWorkspaceStore.setState({ sectionNavigation: "sidebar" });
     rerender(
       <MemoryRouter initialEntries={["/chat"]}>
         <Layout />
@@ -247,6 +246,23 @@ describe("Layout", () => {
     );
 
     expect(screen.getByTestId("panel-main")).toHaveClass("min-h-0");
+  });
+
+  it("renders a top dropdown for section navigation and navigates from it", async () => {
+    useWorkspaceStore.setState({ sectionNavigation: "top-dropdown" });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const select = screen.getByLabelText("Section");
+    expect(select).toBeInTheDocument();
+
+    fireEvent.change(select, { target: { value: "/documents" } });
+
+    expect(await screen.findByText("Documents View")).toBeInTheDocument();
   });
 
 });

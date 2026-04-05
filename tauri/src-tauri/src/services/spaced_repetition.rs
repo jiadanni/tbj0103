@@ -81,8 +81,8 @@ pub fn retention_score(card: &LearningCard) -> f64 {
 /// Days until next review (negative = overdue)
 pub fn days_until_review(card: &LearningCard) -> i64 {
     let today = chrono::Utc::now().date_naive();
-    let review = chrono::NaiveDate::parse_from_str(&card.next_review_date, "%Y-%m-%d")
-        .unwrap_or(today);
+    let review =
+        chrono::NaiveDate::parse_from_str(&card.next_review_date, "%Y-%m-%d").unwrap_or(today);
     (review - today).num_days()
 }
 

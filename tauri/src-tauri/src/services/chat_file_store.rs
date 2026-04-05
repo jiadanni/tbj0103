@@ -14,11 +14,11 @@
 //!   "salt": "base64", "nonce": "base64", "ciphertext": "base64" }
 //! ```
 
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
-use rusqlite::Connection;
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
+use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 // ── Public file-data structs ──────────────────────────────────────────────────
 
@@ -141,7 +141,7 @@ pub fn write_session_file(
     let json_bytes = serde_json::to_vec_pretty(&data).map_err(|e| e.to_string())?;
 
     if let Some(pass) = passphrase {
-        use aes_gcm::aead::{AeadCore, KeyInit, Aead, OsRng};
+        use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
         use aes_gcm::Aes256Gcm;
 
         let mut salt = [0u8; 16];
@@ -188,16 +188,14 @@ pub fn delete_session_file(chats_dir: &Path, session_id: &str) {
 /// Read and optionally decrypt a chat JSON file.
 pub fn read_session_file(path: &Path, passphrase: Option<&str>) -> Result<ChatFileData, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-    let value: serde_json::Value =
-        serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
 
     if value.get("encrypted").and_then(|v| v.as_bool()) == Some(true) {
         let pass =
             passphrase.ok_or_else(|| "Passphrase required to open encrypted chat".to_string())?;
-        let ef: EncryptedFile =
-            serde_json::from_value(value).map_err(|e| e.to_string())?;
+        let ef: EncryptedFile = serde_json::from_value(value).map_err(|e| e.to_string())?;
 
-        use aes_gcm::aead::{KeyInit, Aead};
+        use aes_gcm::aead::{Aead, KeyInit};
         use aes_gcm::{Aes256Gcm, Nonce};
 
         let salt = B64.decode(&ef.salt).map_err(|e| e.to_string())?;
@@ -249,8 +247,14 @@ pub fn import_session_from_file(
                  (id, session_id, role, content, model_name, tokens_used, duration_ms, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
-                uuid::Uuid::new_v4().to_string(), session_id, role, msg.content,
-                msg.model, msg.tokens_used, msg.duration_ms, msg.timestamp
+                uuid::Uuid::new_v4().to_string(),
+                session_id,
+                role,
+                msg.content,
+                msg.model,
+                msg.tokens_used,
+                msg.duration_ms,
+                msg.timestamp
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -266,7 +270,7 @@ pub fn import_session_from_file(
 #[serde(rename_all = "camelCase")]
 struct LmConversation {
     name: Option<String>,
-    created_at: Option<u64>,           // epoch ms
+    created_at: Option<u64>, // epoch ms
     system_prompt: Option<String>,
     messages: Vec<LmMessageSlot>,
     /// Per-chat prediction config may hold systemPrompt override
@@ -404,7 +408,10 @@ fn extract_messages_from_lm_conversation(conv: &LmConversation) -> Vec<ChatFileM
         if slot.versions.is_empty() {
             continue;
         }
-        let idx = slot.currently_selected.unwrap_or(0).min(slot.versions.len() - 1);
+        let idx = slot
+            .currently_selected
+            .unwrap_or(0)
+            .min(slot.versions.len() - 1);
         let version = &slot.versions[idx];
 
         let role = match version.role.as_deref() {
@@ -438,9 +445,14 @@ fn extract_messages_from_lm_conversation(conv: &LmConversation) -> Vec<ChatFileM
                             }
                         }
                         if thought_title.is_none()
-                            && block.style.as_ref().and_then(|style| style.style_type.as_deref()) == Some("thinking")
+                            && block
+                                .style
+                                .as_ref()
+                                .and_then(|style| style.style_type.as_deref())
+                                == Some("thinking")
                         {
-                            thought_title = block.style.as_ref().and_then(|style| style.title.clone());
+                            thought_title =
+                                block.style.as_ref().and_then(|style| style.title.clone());
                         }
                     }
                 }
@@ -474,7 +486,10 @@ fn extract_messages_from_lm_conversation(conv: &LmConversation) -> Vec<ChatFileM
 
         // Fall back to sender_info for model name
         if model_name.is_none() {
-            model_name = version.sender_info.as_ref().and_then(|s| s.sender_name.clone());
+            model_name = version
+                .sender_info
+                .as_ref()
+                .and_then(|s| s.sender_name.clone());
         }
 
         let mut content = text_parts.join("\n\n");
@@ -518,17 +533,26 @@ pub fn parse_lmstudio_conversation(bytes: &[u8]) -> Result<ChatFileData, String>
     let conv: LmConversation =
         serde_json::from_slice(bytes).map_err(|e| format!("Invalid LM Studio JSON: {e}"))?;
 
-    let title = conv.name.clone().unwrap_or_else(|| "Imported Chat".to_string());
-    let created = conv.created_at.map(epoch_ms_to_iso)
+    let title = conv
+        .name
+        .clone()
+        .unwrap_or_else(|| "Imported Chat".to_string());
+    let created = conv
+        .created_at
+        .map(epoch_ms_to_iso)
         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
-    let model = conv.last_used_model.as_ref()
+    let model = conv
+        .last_used_model
+        .as_ref()
         .and_then(|m| m.identifier.clone())
         .unwrap_or_default();
     let system_prompt = lm_effective_system_prompt(&conv);
 
     let messages = extract_messages_from_lm_conversation(&conv);
     if messages.is_empty() {
-        return Err("Conversation contains no importable user, assistant, or system messages.".to_string());
+        return Err(
+            "Conversation contains no importable user, assistant, or system messages.".to_string(),
+        );
     }
 
     Ok(ChatFileData {
@@ -551,22 +575,31 @@ pub struct DiscoveredConversation {
 
 /// Walk a directory recursively and discover all `.conversation.json` files,
 /// grouped by their immediate parent folder relative to the root.
-pub fn discover_lmstudio_conversations(folder: &Path) -> Result<Vec<DiscoveredConversation>, String> {
+pub fn discover_lmstudio_conversations(
+    folder: &Path,
+) -> Result<Vec<DiscoveredConversation>, String> {
     let mut results = Vec::new();
 
-    fn walk(dir: &Path, root: &Path, results: &mut Vec<DiscoveredConversation>) -> Result<(), String> {
-        let entries = std::fs::read_dir(dir).map_err(|e| format!("Cannot read {}: {e}", dir.display()))?;
+    fn walk(
+        dir: &Path,
+        root: &Path,
+        results: &mut Vec<DiscoveredConversation>,
+    ) -> Result<(), String> {
+        let entries =
+            std::fs::read_dir(dir).map_err(|e| format!("Cannot read {}: {e}", dir.display()))?;
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
                 walk(&path, root, results)?;
-            } else if path.file_name()
+            } else if path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .map(|n| n.ends_with(".conversation.json") || n == "conversation.json")
                 .unwrap_or(false)
             {
                 // Determine the subfolder: immediate parent relative to root
-                let subfolder = path.parent()
+                let subfolder = path
+                    .parent()
                     .filter(|p| *p != root)
                     .and_then(|p| p.file_name())
                     .and_then(|n| n.to_str())
@@ -602,11 +635,17 @@ pub fn import_chat_data(
               deleted_at, is_imported, parent_session_id, branch_message_id, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 0, 0, NULL, 1, NULL, NULL, ?7, ?8)",
         rusqlite::params![
-            session_id, workspace_id, project_id,
-            data.title, data.model, data.system_prompt,
-            data.created_at, data.updated_at
+            session_id,
+            workspace_id,
+            project_id,
+            data.title,
+            data.model,
+            data.system_prompt,
+            data.created_at,
+            data.updated_at
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     for msg in &data.messages {
         let role = msg.role.trim().to_lowercase();
@@ -618,11 +657,17 @@ pub fn import_chat_data(
                  (id, session_id, role, content, model_name, tokens_used, duration_ms, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
-                uuid::Uuid::new_v4().to_string(), session_id, role,
-                msg.content, msg.model, msg.tokens_used, msg.duration_ms,
+                uuid::Uuid::new_v4().to_string(),
+                session_id,
+                role,
+                msg.content,
+                msg.model,
+                msg.tokens_used,
+                msg.duration_ms,
                 msg.timestamp
             ],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     Ok(session_id)
@@ -666,9 +711,9 @@ pub fn reencrypt_all_files(
         };
 
         if let Some(pass) = new_passphrase {
-            use aes_gcm::aead::{AeadCore, KeyInit, Aead, OsRng};
-            use aes_gcm::Aes256Gcm;
             use aes_gcm::aead::rand_core::RngCore;
+            use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
+            use aes_gcm::Aes256Gcm;
 
             let mut salt = [0u8; 16];
             OsRng.fill_bytes(&mut salt);
@@ -706,7 +751,8 @@ pub fn reencrypt_all_files(
 // ── Google Takeout (Gemini) parser ──────────────────────────────────────────
 
 pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>, String> {
-    let mut sessions: std::collections::BTreeMap<String, Vec<ChatFileMessage>> = std::collections::BTreeMap::new();
+    let mut sessions: std::collections::BTreeMap<String, Vec<ChatFileMessage>> =
+        std::collections::BTreeMap::new();
     let re_date = regex::Regex::new(r"(\d{1,2} [A-Z][a-z]{2} \d{4}), (\d{2}:\d{2}:\d{2})").unwrap();
     let re_tags = regex::Regex::new(r"<[^>]+>").unwrap();
 
@@ -721,13 +767,14 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
             None => continue,
         };
         let after_prompt = &part[prompt_start..];
-        
-        let trimmed = after_prompt.trim_start()
+
+        let trimmed = after_prompt
+            .trim_start()
             .trim_start_matches('\u{a0}')
             .trim_start_matches("&#160;")
             .trim_start_matches("&nbsp;")
             .trim_start();
-        
+
         let prompt_end = trimmed.find("<br>").unwrap_or(trimmed.len());
         let prompt_text = &trimmed[..prompt_end];
 
@@ -738,12 +785,12 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
 
             let after_date = &trimmed[date_match.end()..];
             let mut assistant_html = after_date;
-            
+
             // Skip the timezone/other meta info up to the response body
             if let Some(idx) = assistant_html.find("<p>") {
                 assistant_html = &assistant_html[idx..];
             } else if let Some(idx) = assistant_html.find("<br>") {
-                assistant_html = &assistant_html[idx+4..];
+                assistant_html = &assistant_html[idx + 4..];
             }
             if let Some(idx) = assistant_html.find("</div></div></div>") {
                 assistant_html = &assistant_html[..idx];
@@ -762,8 +809,12 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
                 .replace("&#39;", "'")
                 .replace("&lt;", "<")
                 .replace("&gt;", ">");
-            
-            let safe_text = re_tags.replace_all(&safe_html, "").to_string().trim().to_string();
+
+            let safe_text = re_tags
+                .replace_all(&safe_html, "")
+                .to_string()
+                .trim()
+                .to_string();
             let safe_prompt = prompt_text
                 .replace("&nbsp;", " ")
                 .replace("&quot;", "\"")
@@ -774,35 +825,41 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
 
             let messages = sessions.entry(date_str.clone()).or_insert_with(Vec::new);
             let id_prefix = uuid::Uuid::new_v4().to_string();
-            
+
             // Because Gemini exports newest first, we push user then assistant.
             // But we have to reverse the pairs later to make it chronological.
             // A safer trick is to push (assistant, user) or we reverse them as a block later.
             // Standard timeline: oldest at index 0. Here, latest is inserted first.
-            // Wait, we need the user/assistant pair to stay intact! 
-            // So we'll push the prompt and response, and at the end we will `messages.reverse()` 
-            // which flips their order. But wait - reversing [user1, assistant1, user2, assistant2] 
+            // Wait, we need the user/assistant pair to stay intact!
+            // So we'll push the prompt and response, and at the end we will `messages.reverse()`
+            // which flips their order. But wait - reversing [user1, assistant1, user2, assistant2]
             // becomes [assistant2, user2, assistant1, user1].
             // That's bad! We want [user2, assistant2, user1, assistant1].
             // To do this simply, we will insert at the beginning of the vector `Vec::insert(0)`
-            messages.insert(0, ChatFileMessage {
-                id: format!("{}-assistant", id_prefix),
-                role: "assistant".to_string(),
-                content: safe_text,
-                model: Some("gemini".to_string()),
-                tokens_used: None,
-                timestamp: format!("{}T{}+00:00", date_str, time_str),
-                duration_ms: None,
-            });
-            messages.insert(0, ChatFileMessage {
-                id: format!("{}-user", id_prefix),
-                role: "user".to_string(),
-                content: safe_prompt,
-                model: None,
-                tokens_used: None,
-                timestamp: format!("{}T{}+00:00", date_str, time_str),
-                duration_ms: None,
-            });
+            messages.insert(
+                0,
+                ChatFileMessage {
+                    id: format!("{}-assistant", id_prefix),
+                    role: "assistant".to_string(),
+                    content: safe_text,
+                    model: Some("gemini".to_string()),
+                    tokens_used: None,
+                    timestamp: format!("{}T{}+00:00", date_str, time_str),
+                    duration_ms: None,
+                },
+            );
+            messages.insert(
+                0,
+                ChatFileMessage {
+                    id: format!("{}-user", id_prefix),
+                    role: "user".to_string(),
+                    content: safe_prompt,
+                    model: None,
+                    tokens_used: None,
+                    timestamp: format!("{}T{}+00:00", date_str, time_str),
+                    duration_ms: None,
+                },
+            );
         }
     }
 
@@ -819,7 +876,7 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
             messages,
         });
     }
-    
+
     Ok(result)
 }
 
@@ -827,6 +884,4 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
 mod tests {
     use super::*;
     use rusqlite::Connection;
-
-
 }

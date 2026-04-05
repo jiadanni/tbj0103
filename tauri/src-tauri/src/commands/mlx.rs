@@ -1,6 +1,6 @@
-use tauri::AppHandle;
-use serde::{Deserialize, Serialize};
 use crate::mlx::client::{MlxClient, MlxMessage, MlxModelInfo};
+use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMlxRequest {
@@ -16,7 +16,9 @@ pub async fn send_mlx_message(app: AppHandle, req: SendMlxRequest) -> Result<Str
         return Err("MLX is only supported on macOS".to_string());
     }
     let client = MlxClient::new(req.mlx_url);
-    client.stream_message(&app, &req.session_id, &req.model, req.messages).await
+    client
+        .stream_message(&app, &req.session_id, &req.model, req.messages)
+        .await
 }
 
 #[tauri::command]

@@ -135,7 +135,11 @@ impl ChatSession {
 }
 
 impl Message {
-    pub fn new(session_id: impl Into<String>, role: MessageRole, content: impl Into<String>) -> Self {
+    pub fn new(
+        session_id: impl Into<String>,
+        role: MessageRole,
+        content: impl Into<String>,
+    ) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             session_id: session_id.into(),

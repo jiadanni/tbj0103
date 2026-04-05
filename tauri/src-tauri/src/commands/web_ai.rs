@@ -1,9 +1,10 @@
+use crate::db::DbState;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::process::Stdio;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use serde::{Deserialize, Serialize};
-use std::process::Stdio;
-use crate::db::DbState;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct StreamEvent {
@@ -21,6 +22,36 @@ struct RunnerLine {
     line_type: String,
     text: Option<String>,
     message: Option<String>,
+}
+
+fn resolve_playwright_runner_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let mut checked_paths = Vec::new();
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let bundled_path = resource_dir.join("playwright-runner.js");
+        if bundled_path.exists() {
+            return Ok(bundled_path);
+        }
+        checked_paths.push(bundled_path);
+    }
+
+    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("playwright-runner.js");
+    if dev_path.exists() {
+        return Ok(dev_path);
+    }
+    checked_paths.push(dev_path);
+
+    let checked_paths = checked_paths
+        .into_iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    Err(format!(
+        "playwright-runner.js not found. Checked: {checked_paths}"
+    ))
 }
 
 /// Send a query to a web AI provider via Playwright.
@@ -52,18 +83,8 @@ pub async fn send_web_message(
         ));
     }
 
-    // Resolve script path from bundled resources
-    let resource_dir = app
-        .path()
-        .resource_dir()
-        .map_err(|e| format!("Cannot locate app resource dir: {e}"))?;
-    let script_path = resource_dir.join("playwright-runner.js");
-    if !script_path.exists() {
-        return Err(format!(
-            "playwright-runner.js not found at {}",
-            script_path.display()
-        ));
-    }
+    // Prefer bundled resources, but fall back to the checked-in file in dev.
+    let script_path = resolve_playwright_runner_path(&app)?;
 
     // Resolve per-provider profile directory inside app data dir
     let profile_dir = app
@@ -147,7 +168,9 @@ pub async fn send_web_message(
                 break;
             }
             "error" => {
-                let msg = parsed.message.unwrap_or_else(|| "Unknown error from playwright-runner".to_string());
+                let msg = parsed
+                    .message
+                    .unwrap_or_else(|| "Unknown error from playwright-runner".to_string());
                 return Err(msg);
             }
             _ => {}

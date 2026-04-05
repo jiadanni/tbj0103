@@ -11,24 +11,21 @@
 //!
 //! Caller-supplied vars (via `extra_vars` map) override built-ins.
 
-use std::collections::HashMap;
 use chrono::Local;
+use std::collections::HashMap;
 
 /// Apply template variable substitution and return the rendered string.
-pub fn apply_template(
-    template_content: &str,
-    extra_vars: &HashMap<String, String>,
-) -> String {
+pub fn apply_template(template_content: &str, extra_vars: &HashMap<String, String>) -> String {
     let now = Local::now();
     let mut vars: HashMap<String, String> = HashMap::new();
 
     // Built-in date/time variables
-    vars.insert("date".into(),     now.format("%Y-%m-%d").to_string());
-    vars.insert("time".into(),     now.format("%H:%M").to_string());
+    vars.insert("date".into(), now.format("%Y-%m-%d").to_string());
+    vars.insert("time".into(), now.format("%H:%M").to_string());
     vars.insert("datetime".into(), now.format("%Y-%m-%d %H:%M").to_string());
-    vars.insert("weekday".into(),  now.format("%A").to_string());
-    vars.insert("month".into(),    now.format("%B").to_string());
-    vars.insert("year".into(),     now.format("%Y").to_string());
+    vars.insert("weekday".into(), now.format("%A").to_string());
+    vars.insert("month".into(), now.format("%B").to_string());
+    vars.insert("year".into(), now.format("%Y").to_string());
 
     // Caller-supplied vars override built-ins
     for (k, v) in extra_vars {

@@ -1,3 +1,4 @@
+use crate::commands::ollama::StreamAbortState;
 /// Ollama HTTP Client
 /// Ported from Services/OllamaService.swift
 ///
@@ -10,7 +11,6 @@ use serde_json::json;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
-use crate::commands::ollama::StreamAbortState;
 
 const DEFAULT_BASE_URL: &str = "http://localhost:11434";
 const MODEL_CACHE_TTL: Duration = Duration::from_secs(30);
@@ -110,20 +110,174 @@ pub struct StreamEvent {
     pub duration_ms: Option<i64>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct RequestContext {
+    pub request_id: Option<String>,
+    pub command_name: Option<&'static str>,
+    pub session_id: Option<String>,
+    pub model: Option<String>,
+    pub stream: Option<bool>,
+}
+
 pub struct OllamaClient {
     client: Client,
     pub base_url: String,
 }
 
 impl OllamaClient {
+    #[cfg(debug_assertions)]
+    fn format_duration(duration: Duration) -> String {
+        if duration.as_secs() >= 1 {
+            format!("{:.3}s", duration.as_secs_f64())
+        } else if duration.as_millis() >= 1 {
+            format!("{:.3}ms", duration.as_secs_f64() * 1000.0)
+        } else {
+            format!("{:.3}us", duration.as_secs_f64() * 1_000_000.0)
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    fn slow_threshold(path: &str, ctx: &RequestContext) -> Duration {
+        match (path, ctx.stream.unwrap_or(false)) {
+            ("/api/chat", true) => Duration::from_secs(15),
+            ("/api/chat", false) => Duration::from_secs(10),
+            ("/api/embed", _) => Duration::from_secs(3),
+            ("/api/tags", _) => Duration::from_millis(1500),
+            _ => Duration::from_secs(5),
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    fn severity(
+        path: &str,
+        duration: Duration,
+        error: bool,
+        cache: bool,
+        ctx: &RequestContext,
+    ) -> &'static str {
+        if error {
+            "ERR"
+        } else if cache {
+            "CACHE"
+        } else if duration >= Self::slow_threshold(path, ctx) {
+            "SLOW"
+        } else {
+            "OK"
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    fn summary_fields(
+        ctx: &RequestContext,
+        method: &str,
+        path: &str,
+        duration: Option<Duration>,
+        status: Option<u16>,
+        extras: &[(&str, String)],
+    ) -> Vec<String> {
+        let mut parts = Vec::new();
+        if let Some(command_name) = ctx.command_name {
+            parts.push(format!("api={command_name}"));
+        }
+        if let Some(model) = ctx.model.as_deref() {
+            parts.push(format!("model={model}"));
+        }
+        if let Some(request_id) = ctx.request_id.as_deref() {
+            parts.push(format!("request_id={request_id}"));
+        }
+        if let Some(session_id) = ctx.session_id.as_deref() {
+            parts.push(format!("session_id={session_id}"));
+        }
+        if let Some(stream) = ctx.stream {
+            parts.push(format!("stream={stream}"));
+        }
+        parts.push(format!("method={method}"));
+        parts.push(format!("path={path}"));
+        if let Some(status) = status {
+            parts.push(format!("status={status}"));
+        }
+        if let Some(duration) = duration {
+            parts.push(format!("duration={}", Self::format_duration(duration)));
+        }
+        for (key, value) in extras {
+            parts.push(format!("{key}={value}"));
+        }
+        parts
+    }
+
+    #[cfg(debug_assertions)]
+    fn log_http_success(
+        &self,
+        method: &str,
+        path: &str,
+        status: u16,
+        duration: Duration,
+        ctx: &RequestContext,
+        extras: &[(&str, String)],
+    ) {
+        let severity = Self::severity(path, duration, false, false, ctx);
+        let fields = Self::summary_fields(ctx, method, path, Some(duration), Some(status), extras);
+        eprintln!("[OLLAMA][{}] {}", severity, fields.join(" "),);
+    }
+
+    #[cfg(debug_assertions)]
+    fn log_http_error(
+        &self,
+        method: &str,
+        path: &str,
+        duration: Duration,
+        ctx: &RequestContext,
+        error: &str,
+        extras: &[(&str, String)],
+    ) {
+        let mut extra_parts = extras.to_vec();
+        extra_parts.push(("error", error.to_string()));
+        let fields = Self::summary_fields(ctx, method, path, Some(duration), None, &extra_parts);
+        eprintln!("[OLLAMA][ERR] {}", fields.join(" "),);
+    }
+
+    #[cfg(debug_assertions)]
+    fn log_cache_event(&self, path: &str, ctx: &RequestContext, cache_status: &str) {
+        let extras = [("cache", cache_status.to_string())];
+        let fields = Self::summary_fields(ctx, "GET", path, None, None, &extras);
+        eprintln!("[OLLAMA][CACHE] {}", fields.join(" "),);
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn log_http_success(
+        &self,
+        _method: &str,
+        _path: &str,
+        _status: u16,
+        _duration: Duration,
+        _ctx: &RequestContext,
+        _extras: &[(&str, String)],
+    ) {
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn log_http_error(
+        &self,
+        _method: &str,
+        _path: &str,
+        _duration: Duration,
+        _ctx: &RequestContext,
+        _error: &str,
+        _extras: &[(&str, String)],
+    ) {
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn log_cache_event(&self, _path: &str, _ctx: &RequestContext, _cache_status: &str) {}
+
     fn validate_base_url(base_url: Option<String>) -> Result<String, String> {
         let candidate = base_url
             .map(|url| url.trim().to_string())
             .filter(|url| !url.is_empty())
             .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
 
-        let parsed = reqwest::Url::parse(&candidate)
-            .map_err(|e| format!("Invalid Ollama base URL: {e}"))?;
+        let parsed =
+            reqwest::Url::parse(&candidate).map_err(|e| format!("Invalid Ollama base URL: {e}"))?;
 
         match parsed.scheme() {
             "http" | "https" => {}
@@ -150,24 +304,23 @@ impl OllamaClient {
 
     pub(crate) fn clear_abort_flag(app: &AppHandle, session_id: &str) -> Result<(), String> {
         let abort_state = app.state::<StreamAbortState>();
-        let mut abort_map = abort_state
-            .0
-            .lock()
-            .map_err(|e: std::sync::PoisonError<std::sync::MutexGuard<'_, std::collections::HashMap<String, bool>>>| e.to_string())?;
+        let mut abort_map = abort_state.0.lock().map_err(
+            |e: std::sync::PoisonError<
+                std::sync::MutexGuard<'_, std::collections::HashMap<String, bool>>,
+            >| e.to_string(),
+        )?;
         abort_map.remove(session_id);
         Ok(())
     }
 
     fn should_abort(app: &AppHandle, session_id: &str) -> Result<bool, String> {
         let abort_state = app.state::<StreamAbortState>();
-        let abort_map = abort_state
-            .0
-            .lock()
-            .map_err(|e: std::sync::PoisonError<std::sync::MutexGuard<'_, std::collections::HashMap<String, bool>>>| e.to_string())?;
-        let should_abort = abort_map
-            .get(session_id)
-            .copied()
-            .unwrap_or(false);
+        let abort_map = abort_state.0.lock().map_err(
+            |e: std::sync::PoisonError<
+                std::sync::MutexGuard<'_, std::collections::HashMap<String, bool>>,
+            >| e.to_string(),
+        )?;
+        let should_abort = abort_map.get(session_id).copied().unwrap_or(false);
         Ok(should_abort)
     }
 
@@ -191,12 +344,16 @@ impl OllamaClient {
         }
 
         // 2. Base name match (e.g. "llama3" matching "llama3:latest")
-        if let Some(m) = models.iter().find(|m| m.name.starts_with(&format!("{}:", requested))) {
+        if let Some(m) = models
+            .iter()
+            .find(|m| m.name.starts_with(&format!("{}:", requested)))
+        {
             return Ok(m.name.clone());
         }
 
         // 3. Fallback to first available non-embedding model
-        let chat_fallback = models.iter()
+        let chat_fallback = models
+            .iter()
             .find(|m| !m.name.contains("embed"))
             .map(|m| m.name.clone());
 
@@ -214,7 +371,8 @@ impl OllamaClient {
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
-        self.send_message_with_options(model, messages, None).await
+        self.send_message_observed(model, messages, &RequestContext::default())
+            .await
     }
 
     /// Send a non-streaming message with an optional keep_alive duration.
@@ -225,34 +383,95 @@ impl OllamaClient {
         messages: Vec<OllamaMessage>,
         keep_alive: Option<&str>,
     ) -> Result<String, String> {
+        self.send_message_with_options_observed(
+            model,
+            messages,
+            keep_alive,
+            &RequestContext::default(),
+        )
+        .await
+    }
+
+    pub async fn send_message_observed(
+        &self,
+        model: &str,
+        messages: Vec<OllamaMessage>,
+        ctx: &RequestContext,
+    ) -> Result<String, String> {
+        self.send_message_with_options_observed(model, messages, None, ctx)
+            .await
+    }
+
+    pub async fn send_message_with_options_observed(
+        &self,
+        model: &str,
+        messages: Vec<OllamaMessage>,
+        keep_alive: Option<&str>,
+        ctx: &RequestContext,
+    ) -> Result<String, String> {
         let resolved_model = self.resolve_model(model).await?;
         let url = format!("{}/api/chat", self.base_url);
+        let started_at = Instant::now();
         let mut body = json!({
             "model": resolved_model,
             "messages": messages,
             "stream": false
         });
         if let Some(ka) = keep_alive {
-            body.as_object_mut().unwrap().insert("keep_alive".to_string(), json!(ka));
+            body.as_object_mut()
+                .unwrap()
+                .insert("keep_alive".to_string(), json!(ka));
         }
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Ollama connection error: {e}"))?;
+            .map_err(|e| {
+                let message = format!("Ollama connection error: {e}");
+                self.log_http_error(
+                    "POST",
+                    "/api/chat",
+                    started_at.elapsed(),
+                    ctx,
+                    &message,
+                    &[],
+                );
+                message
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(format!("Ollama error {status}: {text}"));
+            let message = format!("Ollama error {status}: {text}");
+            self.log_http_error(
+                "POST",
+                "/api/chat",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[("status", status.as_u16().to_string())],
+            );
+            return Err(message);
         }
 
-        let chat_response: ChatResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse Ollama response: {e}"))?;
+        let status = response.status().as_u16();
+        let chat_response: ChatResponse = response.json().await.map_err(|e| {
+            let message = format!("Failed to parse Ollama response: {e}");
+            self.log_http_error(
+                "POST",
+                "/api/chat",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[],
+            );
+            message
+        })?;
+
+        self.log_http_success("POST", "/api/chat", status, started_at.elapsed(), ctx, &[]);
 
         Ok(chat_response.message.content)
     }
@@ -267,40 +486,66 @@ impl OllamaClient {
         messages: Vec<OllamaMessage>,
         event_prefix: &str,
         manage_abort_flag: bool,
+        ctx: &RequestContext,
     ) -> Result<String, String> {
         if manage_abort_flag {
             Self::clear_abort_flag(app, session_id)?;
         }
         let resolved_model = self.resolve_model(model).await?;
         let url = format!("{}/api/chat", self.base_url);
+        let started_at = Instant::now();
         let body = json!({
             "model": resolved_model,
             "messages": messages,
             "stream": true
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Ollama connection error: {e}"))?;
+            .map_err(|e| {
+                let message = format!("Ollama connection error: {e}");
+                self.log_http_error(
+                    "POST",
+                    "/api/chat",
+                    started_at.elapsed(),
+                    ctx,
+                    &message,
+                    &[],
+                );
+                message
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(format!("Ollama error {status}: {text}"));
+            let message = format!("Ollama error {status}: {text}");
+            self.log_http_error(
+                "POST",
+                "/api/chat",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[("status", status.as_u16().to_string())],
+            );
+            return Err(message);
         }
 
+        let status = response.status().as_u16();
         let mut full_response = String::new();
         let mut stream = response.bytes_stream();
         let mut stream_done = false;
+        let mut aborted = false;
         let mut pending_chunk = String::new();
         let mut last_emit = std::time::Instant::now();
         const EMIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
 
         loop {
             if Self::should_abort(app, session_id)? {
+                aborted = true;
                 break;
             }
 
@@ -326,11 +571,24 @@ impl OllamaClient {
             let Some(chunk_result) = chunk_result else {
                 break;
             };
-            let chunk = chunk_result.map_err(|e| format!("Stream error: {e}"))?;
+            let chunk = chunk_result.map_err(|e| {
+                let message = format!("Stream error: {e}");
+                self.log_http_error(
+                    "POST",
+                    "/api/chat",
+                    started_at.elapsed(),
+                    ctx,
+                    &message,
+                    &[],
+                );
+                message
+            })?;
             let text = std::str::from_utf8(&chunk).map_err(|e| format!("UTF-8 error: {e}"))?;
 
             for line in text.lines() {
-                if line.is_empty() { continue; }
+                if line.is_empty() {
+                    continue;
+                }
                 if let Ok(parsed) = serde_json::from_str::<StreamChunk>(line) {
                     let content = parsed.message.content.clone();
                     full_response.push_str(&content);
@@ -343,46 +601,74 @@ impl OllamaClient {
                             .eval_duration
                             .or(parsed.total_duration)
                             .map(|ns| ns / 1_000_000);
-                        let _ = app.emit(&event_name, StreamEvent {
-                            session_id: session_id.to_string(),
-                            chunk: std::mem::take(&mut pending_chunk),
-                            done: true,
-                            tokens_used: parsed.eval_count,
-                            duration_ms,
-                        });
+                        let _ = app.emit(
+                            &event_name,
+                            StreamEvent {
+                                session_id: session_id.to_string(),
+                                chunk: std::mem::take(&mut pending_chunk),
+                                done: true,
+                                tokens_used: parsed.eval_count,
+                                duration_ms,
+                            },
+                        );
                         stream_done = true;
                         break;
                     } else {
                         pending_chunk.push_str(&content);
                         // Emit batched chunk if enough time has passed
                         if last_emit.elapsed() >= EMIT_INTERVAL {
-                            let _ = app.emit(&event_name, StreamEvent {
-                                session_id: session_id.to_string(),
-                                chunk: std::mem::take(&mut pending_chunk),
-                                done: false,
-                                tokens_used: None,
-                                duration_ms: None,
-                            });
+                            let _ = app.emit(
+                                &event_name,
+                                StreamEvent {
+                                    session_id: session_id.to_string(),
+                                    chunk: std::mem::take(&mut pending_chunk),
+                                    done: false,
+                                    tokens_used: None,
+                                    duration_ms: None,
+                                },
+                            );
                             last_emit = std::time::Instant::now();
                         }
                     }
                 }
             }
-            if stream_done { break; }
+            if stream_done {
+                break;
+            }
         }
 
         if !stream_done {
-            let _ = app.emit(&format!("{event_prefix}{session_id}"), StreamEvent {
-                session_id: session_id.to_string(),
-                chunk: String::new(),
-                done: true,
-                tokens_used: None,
-                duration_ms: None,
-            });
+            let _ = app.emit(
+                &format!("{event_prefix}{session_id}"),
+                StreamEvent {
+                    session_id: session_id.to_string(),
+                    chunk: String::new(),
+                    done: true,
+                    tokens_used: None,
+                    duration_ms: None,
+                },
+            );
         }
         if manage_abort_flag {
             Self::clear_abort_flag(app, session_id)?;
         }
+
+        let mut extras = Vec::new();
+        if aborted {
+            extras.push(("outcome", "aborted".to_string()));
+        } else if !stream_done {
+            extras.push(("outcome", "incomplete".to_string()));
+        } else {
+            extras.push(("outcome", "completed".to_string()));
+        }
+        self.log_http_success(
+            "POST",
+            "/api/chat",
+            status,
+            started_at.elapsed(),
+            ctx,
+            &extras,
+        );
 
         Ok(full_response)
     }
@@ -396,7 +682,28 @@ impl OllamaClient {
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
-        self.stream_with_prefix(app, session_id, model, messages, "ollama-stream-", true).await
+        self.stream_message_observed(app, session_id, model, messages, &RequestContext::default())
+            .await
+    }
+
+    pub async fn stream_message_observed(
+        &self,
+        app: &AppHandle,
+        session_id: &str,
+        model: &str,
+        messages: Vec<OllamaMessage>,
+        ctx: &RequestContext,
+    ) -> Result<String, String> {
+        self.stream_with_prefix(
+            app,
+            session_id,
+            model,
+            messages,
+            "ollama-stream-",
+            true,
+            ctx,
+        )
+        .await
     }
 
     pub async fn stream_message_unmanaged(
@@ -406,7 +713,34 @@ impl OllamaClient {
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
-        self.stream_with_prefix(app, session_id, model, messages, "ollama-stream-", false).await
+        self.stream_message_unmanaged_observed(
+            app,
+            session_id,
+            model,
+            messages,
+            &RequestContext::default(),
+        )
+        .await
+    }
+
+    pub async fn stream_message_unmanaged_observed(
+        &self,
+        app: &AppHandle,
+        session_id: &str,
+        model: &str,
+        messages: Vec<OllamaMessage>,
+        ctx: &RequestContext,
+    ) -> Result<String, String> {
+        self.stream_with_prefix(
+            app,
+            session_id,
+            model,
+            messages,
+            "ollama-stream-",
+            false,
+            ctx,
+        )
+        .await
     }
 
     /// Stream the refined (large-model) response, emitting chunks as Tauri events.
@@ -418,7 +752,34 @@ impl OllamaClient {
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
-        self.stream_with_prefix(app, session_id, model, messages, "ollama-refine-", true).await
+        self.stream_refine_message_observed(
+            app,
+            session_id,
+            model,
+            messages,
+            &RequestContext::default(),
+        )
+        .await
+    }
+
+    pub async fn stream_refine_message_observed(
+        &self,
+        app: &AppHandle,
+        session_id: &str,
+        model: &str,
+        messages: Vec<OllamaMessage>,
+        ctx: &RequestContext,
+    ) -> Result<String, String> {
+        self.stream_with_prefix(
+            app,
+            session_id,
+            model,
+            messages,
+            "ollama-refine-",
+            true,
+            ctx,
+        )
+        .await
     }
 
     pub async fn stream_refine_message_unmanaged(
@@ -428,46 +789,145 @@ impl OllamaClient {
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
-        self.stream_with_prefix(app, session_id, model, messages, "ollama-refine-", false).await
+        self.stream_refine_message_unmanaged_observed(
+            app,
+            session_id,
+            model,
+            messages,
+            &RequestContext::default(),
+        )
+        .await
+    }
+
+    pub async fn stream_refine_message_unmanaged_observed(
+        &self,
+        app: &AppHandle,
+        session_id: &str,
+        model: &str,
+        messages: Vec<OllamaMessage>,
+        ctx: &RequestContext,
+    ) -> Result<String, String> {
+        self.stream_with_prefix(
+            app,
+            session_id,
+            model,
+            messages,
+            "ollama-refine-",
+            false,
+            ctx,
+        )
+        .await
     }
 
     /// Generate an embedding vector for the given text.
     pub async fn generate_embedding(&self, model: &str, text: &str) -> Result<Vec<f32>, String> {
-        self.generate_embedding_with_options(model, text, None).await
+        self.generate_embedding_observed(model, text, &RequestContext::default())
+            .await
     }
 
     /// Generate an embedding with an optional keep_alive duration.
     /// Pass `Some("0s")` to unload the model immediately after the call.
-    pub async fn generate_embedding_with_options(&self, model: &str, text: &str, keep_alive: Option<&str>) -> Result<Vec<f32>, String> {
+    pub async fn generate_embedding_with_options(
+        &self,
+        model: &str,
+        text: &str,
+        keep_alive: Option<&str>,
+    ) -> Result<Vec<f32>, String> {
+        self.generate_embedding_with_options_observed(
+            model,
+            text,
+            keep_alive,
+            &RequestContext::default(),
+        )
+        .await
+    }
+
+    pub async fn generate_embedding_observed(
+        &self,
+        model: &str,
+        text: &str,
+        ctx: &RequestContext,
+    ) -> Result<Vec<f32>, String> {
+        self.generate_embedding_with_options_observed(model, text, None, ctx)
+            .await
+    }
+
+    pub async fn generate_embedding_with_options_observed(
+        &self,
+        model: &str,
+        text: &str,
+        keep_alive: Option<&str>,
+        ctx: &RequestContext,
+    ) -> Result<Vec<f32>, String> {
         // Guard: verify the model is locally available before calling /api/embed.
-        let available = self.list_models().await.unwrap_or_default();
-        if !available.iter().any(|m| m.name == model || m.name.starts_with(&format!("{model}:"))) {
-            return Err(format!("Embedding model '{model}' is not available locally. Run: ollama pull {model}"));
+        let available = self.list_models_observed(ctx).await.unwrap_or_default();
+        if !available
+            .iter()
+            .any(|m| m.name == model || m.name.starts_with(&format!("{model}:")))
+        {
+            return Err(format!(
+                "Embedding model '{model}' is not available locally. Run: ollama pull {model}"
+            ));
         }
 
         let url = format!("{}/api/embed", self.base_url);
+        let started_at = Instant::now();
         let mut body = json!({ "model": model, "input": text });
         if let Some(ka) = keep_alive {
-            body.as_object_mut().unwrap().insert("keep_alive".to_string(), json!(ka));
+            body.as_object_mut()
+                .unwrap()
+                .insert("keep_alive".to_string(), json!(ka));
         }
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Embedding request failed: {e}"))?;
+            .map_err(|e| {
+                let message = format!("Embedding request failed: {e}");
+                self.log_http_error(
+                    "POST",
+                    "/api/embed",
+                    started_at.elapsed(),
+                    ctx,
+                    &message,
+                    &[],
+                );
+                message
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(format!("Ollama error {status}: {text}"));
+            let message = format!("Ollama error {status}: {text}");
+            self.log_http_error(
+                "POST",
+                "/api/embed",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[("status", status.as_u16().to_string())],
+            );
+            return Err(message);
         }
 
-        let emb: EmbeddingResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse embedding: {e}"))?;
+        let status = response.status().as_u16();
+        let emb: EmbeddingResponse = response.json().await.map_err(|e| {
+            let message = format!("Failed to parse embedding: {e}");
+            self.log_http_error(
+                "POST",
+                "/api/embed",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[],
+            );
+            message
+        })?;
+
+        self.log_http_success("POST", "/api/embed", status, started_at.elapsed(), ctx, &[]);
 
         emb.embeddings
             .into_iter()
@@ -478,11 +938,21 @@ impl OllamaClient {
     /// Fetch list of locally available models, with a 30-second process-level cache.
     /// This eliminates the redundant GET /api/tags that was issued before every /api/chat.
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, String> {
+        self.list_models_observed(&RequestContext::default()).await
+    }
+
+    pub async fn list_models_observed(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<Vec<ModelInfo>, String> {
         // Check cache first (hold the lock only briefly).
         {
-            let guard = model_cache().lock().map_err(|e| format!("model cache lock poisoned: {e}"))?;
+            let guard = model_cache()
+                .lock()
+                .map_err(|e| format!("model cache lock poisoned: {e}"))?;
             if let Some(cached) = guard.as_ref() {
                 if cached.url == self.base_url && cached.fetched_at.elapsed() < MODEL_CACHE_TTL {
+                    self.log_cache_event("/api/tags", ctx, "hit");
                     return Ok(cached.models.clone());
                 }
             }
@@ -490,30 +960,70 @@ impl OllamaClient {
 
         // Cache miss — fetch from Ollama.
         let url = format!("{}/api/tags", self.base_url);
-        let response = self.client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| format!("Failed to fetch models: {e}"))?;
+        let started_at = Instant::now();
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            let message = format!("Failed to fetch models: {e}");
+            self.log_http_error(
+                "GET",
+                "/api/tags",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[("cache", "miss".to_string())],
+            );
+            message
+        })?;
 
         if !response.status().is_success() {
-            return Err(format!("Ollama returned status {}", response.status()));
+            let message = format!("Ollama returned status {}", response.status());
+            self.log_http_error(
+                "GET",
+                "/api/tags",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[
+                    ("cache", "miss".to_string()),
+                    ("status", response.status().as_u16().to_string()),
+                ],
+            );
+            return Err(message);
         }
 
-        let tags: TagsResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse models list: {e}"))?;
+        let status = response.status().as_u16();
+        let tags: TagsResponse = response.json().await.map_err(|e| {
+            let message = format!("Failed to parse models list: {e}");
+            self.log_http_error(
+                "GET",
+                "/api/tags",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[("cache", "miss".to_string())],
+            );
+            message
+        })?;
 
         // Store in cache.
         {
-            let mut guard = model_cache().lock().map_err(|e| format!("model cache lock poisoned: {e}"))?;
+            let mut guard = model_cache()
+                .lock()
+                .map_err(|e| format!("model cache lock poisoned: {e}"))?;
             *guard = Some(CachedModels {
                 models: tags.models.clone(),
                 fetched_at: Instant::now(),
                 url: self.base_url.clone(),
             });
         }
+
+        self.log_http_success(
+            "GET",
+            "/api/tags",
+            status,
+            started_at.elapsed(),
+            ctx,
+            &[("cache", "miss".to_string())],
+        );
 
         Ok(tags.models)
     }
@@ -527,6 +1037,16 @@ impl OllamaClient {
 
     /// Generate a short title for a chat session given the first user message.
     pub async fn generate_title(&self, model: &str, first_message: &str) -> Result<String, String> {
+        self.generate_title_observed(model, first_message, &RequestContext::default())
+            .await
+    }
+
+    pub async fn generate_title_observed(
+        &self,
+        model: &str,
+        first_message: &str,
+        ctx: &RequestContext,
+    ) -> Result<String, String> {
         let prompt = format!(
             "Generate a short (3-6 word) title for a conversation that starts with: \"{first_message}\". \
             Output ONLY the title, no quotes, no punctuation at the end."
@@ -535,7 +1055,7 @@ impl OllamaClient {
             role: "user".to_string(),
             content: prompt,
         }];
-        let title = self.send_message(model, messages).await?;
+        let title = self.send_message_observed(model, messages, ctx).await?;
         Ok(title.trim().to_string())
     }
 
@@ -544,6 +1064,20 @@ impl OllamaClient {
         &self,
         model: &str,
         conversation: Vec<OllamaMessage>,
+    ) -> Result<String, String> {
+        self.generate_title_from_conversation_observed(
+            model,
+            conversation,
+            &RequestContext::default(),
+        )
+        .await
+    }
+
+    pub async fn generate_title_from_conversation_observed(
+        &self,
+        model: &str,
+        conversation: Vec<OllamaMessage>,
+        ctx: &RequestContext,
     ) -> Result<String, String> {
         // Build a summary of the conversation for the title prompt
         let summary: String = conversation
@@ -566,7 +1100,7 @@ impl OllamaClient {
             role: "user".to_string(),
             content: prompt,
         }];
-        let title = self.send_message(model, messages).await?;
+        let title = self.send_message_observed(model, messages, ctx).await?;
         Ok(title.trim().to_string())
     }
 }

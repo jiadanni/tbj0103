@@ -1,14 +1,11 @@
+use crate::ollama::client::StreamEvent;
 use llama_cpp_2::{
-    LlamaBackend, LlamaModel,
-    model::params::LlamaModelParams,
-    context::params::LlamaContextParams,
-    llama_batch::LlamaBatch,
-    model::AddBos,
+    context::params::LlamaContextParams, llama_batch::LlamaBatch, model::params::LlamaModelParams,
+    model::AddBos, LlamaBackend, LlamaModel,
 };
+use serde::{Deserialize, Serialize};
 use std::sync::{mpsc, Mutex};
 use tauri::{AppHandle, Emitter};
-use crate::ollama::client::StreamEvent;
-use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,13 +45,16 @@ pub fn spawn_inference_worker(app: AppHandle) -> LlamacppWorkerState {
                         }
                         Err(e) => {
                             let event_name = format!("ollama-stream-{}", req.session_id);
-                            let _ = app.emit(&event_name, StreamEvent {
-                                session_id: req.session_id.clone(),
-                                chunk: format!("\n\n⚠️ Failed to load model: {}", e),
-                                done: true,
-                                tokens_used: None,
-                                duration_ms: None,
-                            });
+                            let _ = app.emit(
+                                &event_name,
+                                StreamEvent {
+                                    session_id: req.session_id.clone(),
+                                    chunk: format!("\n\n⚠️ Failed to load model: {}", e),
+                                    done: true,
+                                    tokens_used: None,
+                                    duration_ms: None,
+                                },
+                            );
                             continue;
                         }
                     }
@@ -66,13 +66,16 @@ pub fn spawn_inference_worker(app: AppHandle) -> LlamacppWorkerState {
                 Ok(c) => c,
                 Err(e) => {
                     let event_name = format!("ollama-stream-{}", req.session_id);
-                    let _ = app.emit(&event_name, StreamEvent {
-                        session_id: req.session_id.clone(),
-                        chunk: format!("\n\n⚠️ Failed to create context: {}", e),
-                        done: true,
-                        tokens_used: None,
-                        duration_ms: None,
-                    });
+                    let _ = app.emit(
+                        &event_name,
+                        StreamEvent {
+                            session_id: req.session_id.clone(),
+                            chunk: format!("\n\n⚠️ Failed to create context: {}", e),
+                            done: true,
+                            tokens_used: None,
+                            duration_ms: None,
+                        },
+                    );
                     continue;
                 }
             };
@@ -80,7 +83,9 @@ pub fn spawn_inference_worker(app: AppHandle) -> LlamacppWorkerState {
             // Apply chat template if available, otherwise join messages
             let prompt = match model.chat_template(None) {
                 Ok(tmpl) => {
-                    let llama_msgs: Vec<_> = req.messages.iter()
+                    let llama_msgs: Vec<_> = req
+                        .messages
+                        .iter()
                         .map(|m| llama_cpp_2::model::LlamaChatMessage {
                             role: m.role.clone(),
                             content: m.content.clone(),
@@ -98,13 +103,16 @@ pub fn spawn_inference_worker(app: AppHandle) -> LlamacppWorkerState {
                 Ok(t) => t,
                 Err(e) => {
                     let event_name = format!("ollama-stream-{}", req.session_id);
-                    let _ = app.emit(&event_name, StreamEvent {
-                        session_id: req.session_id.clone(),
-                        chunk: format!("\n\n⚠️ Tokenization error: {}", e),
-                        done: true,
-                        tokens_used: None,
-                        duration_ms: None,
-                    });
+                    let _ = app.emit(
+                        &event_name,
+                        StreamEvent {
+                            session_id: req.session_id.clone(),
+                            chunk: format!("\n\n⚠️ Tokenization error: {}", e),
+                            done: true,
+                            tokens_used: None,
+                            duration_ms: None,
+                        },
+                    );
                     continue;
                 }
             };
@@ -118,16 +126,19 @@ pub fn spawn_inference_worker(app: AppHandle) -> LlamacppWorkerState {
                     break;
                 }
             }
-            
+
             if let Err(e) = ctx.decode(&mut batch) {
                 let event_name = format!("ollama-stream-{}", req.session_id);
-                let _ = app.emit(&event_name, StreamEvent {
-                    session_id: req.session_id.clone(),
-                    chunk: format!("\n\n⚠️ Decode error: {}", e),
-                    done: true,
-                    tokens_used: None,
-                    duration_ms: None,
-                });
+                let _ = app.emit(
+                    &event_name,
+                    StreamEvent {
+                        session_id: req.session_id.clone(),
+                        chunk: format!("\n\n⚠️ Decode error: {}", e),
+                        done: true,
+                        tokens_used: None,
+                        duration_ms: None,
+                    },
+                );
                 continue;
             }
 
@@ -146,8 +157,12 @@ pub fn spawn_inference_worker(app: AppHandle) -> LlamacppWorkerState {
                 }
 
                 // Sample next token (greedy)
-                let logits = ctx.get_logits_ith(batch.n_tokens() - 1).expect("Failed to get logits");
-                let next_tok_id = logits.iter().enumerate()
+                let logits = ctx
+                    .get_logits_ith(batch.n_tokens() - 1)
+                    .expect("Failed to get logits");
+                let next_tok_id = logits
+                    .iter()
+                    .enumerate()
                     .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
                     .map(|(i, _)| i as i32)
                     .unwrap_or(eos.0);
@@ -157,16 +172,21 @@ pub fn spawn_inference_worker(app: AppHandle) -> LlamacppWorkerState {
                     break;
                 }
 
-                let tok_str = model.token_to_str(next_tok, llama_cpp_2::token::Special::Auto).unwrap_or_default();
+                let tok_str = model
+                    .token_to_str(next_tok, llama_cpp_2::token::Special::Auto)
+                    .unwrap_or_default();
                 total_tokens += 1;
 
-                let _ = app.emit(&event_name, StreamEvent {
-                    session_id: req.session_id.clone(),
-                    chunk: tok_str,
-                    done: false,
-                    tokens_used: None,
-                    duration_ms: None,
-                });
+                let _ = app.emit(
+                    &event_name,
+                    StreamEvent {
+                        session_id: req.session_id.clone(),
+                        chunk: tok_str,
+                        done: false,
+                        tokens_used: None,
+                        duration_ms: None,
+                    },
+                );
 
                 batch.clear();
                 if let Err(e) = batch.add(next_tok, pos, &[0], true) {
@@ -178,7 +198,7 @@ pub fn spawn_inference_worker(app: AppHandle) -> LlamacppWorkerState {
                     break;
                 }
                 pos += 1;
-                
+
                 // Safety break for very long generations
                 if total_tokens > 4096 {
                     break;
@@ -187,13 +207,16 @@ pub fn spawn_inference_worker(app: AppHandle) -> LlamacppWorkerState {
 
             // Final done event
             let duration_ms = start.elapsed().as_millis() as i64;
-            let _ = app.emit(&event_name, StreamEvent {
-                session_id: req.session_id.clone(),
-                chunk: String::new(),
-                done: true,
-                tokens_used: Some(total_tokens),
-                duration_ms: Some(duration_ms),
-            });
+            let _ = app.emit(
+                &event_name,
+                StreamEvent {
+                    session_id: req.session_id.clone(),
+                    chunk: String::new(),
+                    done: true,
+                    tokens_used: Some(total_tokens),
+                    duration_ms: Some(duration_ms),
+                },
+            );
         }
     });
 
