@@ -1,9 +1,12 @@
-use tauri::State;
 use crate::db::DbState;
-use crate::models::workspace::{Workspace, CreateWorkspaceRequest, UpdateWorkspaceRequest};
+use crate::models::workspace::{CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace};
+use tauri::State;
 
 #[tauri::command]
-pub fn create_workspace(state: State<DbState>, req: CreateWorkspaceRequest) -> Result<Workspace, String> {
+pub fn create_workspace(
+    state: State<DbState>,
+    req: CreateWorkspaceRequest,
+) -> Result<Workspace, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let ws = Workspace::new(req.name, req.description.unwrap_or_default());
 
@@ -25,24 +28,26 @@ pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> 
          WHERE is_hidden = 0
          ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map([], |row| {
-        let sig_json: String = row.get(4)?;
-        let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
-        let is_hidden: i64 = row.get(6)?;
-        Ok(Workspace {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            description: row.get(2)?,
-            prompt_instructions: row.get(3)?,
-            topic_signature,
-            signature_updated_at: row.get(5)?,
-            is_hidden: is_hidden != 0,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
+    let items = stmt
+        .query_map([], |row| {
+            let sig_json: String = row.get(4)?;
+            let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
+            let is_hidden: i64 = row.get(6)?;
+            Ok(Workspace {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                prompt_instructions: row.get(3)?,
+                topic_signature,
+                signature_updated_at: row.get(5)?,
+                is_hidden: is_hidden != 0,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
         })
-    }).map_err(|e| e.to_string())?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
     Ok(items)
 }
 
@@ -55,24 +60,26 @@ pub fn list_hidden_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, S
          WHERE is_hidden = 1
          ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map([], |row| {
-        let sig_json: String = row.get(4)?;
-        let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
-        let is_hidden: i64 = row.get(6)?;
-        Ok(Workspace {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            description: row.get(2)?,
-            prompt_instructions: row.get(3)?,
-            topic_signature,
-            signature_updated_at: row.get(5)?,
-            is_hidden: is_hidden != 0,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
+    let items = stmt
+        .query_map([], |row| {
+            let sig_json: String = row.get(4)?;
+            let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
+            let is_hidden: i64 = row.get(6)?;
+            Ok(Workspace {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                prompt_instructions: row.get(3)?,
+                topic_signature,
+                signature_updated_at: row.get(5)?,
+                is_hidden: is_hidden != 0,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
         })
-    }).map_err(|e| e.to_string())?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
     Ok(items)
 }
 
@@ -113,7 +120,8 @@ pub fn hide_workspace(state: State<DbState>, id: String) -> Result<(), String> {
     conn.execute(
         "UPDATE workspaces SET is_hidden = 1, updated_at = ?1 WHERE id = ?2",
         rusqlite::params![now, id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -124,7 +132,8 @@ pub fn unhide_workspace(state: State<DbState>, id: String) -> Result<(), String>
     conn.execute(
         "UPDATE workspaces SET is_hidden = 0, updated_at = ?1 WHERE id = ?2",
         rusqlite::params![now, id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -136,18 +145,21 @@ pub fn update_workspace(state: State<DbState>, req: UpdateWorkspaceRequest) -> R
     conn.execute(
         "UPDATE workspaces SET name = ?1, updated_at = ?2 WHERE id = ?3",
         rusqlite::params![req.name, now, req.id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     if let Some(description) = &req.description {
         conn.execute(
             "UPDATE workspaces SET description = ?1 WHERE id = ?2",
             rusqlite::params![description, req.id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
     if let Some(instructions) = &req.prompt_instructions {
         conn.execute(
             "UPDATE workspaces SET prompt_instructions = ?1 WHERE id = ?2",
             rusqlite::params![instructions, req.id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -155,8 +167,11 @@ pub fn update_workspace(state: State<DbState>, req: UpdateWorkspaceRequest) -> R
 #[tauri::command]
 pub fn delete_workspace(state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM workspaces WHERE id = ?1", rusqlite::params![id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM workspaces WHERE id = ?1",
+        rusqlite::params![id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -168,7 +183,9 @@ mod tests {
     use tauri::test::{mock_builder, mock_context};
     use tauri::Manager;
 
-    fn get_mock_state(db: r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>) -> tauri::State<'static, DbState> {
+    fn get_mock_state(
+        db: r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
+    ) -> tauri::State<'static, DbState> {
         let app = mock_builder().build(tauri::generate_context!()).unwrap();
         app.manage(DbState(db));
         // This is safe for a test environment as long as app stays alive
@@ -228,4 +245,3 @@ mod tests {
         assert_eq!(list_hidden_workspaces(state.clone()).unwrap().len(), 0);
     }
 }
-

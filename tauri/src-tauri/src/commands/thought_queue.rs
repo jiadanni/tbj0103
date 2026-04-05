@@ -1,6 +1,6 @@
-use tauri::State;
 use crate::db::DbState;
-use crate::models::thought_queue::{ThoughtItem, CreateThoughtRequest};
+use crate::models::thought_queue::{CreateThoughtRequest, ThoughtItem};
+use tauri::State;
 
 fn row_to_thought(row: &rusqlite::Row) -> rusqlite::Result<ThoughtItem> {
     Ok(ThoughtItem {
@@ -22,10 +22,17 @@ fn row_to_thought(row: &rusqlite::Row) -> rusqlite::Result<ThoughtItem> {
 const SELECT_COLS: &str = "id, workspace_id, content, status, process_at, model_name, prompt_prefix, result, result_at, session_id, created_at, updated_at";
 
 #[tauri::command]
-pub fn create_thought(state: State<DbState>, req: CreateThoughtRequest) -> Result<ThoughtItem, String> {
+pub fn create_thought(
+    state: State<DbState>,
+    req: CreateThoughtRequest,
+) -> Result<ThoughtItem, String> {
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
-    let status = if req.process_at.is_some() { "scheduled" } else { "pending" };
+    let status = if req.process_at.is_some() {
+        "scheduled"
+    } else {
+        "pending"
+    };
     let item = ThoughtItem {
         id: uuid::Uuid::new_v4().to_string(),
         workspace_id: req.workspace_id.clone(),
@@ -50,7 +57,8 @@ pub fn create_thought(state: State<DbState>, req: CreateThoughtRequest) -> Resul
             "INSERT INTO messages (id, session_id, role, content, model_name, created_at)
              VALUES (?1, ?2, 'user', ?3, ?4, ?5)",
             rusqlite::params![msg_id, sid, item.content, item.model_name, now],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     tx.execute(
@@ -67,11 +75,17 @@ pub fn create_thought(state: State<DbState>, req: CreateThoughtRequest) -> Resul
 }
 
 #[tauri::command]
-pub fn list_thoughts(state: State<DbState>, workspace_id: String) -> Result<Vec<ThoughtItem>, String> {
+pub fn list_thoughts(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<Vec<ThoughtItem>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let sql = format!("SELECT {SELECT_COLS} FROM thought_queue WHERE workspace_id = ?1 ORDER BY created_at DESC");
+    let sql = format!(
+        "SELECT {SELECT_COLS} FROM thought_queue WHERE workspace_id = ?1 ORDER BY created_at DESC"
+    );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], row_to_thought)
+    let items = stmt
+        .query_map(rusqlite::params![workspace_id], row_to_thought)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -79,11 +93,17 @@ pub fn list_thoughts(state: State<DbState>, workspace_id: String) -> Result<Vec<
 }
 
 #[tauri::command]
-pub fn list_thoughts_by_session(state: State<DbState>, session_id: String) -> Result<Vec<ThoughtItem>, String> {
+pub fn list_thoughts_by_session(
+    state: State<DbState>,
+    session_id: String,
+) -> Result<Vec<ThoughtItem>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let sql = format!("SELECT {SELECT_COLS} FROM thought_queue WHERE session_id = ?1 ORDER BY created_at ASC");
+    let sql = format!(
+        "SELECT {SELECT_COLS} FROM thought_queue WHERE session_id = ?1 ORDER BY created_at ASC"
+    );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![session_id], row_to_thought)
+    let items = stmt
+        .query_map(rusqlite::params![session_id], row_to_thought)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -91,7 +111,10 @@ pub fn list_thoughts_by_session(state: State<DbState>, session_id: String) -> Re
 }
 
 #[tauri::command]
-pub fn get_due_thoughts(state: State<DbState>, workspace_id: String) -> Result<Vec<ThoughtItem>, String> {
+pub fn get_due_thoughts(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<Vec<ThoughtItem>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let sql = format!(
@@ -100,7 +123,8 @@ pub fn get_due_thoughts(state: State<DbState>, workspace_id: String) -> Result<V
          ORDER BY process_at ASC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id, now], row_to_thought)
+    let items = stmt
+        .query_map(rusqlite::params![workspace_id, now], row_to_thought)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -108,36 +132,50 @@ pub fn get_due_thoughts(state: State<DbState>, workspace_id: String) -> Result<V
 }
 
 #[tauri::command]
-pub fn update_thought_status(state: State<DbState>, id: String, status: String) -> Result<(), String> {
+pub fn update_thought_status(
+    state: State<DbState>,
+    id: String,
+    status: String,
+) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE thought_queue SET status = ?1, updated_at = ?2 WHERE id = ?3",
         rusqlite::params![status, now, id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 /// Update thought result. If linked to a chat session, auto-insert the AI result as an assistant message.
 #[tauri::command]
-pub fn update_thought_result(state: State<DbState>, id: String, result: String) -> Result<(), String> {
+pub fn update_thought_result(
+    state: State<DbState>,
+    id: String,
+    result: String,
+) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
 
     // Check if this thought is linked to a session
-    let session_id: Option<String> = conn.query_row(
-        "SELECT session_id FROM thought_queue WHERE id = ?1",
-        rusqlite::params![id],
-        |row| row.get(0),
-    ).ok().flatten();
+    let session_id: Option<String> = conn
+        .query_row(
+            "SELECT session_id FROM thought_queue WHERE id = ?1",
+            rusqlite::params![id],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
 
     // If linked to a session, insert the result as an assistant message
     if let Some(ref sid) = session_id {
-        let model_name: String = conn.query_row(
-            "SELECT model_name FROM thought_queue WHERE id = ?1",
-            rusqlite::params![id],
-            |row| row.get(0),
-        ).unwrap_or_default();
+        let model_name: String = conn
+            .query_row(
+                "SELECT model_name FROM thought_queue WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .unwrap_or_default();
 
         let msg_id = uuid::Uuid::new_v4().to_string();
         let _ = conn.execute(
@@ -157,7 +195,10 @@ pub fn update_thought_result(state: State<DbState>, id: String, result: String) 
 #[tauri::command]
 pub fn delete_thought(state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM thought_queue WHERE id = ?1", rusqlite::params![id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM thought_queue WHERE id = ?1",
+        rusqlite::params![id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }

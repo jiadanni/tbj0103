@@ -8,6 +8,14 @@ Legend: ✅ Complete · 🔄 Partial · ⬜ Not started
 
 ## ✅ Recently Completed
 
+### UI & Core Architecture Updates
+- [x] Split-pane layout functionality for side-by-side multitasking
+- [x] Icon-only compact sidebar and top tab-based navigation modes
+- [x] FTS-powered global Quick Search (Command Palette) with dedicated triggers
+- [x] Custom window controls and hidden native menu support
+- [x] LM Studio chat import compatibility fixes for Linux
+- [x] Workspace navigation routing preferences (`switch_workspace_to_chat`)
+
 ### Performance Optimizations (commit `e90f0b8`)
 - [x] `[profile.release]` in Cargo.toml — lto, strip, codegen-units, panic, opt-level
 - [x] Tokio features trimmed from `"full"` to specific set
@@ -62,8 +70,9 @@ Legend: ✅ Complete · 🔄 Partial · ⬜ Not started
 
 ## 🚨 Imminent Changes (Priority 0)
 
-### 1. ⬜ UI & Navigation Refinements
-- [ ] **Project Tab Overflow** — Define UX for when project tabs exceed window width (e.g. horizontal scroll or row-cap).
+### 1. 🔄 UI & Navigation Refinements
+- [x] **Project Tab Overflow** — Implemented scrollable tab strips, icon-only sidebar, and top-navigation tabs.
+- [x] **Split Pane Layout** — Added side-by-side workspace view.
 - [ ] **Project Scratchpad** — Add a dedicated quick-access scratchpad pane per project within the chat view.
 
 ### 2. 🔄 Feature Consolidation
@@ -181,3 +190,5 @@ Each project's chat sessions should demonstrate a different capability:
 
 ---
 
+bugs
+workspace deletion dialog

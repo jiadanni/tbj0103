@@ -1,29 +1,135 @@
-use rusqlite::Connection;
 use crate::db::DbState;
 use crate::models::workspace::{TopicSignature, TopicTag};
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::ai_content_generator::generate_tags;
 use crate::services::model_settings::{get_configured_background_model, get_ollama_base_url};
+use rusqlite::Connection;
 use std::collections::HashMap;
 
 const GENERIC_TOPIC_TAGS: &[&str] = &[
-    "code", "coding", "function", "functions", "method", "methods", "class", "classes",
-    "object", "objects", "variable", "variables", "example", "examples", "question",
-    "questions", "answer", "answers", "help", "explain", "explaining", "understand",
-    "understanding", "learn", "learning", "guide", "tutorial", "details", "detail",
-    "issue", "issues", "problem", "problems", "error", "errors", "fix", "debug",
-    "implementation", "implement", "feature", "features", "system", "using", "used",
-    "use", "make", "build", "create", "need", "want", "trying", "works", "work",
-    "thing", "things", "stuff", "project", "projects", "app", "apps",
-    "line", "lines", "file", "files", "folder", "folders", "module", "modules",
-    "import", "imports", "command", "commands", "data", "core", "load", "loads",
-    "loaded", "loading", "print", "output", "input", "step", "steps", "part",
-    "parts", "last", "first", "second", "third", "four", "five", "minute",
-    "minutes", "hour", "hours", "day", "days", "start", "started", "starting",
-    "run", "runs", "running", "process", "processes", "message", "messages",
-    "chat", "chats", "text", "texts", "content", "result", "results",
-    "current", "previous", "next", "new", "old", "generic", "either",
-    "consuming", "consumed",
+    "code",
+    "coding",
+    "function",
+    "functions",
+    "method",
+    "methods",
+    "class",
+    "classes",
+    "object",
+    "objects",
+    "variable",
+    "variables",
+    "example",
+    "examples",
+    "question",
+    "questions",
+    "answer",
+    "answers",
+    "help",
+    "explain",
+    "explaining",
+    "understand",
+    "understanding",
+    "learn",
+    "learning",
+    "guide",
+    "tutorial",
+    "details",
+    "detail",
+    "issue",
+    "issues",
+    "problem",
+    "problems",
+    "error",
+    "errors",
+    "fix",
+    "debug",
+    "implementation",
+    "implement",
+    "feature",
+    "features",
+    "system",
+    "using",
+    "used",
+    "use",
+    "make",
+    "build",
+    "create",
+    "need",
+    "want",
+    "trying",
+    "works",
+    "work",
+    "thing",
+    "things",
+    "stuff",
+    "project",
+    "projects",
+    "app",
+    "apps",
+    "line",
+    "lines",
+    "file",
+    "files",
+    "folder",
+    "folders",
+    "module",
+    "modules",
+    "import",
+    "imports",
+    "command",
+    "commands",
+    "data",
+    "core",
+    "load",
+    "loads",
+    "loaded",
+    "loading",
+    "print",
+    "output",
+    "input",
+    "step",
+    "steps",
+    "part",
+    "parts",
+    "last",
+    "first",
+    "second",
+    "third",
+    "four",
+    "five",
+    "minute",
+    "minutes",
+    "hour",
+    "hours",
+    "day",
+    "days",
+    "start",
+    "started",
+    "starting",
+    "run",
+    "runs",
+    "running",
+    "process",
+    "processes",
+    "message",
+    "messages",
+    "chat",
+    "chats",
+    "text",
+    "texts",
+    "content",
+    "result",
+    "results",
+    "current",
+    "previous",
+    "next",
+    "new",
+    "old",
+    "generic",
+    "either",
+    "consuming",
+    "consumed",
 ];
 
 const SPECIFIC_SHORT_TAGS: &[&str] = &[
@@ -88,7 +194,11 @@ fn extract_specific_tags(text: &str, max: usize) -> Vec<String> {
             .then(a.0.cmp(&b.0))
     });
 
-    ranked.into_iter().take(max).map(|(tag, _, _)| tag).collect()
+    ranked
+        .into_iter()
+        .take(max)
+        .map(|(tag, _, _)| tag)
+        .collect()
 }
 
 fn normalize_topic_label(tag: &str) -> Option<String> {
@@ -146,7 +256,10 @@ fn extract_json_object(s: &str) -> Option<String> {
     (end > start).then(|| s[start..=end].to_string())
 }
 
-pub fn collect_workspace_text(conn: &Connection, workspace_id: &str) -> Result<(String, u64), String> {
+pub fn collect_workspace_text(
+    conn: &Connection,
+    workspace_id: &str,
+) -> Result<(String, u64), String> {
     let mut stmt = conn.prepare(
         "SELECT m.content 
          FROM messages m
@@ -155,30 +268,37 @@ pub fn collect_workspace_text(conn: &Connection, workspace_id: &str) -> Result<(
          ORDER BY m.created_at DESC
          LIMIT 500"
     ).map_err(|e| e.to_string())?;
-    
+
     let mut text = String::new();
     let mut count = 0;
-    
-    let rows = stmt.query_map([workspace_id], |row| {
-        let content: String = row.get(0)?;
-        Ok(content)
-    }).map_err(|e| e.to_string())?;
-    
+
+    let rows = stmt
+        .query_map([workspace_id], |row| {
+            let content: String = row.get(0)?;
+            Ok(content)
+        })
+        .map_err(|e| e.to_string())?;
+
     for content in rows.flatten() {
         text.push_str(&content);
         text.push('\n');
         count += 1;
     }
-    
+
     Ok((text, count))
 }
 
-pub fn recompute_workspace_signature(conn: &Connection, workspace_id: &str) -> Result<TopicSignature, String> {
-    let existing_json: String = conn.query_row(
-        "SELECT topic_signature FROM workspaces WHERE id = ?1",
-        rusqlite::params![workspace_id],
-        |row| row.get(0),
-    ).map_err(|e| e.to_string())?;
+pub fn recompute_workspace_signature(
+    conn: &Connection,
+    workspace_id: &str,
+) -> Result<TopicSignature, String> {
+    let existing_json: String = conn
+        .query_row(
+            "SELECT topic_signature FROM workspaces WHERE id = ?1",
+            rusqlite::params![workspace_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
     let existing: TopicSignature = serde_json::from_str(&existing_json).unwrap_or_default();
 
     let (text, count) = collect_workspace_text(conn, workspace_id)?;
@@ -192,14 +312,16 @@ pub fn recompute_workspace_signature(conn: &Connection, workspace_id: &str) -> R
 
     sig.manual_tags = existing.manual_tags;
     sig.ignored_tags = existing.ignored_tags;
-    sig.domain_tags.retain(|t| !sig.ignored_tags.contains(&t.tag));
+    sig.domain_tags
+        .retain(|t| !sig.ignored_tags.contains(&t.tag));
     let now = chrono::Utc::now().to_rfc3339();
     let sig_json = serde_json::to_string(&sig).map_err(|e| e.to_string())?;
 
     conn.execute(
         "UPDATE workspaces SET topic_signature = ?1, signature_updated_at = ?2 WHERE id = ?3",
         rusqlite::params![sig_json, now, workspace_id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(sig)
 }
@@ -224,13 +346,17 @@ pub fn generate_heuristic(text: &str) -> TopicSignature {
             source: "heuristic".to_string(),
         });
     }
-    
+
     let mut intent_patterns = Vec::new();
     let lower = text.to_lowercase();
     if lower.contains("how ") || lower.contains("what ") || lower.contains("why ") {
         intent_patterns.push("learning".to_string());
     }
-    if lower.contains("error") || lower.contains("bug") || lower.contains("fix") || lower.contains("issue") {
+    if lower.contains("error")
+        || lower.contains("bug")
+        || lower.contains("fix")
+        || lower.contains("issue")
+    {
         intent_patterns.push("debugging".to_string());
     }
     if lower.contains("tutorial") || lower.contains("guide") {
@@ -239,14 +365,14 @@ pub fn generate_heuristic(text: &str) -> TopicSignature {
     if lower.contains("compare") || lower.contains("vs") || lower.contains("review") {
         intent_patterns.push("code-review".to_string());
     }
-    
+
     TopicSignature {
         domain_tags,
         manual_tags: Vec::new(),
         ignored_tags: Vec::new(),
         intent_patterns,
         generated_at: Some(chrono::Utc::now().to_rfc3339()),
-        message_count_at_gen: None, 
+        message_count_at_gen: None,
         ollama_enriched: false,
     }
 }
@@ -355,7 +481,12 @@ Chat excerpts:\n{sample}"
         .collect::<Vec<_>>();
 
     let mut intent_patterns = payload.intent_patterns.unwrap_or_default();
-    intent_patterns.retain(|intent| matches!(intent.as_str(), "learning" | "debugging" | "tutorial" | "code-review"));
+    intent_patterns.retain(|intent| {
+        matches!(
+            intent.as_str(),
+            "learning" | "debugging" | "tutorial" | "code-review"
+        )
+    });
     intent_patterns.sort();
     intent_patterns.dedup();
 
@@ -376,11 +507,13 @@ pub async fn recompute_workspace_signature_with_ai(
 ) -> Result<TopicSignature, String> {
     let (existing, text, count, model, ollama_url) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let existing_json: String = conn.query_row(
-            "SELECT topic_signature FROM workspaces WHERE id = ?1",
-            rusqlite::params![workspace_id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+        let existing_json: String = conn
+            .query_row(
+                "SELECT topic_signature FROM workspaces WHERE id = ?1",
+                rusqlite::params![workspace_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         let existing: TopicSignature = serde_json::from_str(&existing_json).unwrap_or_default();
         let (text, count) = collect_workspace_text(&conn, workspace_id)?;
         let model = model_override.or_else(|| get_configured_background_model(&conn));
@@ -401,7 +534,8 @@ pub async fn recompute_workspace_signature_with_ai(
 
     sig.manual_tags = existing.manual_tags;
     sig.ignored_tags = existing.ignored_tags;
-    sig.domain_tags.retain(|t| !sig.ignored_tags.contains(&t.tag));
+    sig.domain_tags
+        .retain(|t| !sig.ignored_tags.contains(&t.tag));
 
     let now = chrono::Utc::now().to_rfc3339();
     sig.generated_at = Some(now.clone());
@@ -411,7 +545,8 @@ pub async fn recompute_workspace_signature_with_ai(
     conn.execute(
         "UPDATE workspaces SET topic_signature = ?1, signature_updated_at = ?2 WHERE id = ?3",
         rusqlite::params![sig_json, now, workspace_id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(sig)
 }
@@ -421,7 +556,7 @@ pub fn compute_match_score(message: &str, signature: &TopicSignature) -> f64 {
     if msg_tags.is_empty() {
         return 0.0;
     }
-    
+
     let mut match_count = 0;
     for tag in &msg_tags {
         // Skip if this tag is in the ignored list
@@ -430,27 +565,36 @@ pub fn compute_match_score(message: &str, signature: &TopicSignature) -> f64 {
         }
 
         // Check heuristic or manual tags
-        if signature.domain_tags.iter().any(|t| &t.tag == tag) || signature.manual_tags.contains(tag) {
+        if signature.domain_tags.iter().any(|t| &t.tag == tag)
+            || signature.manual_tags.contains(tag)
+        {
             match_count += 1;
         }
     }
-    
+
     match_count as f64 / (msg_tags.len() as f64)
 }
 
-pub fn find_best_workspace(conn: &Connection, message: &str, exclude_workspace_id: &str, threshold: f64) -> Option<(String, String, f64)> {
+pub fn find_best_workspace(
+    conn: &Connection,
+    message: &str,
+    exclude_workspace_id: &str,
+    threshold: f64,
+) -> Option<(String, String, f64)> {
     let mut stmt = conn.prepare("SELECT id, name, topic_signature FROM workspaces WHERE id != ?1 AND topic_signature != '{}'").ok()?;
-    
+
     let mut best_match = None;
     let mut highest_score = 0.0;
-    
-    let rows = stmt.query_map([exclude_workspace_id], |row| {
-        let id: String = row.get(0)?;
-        let name: String = row.get(1)?;
-        let sig_json: String = row.get(2)?;
-        Ok((id, name, sig_json))
-    }).ok()?;
-    
+
+    let rows = stmt
+        .query_map([exclude_workspace_id], |row| {
+            let id: String = row.get(0)?;
+            let name: String = row.get(1)?;
+            let sig_json: String = row.get(2)?;
+            Ok((id, name, sig_json))
+        })
+        .ok()?;
+
     for row in rows.flatten() {
         let (id, name, sig_json) = row;
         if let Ok(sig) = serde_json::from_str::<TopicSignature>(&sig_json) {
@@ -461,6 +605,6 @@ pub fn find_best_workspace(conn: &Connection, message: &str, exclude_workspace_i
             }
         }
     }
-    
+
     best_match
 }

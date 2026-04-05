@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { normalizeTheme, type Theme } from "../lib/theme";
 
-export type Theme = "system" | "light" | "dark" | "oled" | "sepia" | "hacker" | "glasscode";
 export type DualModelExecutionMode = "serial" | "parallel";
 export type SettingsNavigationLayout = "top-tabs" | "side-tabs";
 export type ChatMessageStyle = "bubble" | "flat";
@@ -107,7 +107,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
       setMlxUrl: (mlxUrl) => set({ mlxUrl }),
       setLlamacppModelPaths: (llamacppModelPaths) => set({ llamacppModelPaths }),
-      setTheme: (theme) => set({ theme }),
+      setTheme: (theme) => set({ theme: normalizeTheme(theme) }),
       setAccentColor: (accentColor) => set({ accentColor }),
       setFontSize: (fontSize) => set({ fontSize }),
       setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
@@ -130,6 +130,27 @@ export const useSettingsStore = create<SettingsStore>()(
       setSwitchWorkspaceToChat: (switchWorkspaceToChat) => set({ switchWorkspaceToChat }),
       setHideNativeMenu: (hideNativeMenu) => set({ hideNativeMenu }),
     }),
-    { name: "aetherium-settings" }
+    {
+      name: "aetherium-settings",
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as
+          | Partial<SettingsStore>
+          | { state?: Partial<SettingsStore> }
+          | undefined;
+        const state = (persisted && "state" in persisted && persisted.state
+          ? persisted.state
+          : persisted) as Partial<SettingsStore> | undefined;
+
+        if (!state) {
+          return currentState;
+        }
+
+        return {
+          ...currentState,
+          ...state,
+          theme: normalizeTheme(state.theme ?? currentState.theme),
+        };
+      },
+    }
   )
 );

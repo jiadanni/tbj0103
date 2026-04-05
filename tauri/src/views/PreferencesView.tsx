@@ -1,19 +1,19 @@
 /**
- * PreferencesView — tabbed sections: Appearance, AI, Security, Backup, Workspaces.
- * Integrated preferences hub.
+ * PreferencesView — integrated preferences hub with focused tabs for app,
+ * navigation, appearance, chat, AI, security, backup, and workspace controls.
  */
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, PuzzleIcon, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus } from "../lib/api";
 import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
-import { ACCENT_COLORS, THEMES } from "../lib/theme";
+import { ACCENT_COLORS, THEMES, normalizeTheme } from "../lib/theme";
 import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore";
 import { type NavigationPresentation, type SplitNavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
-import PluginManagerView from "./PluginManagerView";
+import ImportSettingsSection from "./ImportSettingsSection";
 import { MOD_KEY, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
 
@@ -22,7 +22,8 @@ const MAX_FONT_SIZE = 22;
 const DEFAULT_FONT_SIZE = 16;
 
 const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[] = [
-  { id: "general",     label: "General",     Icon: SettingsIcon },
+  { id: "app",         label: "App",         Icon: SettingsIcon },
+  { id: "navigation",  label: "Navigation",  Icon: LayoutGrid },
   { id: "appearance",  label: "Appearance",  Icon: Palette },
   { id: "chat",        label: "Chat",        Icon: MessageSquare },
   { id: "ai",          label: "AI",          Icon: Bot },
@@ -30,10 +31,17 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "security",    label: "Security",    Icon: ShieldCheck },
   { id: "workspaces",  label: "Workspaces",  Icon: LayoutGrid },
   { id: "backup",      label: "Backup",      Icon: HardDrive },
-  { id: "plugins",     label: "Plugins",     Icon: PuzzleIcon },
+  { id: "import",      label: "Import",      Icon: FolderInput },
   { id: "mcp",         label: "MCP",         Icon: Network },
   { id: "sync",        label: "Sync",        Icon: GitBranch },
 ];
+
+function normalizePreferencesSection(section: string | undefined): PreferencesSection | null {
+  if (section === "general") {
+    return "app";
+  }
+  return TABS.some((tab) => tab.id === section) ? section as PreferencesSection : null;
+}
 
 const IMMEDIATE_SAVE_EXCEPTIONS = new Set<keyof AppSettings>([]);
 
@@ -57,6 +65,13 @@ function Toggle({ on, onToggle, disabled = false }: { on: boolean; onToggle: () 
   );
 }
 
+function normalizeAppSettingsTheme(settings: AppSettings): AppSettings {
+  return {
+    ...settings,
+    theme: normalizeTheme(settings.theme),
+  };
+}
+
 export default function PreferencesView() {
   const pillSelectClassName = "h-10 w-full appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-9 text-sm text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
   const settingsNavLayout = useSettingsStore((state) => state.settingsNavLayout);
@@ -75,27 +90,26 @@ export default function PreferencesView() {
   const setExpandChatToWindowWidth = useSettingsStore((state) => state.setExpandChatToWindowWidth);
   const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
   const location = useLocation();
-  const {
-    workspaceNavigation,
-    sectionNavigation,
-    splitWorkspaceNavigation,
-    splitSectionNavigation,
-    workspaceSortOrder,
-    setWorkspaceNavigation,
-    setSectionNavigation,
-    setSplitWorkspaceNavigation,
-    setSplitSectionNavigation,
-    setWorkspaceSortOrder,
-  } = useWorkspaceStore();
+  const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
+  const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
+  const splitWorkspaceNavigation = useWorkspaceStore((state) => state.splitWorkspaceNavigation);
+  const splitSectionNavigation = useWorkspaceStore((state) => state.splitSectionNavigation);
+  const workspaceSortOrder = useWorkspaceStore((state) => state.workspaceSortOrder);
+  const setWorkspaceNavigation = useWorkspaceStore((state) => state.setWorkspaceNavigation);
+  const setSectionNavigation = useWorkspaceStore((state) => state.setSectionNavigation);
+  const setSplitWorkspaceNavigation = useWorkspaceStore((state) => state.setSplitWorkspaceNavigation);
+  const setSplitSectionNavigation = useWorkspaceStore((state) => state.setSplitSectionNavigation);
+  const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
 
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<PreferencesSection>("general");
+  const [activeTab, setActiveTab] = useState<PreferencesSection>("app");
 
   // Handle external tab switching via router state
   useEffect(() => {
-    const state = location.state as { settingsTab?: PreferencesSection } | null;
-    if (state?.settingsTab) {
-      setActiveTab(state.settingsTab);
+    const state = location.state as { settingsTab?: string } | null;
+    const nextTab = normalizePreferencesSection(state?.settingsTab);
+    if (nextTab) {
+      setActiveTab(nextTab);
       // Clear state so it doesn't persist on manual refreshes
       window.history.replaceState({}, document.title);
     }
@@ -187,8 +201,7 @@ export default function PreferencesView() {
 
   function syncClientSettings(settings: AppSettings) {
     const settingsStore = useSettingsStore.getState();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    settingsStore.setTheme(settings.theme as any);
+    settingsStore.setTheme(normalizeTheme(settings.theme));
     settingsStore.setAccentColor(settings.accent_color);
     settingsStore.setFontSize(settings.font_size);
     settingsStore.setPreferredModel(settings.preferred_model);
@@ -206,6 +219,7 @@ export default function PreferencesView() {
     settingsStore.setConfirmMoveToTrash(settings.confirm_move_to_trash);
     settingsStore.setPromptInstructions(settings.prompt_instructions);
     settingsStore.setSwitchWorkspaceToChat(settings.switch_workspace_to_chat);
+    settingsStore.setHideNativeMenu(settings.hide_native_menu);
   }
 
   function scheduleSavedNoticeReset() {
@@ -311,10 +325,11 @@ export default function PreferencesView() {
 
   useEffect(() => {
     api.settings.get().then((s) => {
-      setDbSettings(s);
-      dbSettingsRef.current = s;
-      syncClientSettings(s);
-      refreshOllamaModels(s.ollama_base_url);
+      const normalizedSettings = normalizeAppSettingsTheme(s);
+      setDbSettings(normalizedSettings);
+      dbSettingsRef.current = normalizedSettings;
+      syncClientSettings(normalizedSettings);
+      refreshOllamaModels(normalizedSettings.ollama_base_url);
     }).catch(() => {});
     loadAiModels();
     api.security.getStatus().then(setSecurityStatus).catch(() => {});
@@ -480,60 +495,75 @@ export default function PreferencesView() {
         )}
 
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-      {(activeTab === "general" || activeTab === "appearance" || activeTab === "chat" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
+      {(activeTab === "app" || activeTab === "navigation" || activeTab === "appearance" || activeTab === "chat" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
         <div className="max-w-lg space-y-5">
 
-          {/* ── General ── */}
-          {activeTab === "general" && (
+          {/* ── App ── */}
+          {activeTab === "app" && (
             <>
-              <div className="flex items-center justify-between py-1">
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
                 <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Start at login</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically launch Aetherium when you log in</p>
-                </div>
-                <Toggle
-                  on={dbSettings.start_at_login}
-                  onToggle={() => {
-                    const nextStartAtLogin = !dbSettings.start_at_login;
-                    set("start_at_login", nextStartAtLogin);
-                    if (!nextStartAtLogin && dbSettings.open_in_background) {
-                      set("open_in_background", false);
-                    }
-                  }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className={`text-sm ${dbSettings.start_at_login ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]"}`}>Open in background</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    {dbSettings.start_at_login
-                      ? "Launch without bringing window to front"
-                      : "Available only when Start at login is enabled"}
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Startup & background</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Control how Aetherium launches and whether it stays available after the main window closes.
                   </p>
                 </div>
-                <Toggle
-                  on={dbSettings.open_in_background}
-                  disabled={!dbSettings.start_at_login}
-                  onToggle={() => set("open_in_background", !dbSettings.open_in_background)}
-                />
+
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Start at login</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically launch Aetherium when you log in</p>
+                  </div>
+                  <Toggle
+                    on={dbSettings.start_at_login}
+                    onToggle={() => {
+                      const nextStartAtLogin = !dbSettings.start_at_login;
+                      set("start_at_login", nextStartAtLogin);
+                      if (!nextStartAtLogin && dbSettings.open_in_background) {
+                        set("open_in_background", false);
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className={`text-sm ${dbSettings.start_at_login ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]"}`}>Open in background</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      {dbSettings.start_at_login
+                        ? "Launch without bringing window to front"
+                        : "Available only when Start at login is enabled"}
+                    </p>
+                  </div>
+                  <Toggle
+                    on={dbSettings.open_in_background}
+                    disabled={!dbSettings.start_at_login}
+                    onToggle={() => set("open_in_background", !dbSettings.open_in_background)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Keep running in tray</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      Closing the main window keeps the menu bar or tray app alive so quick search still works.
+                    </p>
+                  </div>
+                  <Toggle
+                    on={dbSettings.keep_running_in_tray}
+                    onToggle={() => set("keep_running_in_tray", !dbSettings.keep_running_in_tray)}
+                  />
+                </div>
               </div>
 
-              <div className="flex items-center justify-between py-1">
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
                 <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Keep running in tray</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    Closing the main window keeps the menu bar or tray app alive so quick search still works.
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Shortcut</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Set the global accelerator used to open quick search from anywhere.
                   </p>
                 </div>
-                <Toggle
-                  on={dbSettings.keep_running_in_tray}
-                  onToggle={() => set("keep_running_in_tray", !dbSettings.keep_running_in_tray)}
-                />
-              </div>
-
-              <div className="space-y-2 py-1">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-sm text-[var(--text-secondary)]">Quick search shortcut</p>
@@ -561,190 +591,197 @@ export default function PreferencesView() {
                   className="h-11 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                 />
               </div>
+            </>
+          )}
 
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Workspace Navigation</label>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {[
-                    { id: "sidebar", label: "Sidebar", description: "Keep workspace switching in the left rail beside the main content." },
-                    { id: "icon-bar", label: "Icon Bar", description: "Compact icon-only sidebar without text labels." },
-                    { id: "top-tabs", label: "Top Tabs", description: "Show workspaces as visible tabs across the top." },
-                    { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact workspace picker in the top bar." },
-                  ].map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setWorkspaceNavigation(option.id as NavigationPresentation)}
-                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                        workspaceNavigation === option.id
-                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      }`}
-                    >
-                      <div className="text-xs font-medium">{option.label}</div>
-                      <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Section Navigation</label>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {[
-                    { id: "sidebar", label: "Sidebar", description: "Keep section navigation in the left rail." },
-                    { id: "icon-bar", label: "Icon Bar", description: "Compact icon-only sidebar without text labels." },
-                    { id: "top-tabs", label: "Top Tabs", description: "Show sections as visible tabs across the top." },
-                    { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact section picker in the top bar." },
-                  ].map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setSectionNavigation(option.id as NavigationPresentation)}
-                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                        sectionNavigation === option.id
-                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      }`}
-                    >
-                      <div className="text-xs font-medium">{option.label}</div>
-                      <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Split Workspace Navigation</label>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {[
-                    { id: "match-main", label: "Same", description: "Follow the main workspace navigation style by default." },
-                    { id: "tabs", label: "Tabs", description: "Always show workspace switching as tabs in split view." },
-                    { id: "dropdown", label: "Dropdown", description: "Always show workspace switching as a dropdown in split view." },
-                  ].map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setSplitWorkspaceNavigation(option.id as SplitNavigationPresentation)}
-                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                        splitWorkspaceNavigation === option.id
-                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      }`}
-                    >
-                      <div className="text-xs font-medium">{option.label}</div>
-                      <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Split Section Navigation</label>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {[
-                    { id: "match-main", label: "Same", description: "Follow the main section navigation style by default." },
-                    { id: "tabs", label: "Tabs", description: "Always show section navigation as tabs in split view." },
-                    { id: "dropdown", label: "Dropdown", description: "Always show section navigation as a dropdown in split view." },
-                  ].map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setSplitSectionNavigation(option.id as SplitNavigationPresentation)}
-                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                        splitSectionNavigation === option.id
-                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      }`}
-                    >
-                      <div className="text-xs font-medium">{option.label}</div>
-                      <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Workspace Sort Order</label>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {([
-                    { id: "name-asc", label: "Name A\u2013Z" },
-                    { id: "name-desc", label: "Name Z\u2013A" },
-                    { id: "created-newest", label: "Newest First" },
-                    { id: "created-oldest", label: "Oldest First" },
-                    { id: "updated-newest", label: "Recently Updated" },
-                    { id: "updated-oldest", label: "Least Recently Updated" },
-                  ] as const).map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setWorkspaceSortOrder(option.id)}
-                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                        workspaceSortOrder === option.id
-                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      }`}
-                    >
-                      <div className="text-xs font-medium">{option.label}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between py-1">
+          {/* ── Navigation ── */}
+          {activeTab === "navigation" && (
+            <>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
                 <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Open Chats when switching workspace</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    Always return to the main Chats view instead of keeping the current section in the new workspace.
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Main layout</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Choose how workspace and section switching is presented in the main window.
                   </p>
                 </div>
-                <Toggle
-                  on={switchWorkspaceToChat}
-                  onToggle={() => set("switch_workspace_to_chat", !switchWorkspaceToChat)}
-                />
-              </div>
 
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Settings Navigation</label>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {[
-                    { id: "top-tabs", label: "Top Tabs", description: "Keep settings sections across the top." },
-                    { id: "side-tabs", label: "Side Tabs", description: "Keep settings sections in a dedicated side rail." },
-                  ].map((layout) => (
-                    <button
-                      key={layout.id}
-                      onClick={() => setSettingsNavLayout(layout.id as "top-tabs" | "side-tabs")}
-                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                        settingsNavLayout === layout.id
-                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      }`}
-                    >
-                      <div className="text-xs font-medium">{layout.label}</div>
-                      <div className="mt-1 text-[11px] opacity-75">{layout.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between py-1">
                 <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Auto-generate Flashcards</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically extract flashcards from chat responses and notes</p>
+                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Workspace Navigation</label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { id: "sidebar", label: "Sidebar", description: "Keep workspace switching in the left rail beside the main content." },
+                      { id: "icon-bar", label: "Icon Bar", description: "Compact icon-only sidebar without text labels." },
+                      { id: "top-tabs", label: "Top Tabs", description: "Show workspaces as visible tabs across the top." },
+                      { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact workspace picker in the top bar." },
+                    ].map((option) => (
+                      <button
+                        key={option.id}
+                        onClick={() => setWorkspaceNavigation(option.id as NavigationPresentation)}
+                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                          workspaceNavigation === option.id
+                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        }`}
+                      >
+                        <div className="text-xs font-medium">{option.label}</div>
+                        <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <Toggle
-                  on={autoGenerateFlashcards}
-                  onToggle={() => setAutoGenerateFlashcards(!autoGenerateFlashcards)}
-                />
+
+                <div>
+                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Section Navigation</label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { id: "sidebar", label: "Sidebar", description: "Keep section navigation in the left rail." },
+                      { id: "icon-bar", label: "Icon Bar", description: "Compact icon-only sidebar without text labels." },
+                      { id: "top-tabs", label: "Top Tabs", description: "Show sections as visible tabs across the top." },
+                      { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact section picker in the top bar." },
+                    ].map((option) => (
+                      <button
+                        key={option.id}
+                        onClick={() => setSectionNavigation(option.id as NavigationPresentation)}
+                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                          sectionNavigation === option.id
+                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        }`}
+                      >
+                        <div className="text-xs font-medium">{option.label}</div>
+                        <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Global Prompt Instructions</label>
-                <p className="text-[11px] text-[var(--text-muted)] mb-2">
-                  Custom instructions prepended to every chat across all workspaces.
-                </p>
-                <textarea
-                  value={dbSettings.prompt_instructions}
-                  onChange={(e) => set("prompt_instructions", e.target.value)}
-                  placeholder="e.g. Always respond in concise bullet points…"
-                  rows={4}
-                  className="w-full text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] resize-y"
-                />
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Split view</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Override how navigation is shown when a secondary pane is open.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Split Workspace Navigation</label>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {[
+                      { id: "match-main", label: "Same", description: "Follow the main workspace navigation style by default." },
+                      { id: "tabs", label: "Tabs", description: "Always show workspace switching as tabs in split view." },
+                      { id: "dropdown", label: "Dropdown", description: "Always show workspace switching as a dropdown in split view." },
+                    ].map((option) => (
+                      <button
+                        key={option.id}
+                        onClick={() => setSplitWorkspaceNavigation(option.id as SplitNavigationPresentation)}
+                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                          splitWorkspaceNavigation === option.id
+                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        }`}
+                      >
+                        <div className="text-xs font-medium">{option.label}</div>
+                        <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Split Section Navigation</label>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {[
+                      { id: "match-main", label: "Same", description: "Follow the main section navigation style by default." },
+                      { id: "tabs", label: "Tabs", description: "Always show section navigation as tabs in split view." },
+                      { id: "dropdown", label: "Dropdown", description: "Always show section navigation as a dropdown in split view." },
+                    ].map((option) => (
+                      <button
+                        key={option.id}
+                        onClick={() => setSplitSectionNavigation(option.id as SplitNavigationPresentation)}
+                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                          splitSectionNavigation === option.id
+                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        }`}
+                      >
+                        <div className="text-xs font-medium">{option.label}</div>
+                        <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Workspace behavior</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Tune workspace ordering and what happens when you jump between workspaces.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Workspace Sort Order</label>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {([
+                      { id: "name-asc", label: "Name A\u2013Z" },
+                      { id: "name-desc", label: "Name Z\u2013A" },
+                      { id: "created-newest", label: "Newest First" },
+                      { id: "created-oldest", label: "Oldest First" },
+                      { id: "updated-newest", label: "Recently Updated" },
+                      { id: "updated-oldest", label: "Least Recently Updated" },
+                    ] as const).map((option) => (
+                      <button
+                        key={option.id}
+                        onClick={() => setWorkspaceSortOrder(option.id)}
+                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                          workspaceSortOrder === option.id
+                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        }`}
+                      >
+                        <div className="text-xs font-medium">{option.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Open Chats when switching workspace</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      Always return to the main Chats view instead of keeping the current section in the new workspace.
+                    </p>
+                  </div>
+                  <Toggle
+                    on={switchWorkspaceToChat}
+                    onToggle={() => set("switch_workspace_to_chat", !switchWorkspaceToChat)}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Settings Navigation</label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { id: "top-tabs", label: "Top Tabs", description: "Keep settings sections across the top." },
+                      { id: "side-tabs", label: "Side Tabs", description: "Keep settings sections in a dedicated side rail." },
+                    ].map((layout) => (
+                      <button
+                        key={layout.id}
+                        onClick={() => setSettingsNavLayout(layout.id as "top-tabs" | "side-tabs")}
+                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                          settingsNavLayout === layout.id
+                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        }`}
+                      >
+                        <div className="text-xs font-medium">{layout.label}</div>
+                        <div className="mt-1 text-[11px] opacity-75">{layout.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </>
           )}
@@ -1444,6 +1481,40 @@ export default function PreferencesView() {
           {/* ── Chat ── */}
           {activeTab === "chat" && (
             <>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Conversation defaults</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Set the instructions and learning behaviors that apply across chats and notes.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Global Prompt Instructions</label>
+                  <p className="text-[11px] text-[var(--text-muted)] mb-2">
+                    Custom instructions prepended to every chat across all workspaces.
+                  </p>
+                  <textarea
+                    value={dbSettings.prompt_instructions}
+                    onChange={(e) => set("prompt_instructions", e.target.value)}
+                    placeholder="e.g. Always respond in concise bullet points…"
+                    rows={4}
+                    className="w-full text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] resize-y"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Auto-generate Flashcards</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically extract flashcards from chat responses and notes</p>
+                  </div>
+                  <Toggle
+                    on={autoGenerateFlashcards}
+                    onToggle={() => setAutoGenerateFlashcards(!autoGenerateFlashcards)}
+                  />
+                </div>
+              </div>
+
               {/* Chat Title Auto-Generation */}
               <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-2 block">Chat Title Auto-Generation</label>
@@ -1637,7 +1708,7 @@ export default function PreferencesView() {
             <>
               {/* ── App Lock ── */}
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] divide-y divide-[var(--border-color)]">
-                <div className="flex items-center justify-between px-4 py-3">
+                <div className={`flex items-center justify-between px-4 py-3 transition-opacity ${!pinConfigured ? "opacity-40" : ""}`}>
                   <div>
                     <p className="text-sm text-[var(--text-secondary)]">Require PIN on launch</p>
                     <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
@@ -1659,7 +1730,7 @@ export default function PreferencesView() {
                   />
                 </div>
                 {biometricAvailable && (
-                  <div className="flex items-center justify-between px-4 py-3">
+                  <div className={`flex items-center justify-between px-4 py-3 transition-opacity ${!dbSettings.pin_lock_enabled ? "opacity-40" : ""}`}>
                     <div>
                       <p className="text-sm text-[var(--text-secondary)]">{biometricLabel}</p>
                       <p className="text-xs text-[var(--text-muted)] mt-0.5">
@@ -1933,7 +2004,7 @@ export default function PreferencesView() {
       </div>
       )}
 
-      {/* ── Full-bleed tabs (workspaces, backup, plugins) ── */}
+      {/* ── Full-bleed tabs (workspaces, backup, import) ── */}
       {activeTab === "workspaces" && (
         <div className="flex-1 min-h-0 overflow-hidden">
           <WorkspaceSettingsView />
@@ -1946,9 +2017,9 @@ export default function PreferencesView() {
         </div>
       )}
 
-      {activeTab === "plugins" && (
+      {activeTab === "import" && (
         <div className="flex-1 min-h-0 overflow-hidden">
-          <PluginManagerView />
+          <ImportSettingsSection />
         </div>
       )}
 

@@ -1,8 +1,10 @@
-use tauri::State;
 use crate::db::DbState;
-use crate::models::memory::{Memory, CreateMemoryRequest, UpdateMemoryRequest, ExtractMemoriesRequest};
+use crate::models::memory::{
+    CreateMemoryRequest, ExtractMemoriesRequest, Memory, UpdateMemoryRequest,
+};
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::model_settings::{get_embedding_model, get_ollama_base_url};
+use tauri::State;
 
 fn row_to_memory(row: &rusqlite::Row) -> rusqlite::Result<Memory> {
     Ok(Memory {
@@ -23,7 +25,12 @@ const MEMORY_COLUMNS: &str = "id, workspace_id, content, memory_type, scope, sou
 
 /// Best-effort: generate and store an embedding for a memory.
 /// Does not fail if Ollama is unavailable.
-async fn store_memory_embedding(state: &DbState, memory_id: &str, content: &str, ollama_url: Option<String>) {
+async fn store_memory_embedding(
+    state: &DbState,
+    memory_id: &str,
+    content: &str,
+    ollama_url: Option<String>,
+) {
     let Ok(client) = OllamaClient::new(ollama_url) else {
         return;
     };
@@ -56,7 +63,10 @@ fn read_ollama_url(state: &DbState) -> Option<String> {
 }
 
 #[tauri::command]
-pub async fn create_memory(state: State<'_, DbState>, req: CreateMemoryRequest) -> Result<Memory, String> {
+pub async fn create_memory(
+    state: State<'_, DbState>,
+    req: CreateMemoryRequest,
+) -> Result<Memory, String> {
     let memory = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
@@ -65,7 +75,11 @@ pub async fn create_memory(state: State<'_, DbState>, req: CreateMemoryRequest) 
         let now = chrono::Utc::now().to_rfc3339();
 
         // Global memories have no workspace_id
-        let workspace_id = if scope == "global" { None } else { req.workspace_id.clone() };
+        let workspace_id = if scope == "global" {
+            None
+        } else {
+            req.workspace_id.clone()
+        };
 
         conn.execute(
             "INSERT INTO memories (id, workspace_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
@@ -102,7 +116,8 @@ pub fn list_memories(state: State<DbState>, workspace_id: String) -> Result<Vec<
         MEMORY_COLUMNS
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], row_to_memory)
+    let items = stmt
+        .query_map(rusqlite::params![workspace_id], row_to_memory)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -117,7 +132,8 @@ pub fn list_global_memories(state: State<DbState>) -> Result<Vec<Memory>, String
         MEMORY_COLUMNS
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let items = stmt.query_map([], row_to_memory)
+    let items = stmt
+        .query_map([], row_to_memory)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -125,7 +141,10 @@ pub fn list_global_memories(state: State<DbState>) -> Result<Vec<Memory>, String
 }
 
 #[tauri::command]
-pub async fn update_memory(state: State<'_, DbState>, req: UpdateMemoryRequest) -> Result<Memory, String> {
+pub async fn update_memory(
+    state: State<'_, DbState>,
+    req: UpdateMemoryRequest,
+) -> Result<Memory, String> {
     let content_changed = req.content.is_some();
     let memory = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -146,7 +165,8 @@ pub async fn update_memory(state: State<'_, DbState>, req: UpdateMemoryRequest) 
                 now,
                 req.id
             ],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
         let sql = format!("SELECT {} FROM memories WHERE id = ?1", MEMORY_COLUMNS);
         conn.query_row(&sql, rusqlite::params![req.id], row_to_memory)
@@ -171,7 +191,10 @@ pub fn delete_memory(state: State<DbState>, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_active_memories(state: State<DbState>, workspace_id: String) -> Result<Vec<Memory>, String> {
+pub fn get_active_memories(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<Vec<Memory>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     // Return both workspace-scoped memories for this workspace AND all global memories
     let sql = format!(
@@ -179,7 +202,8 @@ pub fn get_active_memories(state: State<DbState>, workspace_id: String) -> Resul
         MEMORY_COLUMNS
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], row_to_memory)
+    let items = stmt
+        .query_map(rusqlite::params![workspace_id], row_to_memory)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -187,14 +211,20 @@ pub fn get_active_memories(state: State<DbState>, workspace_id: String) -> Resul
 }
 
 #[tauri::command]
-pub async fn extract_memories(state: State<'_, DbState>, req: ExtractMemoriesRequest) -> Result<Vec<Memory>, String> {
+pub async fn extract_memories(
+    state: State<'_, DbState>,
+    req: ExtractMemoriesRequest,
+) -> Result<Vec<Memory>, String> {
     // 1. Get existing memories to avoid duplicates
     let existing: Vec<String> = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let mut stmt = conn.prepare(
-            "SELECT content FROM memories WHERE workspace_id = ?1 AND is_active = 1"
-        ).map_err(|e| e.to_string())?;
-        let results: Vec<String> = stmt.query_map(rusqlite::params![req.workspace_id], |row| row.get::<_, String>(0))
+        let mut stmt = conn
+            .prepare("SELECT content FROM memories WHERE workspace_id = ?1 AND is_active = 1")
+            .map_err(|e| e.to_string())?;
+        let results: Vec<String> = stmt
+            .query_map(rusqlite::params![req.workspace_id], |row| {
+                row.get::<_, String>(0)
+            })
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
@@ -202,7 +232,9 @@ pub async fn extract_memories(state: State<'_, DbState>, req: ExtractMemoriesReq
     };
 
     // 2. Build extraction prompt
-    let conversation = req.messages.iter()
+    let conversation = req
+        .messages
+        .iter()
         .map(|m| format!("{}: {}", m.role, m.content))
         .collect::<Vec<_>>()
         .join("\n");
@@ -210,7 +242,11 @@ pub async fn extract_memories(state: State<'_, DbState>, req: ExtractMemoriesReq
     let existing_list = if existing.is_empty() {
         "None yet.".to_string()
     } else {
-        existing.iter().map(|m| format!("- {}", m)).collect::<Vec<_>>().join("\n")
+        existing
+            .iter()
+            .map(|m| format!("- {}", m))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
 
     let prompt = format!(
@@ -284,9 +320,13 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
         };
 
         if let Some(embedding_model) = embedding_model {
-            if let Ok(embedding) = client.generate_embedding(&embedding_model, &em.content).await {
+            if let Ok(embedding) = client
+                .generate_embedding(&embedding_model, &em.content)
+                .await
+            {
                 if let Ok(conn) = state.0.get() {
-                    let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
+                    let embedding_bytes =
+                        crate::services::vector_index::f32_vec_to_bytes(&embedding);
                     let _ = conn.execute(
                         "INSERT OR REPLACE INTO memory_embeddings (memory_id, embedding, model, created_at) VALUES (?1, ?2, ?3, ?4)",
                         rusqlite::params![id, embedding_bytes, embedding_model, now],

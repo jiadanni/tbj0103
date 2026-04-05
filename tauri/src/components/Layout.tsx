@@ -16,7 +16,7 @@ import { useSettingsStore } from "../stores/settingsStore";
 import AppHeaderMenu from "./AppHeaderMenu";
 import ArtifactPanel from "./ArtifactPanel";
 import { api } from "../lib/api";
-import { isMac } from "../lib/platform";
+import { isMac, isLinux } from "../lib/platform";
 import SplitPaneLayout from "./SplitPaneLayout";
 import ChatView from "../views/ChatView";
 import MemoryView from "../views/MemoryView";
@@ -38,8 +38,8 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
   const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
-  const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
-  const setWorkspaceNavigation = useWorkspaceStore((state) => state.setWorkspaceNavigation);
+  const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
+  const setSectionNavigation = useWorkspaceStore((state) => state.setSectionNavigation);
   const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
   const hideNativeMenu = useSettingsStore((state) => state.hideNativeMenu);
   const [creating, setCreating] = useState(false);
@@ -156,9 +156,9 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
         onDoubleClick={onDragRegionDoubleClick}
         className={`flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""}`}
       >
+        {(hideNativeMenu || isLinux) && <AppHeaderMenu />}
         <div className="min-w-0 flex-1 overflow-x-auto" data-workspace-tab-strip>
           <div className="flex min-w-max items-center">
-            {hideNativeMenu && <AppHeaderMenu />}
             {workspaces.map((ws) => (
               <button
                 key={ws.id}
@@ -215,7 +215,7 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
                     }
                   } catch { /* ignore malformed data */ }
                 }}
-                className={`flex items-center gap-1.5 px-3 h-full text-sm whitespace-nowrap border-b-2 transition-colors select-none ${
+                className={`flex items-center gap-1.5 px-3 h-full text-sm font-medium whitespace-nowrap border-b-2 transition-colors select-none ${
                   dragOverWorkspaceId === ws.id
                     ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)] font-medium"
                     : activeWorkspaceId === ws.id
@@ -227,7 +227,7 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
               </button>
             ))}
             {creating ? (
-              <div className="flex items-center gap-1 ml-1">
+              <div className="flex items-center gap-1.5 ml-1">
                 <input
                   autoFocus
                   value={newName}
@@ -247,56 +247,56 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
               <button
                 onClick={() => setCreating(true)}
                 title="New Workspace"
-                className="ml-1 p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                className="ml-1 w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
               >
-                <Plus size={14} />
+                <Plus size={20} />
               </button>
             )}
           </div>
         </div>
-        <div className="ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
+        <div className="ml-2 flex shrink-0 items-center gap-1.5" data-workspace-titlebar-actions>
           <button
             onClick={() => navigate("/preferences")}
             title="Preferences"
-            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+            className="w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
           >
-            <SettingsIcon size={14} />
+            <SettingsIcon size={20} />
           </button>
           <button
             onClick={() => {
-              if (workspaceNavigation === "sidebar") {
-                setWorkspaceNavigation("icon-bar");
-              } else if (workspaceNavigation === "icon-bar") {
-                setWorkspaceNavigation("top-tabs");
+              if (sectionNavigation === "sidebar") {
+                setSectionNavigation("icon-bar");
+              } else if (sectionNavigation === "icon-bar") {
+                setSectionNavigation("top-tabs");
               } else {
-                setWorkspaceNavigation("sidebar");
+                setSectionNavigation("sidebar");
               }
             }}
             title={
-              workspaceNavigation === "sidebar"
+              sectionNavigation === "sidebar"
                 ? "Switch to icon-only sidebar"
-                : workspaceNavigation === "icon-bar"
+                : sectionNavigation === "icon-bar"
                 ? "Switch to tab navigation"
                 : "Switch to sidebar navigation"
             }
-            className="relative p-1.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+            className="relative w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
           >
-            {workspaceNavigation === "sidebar" ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-            {workspaceNavigation !== "sidebar" && workspaceNavigation !== "icon-bar" && (
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-[var(--accent-color)] rounded-full ring-2 ring-[var(--bg-sidebar)]"></span>
+            {sectionNavigation === "sidebar" ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
+            {sectionNavigation !== "sidebar" && sectionNavigation !== "icon-bar" && (
+              <span className="absolute top-1.5 right-1 w-1.5 h-1.5 bg-[var(--accent-color)] rounded-full ring-2 ring-[var(--bg-sidebar)]"></span>
             )}
           </button>
           <button
             onClick={onToggleSplit}
             disabled={workspaces.length < 2}
             title={`Toggle Split View`}
-            className={`flex h-7 items-center gap-1.5 rounded-lg border px-2 text-xs font-medium transition-colors ${
+            className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium transition-colors ${
               splitMode
                 ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
                 : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
             } disabled:opacity-40 disabled:hover:border-[var(--border-color)] disabled:hover:text-[var(--text-secondary)]`}
           >
-            <Columns2 size={13} /> Split
+            <Columns2 size={15} /> Split
           </button>
           <WindowControls />
         </div>
@@ -413,20 +413,20 @@ function NavigationTabBar() {
         event.stopPropagation();
         setContextMenu({ item, x: event.clientX, y: event.clientY });
       }}
-      className={`flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-b-2 transition-colors select-none ${
+      className={`flex items-center gap-1.5 px-3 h-full text-sm font-medium whitespace-nowrap border-b-2 transition-colors select-none ${
         activeSegment === item.path
           ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
-          : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+          : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
       }`}
     >
-      <Icon size={13} />
+      <Icon size={18} />
       {item.label}
     </button>
   );
 
   return (
     <div className="relative">
-      <div className="flex items-center h-8 border-b border-[var(--border-color)] bg-[var(--bg-base)] px-2 shrink-0 overflow-x-auto select-none">
+      <div className="flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-secondary)] px-2 shrink-0 overflow-x-auto select-none">
         <div className="flex items-center shrink-0">
           {PRIMARY_NAV_ITEMS.map((item) => renderItem(item, item.icon))}
         </div>
@@ -463,6 +463,38 @@ function NavigationTabBar() {
   );
 }
 
+function NavigationDropdownBar() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activeSegment = "/" + location.pathname.split("/")[1];
+  const selectedPath = PRIMARY_NAV_ITEMS.some((item) => item.path === activeSegment)
+    ? activeSegment
+    : PRIMARY_NAV_ITEMS[0]?.path ?? "/project";
+
+  return (
+    <div className="flex h-10 items-center gap-3 border-b border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 shrink-0">
+      <label
+        htmlFor="section-navigation-select"
+        className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]"
+      >
+        Section
+      </label>
+      <select
+        id="section-navigation-select"
+        value={selectedPath}
+        onChange={(event) => navigate(event.target.value)}
+        className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+      >
+        {PRIMARY_NAV_ITEMS.map((item) => (
+          <option key={item.path} value={item.path}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function pathToPaneView(pathname: string): import("../stores/workspaceStore").PaneView {
   const segment = pathname.split("/")[1];
   switch (segment) {
@@ -478,7 +510,7 @@ export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
+  const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
   const splitMode = useWorkspaceStore((state) => state.splitMode);
   const { enterSplitMode, exitSplitMode, setPaneView, setPaneChatSession, workspaces } = useWorkspaceStore();
@@ -537,12 +569,13 @@ export default function Layout() {
 
       <WorkspaceTabBar onToggleSplit={toggleSplitModeFromShell} />
 
-      {!splitMode && workspaceNavigation === "top-tabs" && <NavigationTabBar />}
+      {!splitMode && sectionNavigation === "top-tabs" && <NavigationTabBar />}
+      {!splitMode && sectionNavigation === "top-dropdown" && <NavigationDropdownBar />}
 
       <div className="flex-1 overflow-hidden min-h-0">
         {splitMode ? (
           <SplitPaneLayout />
-        ) : workspaceNavigation === "icon-bar" ? (
+        ) : sectionNavigation === "icon-bar" ? (
           <div className="flex h-full overflow-hidden min-h-0">
             <div className="w-14 shrink-0 border-r border-[var(--border-color)] overflow-hidden">
               <Sidebar onOpenCommandPalette={() => setCommandPaletteOpen(true)} iconOnly />
@@ -551,7 +584,7 @@ export default function Layout() {
               <AppRoutes />
             </div>
           </div>
-        ) : workspaceNavigation === "sidebar" ? (
+        ) : sectionNavigation === "sidebar" ? (
           <PanelGroup direction="horizontal" className="flex-1 flex overflow-hidden min-h-0">
             <Panel
               id="sidebar"
@@ -604,12 +637,13 @@ function AppRoutes() {
       <Route path="/daily" element={<Navigate to="/notes" state={{ subView: "daily" }} replace />} />
       <Route path="/flashcards" element={<Navigate to="/graph" state={{ subView: "flashcards" }} replace />} />
       <Route path="/learning" element={<Navigate to="/graph" state={{ subView: "learning" }} replace />} />
-      <Route path="/plugins" element={<Navigate to="/preferences" state={{ settingsTab: "plugins" }} replace />} />
+      <Route path="/plugins" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
       <Route path="/backlinks" element={<Navigate to="/graph" state={{ subView: "backlinks" }} replace />} />
       <Route path="/dedup" element={<Navigate to="/graph" state={{ subView: "dedup" }} replace />} />
-      <Route path="/settings" element={<Navigate to="/preferences" state={{ settingsTab: "general" }} replace />} />
+      <Route path="/settings" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
       <Route path="/workspaces" element={<Navigate to="/preferences" state={{ settingsTab: "workspaces" }} replace />} />
       <Route path="/backup" element={<Navigate to="/preferences" state={{ settingsTab: "backup" }} replace />} />
+      <Route path="/import" element={<Navigate to="/preferences" state={{ settingsTab: "import" }} replace />} />
     </Routes>
     </Suspense>
   );

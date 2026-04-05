@@ -253,7 +253,8 @@ pub async fn authenticate_biometric() -> Result<bool, String> {
         );
     }
 
-    rx.await.map_err(|_| "Authentication was cancelled.".to_string())
+    rx.await
+        .map_err(|_| "Authentication was cancelled.".to_string())
 }
 
 #[cfg(not(target_os = "macos"))]

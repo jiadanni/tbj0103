@@ -7,6 +7,94 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import type { Workspace, Project } from "../stores/workspaceStore";
 import type { ChatSession, Message } from "../stores/chatStore";
 
+const OBSERVABILITY_ENABLED =
+  typeof window !== "undefined" &&
+  (window.location.protocol === "http:" || window.location.protocol === "https:");
+
+type ObservabilityMeta = Record<string, unknown>;
+
+function createRequestId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function logIpcEvent(level: "debug" | "error", message: string, payload: ObservabilityMeta): void {
+  if (!OBSERVABILITY_ENABLED) {return;}
+  const logger = level === "error" ? console.error : console.debug;
+  logger(`[ipc] ${message}`, payload);
+}
+
+function ipcSlowThresholdMs(command: string): number {
+  switch (command) {
+    case "send_message":
+    case "send_dual_model_message":
+    case "generate_title":
+    case "generate_title_from_conversation":
+    case "generate_follow_ups":
+    case "extract_topics":
+      return 15_000;
+    case "generate_embedding":
+      return 3_000;
+    case "list_models":
+    case "list_models_fresh":
+    case "ensure_ollama_running":
+      return 1_500;
+    default:
+      return 5_000;
+  }
+}
+
+function formatIpcSummary(
+  status: "ok" | "slow" | "error" | "cache",
+  command: string,
+  meta: ObservabilityMeta,
+): string {
+  const parts = [`status=${status}`, `api=${command}`];
+  if (typeof meta.model === "string") {parts.push(`model=${meta.model}`);}
+  if (typeof meta.draftModel === "string") {parts.push(`draftModel=${meta.draftModel}`);}
+  if (typeof meta.refineModel === "string") {parts.push(`refineModel=${meta.refineModel}`);}
+  if (typeof meta.requestId === "string") {parts.push(`requestId=${meta.requestId}`);}
+  if (typeof meta.sessionId === "string") {parts.push(`sessionId=${meta.sessionId}`);}
+  if (typeof meta.durationMs === "number") {parts.push(`durationMs=${meta.durationMs}`);}
+  return parts.join(" ");
+}
+
+async function invokeObserved<T>(
+  command: string,
+  args: Record<string, unknown> | undefined,
+  meta: ObservabilityMeta,
+): Promise<T> {
+  const requestId = typeof meta.requestId === "string" ? meta.requestId : createRequestId();
+  const startedAt = performance.now();
+
+  try {
+    const result = await invoke<T>(command, args);
+    const durationMs = Number((performance.now() - startedAt).toFixed(3));
+    const status = durationMs >= ipcSlowThresholdMs(command) ? "slow" : "ok";
+    logIpcEvent("debug", `<- ${command}`, {
+      ...meta,
+      requestId,
+      durationMs,
+      status,
+      summary: formatIpcSummary(status, command, { ...meta, requestId, durationMs }),
+    });
+    return result;
+  } catch (error) {
+    const durationMs = Number((performance.now() - startedAt).toFixed(3));
+    logIpcEvent("error", `xx ${command}`, {
+      ...meta,
+      requestId,
+      durationMs,
+      status: "error",
+      error: error instanceof Error ? error.message : String(error),
+      summary: formatIpcSummary("error", command, { ...meta, requestId, durationMs }),
+    });
+    throw error;
+  }
+}
+
 // ----- Types -----
 
 export interface TopicTag {
@@ -134,9 +222,30 @@ const MODEL_CACHE_TTL = 30_000; // 30 seconds
 function cachedListModels(ollamaUrl?: string): Promise<OllamaModel[]> {
   const now = Date.now();
   if (modelCache && modelCache.url === ollamaUrl && now - modelCache.ts < MODEL_CACHE_TTL) {
+    logIpcEvent("debug", "cache hit list_models", {
+      command: "list_models",
+      layer: "frontend-cache",
+      ollamaUrl,
+      ageMs: now - modelCache.ts,
+      status: "cache",
+      summary: formatIpcSummary("cache", "list_models", {
+        ollamaUrl,
+        ageMs: now - modelCache.ts,
+      }),
+    });
     return modelCache.promise;
   }
-  const promise = invoke<OllamaModel[]>("list_models", { ollamaUrl });
+  const requestId = createRequestId();
+  const promise = invokeObserved<OllamaModel[]>(
+    "list_models",
+    { ollamaUrl, requestId },
+    {
+      requestId,
+      layer: "tauri-ipc",
+      provider: "ollama",
+      ollamaUrl,
+    },
+  );
   modelCache = { promise, url: ollamaUrl, ts: now };
   promise.catch(() => {
     if (modelCache?.promise === promise) {modelCache = null;}
@@ -558,8 +667,32 @@ export const api = {
   },
 
   ollama: {
-    sendMessage: (sessionId: string, model: string, messages: { role: string; content: string }[], stream: boolean, ollamaUrl?: string) =>
-      invoke<string>("send_message", { req: { session_id: sessionId, model, messages, stream, ollama_url: ollamaUrl } }),
+    sendMessage: (sessionId: string, model: string, messages: { role: string; content: string }[], stream: boolean, ollamaUrl?: string) => {
+      const requestId = createRequestId();
+      return invokeObserved<string>(
+        "send_message",
+        {
+          req: {
+            session_id: sessionId,
+            model,
+            messages,
+            stream,
+            ollama_url: ollamaUrl,
+            request_id: requestId,
+          },
+        },
+        {
+          requestId,
+          layer: "tauri-ipc",
+          provider: "ollama",
+          sessionId,
+          model,
+          stream,
+          messageCount: messages.length,
+          ollamaUrl,
+        },
+      );
+    },
     sendDualModelMessage: (
       sessionId: string,
       draftModel: string,
@@ -567,38 +700,143 @@ export const api = {
       messages: { role: string; content: string }[],
       executionMode: "serial" | "parallel",
       ollamaUrl?: string
-    ) =>
-      invoke<string>("send_dual_model_message", {
-        req: {
-          session_id: sessionId,
-          draft_model: draftModel,
-          refine_model: refineModel,
-          messages,
-          execution_mode: executionMode,
-          ollama_url: ollamaUrl,
+    ) => {
+      const requestId = createRequestId();
+      return invokeObserved<string>(
+        "send_dual_model_message",
+        {
+          req: {
+            session_id: sessionId,
+            draft_model: draftModel,
+            refine_model: refineModel,
+            messages,
+            execution_mode: executionMode,
+            ollama_url: ollamaUrl,
+            request_id: requestId,
+          },
         },
-      }),
+        {
+          requestId,
+          layer: "tauri-ipc",
+          provider: "ollama",
+          sessionId,
+          draftModel,
+          refineModel,
+          executionMode,
+          messageCount: messages.length,
+          ollamaUrl,
+        },
+      );
+    },
     listModels: (ollamaUrl?: string) => cachedListModels(ollamaUrl),
     /** Bypass cache and fetch fresh model list from Ollama */
     listModelsFresh: (ollamaUrl?: string) => {
       modelCache = null;
-      const promise = invoke<OllamaModel[]>("list_models_fresh", { ollamaUrl });
+      const requestId = createRequestId();
+      const promise = invokeObserved<OllamaModel[]>(
+        "list_models_fresh",
+        { ollamaUrl, requestId },
+        {
+          requestId,
+          layer: "tauri-ipc",
+          provider: "ollama",
+          ollamaUrl,
+          cacheBypassed: true,
+        },
+      );
       modelCache = { promise, url: ollamaUrl, ts: Date.now() };
       promise.catch(() => { if (modelCache?.promise === promise) { modelCache = null; } });
       return promise;
     },
-    ensureRunning: (ollamaUrl?: string) =>
-      invoke<OllamaRuntimeStatus>("ensure_ollama_running", { ollamaUrl }),
-    generateTitle: (model: string, firstMessage: string, ollamaUrl?: string) =>
-      invoke<string>("generate_title", { model, firstMessage, ollamaUrl }),
-    generateTitleFromConversation: (model: string, conversation: { role: string; content: string }[], ollamaUrl?: string) =>
-      invoke<string>("generate_title_from_conversation", { model, conversation, ollamaUrl }),
-    extractTopics: (texts: string[], model: string, ollamaUrl?: string) =>
-      invoke<{ topic: string; weight: number }[]>("extract_topics", { texts, model, ollamaUrl }),
-    generateEmbedding: (text: string, model?: string, ollamaUrl?: string) =>
-      invoke<number[]>("generate_embedding", { req: { text, model, ollama_url: ollamaUrl } }),
-    generateFollowUps: (model: string, messages: { role: string; content: string }[], ollamaUrl?: string) =>
-      invoke<string[]>("generate_follow_ups", { model, messages, ollamaUrl }),
+    ensureRunning: (ollamaUrl?: string) => {
+      const requestId = createRequestId();
+      return invokeObserved<OllamaRuntimeStatus>(
+        "ensure_ollama_running",
+        { ollamaUrl, requestId },
+        {
+          requestId,
+          layer: "tauri-ipc",
+          provider: "ollama",
+          ollamaUrl,
+        },
+      );
+    },
+    generateTitle: (model: string, firstMessage: string, ollamaUrl?: string) => {
+      const requestId = createRequestId();
+      return invokeObserved<string>(
+        "generate_title",
+        { model, firstMessage, ollamaUrl, requestId },
+        {
+          requestId,
+          layer: "tauri-ipc",
+          provider: "ollama",
+          model,
+          stream: false,
+          ollamaUrl,
+        },
+      );
+    },
+    generateTitleFromConversation: (model: string, conversation: { role: string; content: string }[], ollamaUrl?: string) => {
+      const requestId = createRequestId();
+      return invokeObserved<string>(
+        "generate_title_from_conversation",
+        { model, conversation, ollamaUrl, requestId },
+        {
+          requestId,
+          layer: "tauri-ipc",
+          provider: "ollama",
+          model,
+          stream: false,
+          messageCount: conversation.length,
+          ollamaUrl,
+        },
+      );
+    },
+    extractTopics: (texts: string[], model: string, ollamaUrl?: string) => {
+      const requestId = createRequestId();
+      return invokeObserved<{ topic: string; weight: number }[]>(
+        "extract_topics",
+        { texts, model, ollamaUrl, requestId },
+        {
+          requestId,
+          layer: "tauri-ipc",
+          provider: "ollama",
+          model,
+          textCount: texts.length,
+          ollamaUrl,
+        },
+      );
+    },
+    generateEmbedding: (text: string, model?: string, ollamaUrl?: string) => {
+      const requestId = createRequestId();
+      return invokeObserved<number[]>(
+        "generate_embedding",
+        { req: { text, model, ollama_url: ollamaUrl, request_id: requestId } },
+        {
+          requestId,
+          layer: "tauri-ipc",
+          provider: "ollama",
+          model,
+          inputLength: text.length,
+          ollamaUrl,
+        },
+      );
+    },
+    generateFollowUps: (model: string, messages: { role: string; content: string }[], ollamaUrl?: string) => {
+      const requestId = createRequestId();
+      return invokeObserved<string[]>(
+        "generate_follow_ups",
+        { model, messages, ollamaUrl, requestId },
+        {
+          requestId,
+          layer: "tauri-ipc",
+          provider: "ollama",
+          model,
+          messageCount: messages.length,
+          ollamaUrl,
+        },
+      );
+    },
     stopStream: (sessionId: string) => invoke<void>("stop_stream", { sessionId }),
   },
 
@@ -629,7 +867,7 @@ export const api = {
     create: (workspaceId: string) => invoke<string>("create_backup", { workspaceId }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     list: () => invoke<any[]>("list_backups"),
-    restore: (backupJson: string) => invoke<void>("restore_backup", { backupJson }),
+    restore: (backupJson: string) => invoke<string>("restore_backup", { backupJson }),
     delete: (id: string) => invoke<void>("delete_backup", { id }),
   },
 

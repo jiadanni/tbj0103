@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useWorkspaceStore } from "./stores/workspaceStore";
 import { api, type QuickSearchResult } from "./lib/api";
+import { normalizeTheme } from "./lib/theme";
 import Layout from "./components/Layout";
 import AuthenticationView from "./views/AuthenticationView";
 
@@ -109,10 +110,11 @@ export default function App() {
   // Apply theme class to <html> element — also applies font-size and accent-color reactively
   useEffect(() => {
     const root = document.documentElement;
+    const normalizedTheme = normalizeTheme(theme);
     root.classList.forEach((cls) => {
       if (cls.startsWith("theme-")) {root.classList.remove(cls);}
     });
-    root.classList.add(`theme-${theme}`);
+    root.classList.add(`theme-${normalizedTheme}`);
     if (accentColor) {root.style.setProperty("--accent-color", accentColor);}
     root.style.setProperty("--font-size-base", `${fontSize}px`);
     root.style.fontSize = `${fontSize}px`;

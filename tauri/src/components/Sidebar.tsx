@@ -17,7 +17,7 @@ interface SidebarProps {
 export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
+  const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const activeSegment = "/" + location.pathname.split("/")[1];
   const [contextMenu, setContextMenu] = useState<{ item: NavigationItem; x: number; y: number } | null>(null);
   const [tooltip, setTooltip] = useState<{ label: string; top: number; left: number } | null>(null);
@@ -99,7 +99,7 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
     }
   }, [contextMenu]);
 
-  if (workspaceNavigation !== "sidebar" && workspaceNavigation !== "icon-bar") {
+  if (sectionNavigation !== "sidebar" && sectionNavigation !== "icon-bar") {
     return null;
   }
 

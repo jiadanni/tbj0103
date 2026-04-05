@@ -158,10 +158,7 @@ pub fn semantic_search(
 
         let rows = stmt
             .query_map(rusqlite::params![workspace_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Vec<u8>>(1)?,
-                ))
+                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
             })
             .map_err(|e| e.to_string())?;
         raw_rows = rows.filter_map(Result::ok).collect();
@@ -203,23 +200,25 @@ pub fn semantic_search(
     {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let mut fetch_stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
-        
+
         let mut chunk_map = std::collections::HashMap::new();
         let params = rusqlite::params_from_iter(chunk_ids.iter());
-        
-        let rows = fetch_stmt.query_map(params, |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-            ))
-        }).map_err(|e| e.to_string())?;
-        
+
+        let rows = fetch_stmt
+            .query_map(params, |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+
         for row in rows.filter_map(Result::ok) {
             chunk_map.insert(row.0.clone(), row);
         }
-        
+
         for (score, chunk_id) in scored {
             if let Some((id, source_id, content, title)) = chunk_map.remove(&chunk_id) {
                 let excerpt: String = content.chars().take(200).collect();

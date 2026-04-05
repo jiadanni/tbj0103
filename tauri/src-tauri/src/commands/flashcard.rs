@@ -1,8 +1,11 @@
-use tauri::State;
 use crate::db::DbState;
-use crate::models::learning_card::{LearningCard, ReviewRequest, ReviewStats, CreateCardRequest, GenerateCardsRequest, GenerateFromConceptRequest, ExtractFlashcardsRequest};
-use crate::services::spaced_repetition;
+use crate::models::learning_card::{
+    CreateCardRequest, ExtractFlashcardsRequest, GenerateCardsRequest, GenerateFromConceptRequest,
+    LearningCard, ReviewRequest, ReviewStats,
+};
 use crate::ollama::client::{OllamaClient, OllamaMessage};
+use crate::services::spaced_repetition;
+use tauri::State;
 
 fn row_to_card(row: &rusqlite::Row) -> rusqlite::Result<LearningCard> {
     Ok(LearningCard {
@@ -22,10 +25,15 @@ fn row_to_card(row: &rusqlite::Row) -> rusqlite::Result<LearningCard> {
 }
 
 #[tauri::command]
-pub fn create_flashcard(state: State<DbState>, req: CreateCardRequest) -> Result<LearningCard, String> {
+pub fn create_flashcard(
+    state: State<DbState>,
+    req: CreateCardRequest,
+) -> Result<LearningCard, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut card = LearningCard::new(req.workspace_id, req.front, req.back);
-    if let Some(st) = req.source_type { card.source_type = st; }
+    if let Some(st) = req.source_type {
+        card.source_type = st;
+    }
     card.source_id = req.source_id;
     conn.execute(
         "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
@@ -52,7 +60,11 @@ pub fn list_flashcards_due(
         "SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
          FROM learning_cards WHERE workspace_id = ?1 AND next_review_date <= ?2 ORDER BY next_review_date ASC LIMIT ?3 OFFSET ?4"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id, today, limit, offset], row_to_card)
+    let items = stmt
+        .query_map(
+            rusqlite::params![workspace_id, today, limit, offset],
+            row_to_card,
+        )
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -98,31 +110,51 @@ pub fn review_flashcard(state: State<DbState>, req: ReviewRequest) -> Result<Lea
 }
 
 #[tauri::command]
-pub fn get_review_stats(state: State<DbState>, workspace_id: String) -> Result<ReviewStats, String> {
+pub fn get_review_stats(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<ReviewStats, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let total_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1",
-        rusqlite::params![workspace_id], |r| r.get(0)
-    ).unwrap_or(0);
+    let total_cards: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1",
+            rusqlite::params![workspace_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
     let due_today: i64 = conn.query_row(
         "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1 AND next_review_date <= ?2",
         rusqlite::params![workspace_id, today], |r| r.get(0)
     ).unwrap_or(0);
-    let learned: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1 AND repetitions > 0",
-        rusqlite::params![workspace_id], |r| r.get(0)
-    ).unwrap_or(0);
-    let avg_ease: f64 = conn.query_row(
-        "SELECT COALESCE(AVG(ease_factor), 2.5) FROM learning_cards WHERE workspace_id = ?1",
-        rusqlite::params![workspace_id], |r| r.get(0)
-    ).unwrap_or(2.5);
-    Ok(ReviewStats { total_cards, due_today, learned, avg_ease })
+    let learned: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1 AND repetitions > 0",
+            rusqlite::params![workspace_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    let avg_ease: f64 = conn
+        .query_row(
+            "SELECT COALESCE(AVG(ease_factor), 2.5) FROM learning_cards WHERE workspace_id = ?1",
+            rusqlite::params![workspace_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(2.5);
+    Ok(ReviewStats {
+        total_cards,
+        due_today,
+        learned,
+        avg_ease,
+    })
 }
 
 /// Use an LLM to generate flashcards from a topic, then bulk-insert them.
 #[tauri::command]
-pub async fn generate_flashcards(state: State<'_, DbState>, req: GenerateCardsRequest) -> Result<Vec<LearningCard>, String> {
+pub async fn generate_flashcards(
+    state: State<'_, DbState>,
+    req: GenerateCardsRequest,
+) -> Result<Vec<LearningCard>, String> {
     let count = req.count.unwrap_or(5).min(20);
     let prompt = format!(
         "Generate exactly {count} flashcards about: \"{topic}\"\n\n\
@@ -164,7 +196,9 @@ pub async fn generate_flashcards(state: State<'_, DbState>, req: GenerateCardsRe
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut cards = Vec::new();
     for pair in pairs {
-        if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
+        if pair.front.trim().is_empty() || pair.back.trim().is_empty() {
+            continue;
+        }
         let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
         card.source_type = "ai_generated".to_string();
         tx.execute(
@@ -181,15 +215,20 @@ pub async fn generate_flashcards(state: State<'_, DbState>, req: GenerateCardsRe
 
 /// Generate flashcards from an existing concept node.
 #[tauri::command]
-pub async fn generate_flashcards_from_concept(state: State<'_, DbState>, req: GenerateFromConceptRequest) -> Result<Vec<LearningCard>, String> {
+pub async fn generate_flashcards_from_concept(
+    state: State<'_, DbState>,
+    req: GenerateFromConceptRequest,
+) -> Result<Vec<LearningCard>, String> {
     // Fetch the concept
     let (concept_name, concept_desc) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let row = conn.query_row(
-            "SELECT name, concept_description FROM concept_nodes WHERE id = ?1",
-            rusqlite::params![req.concept_id],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
-        ).map_err(|e| format!("Concept not found: {e}"))?;
+        let row = conn
+            .query_row(
+                "SELECT name, concept_description FROM concept_nodes WHERE id = ?1",
+                rusqlite::params![req.concept_id],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            )
+            .map_err(|e| format!("Concept not found: {e}"))?;
         row
     };
 
@@ -227,7 +266,10 @@ pub async fn generate_flashcards_from_concept(state: State<'_, DbState>, req: Ge
     };
 
     #[derive(serde::Deserialize)]
-    struct CardPair { front: String, back: String }
+    struct CardPair {
+        front: String,
+        back: String,
+    }
 
     let pairs: Vec<CardPair> = serde_json::from_str(json_str)
         .map_err(|e| format!("Failed to parse AI-generated cards: {e}\nRaw: {json_str}"))?;
@@ -236,7 +278,9 @@ pub async fn generate_flashcards_from_concept(state: State<'_, DbState>, req: Ge
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut cards = Vec::new();
     for pair in pairs {
-        if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
+        if pair.front.trim().is_empty() || pair.back.trim().is_empty() {
+            continue;
+        }
         let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
         card.source_type = "concept".to_string();
         card.source_id = Some(req.concept_id.clone());
@@ -254,13 +298,17 @@ pub async fn generate_flashcards_from_concept(state: State<'_, DbState>, req: Ge
 
 /// List all flashcards linked to a specific concept node.
 #[tauri::command]
-pub fn list_flashcards_by_concept(state: State<DbState>, concept_id: String) -> Result<Vec<LearningCard>, String> {
+pub fn list_flashcards_by_concept(
+    state: State<DbState>,
+    concept_id: String,
+) -> Result<Vec<LearningCard>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
          FROM learning_cards WHERE source_type = 'concept' AND source_id = ?1 ORDER BY created_at DESC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![concept_id], row_to_card)
+    let items = stmt
+        .query_map(rusqlite::params![concept_id], row_to_card)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -269,7 +317,10 @@ pub fn list_flashcards_by_concept(state: State<DbState>, concept_id: String) -> 
 
 /// List all concept-linked flashcards for a workspace so they can be shown in the graph.
 #[tauri::command]
-pub fn list_graph_flashcards(state: State<DbState>, workspace_id: String) -> Result<Vec<LearningCard>, String> {
+pub fn list_graph_flashcards(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<Vec<LearningCard>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT lc.id, lc.workspace_id, lc.front, lc.back, lc.source_type, lc.source_id,
@@ -281,7 +332,8 @@ pub fn list_graph_flashcards(state: State<DbState>, workspace_id: String) -> Res
            AND cn.workspace_id = ?1
          ORDER BY lc.created_at DESC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], row_to_card)
+    let items = stmt
+        .query_map(rusqlite::params![workspace_id], row_to_card)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -291,7 +343,10 @@ pub fn list_graph_flashcards(state: State<DbState>, workspace_id: String) -> Res
 /// Extract flashcards from arbitrary text content (chat response, note, etc.).
 /// Uses the LLM to identify key Q&A pairs worth remembering.
 #[tauri::command]
-pub async fn extract_flashcards_from_content(state: State<'_, DbState>, req: ExtractFlashcardsRequest) -> Result<Vec<LearningCard>, String> {
+pub async fn extract_flashcards_from_content(
+    state: State<'_, DbState>,
+    req: ExtractFlashcardsRequest,
+) -> Result<Vec<LearningCard>, String> {
     let content = req.content.trim().to_string();
     if content.len() < 50 {
         return Ok(vec![]); // Too short to extract meaningful cards
@@ -328,16 +383,23 @@ pub async fn extract_flashcards_from_content(state: State<'_, DbState>, req: Ext
     };
 
     #[derive(serde::Deserialize)]
-    struct CardPair { front: String, back: String }
+    struct CardPair {
+        front: String,
+        back: String,
+    }
 
     let pairs: Vec<CardPair> = serde_json::from_str(json_str).unwrap_or_default();
-    if pairs.is_empty() { return Ok(vec![]); }
+    if pairs.is_empty() {
+        return Ok(vec![]);
+    }
 
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut cards = Vec::new();
     for pair in pairs {
-        if pair.front.trim().is_empty() || pair.back.trim().is_empty() { continue; }
+        if pair.front.trim().is_empty() || pair.back.trim().is_empty() {
+            continue;
+        }
         let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
         card.source_type = req.source_type.clone();
         card.source_id = req.source_id.clone();

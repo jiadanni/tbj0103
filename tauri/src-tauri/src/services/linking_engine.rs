@@ -2,15 +2,15 @@
 //! Extracts [[concept]] links from note/chat content, auto-creates concept nodes,
 //! and records mentions in the `concept_mentions` table.
 
-use rusqlite::Connection;
 use crate::services::link_parser::extract_concept_names;
+use rusqlite::Connection;
 
 /// Extract [[wiki-links]] from `content`, upsert corresponding concept_nodes
 /// (workspace-scoped), delete stale mentions for this source, insert fresh ones.
 /// Returns the list of concept names found.
 pub fn index_note_links(
     conn: &Connection,
-    source_type: &str,  // "note", "daily_note", "chat_message"
+    source_type: &str, // "note", "daily_note", "chat_message"
     source_id: &str,
     workspace_id: &str,
     content: &str,
@@ -21,7 +21,8 @@ pub fn index_note_links(
         conn.execute(
             "DELETE FROM concept_mentions WHERE source_type = ?1 AND source_id = ?2",
             rusqlite::params![source_type, source_id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         return Ok(vec![]);
     }
 
@@ -31,7 +32,8 @@ pub fn index_note_links(
     conn.execute(
         "DELETE FROM concept_mentions WHERE source_type = ?1 AND source_id = ?2",
         rusqlite::params![source_type, source_id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     for name in &names {
         // Look up or create the concept_node
@@ -50,7 +52,8 @@ pub fn index_note_links(
                          concept_description, tags, created_at, updated_at) \
                          VALUES (?1, ?2, ?3, 'note_link', '', '[]', ?4, ?4)",
                         rusqlite::params![new_id, workspace_id, name, now],
-                    ).map_err(|e| e.to_string())?;
+                    )
+                    .map_err(|e| e.to_string())?;
                     new_id
                 }
                 Err(e) => return Err(e.to_string()),
@@ -63,7 +66,8 @@ pub fn index_note_links(
              (id, concept_id, source_type, source_id, context, created_at) \
              VALUES (?1, ?2, ?3, ?4, '', ?5)",
             rusqlite::params![mention_id, concept_id, source_type, source_id, now],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     Ok(names)
@@ -75,22 +79,26 @@ pub fn get_backlinks_for_concept(
     workspace_id: &str,
     concept_name: &str,
 ) -> Result<Vec<BacklinkEntry>, String> {
-    let mut stmt = conn.prepare(
-        "SELECT cm.source_type, cm.source_id, cm.context, cn.name
+    let mut stmt = conn
+        .prepare(
+            "SELECT cm.source_type, cm.source_id, cm.context, cn.name
          FROM concept_mentions cm
          JOIN concept_nodes cn ON cm.concept_id = cn.id
-         WHERE cn.workspace_id = ?1 AND lower(cn.name) = lower(?2)"
-    ).map_err(|e| e.to_string())?;
-    let entries = stmt.query_map(rusqlite::params![workspace_id, concept_name], |row| {
-        Ok(BacklinkEntry {
-            source_type: row.get(0)?,
-            source_id: row.get(1)?,
-            context: row.get(2)?,
-            concept_name: row.get(3)?,
+         WHERE cn.workspace_id = ?1 AND lower(cn.name) = lower(?2)",
+        )
+        .map_err(|e| e.to_string())?;
+    let entries = stmt
+        .query_map(rusqlite::params![workspace_id, concept_name], |row| {
+            Ok(BacklinkEntry {
+                source_type: row.get(0)?,
+                source_id: row.get(1)?,
+                context: row.get(2)?,
+                concept_name: row.get(3)?,
+            })
         })
-    }).map_err(|e| e.to_string())?
-    .filter_map(Result::ok)
-    .collect();
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
     Ok(entries)
 }
 
@@ -100,16 +108,20 @@ pub fn get_outbound_links(
     source_type: &str,
     source_id: &str,
 ) -> Result<Vec<String>, String> {
-    let mut stmt = conn.prepare(
-        "SELECT cn.name FROM concept_mentions cm
+    let mut stmt = conn
+        .prepare(
+            "SELECT cn.name FROM concept_mentions cm
          JOIN concept_nodes cn ON cm.concept_id = cn.id
-         WHERE cm.source_type = ?1 AND cm.source_id = ?2"
-    ).map_err(|e| e.to_string())?;
-    let names = stmt.query_map(rusqlite::params![source_type, source_id], |row| {
-        row.get::<_, String>(0)
-    }).map_err(|e| e.to_string())?
-    .filter_map(Result::ok)
-    .collect();
+         WHERE cm.source_type = ?1 AND cm.source_id = ?2",
+        )
+        .map_err(|e| e.to_string())?;
+    let names = stmt
+        .query_map(rusqlite::params![source_type, source_id], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
     Ok(names)
 }
 

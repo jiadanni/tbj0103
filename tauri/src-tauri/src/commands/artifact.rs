@@ -1,7 +1,7 @@
-use tauri::State;
-use crate::models::artifact::{Artifact, ArtifactSummary, CreateArtifactRequest};
 use crate::db::DbState;
+use crate::models::artifact::{Artifact, ArtifactSummary, CreateArtifactRequest};
 use crate::services::artifact_service;
+use tauri::State;
 
 #[tauri::command]
 pub async fn create_artifact(
@@ -13,10 +13,7 @@ pub async fn create_artifact(
 }
 
 #[tauri::command]
-pub async fn get_artifact(
-    state: State<'_, DbState>,
-    id: String,
-) -> Result<Artifact, String> {
+pub async fn get_artifact(state: State<'_, DbState>, id: String) -> Result<Artifact, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     artifact_service::get_artifact(&conn, &id)
 }
@@ -38,7 +35,7 @@ pub async fn get_artifact_versions(
     id: String,
 ) -> Result<Vec<ArtifactSummary>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    
+
     let mut stmt = conn.prepare(
         "WITH RECURSIVE chain AS (
             SELECT id, title, artifact_type, language, description, tags, is_pinned, version, updated_at, parent_artifact_id 
@@ -50,23 +47,26 @@ pub async fn get_artifact_versions(
         SELECT id, title, artifact_type, language, description, tags, is_pinned, version, updated_at FROM chain ORDER BY version DESC"
     ).map_err(|e| e.to_string())?;
 
-    let iter = stmt.query_map(rusqlite::params![id], |row| {
-        let tags_json: String = row.get(5)?;
-        let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-        Ok(ArtifactSummary {
-            id: row.get(0)?,
-            title: row.get(1)?,
-            artifact_type: row.get(2)?,
-            language: row.get(3)?,
-            description: row.get(4)?,
-            tags,
-            is_pinned: row.get::<_, i32>(6)? != 0,
-            version: row.get(7)?,
-            updated_at: row.get(8)?,
+    let iter = stmt
+        .query_map(rusqlite::params![id], |row| {
+            let tags_json: String = row.get(5)?;
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            Ok(ArtifactSummary {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                artifact_type: row.get(2)?,
+                language: row.get(3)?,
+                description: row.get(4)?,
+                tags,
+                is_pinned: row.get::<_, i32>(6)? != 0,
+                version: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
-    iter.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    iter.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -76,11 +76,11 @@ pub async fn update_artifact(
     updates: serde_json::Value,
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    
+
     if let Some(is_pinned) = updates.get("is_pinned").and_then(|v| v.as_bool()) {
         artifact_service::update_artifact_pin(&conn, &id, is_pinned)?;
     }
-    
+
     Ok(())
 }
 
@@ -91,10 +91,10 @@ pub async fn search_artifacts(
     query: String,
 ) -> Result<Vec<ArtifactSummary>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    
+
     // For Phase 3, we'd generate embedding first then call search_artifacts_semantic.
     // For now, let's just do a keyword search as fallback.
-    
+
     let mut stmt = conn.prepare(
         "SELECT id, title, artifact_type, language, description, tags, is_pinned, version, updated_at
          FROM artifacts 
@@ -103,23 +103,26 @@ pub async fn search_artifacts(
     ).map_err(|e| e.to_string())?;
 
     let query_param = format!("%{}%", query);
-    let iter = stmt.query_map(rusqlite::params![workspace_id, query_param], |row| {
-        let tags_json: String = row.get(5)?;
-        let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-        Ok(ArtifactSummary {
-            id: row.get(0)?,
-            title: row.get(1)?,
-            artifact_type: row.get(2)?,
-            language: row.get(3)?,
-            description: row.get(4)?,
-            tags,
-            is_pinned: row.get::<_, i32>(6)? != 0,
-            version: row.get(7)?,
-            updated_at: row.get(8)?,
+    let iter = stmt
+        .query_map(rusqlite::params![workspace_id, query_param], |row| {
+            let tags_json: String = row.get(5)?;
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            Ok(ArtifactSummary {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                artifact_type: row.get(2)?,
+                language: row.get(3)?,
+                description: row.get(4)?,
+                tags,
+                is_pinned: row.get::<_, i32>(6)? != 0,
+                version: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
-    iter.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    iter.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -129,10 +132,10 @@ pub async fn create_artifact_version(
     content: String,
 ) -> Result<Artifact, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    
+
     // 1. Get parent details
     let parent = artifact_service::get_artifact(&conn, &parent_id)?;
-    
+
     // 2. Create new version
     let req = CreateArtifactRequest {
         workspace_id: parent.workspace_id,
@@ -148,22 +151,20 @@ pub async fn create_artifact_version(
     };
 
     let mut artifact = artifact_service::create_artifact(&conn, req)?;
-    
+
     // Update version number
     artifact.version = parent.version + 1;
     conn.execute(
         "UPDATE artifacts SET version = ?1 WHERE id = ?2",
         rusqlite::params![artifact.version, artifact.id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(artifact)
 }
 
 #[tauri::command]
-pub async fn delete_artifact(
-    state: State<'_, DbState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_artifact(state: State<'_, DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     artifact_service::delete_artifact(&conn, &id)
 }

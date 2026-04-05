@@ -1,10 +1,10 @@
-use tauri::{AppHandle, State, Emitter};
-use crate::models::context::AssembleAndSendRequest;
 use crate::db::DbState;
-use crate::services::context_assembler::assemble_context;
-use crate::services::model_settings::get_embedding_model;
+use crate::models::context::AssembleAndSendRequest;
 use crate::ollama::client::OllamaClient;
 use crate::ollama::client::OllamaMessage;
+use crate::services::context_assembler::assemble_context;
+use crate::services::model_settings::get_embedding_model;
+use tauri::{AppHandle, Emitter, State};
 
 fn query_exists(
     conn: &rusqlite::Connection,
@@ -108,15 +108,17 @@ fn load_raw_history(
         .prepare("SELECT role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC")
         .map_err(|e| e.to_string())?;
 
-    let rows = stmt.query_map(rusqlite::params![session_id], |row| {
-        Ok(OllamaMessage {
-            role: row.get(0)?,
-            content: row.get(1)?,
+    let rows = stmt
+        .query_map(rusqlite::params![session_id], |row| {
+            Ok(OllamaMessage {
+                role: row.get(0)?,
+                content: row.get(1)?,
+            })
         })
-    })
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -130,7 +132,11 @@ pub async fn assemble_and_send(
         !workspace_has_enriched_context(&conn_guard, &req.workspace_id, &req.session_id)?
     };
 
-    let client_url = req.options.get("ollama_url").and_then(|v: &serde_json::Value| v.as_str()).map(|s: &str| s.to_string());
+    let client_url = req
+        .options
+        .get("ollama_url")
+        .and_then(|v: &serde_json::Value| v.as_str())
+        .map(|s: &str| s.to_string());
     let client = OllamaClient::new(client_url)?;
 
     if use_fast_path {
@@ -149,7 +155,9 @@ pub async fn assemble_and_send(
             },
         );
 
-        return client.stream_message(&app, &req.session_id, &req.model_name, messages).await;
+        return client
+            .stream_message(&app, &req.session_id, &req.model_name, messages)
+            .await;
     }
 
     // 0. Embed the latest user message for semantic memory retrieval
@@ -193,12 +201,14 @@ pub async fn assemble_and_send(
         let assembled_text = serde_json::to_string(&messages).unwrap_or_default();
         let sources_json = serde_json::to_string(&sources).unwrap_or_default();
         let tokens_used = crate::services::context_assembler::estimate_tokens(&assembled_text);
-        
-        let last_msg_id: String = conn_guard.query_row(
-            "SELECT id FROM messages WHERE session_id = ?1 ORDER BY created_at DESC LIMIT 1",
-            rusqlite::params![req.session_id],
-            |row| row.get(0)
-        ).unwrap_or_else(|_| "unknown".to_string());
+
+        let last_msg_id: String = conn_guard
+            .query_row(
+                "SELECT id FROM messages WHERE session_id = ?1 ORDER BY created_at DESC LIMIT 1",
+                rusqlite::params![req.session_id],
+                |row| row.get(0),
+            )
+            .unwrap_or_else(|_| "unknown".to_string());
 
         let _ = conn_guard.execute(
             "INSERT INTO context_snapshots (id, session_id, message_id, assembled_context, token_budget, tokens_used, sources_json)
@@ -208,11 +218,10 @@ pub async fn assemble_and_send(
     }
 
     // Send event for sources so frontend knows what context was used
-    let _ = app.emit(
-        &format!("context-sources-{}", req.session_id),
-        sources
-    );
+    let _ = app.emit(&format!("context-sources-{}", req.session_id), sources);
 
     // Call stream_message
-    client.stream_message(&app, &req.session_id, &req.model_name, messages).await
+    client
+        .stream_message(&app, &req.session_id, &req.model_name, messages)
+        .await
 }

@@ -5,7 +5,10 @@ use crate::services::model_settings::{get_configured_chat_model, get_embedding_m
 
 /// Auto-extract memories if the session has new unextracted messages.
 /// This checks if the session length is a multiple of 5.
-pub async fn process_auto_memory_extraction(state: &DbState, ollama_url: Option<String>) -> Result<(), String> {
+pub async fn process_auto_memory_extraction(
+    state: &DbState,
+    ollama_url: Option<String>,
+) -> Result<(), String> {
     let sessions = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         // Only process sessions updated in the last 5 minutes that are not private.
@@ -20,12 +23,15 @@ pub async fn process_auto_memory_extraction(state: &DbState, ollama_url: Option<
         ).unwrap();
         stmt.query_map([], |row| {
             Ok((
-                row.get::<_, String>(0)?, 
-                row.get::<_, String>(1)?, 
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?
+                row.get::<_, i64>(3)?,
             ))
-        }).unwrap().filter_map(Result::ok).collect::<Vec<_>>()
+        })
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect::<Vec<_>>()
     };
 
     for (session_id, workspace_id, project_id, last_count) in sessions {
@@ -34,27 +40,44 @@ pub async fn process_auto_memory_extraction(state: &DbState, ollama_url: Option<
             let mut msg_stmt = conn.prepare(
                 "SELECT id, role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
             ).unwrap();
-            
-            msg_stmt.query_map(rusqlite::params![session_id], |row| {
-                Ok(Message {
-                    id: row.get(0)?,
-                    session_id: session_id.clone(),
-                    role: row.get::<_, String>(1)?.parse().unwrap_or(crate::models::chat::MessageRole::User),
-                    content: row.get(2)?,
-                    model_name: Some("".to_string()),
-                    tokens_used: None,
-                    duration_ms: None,
-                    created_at: "".to_string(),
+
+            msg_stmt
+                .query_map(rusqlite::params![session_id], |row| {
+                    Ok(Message {
+                        id: row.get(0)?,
+                        session_id: session_id.clone(),
+                        role: row
+                            .get::<_, String>(1)?
+                            .parse()
+                            .unwrap_or(crate::models::chat::MessageRole::User),
+                        content: row.get(2)?,
+                        model_name: Some("".to_string()),
+                        tokens_used: None,
+                        duration_ms: None,
+                        created_at: "".to_string(),
+                    })
                 })
-            }).unwrap().filter_map(Result::ok).collect::<Vec<_>>()
+                .unwrap()
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>()
         };
 
         if !messages.is_empty() && messages.len() >= 5 && messages.len() > last_count as usize {
-            if extract_and_store_memories(state, &workspace_id, &project_id, &session_id, &messages, ollama_url.clone()).await.is_ok() {
+            if extract_and_store_memories(
+                state,
+                &workspace_id,
+                &project_id,
+                &session_id,
+                &messages,
+                ollama_url.clone(),
+            )
+            .await
+            .is_ok()
+            {
                 if let Ok(conn) = state.0.get() {
                     let _ = conn.execute(
                         "UPDATE chat_sessions SET last_processed_message_count = ?1 WHERE id = ?2",
-                        rusqlite::params![messages.len() as i64, session_id]
+                        rusqlite::params![messages.len() as i64, session_id],
                     );
                 }
             }
@@ -72,12 +95,14 @@ pub async fn extract_and_store_memories(
     recent_messages: &[Message],
     ollama_url: Option<String>,
 ) -> Result<(), String> {
-    if recent_messages.is_empty() { return Ok(()); }
+    if recent_messages.is_empty() {
+        return Ok(());
+    }
 
     let Ok(client) = OllamaClient::new(ollama_url) else {
         return Ok(());
     };
-    
+
     let mut conversation_text = String::new();
     for msg in recent_messages {
         conversation_text.push_str(&format!("{}: {}\n", msg.role, msg.content));
@@ -91,8 +116,11 @@ pub async fn extract_and_store_memories(
         conversation_text
     );
 
-    let msgs = vec![OllamaMessage { role: "user".to_string(), content: prompt }];
-    
+    let msgs = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+
     // Fetch model config and existing embeddings in a SINGLE lock acquisition
     let (model, embedding_model, existing_embeddings) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -100,20 +128,23 @@ pub async fn extract_and_store_memories(
         let emb_model = get_embedding_model(&conn);
 
         // Pre-fetch all existing memory embeddings for dedup (avoids per-fact lock)
-        let existing: Vec<Vec<f32>> = conn.prepare(
-            "SELECT me.embedding FROM memory_embeddings me 
+        let existing: Vec<Vec<f32>> = conn
+            .prepare(
+                "SELECT me.embedding FROM memory_embeddings me 
              JOIN memories m ON me.memory_id = m.id 
-             WHERE m.workspace_id = ?1"
-        ).ok()
-        .map(|mut stmt| {
-            stmt.query_map(rusqlite::params![workspace_id], |row| {
-                let bytes: Vec<u8> = row.get(0)?;
-                Ok(crate::services::vector_index::bytes_to_f32_vec(&bytes))
-            }).ok()
-            .map(|iter| iter.flatten().collect::<Vec<_>>())
-            .unwrap_or_default()
-        })
-        .unwrap_or_default();
+             WHERE m.workspace_id = ?1",
+            )
+            .ok()
+            .map(|mut stmt| {
+                stmt.query_map(rusqlite::params![workspace_id], |row| {
+                    let bytes: Vec<u8> = row.get(0)?;
+                    Ok(crate::services::vector_index::bytes_to_f32_vec(&bytes))
+                })
+                .ok()
+                .map(|iter| iter.flatten().collect::<Vec<_>>())
+                .unwrap_or_default()
+            })
+            .unwrap_or_default();
 
         (model, emb_model, existing)
     }; // DB lock released here
@@ -125,7 +156,10 @@ pub async fn extract_and_store_memories(
         return Ok(());
     };
 
-    if let Ok(response) = client.send_message_with_options(&model, msgs, Some("0s")).await {
+    if let Ok(response) = client
+        .send_message_with_options(&model, msgs, Some("0s"))
+        .await
+    {
         // Parse JSON
         if let Some(start) = response.find('[') {
             if let Some(end) = response.rfind(']') {
@@ -134,7 +168,10 @@ pub async fn extract_and_store_memories(
                     // Generate embeddings and check dedup OUTSIDE the lock
                     let mut new_memories: Vec<(String, String, Vec<u8>)> = Vec::new();
                     for fact in facts {
-                        let embedding = if let Ok(emb) = client.generate_embedding_with_options(&embedding_model, &fact, Some("0s")).await {
+                        let embedding = if let Ok(emb) = client
+                            .generate_embedding_with_options(&embedding_model, &fact, Some("0s"))
+                            .await
+                        {
                             emb
                         } else {
                             continue;
@@ -142,12 +179,20 @@ pub async fn extract_and_store_memories(
 
                         // Semantic deduplication — CPU work with NO lock held
                         let is_duplicate = existing_embeddings.iter().any(|existing_emb| {
-                            crate::services::vector_index::cosine_similarity(&embedding, existing_emb) > 0.85
+                            crate::services::vector_index::cosine_similarity(
+                                &embedding,
+                                existing_emb,
+                            ) > 0.85
                         });
 
                         if !is_duplicate {
-                            let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
-                            new_memories.push((fact, uuid::Uuid::new_v4().to_string(), embedding_bytes));
+                            let embedding_bytes =
+                                crate::services::vector_index::f32_vec_to_bytes(&embedding);
+                            new_memories.push((
+                                fact,
+                                uuid::Uuid::new_v4().to_string(),
+                                embedding_bytes,
+                            ));
                         }
                     }
 

@@ -30,10 +30,10 @@ export default function AppHeaderMenu() {
     <div className="relative mr-2 flex-shrink-0" ref={menuRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors rounded-lg hover:bg-[var(--bg-hover)]"
+        className="w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors rounded hover:bg-[var(--bg-hover)]"
         title="App Menu"
       >
-        <Menu size={16} />
+        <Menu size={20} />
       </button>
 
       {isOpen && (

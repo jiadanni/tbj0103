@@ -1,5 +1,5 @@
 use crate::db::DbState;
-use crate::mcp_server::{ToolContent, JsonRpcError, ReadResourceResult};
+use crate::mcp_server::{JsonRpcError, ReadResourceResult, ToolContent};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -12,7 +12,10 @@ pub async fn handle_read_resource(
         return read_workspaces(db_state).await;
     }
 
-    if let Some(workspace_id) = uri.strip_prefix("aetherium://workspace/").and_then(|s| s.split('/').next()) {
+    if let Some(workspace_id) = uri
+        .strip_prefix("aetherium://workspace/")
+        .and_then(|s| s.split('/').next())
+    {
         if uri.ends_with("/notes") {
             return read_workspace_notes(db_state, workspace_id).await;
         }
@@ -70,8 +73,7 @@ async fn read_workspaces(db_state: &Arc<DbState>) -> Result<ReadResourceResult, 
         mime_type: Some("application/json".to_string()),
         contents: vec![ToolContent {
             type_: "text".to_string(),
-            text: serde_json::to_string(&workspaces)
-                .unwrap_or_else(|_| "[]".to_string()),
+            text: serde_json::to_string(&workspaces).unwrap_or_else(|_| "[]".to_string()),
         }],
     })
 }
@@ -169,7 +171,10 @@ async fn read_workspace_concepts(
     })
 }
 
-async fn read_note(db_state: &Arc<DbState>, note_id: &str) -> Result<ReadResourceResult, JsonRpcError> {
+async fn read_note(
+    db_state: &Arc<DbState>,
+    note_id: &str,
+) -> Result<ReadResourceResult, JsonRpcError> {
     let conn = db_state.0.get().map_err(|_| JsonRpcError {
         code: -32603,
         message: "Failed to acquire database lock".to_string(),
@@ -177,9 +182,7 @@ async fn read_note(db_state: &Arc<DbState>, note_id: &str) -> Result<ReadResourc
     })?;
 
     let mut stmt = conn
-        .prepare(
-            "SELECT id, title, content, created_at, updated_at FROM notes WHERE id = ?1",
-        )
+        .prepare("SELECT id, title, content, created_at, updated_at FROM notes WHERE id = ?1")
         .map_err(|e| JsonRpcError {
             code: -32603,
             message: format!("Database error: {}", e),
@@ -222,9 +225,7 @@ async fn read_concept(
     })?;
 
     let mut stmt = conn
-        .prepare(
-            "SELECT id, name, concept_description FROM concept_nodes WHERE id = ?1",
-        )
+        .prepare("SELECT id, name, concept_description FROM concept_nodes WHERE id = ?1")
         .map_err(|e| JsonRpcError {
             code: -32603,
             message: format!("Database error: {}", e),

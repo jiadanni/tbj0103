@@ -215,11 +215,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     );
     const sectionNavigation = readNavigationSetting(
       "sectionNavigation",
-      legacyNavLayout === "top-tabs"
-        ? "top-tabs"
-        : legacyNavLayout === "top-dropdown"
-        ? "top-tabs"
-        : "top-tabs"
+      workspaceNavigation
     );
     return { workspaceNavigation, sectionNavigation };
   })();

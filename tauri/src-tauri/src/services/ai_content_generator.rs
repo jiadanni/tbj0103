@@ -3,8 +3,8 @@
 //! without requiring an Ollama call — fast, offline-capable.
 //! Richer Ollama-powered versions are invoked from the frontend via the ollama commands.
 
-use std::collections::HashMap;
 use regex::Regex;
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 static WORD_RE: OnceLock<Regex> = OnceLock::new();
@@ -15,12 +15,12 @@ fn word_re() -> &'static Regex {
 /// Extract up to `max` keyword tags from `text` using term-frequency heuristics.
 pub fn generate_tags(text: &str, max: usize) -> Vec<String> {
     const STOPWORDS: &[&str] = &[
-        "the","a","an","and","or","but","in","on","at","to","for","of","with","by",
-        "from","is","was","are","were","be","been","being","have","has","had",
-        "do","does","did","will","would","could","should","may","might","can",
-        "not","no","nor","so","yet","each","every","all","any","some","this",
-        "that","these","those","than","too","very","just","also","also","then",
-        "now","its","their","our","your","his","her","they","them","there",
+        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
+        "from", "is", "was", "are", "were", "be", "been", "being", "have", "has", "had", "do",
+        "does", "did", "will", "would", "could", "should", "may", "might", "can", "not", "no",
+        "nor", "so", "yet", "each", "every", "all", "any", "some", "this", "that", "these",
+        "those", "than", "too", "very", "just", "also", "also", "then", "now", "its", "their",
+        "our", "your", "his", "her", "they", "them", "there",
     ];
     let lower = text.to_lowercase();
     let stopset: std::collections::HashSet<&str> = STOPWORDS.iter().copied().collect();
@@ -39,7 +39,10 @@ pub fn generate_tags(text: &str, max: usize) -> Vec<String> {
 /// Produce a short summary: first complete sentence, up to `max_chars`.
 pub fn generate_summary(text: &str, max_chars: usize) -> String {
     let clean: String = text.chars().filter(|c| *c != '\r').collect();
-    let first = clean.split("\n\n").find(|p| !p.trim().is_empty()).unwrap_or("");
+    let first = clean
+        .split("\n\n")
+        .find(|p| !p.trim().is_empty())
+        .unwrap_or("");
     let summary: String = first.chars().take(max_chars).collect();
     if summary.len() < first.len() {
         format!("{}…", summary.trim_end())

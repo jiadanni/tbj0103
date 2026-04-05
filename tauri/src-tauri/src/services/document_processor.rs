@@ -37,10 +37,10 @@ pub fn mime_from_path(path: &str) -> &'static str {
         .unwrap_or("")
         .to_lowercase();
     match ext.as_str() {
-        "pdf"  => "application/pdf",
-        "md"   => "text/markdown",
+        "pdf" => "application/pdf",
+        "md" => "text/markdown",
         "html" | "htm" => "text/html",
         "json" => "application/json",
-        _      => "text/plain",
+        _ => "text/plain",
     }
 }

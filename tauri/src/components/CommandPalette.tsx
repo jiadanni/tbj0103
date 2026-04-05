@@ -55,7 +55,7 @@ const COMMANDS: CommandItem[] = [
   { label: "Concept Deduplication",    value: "dedup",          path: "/graph",        state: { subView: "dedup" as GraphSubView } },
   { label: "Manage Workspaces",        value: "workspaces",     path: "/preferences",  state: { settingsTab: "workspaces" as PreferencesSection } },
   { label: "Go to Backups",            value: "backup",         path: "/preferences",  state: { settingsTab: "backup" as PreferencesSection } },
-  { label: "Plugins",                  value: "plugins",        path: "/preferences",  state: { settingsTab: "plugins" as PreferencesSection } },
+  { label: "Go to Imports",            value: "import",         path: "/preferences",  state: { settingsTab: "import" as PreferencesSection } },
   { label: "Open Preferences",         value: "settings",       path: "/preferences"   },
 ];
 
