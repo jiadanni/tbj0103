@@ -1515,22 +1515,18 @@ export default function ChatView() {
 
   // Handle external subview switching via router state
   useEffect(() => {
-    const state = location.state as { subView?: ChatSubView } | null;
+    const state = location.state as { subView?: ChatSubView | "grounded" } | null;
     if (state?.subView) {
-      setActiveSubView(state.subView);
+      if (state.subView === "grounded") {
+        setGroundedEnabled(true);
+        setActiveSubView("chat");
+      } else {
+        setActiveSubView(state.subView as ChatSubView);
+      }
       // Clear state so it doesn't persist on manual refreshes
       window.history.replaceState({}, document.title);
     }
   }, [location.state, setActiveSubView]);  
-
-  // Sync grounded mode with activeSubView
-  useEffect(() => {
-    if (activeSubView === "grounded") {
-      setGroundedEnabled(true);
-    } else {
-      setGroundedEnabled(false);
-    }
-  }, [activeSubView]);
 
   // Session list features
   const [sessionQuery, setSessionQuery] = useState("");
@@ -3158,26 +3154,6 @@ export default function ChatView() {
 
       {/* Main content area */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0">
-        {/* Unified Subview Tabs */}
-        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)] flex-shrink-0 overflow-x-auto">
-          {[
-            { id: "chat", label: "Standard", Icon: MessageSquare },
-            { id: "grounded", label: "Grounded (RAG)", Icon: BookOpen },
-          ].map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveSubView(id as ChatSubView)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
-                activeSubView === id
-                  ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                  : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
-              }`}
-            >
-              <Icon size={14} />
-              {label}
-            </button>
-          ))}
-        </div>
 
         {activeSubView === "compare" ? (
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0">

@@ -50,7 +50,7 @@ const COMMANDS: CommandItem[] = [
   { label: "Go to Knowledge Graph",    value: "graph",          path: "/graph"         },
   { label: "Flashcards",               value: "flashcards",     path: "/graph",        state: { subView: "flashcards" as GraphSubView } },
   { label: "Learning Paths",           value: "learning",       path: "/graph",        state: { subView: "learning" as GraphSubView } },
-  { label: "Grounded Chat",            value: "grounded",       path: "/chat",         state: { subView: "grounded" as ChatSubView } },
+  { label: "Chat with Documents",      value: "grounded",       path: "/chat",         state: { subView: "grounded" } },
   { label: "Backlinks",                value: "backlinks",      path: "/graph",        state: { subView: "backlinks" as GraphSubView } },
   { label: "Concept Deduplication",    value: "dedup",          path: "/graph",        state: { subView: "dedup" as GraphSubView } },
   { label: "Manage Workspaces",        value: "workspaces",     path: "/preferences",  state: { settingsTab: "workspaces" as PreferencesSection } },
