@@ -5,7 +5,6 @@ import {
 } from "react-resizable-panels";
 import { Plus, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { ask, message } from "@tauri-apps/plugin-dialog";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
 import WindowControls, { onDragRegionMouseDown, onDragRegionDoubleClick } from "./WindowControls";
@@ -15,6 +14,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import AppHeaderMenu from "./AppHeaderMenu";
 import ArtifactPanel from "./ArtifactPanel";
+import ConfirmDialog from "./ConfirmDialog";
 import { api } from "../lib/api";
 import { isMac, isLinux } from "../lib/platform";
 import SplitPaneLayout from "./SplitPaneLayout";
@@ -31,6 +31,10 @@ const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
 const WebCaptureView = React.lazy(() => import("../views/WebCaptureView"));
 import type { Workspace } from "../stores/workspaceStore";
 
+type WorkspaceDialogState =
+  | { kind: "last-workspace" }
+  | { kind: "delete"; workspace: Workspace };
+
 function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
@@ -45,6 +49,8 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [contextMenu, setContextMenu] = useState<{ workspace: Workspace; x: number; y: number } | null>(null);
+  const [dialogState, setDialogState] = useState<WorkspaceDialogState | null>(null);
+  const [dialogBusy, setDialogBusy] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
   const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -80,22 +86,7 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
     setContextMenu(null);
   }
 
-  async function deleteWorkspace(workspace: Workspace) {
-    if (workspaces.length === 1) {
-      await message("Cannot delete the last workspace.", { title: "Aetherium", kind: "error" });
-      setContextMenu(null);
-      return;
-    }
-
-    const confirmed = await ask(`Delete "${workspace.name}" and all its projects, notes, and data? This cannot be undone.`, {
-      title: "Confirm Deletion",
-      kind: "warning",
-    });
-    if (!confirmed) {
-      setContextMenu(null);
-      return;
-    }
-
+  async function performDeleteWorkspace(workspace: Workspace) {
     await api.workspace.delete(workspace.id);
     const remaining = workspaces.filter((item) => item.id !== workspace.id);
     setWorkspaces(remaining);
@@ -103,6 +94,15 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
       setActiveWorkspaceId(remaining[0]?.id ?? null);
     }
     setContextMenu(null);
+  }
+
+  function deleteWorkspace(workspace: Workspace) {
+    setContextMenu(null);
+    if (workspaces.length === 1) {
+      setDialogState({ kind: "last-workspace" });
+      return;
+    }
+    setDialogState({ kind: "delete", workspace });
   }
 
   useEffect(() => {
@@ -215,14 +215,17 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
                     }
                   } catch { /* ignore malformed data */ }
                 }}
-                className={`flex items-center gap-1.5 px-3 h-full text-sm font-medium whitespace-nowrap border-b-2 transition-colors select-none ${
+                className={`relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
                   dragOverWorkspaceId === ws.id
-                    ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)] font-medium"
+                    ? "border-[rgba(var(--accent-color-rgb),0.45)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] shadow-sm"
                     : activeWorkspaceId === ws.id
-                    ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
-                    : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
+                    : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
                 }`}
               >
+                {(dragOverWorkspaceId === ws.id || activeWorkspaceId === ws.id) && (
+                  <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+                )}
                 {ws.name}
               </button>
             ))}
@@ -345,6 +348,40 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
           </button>
         </div>
       )}
+      {dialogState && (
+        <ConfirmDialog
+          title={dialogState.kind === "delete" ? "Confirm Deletion" : "Cannot Delete Workspace"}
+          description={
+            dialogState.kind === "delete"
+              ? `Delete "${dialogState.workspace.name}" and all its projects, notes, and data? This cannot be undone.`
+              : "You need at least one workspace in Aetherium."
+          }
+          confirmLabel={dialogState.kind === "delete" ? "Delete Workspace" : "OK"}
+          cancelLabel={dialogState.kind === "delete" ? "Cancel" : null}
+          tone={dialogState.kind === "delete" ? "danger" : "default"}
+          busy={dialogBusy}
+          onCancel={() => {
+            if (!dialogBusy) {
+              setDialogState(null);
+            }
+          }}
+          onConfirm={async () => {
+            if (dialogBusy) {return;}
+            if (dialogState.kind !== "delete") {
+              setDialogState(null);
+              return;
+            }
+
+            setDialogBusy(true);
+            try {
+              await performDeleteWorkspace(dialogState.workspace);
+              setDialogState(null);
+            } finally {
+              setDialogBusy(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -413,12 +450,15 @@ function NavigationTabBar() {
         event.stopPropagation();
         setContextMenu({ item, x: event.clientX, y: event.clientY });
       }}
-      className={`flex items-center gap-1.5 px-3 h-full text-sm font-medium whitespace-nowrap border-b-2 transition-colors select-none ${
+      className={`relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
         activeSegment === item.path
-          ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
-          : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
+          : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
       }`}
     >
+      {activeSegment === item.path && (
+        <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+      )}
       <Icon size={18} />
       {item.label}
     </button>

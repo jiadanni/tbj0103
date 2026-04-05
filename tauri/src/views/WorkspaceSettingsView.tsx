@@ -4,12 +4,16 @@
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { message, ask } from "@tauri-apps/plugin-dialog";
 import { Plus, Trash2, Pencil, Check, X, LayoutGrid } from "lucide-react";
 import { api } from "../lib/api";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
+
+type WorkspaceDialogState =
+  | { kind: "last-workspace" }
+  | { kind: "delete"; workspace: Workspace };
 
 export default function WorkspaceSettingsView() {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces } = useWorkspaceStore();
@@ -20,6 +24,8 @@ export default function WorkspaceSettingsView() {
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [dialogState, setDialogState] = useState<WorkspaceDialogState | null>(null);
+  const [dialogBusy, setDialogBusy] = useState(false);
 
   function activateWorkspace(workspaceId: string) {
     const isChanged = workspaceId !== activeWorkspaceId;
@@ -50,16 +56,7 @@ export default function WorkspaceSettingsView() {
     setEditingId(null);
   }
 
-  async function deleteWorkspace(ws: Workspace) {
-    if (workspaces.length === 1) {
-      await message("Cannot delete the last workspace.", { title: "Aetherium", kind: "error" });
-      return;
-    }
-    const confirmed = await ask(`Delete "${ws.name}" and all its projects, notes, and data? This cannot be undone.`, {
-      title: "Confirm Deletion",
-      kind: "warning",
-    });
-    if (!confirmed) { return; }
+  async function performDeleteWorkspace(ws: Workspace) {
     await api.workspace.delete(ws.id);
     const remaining = workspaces.filter((w) => w.id !== ws.id);
     setWorkspaces(remaining);
@@ -71,6 +68,14 @@ export default function WorkspaceSettingsView() {
         setActiveWorkspaceId(null);
       }
     }
+  }
+
+  function deleteWorkspace(ws: Workspace) {
+    if (workspaces.length === 1) {
+      setDialogState({ kind: "last-workspace" });
+      return;
+    }
+    setDialogState({ kind: "delete", workspace: ws });
   }
 
   function formatDate(iso: string) {
@@ -219,6 +224,41 @@ export default function WorkspaceSettingsView() {
           Workspaces isolate projects, notes, daily entries, and knowledge graphs. You can switch between them using the tab bar at the top.
         </p>
       </div>
+
+      {dialogState && (
+        <ConfirmDialog
+          title={dialogState.kind === "delete" ? "Confirm Deletion" : "Cannot Delete Workspace"}
+          description={
+            dialogState.kind === "delete"
+              ? `Delete "${dialogState.workspace.name}" and all its projects, notes, and data? This cannot be undone.`
+              : "You need at least one workspace in Aetherium."
+          }
+          confirmLabel={dialogState.kind === "delete" ? "Delete Workspace" : "OK"}
+          cancelLabel={dialogState.kind === "delete" ? "Cancel" : null}
+          tone={dialogState.kind === "delete" ? "danger" : "default"}
+          busy={dialogBusy}
+          onCancel={() => {
+            if (!dialogBusy) {
+              setDialogState(null);
+            }
+          }}
+          onConfirm={async () => {
+            if (dialogBusy) {return;}
+            if (dialogState.kind !== "delete") {
+              setDialogState(null);
+              return;
+            }
+
+            setDialogBusy(true);
+            try {
+              await performDeleteWorkspace(dialogState.workspace);
+              setDialogState(null);
+            } finally {
+              setDialogBusy(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
