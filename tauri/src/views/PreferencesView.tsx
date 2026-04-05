@@ -105,7 +105,9 @@ export default function PreferencesView() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [_saveError, setSaveError] = useState<string | null>(null);
   const [testingOllama, setTestingOllama] = useState(false);
+  const [startingOllama, setStartingOllama] = useState(false);
   const [ollamaTestResult, setOllamaTestResult] = useState<{ success: boolean; msg: string } | null>(null);
+  const [ollamaReachable, setOllamaReachable] = useState<boolean | null>(null);
   const [testingMlx, setTestingMlx] = useState(false);
   const [mlxTestResult, setMlxTestResult] = useState<{ success: boolean; msg: string } | null>(null);
   const [mlxModels, setMlxModels] = useState<string[]>([]);
@@ -163,6 +165,7 @@ export default function PreferencesView() {
   const [gitSyncing, setGitSyncing] = useState(false);
   const [gitSyncSaving, setGitSyncSaving] = useState(false);
   const isGitSyncSshUrl = gitSyncUrl.trim().startsWith("git@") || gitSyncUrl.trim().startsWith("ssh://");
+  const [quickSearchShortcutDraft, setQuickSearchShortcutDraft] = useState("");
   const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -177,6 +180,10 @@ export default function PreferencesView() {
       window.clearTimeout(saveNoticeTimeoutRef.current);
     }
   }, []);
+
+  useEffect(() => {
+    setQuickSearchShortcutDraft(dbSettings?.quick_search_shortcut ?? "");
+  }, [dbSettings?.quick_search_shortcut]);
 
   function syncClientSettings(settings: AppSettings) {
     const settingsStore = useSettingsStore.getState();
@@ -273,15 +280,18 @@ export default function PreferencesView() {
     setOllamaModelsLoading(true);
     if (options?.clearResult) {
       setOllamaTestResult(null);
+      setOllamaReachable(null);
     }
 
     api.ollama.listModelsFresh(ollamaUrl || undefined)
       .then((models) => {
         if (requestId !== ollamaModelsRequestRef.current) {return;}
+        setOllamaReachable(true);
         setOllamaModels(models.map((model) => model.name));
       })
       .catch(() => {
         if (requestId !== ollamaModelsRequestRef.current) {return;}
+        setOllamaReachable(false);
         setOllamaModels([]);
       })
       .finally(() => {
@@ -289,6 +299,14 @@ export default function PreferencesView() {
         setOllamaModelsLoading(false);
         setHasLoadedOllamaModels(true);
       });
+  }
+
+  function applyOllamaRuntimeStatus(status: { available: boolean; message: string; models: Array<{ name: string }> }) {
+    setOllamaReachable(status.available);
+    setOllamaModels(status.models.map((model) => model.name));
+    setHasLoadedOllamaModels(true);
+    setOllamaModelsLoading(false);
+    setOllamaTestResult({ success: status.available, msg: status.message });
   }
 
   useEffect(() => {
@@ -499,6 +517,48 @@ export default function PreferencesView() {
                   on={dbSettings.open_in_background}
                   disabled={!dbSettings.start_at_login}
                   onToggle={() => set("open_in_background", !dbSettings.open_in_background)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Keep running in tray</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Closing the main window keeps the menu bar or tray app alive so quick search still works.
+                  </p>
+                </div>
+                <Toggle
+                  on={dbSettings.keep_running_in_tray}
+                  onToggle={() => set("keep_running_in_tray", !dbSettings.keep_running_in_tray)}
+                />
+              </div>
+
+              <div className="space-y-2 py-1">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Quick search shortcut</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      Use a Tauri accelerator like <code>CmdOrCtrl+Shift+K</code>. Leave blank to disable the global hotkey.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => set("quick_search_shortcut", quickSearchShortcutDraft.trim())}
+                    className="rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
+                  >
+                    Apply
+                  </button>
+                </div>
+                <input
+                  value={quickSearchShortcutDraft}
+                  onChange={(event) => setQuickSearchShortcutDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      set("quick_search_shortcut", quickSearchShortcutDraft.trim());
+                    }
+                  }}
+                  placeholder="CmdOrCtrl+Shift+K"
+                  className="h-11 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                 />
               </div>
 
@@ -782,29 +842,69 @@ export default function PreferencesView() {
           {/* ── AI / Ollama ── */}
           {activeTab === "ai" && (
             <>
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Auto-start local Ollama</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Try to launch `ollama serve` when Aetherium starts. Supported for the default local URL only.
+                  </p>
+                </div>
+                <Toggle
+                  on={dbSettings.auto_start_ollama}
+                  onToggle={() => set("auto_start_ollama", !dbSettings.auto_start_ollama)}
+                />
+              </div>
+
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between gap-3 mb-1">
                   <label className="text-xs text-[var(--text-secondary)]">Ollama URL</label>
-                  <button
-                    onClick={async () => {
-                      setTestingOllama(true);
-                      setOllamaTestResult(null);
-                      try {
-                        const m = await api.ollama.listModelsFresh(dbSettings.ollama_base_url || undefined);
-                        setOllamaTestResult({ success: true, msg: `Success! ${m.length} models found.` });
-                        refreshOllamaModels(dbSettings.ollama_base_url);
-                      } catch {
-                        setOllamaTestResult({ success: false, msg: `Connection failed. Is Ollama running?` });
-                      } finally {
-                        setTestingOllama(false);
-                      }
-                    }}
-                    disabled={testingOllama}
-                    className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
-                  >
-                    {testingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
-                    Test Connection
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={async () => {
+                        setStartingOllama(true);
+                        setOllamaTestResult(null);
+                        try {
+                          const status = await api.ollama.ensureRunning(dbSettings.ollama_base_url || undefined);
+                          applyOllamaRuntimeStatus(status);
+                        } catch (error) {
+                          const msg = error instanceof Error ? error.message : "Automatic startup failed.";
+                          setOllamaReachable(false);
+                          setOllamaTestResult({ success: false, msg });
+                        } finally {
+                          setStartingOllama(false);
+                        }
+                      }}
+                      disabled={startingOllama || testingOllama}
+                      className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {startingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Bot size={10} />}
+                      Start Ollama
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setTestingOllama(true);
+                        setOllamaTestResult(null);
+                        try {
+                          const models = await api.ollama.listModelsFresh(dbSettings.ollama_base_url || undefined);
+                          setOllamaReachable(true);
+                          setOllamaModels(models.map((model) => model.name));
+                          setHasLoadedOllamaModels(true);
+                          setOllamaTestResult({ success: true, msg: `Success! ${models.length} model(s) found.` });
+                        } catch (error) {
+                          setOllamaReachable(false);
+                          const msg = error instanceof Error ? error.message : "Connection failed.";
+                          setOllamaTestResult({ success: false, msg });
+                        } finally {
+                          setTestingOllama(false);
+                        }
+                      }}
+                      disabled={testingOllama || startingOllama}
+                      className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {testingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
+                      Test Connection
+                    </button>
+                  </div>
                 </div>
                 <input
                   value={dbSettings.ollama_base_url}
@@ -825,7 +925,22 @@ export default function PreferencesView() {
                     Loading available models...
                   </p>
                 )}
-                {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaModels.length === 0 && !testingOllama && (
+                {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaReachable === false && !testingOllama && !startingOllama && (
+                  <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                    <div className="flex items-center gap-2 text-red-400 mb-1">
+                      <Network size={14} />
+                      <span className="text-xs font-semibold">Ollama unavailable</span>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                      Aetherium could not reach Ollama at this URL. Start it manually with:
+                      <code className="block mt-1.5 p-1.5 rounded bg-[var(--bg-primary)] font-mono text-[10px] text-[var(--text-secondary)]">
+                        ollama serve
+                      </code>
+                      Or enable auto-start above for the default local address.
+                    </p>
+                  </div>
+                )}
+                {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaReachable === true && ollamaModels.length === 0 && !testingOllama && !startingOllama && (
                   <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
                     <div className="flex items-center gap-2 text-amber-500 mb-1">
                       <Bot size={14} />

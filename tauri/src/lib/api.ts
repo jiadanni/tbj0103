@@ -101,7 +101,31 @@ export interface SearchResult {
   score: number; source_id?: string; project_id?: string;
 }
 
+export interface QuickSearchResult {
+  doc_id: string;
+  target_id: string;
+  kind: "conversation" | "message" | "artifact" | "memory" | "summary" | string;
+  title: string;
+  subtitle: string;
+  excerpt: string;
+  workspace_id?: string | null;
+  workspace_name: string;
+  project_id?: string | null;
+  project_name?: string | null;
+  session_id?: string | null;
+  source_session_id?: string | null;
+  updated_at: string;
+  score: number;
+  recent: boolean;
+}
+
 export interface OllamaModel { name: string; size?: number; modified_at?: string; }
+export interface OllamaRuntimeStatus {
+  available: boolean;
+  launched: boolean;
+  message: string;
+  models: OllamaModel[];
+}
 
 // ----- Model list cache -----
 let modelCache: { promise: Promise<OllamaModel[]>; url: string | undefined; ts: number } | null = null;
@@ -193,10 +217,12 @@ export interface AppSettings {
   preferred_model: string; backup_enabled: boolean; touch_id_enabled: boolean; pin_lock_enabled: boolean;
   auto_lock_minutes: number; theme: string; accent_color: string;
   font_size: number; sidebar_width: number; ollama_base_url: string;
+  auto_start_ollama: boolean;
   mlx_base_url: string;
   llamacpp_model_paths: string[];
   background_model: string;
   quick_search_models: string[];
+  quick_search_shortcut: string;
   embedding_model: string;
   chat_title_auto_refresh: "disabled" | "initial_only" | "periodic";
   chat_title_refresh_interval: number;
@@ -210,6 +236,7 @@ export interface AppSettings {
   compare_model_b: string;
   start_at_login: boolean;
   open_in_background: boolean;
+  keep_running_in_tray: boolean;
   immediate_delete: boolean;
   confirm_move_to_trash: boolean;
   prompt_instructions: string;
@@ -493,6 +520,16 @@ export const api = {
       invoke<SearchResult[]>("semantic_search", { req: { query, workspace_id: workspaceId }, queryEmbedding, workspaceId }),
   },
 
+  quickSearch: {
+    show: () => invoke<void>("show_quick_search"),
+    hide: () => invoke<void>("hide_quick_search"),
+    query: (query: string, limit?: number) =>
+      invoke<QuickSearchResult[]>("query_quick_search", { req: { query, limit } }),
+    openResult: (result: QuickSearchResult) =>
+      invoke<void>("open_quick_search_result", { result }),
+    markMainWindowReady: () => invoke<void>("mark_main_window_ready"),
+  },
+
   context: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     assembleAndSend: (sessionId: string, workspaceId: string, modelName: string, options?: Record<string, any>) =>
@@ -550,6 +587,8 @@ export const api = {
       promise.catch(() => { if (modelCache?.promise === promise) { modelCache = null; } });
       return promise;
     },
+    ensureRunning: (ollamaUrl?: string) =>
+      invoke<OllamaRuntimeStatus>("ensure_ollama_running", { ollamaUrl }),
     generateTitle: (model: string, firstMessage: string, ollamaUrl?: string) =>
       invoke<string>("generate_title", { model, firstMessage, ollamaUrl }),
     generateTitleFromConversation: (model: string, conversation: { role: string; content: string }[], ollamaUrl?: string) =>

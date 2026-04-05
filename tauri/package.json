@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:app": "node scripts/ensure-ollama.mjs tauri dev",
     "dev:backend": "cargo build --manifest-path src-tauri/Cargo.toml",
     "build": "tsc && vite build",
     "build:mac": "npm run tauri build -- --bundles app,dmg",

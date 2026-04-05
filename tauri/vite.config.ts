@@ -10,11 +10,14 @@ export default defineConfig(async () => ({
   plugins: [react()],
   clearScreen: false,
   optimizeDeps: {
-    entries: [resolve(__dirname, "index.html")],
+    entries: [resolve(__dirname, "index.html"), resolve(__dirname, "quick-search.html")],
   },
   build: {
     rollupOptions: {
-      input: resolve(__dirname, "index.html"),
+      input: {
+        main: resolve(__dirname, "index.html"),
+        quickSearch: resolve(__dirname, "quick-search.html"),
+      },
       output: {
         manualChunks: {
           vendor: ["react", "react-dom", "react-router-dom"],

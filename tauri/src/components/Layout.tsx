@@ -14,10 +14,13 @@ import type { NavigationItem } from "./navigationItems";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import AppHeaderMenu from "./AppHeaderMenu";
+import ArtifactPanel from "./ArtifactPanel";
 import { api } from "../lib/api";
 import { isMac } from "../lib/platform";
 import SplitPaneLayout from "./SplitPaneLayout";
 import ChatView from "../views/ChatView";
+import MemoryView from "../views/MemoryView";
+import { useArtifactStore } from "../stores/artifactStore";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
@@ -151,103 +154,107 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
         data-tauri-drag-region
         onMouseDown={onDragRegionMouseDown}
         onDoubleClick={onDragRegionDoubleClick}
-        className={`flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 overflow-x-auto select-none ${isMac ? "pl-[72px]" : ""}`}
+        className={`flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""}`}
       >
-        {hideNativeMenu && <AppHeaderMenu />}
-        {workspaces.map((ws) => (
-          <button
-            key={ws.id}
-            onClick={() => activateWorkspace(ws.id)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              setContextMenu({ workspace: ws, x: event.clientX, y: event.clientY });
-            }}
-            onDragOver={(event) => {
-              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
-                return;
-              }
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-            }}
-            onDragEnter={(event) => {
-              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
-                return;
-              }
-              event.preventDefault();
-              setDragOverWorkspaceId(ws.id);
-              if (dragHoverTimerRef.current) {
-                clearTimeout(dragHoverTimerRef.current);
-              }
-              dragHoverTimerRef.current = setTimeout(() => {
-                setActiveWorkspaceId(ws.id);
-              }, 600);
-            }}
-            onDragLeave={(event) => {
-              const related = event.relatedTarget as Node | null;
-              if (related && event.currentTarget.contains(related)) {
-                return;
-              }
-              if (dragOverWorkspaceId === ws.id) {
-                setDragOverWorkspaceId(null);
-              }
-              if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDragOverWorkspaceId(null);
-              if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
-              const raw = event.dataTransfer.getData("application/x-chat-session-ids");
-              if (!raw) {
-                return;
-              }
-              try {
-                const sessionIds = JSON.parse(raw) as string[];
-                if (sessionIds.length > 0) {
-                  void api.chat.moveSessions(sessionIds, ws.id).then(() => {
-                    activateWorkspace(ws.id);
-                  });
-                }
-              } catch { /* ignore malformed data */ }
-            }}
-            className={`flex items-center gap-1.5 px-3 h-full text-sm whitespace-nowrap border-b-2 transition-colors select-none ${
-              dragOverWorkspaceId === ws.id
-                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)] font-medium"
-                : activeWorkspaceId === ws.id
-                ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
-                : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            }`}
-          >
-            {ws.name}
-          </button>
-        ))}
-        {creating ? (
-          <div className="flex items-center gap-1 ml-1">
-            <input
-              autoFocus
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {createWorkspace();}
-                if (e.key === "Escape") {setCreating(false);}
-              }}
-              placeholder="Workspace name"
-              className="text-xs px-2 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none w-36"
-            />
-            <button onClick={createWorkspace} className="text-xs px-2 py-0.5 bg-[var(--accent-color)] text-white rounded">
-              Add
-            </button>
+        <div className="min-w-0 flex-1 overflow-x-auto" data-workspace-tab-strip>
+          <div className="flex min-w-max items-center">
+            {hideNativeMenu && <AppHeaderMenu />}
+            {workspaces.map((ws) => (
+              <button
+                key={ws.id}
+                onClick={() => activateWorkspace(ws.id)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setContextMenu({ workspace: ws, x: event.clientX, y: event.clientY });
+                }}
+                onDragOver={(event) => {
+                  if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }}
+                onDragEnter={(event) => {
+                  if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                    return;
+                  }
+                  event.preventDefault();
+                  setDragOverWorkspaceId(ws.id);
+                  if (dragHoverTimerRef.current) {
+                    clearTimeout(dragHoverTimerRef.current);
+                  }
+                  dragHoverTimerRef.current = setTimeout(() => {
+                    setActiveWorkspaceId(ws.id);
+                  }, 600);
+                }}
+                onDragLeave={(event) => {
+                  const related = event.relatedTarget as Node | null;
+                  if (related && event.currentTarget.contains(related)) {
+                    return;
+                  }
+                  if (dragOverWorkspaceId === ws.id) {
+                    setDragOverWorkspaceId(null);
+                  }
+                  if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragOverWorkspaceId(null);
+                  if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
+                  const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+                  if (!raw) {
+                    return;
+                  }
+                  try {
+                    const sessionIds = JSON.parse(raw) as string[];
+                    if (sessionIds.length > 0) {
+                      void api.chat.moveSessions(sessionIds, ws.id).then(() => {
+                        activateWorkspace(ws.id);
+                      });
+                    }
+                  } catch { /* ignore malformed data */ }
+                }}
+                className={`flex items-center gap-1.5 px-3 h-full text-sm whitespace-nowrap border-b-2 transition-colors select-none ${
+                  dragOverWorkspaceId === ws.id
+                    ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)] font-medium"
+                    : activeWorkspaceId === ws.id
+                    ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
+                    : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                {ws.name}
+              </button>
+            ))}
+            {creating ? (
+              <div className="flex items-center gap-1 ml-1">
+                <input
+                  autoFocus
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {createWorkspace();}
+                    if (e.key === "Escape") {setCreating(false);}
+                  }}
+                  placeholder="Workspace name"
+                  className="text-xs px-2 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none w-36"
+                />
+                <button onClick={createWorkspace} className="text-xs px-2 py-0.5 bg-[var(--accent-color)] text-white rounded">
+                  Add
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setCreating(true)}
+                title="New Workspace"
+                className="ml-1 p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+              >
+                <Plus size={14} />
+              </button>
+            )}
           </div>
-        ) : (
-          <button
-            onClick={() => setCreating(true)}
-            title="New Workspace"
-            className="ml-1 p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-          >
-            <Plus size={14} />
-          </button>
-        )}
-        <div className="ml-auto flex items-center gap-1">
+        </div>
+        <div className="ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
           <button
             onClick={() => navigate("/preferences")}
             title="Preferences"
@@ -475,6 +482,8 @@ export default function Layout() {
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
   const splitMode = useWorkspaceStore((state) => state.splitMode);
   const { enterSplitMode, exitSplitMode, setPaneView, setPaneChatSession, workspaces } = useWorkspaceStore();
+  const loadArtifact = useArtifactStore((state) => state.loadArtifact);
+  const setArtifactPanelOpen = useArtifactStore((state) => state.setPanelOpen);
 
   const toggleSplitModeFromShell = React.useCallback(() => {
     if (splitMode) {
@@ -501,6 +510,20 @@ export default function Layout() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  useEffect(() => {
+    function handleOpenArtifact(event: Event) {
+      const detail = (event as CustomEvent<{ artifactId?: string }>).detail;
+      const artifactId = detail?.artifactId;
+      if (!artifactId) {return;}
+      void loadArtifact(artifactId).then(() => {
+        setArtifactPanelOpen(true);
+      });
+    }
+
+    window.addEventListener("aetherium:open-artifact", handleOpenArtifact as EventListener);
+    return () => window.removeEventListener("aetherium:open-artifact", handleOpenArtifact as EventListener);
+  }, [loadArtifact, setArtifactPanelOpen]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
@@ -551,6 +574,7 @@ export default function Layout() {
           <AppRoutes />
         )}
       </div>
+      <ArtifactPanel />
     </div>
   );
 }
@@ -571,6 +595,7 @@ function AppRoutes() {
       <Route path="/documents" element={<DocumentBrowserView />} />
       <Route path="/webcapture" element={<WebCaptureView />} />
       <Route path="/graph" element={<KnowledgeGraphView />} />
+      <Route path="/memory" element={<MemoryView />} />
       <Route path="/preferences" element={<PreferencesView />} />
       
       {/* Legacy redirects */}

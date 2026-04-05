@@ -31,3 +31,4 @@ pub mod context;
 pub mod artifact;
 pub mod summary;
 pub mod git_sync;
+pub mod quick_search;

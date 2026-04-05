@@ -1419,6 +1419,7 @@ export default function ChatView() {
   const [sidebarSessions, setSidebarSessions] = useState<ChatSession[]>([]);
   const [selectedModel, setSelectedModel] = useState(preferredModel || "");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [ollamaModelStatus, setOllamaModelStatus] = useState<"idle" | "available" | "empty" | "unreachable">("idle");
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
   type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
   const [activeContextSources, setActiveContextSources] = useState<Record<string, ContextSources>>({});
@@ -2170,6 +2171,12 @@ export default function ChatView() {
         ? ollamaModelsResult.value.map((model) => model.name)
         : [];
 
+      if (ollamaModelsResult.status === "fulfilled") {
+        setOllamaModelStatus(installedOllamaModels.length > 0 ? "available" : "empty");
+      } else {
+        setOllamaModelStatus("unreachable");
+      }
+
       setAiModelList(aiModels);
 
       const enabledModels = aiModels
@@ -2203,6 +2210,7 @@ export default function ChatView() {
       });
       syncedSessionModelRef.current = { sessionId: activeChatId, modelName: sessionModel };
     }).catch(() => {
+      setOllamaModelStatus("unreachable");
       setAvailableModels(sessionModel ? [sessionModel] : []);
       setSelectedModel((current) => shouldAdoptSessionModel ? sessionModel : current);
       syncedSessionModelRef.current = { sessionId: activeChatId, modelName: sessionModel };
@@ -3374,8 +3382,11 @@ export default function ChatView() {
                 <RefreshCw size={14} />
               </button>
             )}
-            {availableModels.length === 0 && (
-              <span className="text-xs text-amber-400">No Ollama models found</span>
+            {availableModels.length === 0 && ollamaModelStatus === "unreachable" && (
+              <span className="text-xs text-red-400">Ollama unavailable</span>
+            )}
+            {availableModels.length === 0 && ollamaModelStatus !== "unreachable" && (
+              <span className="text-xs text-amber-400">No Ollama models installed</span>
             )}
           </div>
 
@@ -3560,7 +3571,17 @@ export default function ChatView() {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   disabled={isStreaming}
-                  placeholder={isStreaming ? "Waiting for response…" : !selectedModel ? "No models available — install one via ollama pull" : activeMessages.length > 0 ? "Message this thread…" : "Start a new thread…"}
+                  placeholder={
+                    isStreaming
+                      ? "Waiting for response…"
+                      : !selectedModel
+                        ? ollamaModelStatus === "unreachable"
+                          ? "Ollama is unavailable — start it or enable auto-start in Preferences > AI"
+                          : "No models available — install one via ollama pull"
+                        : activeMessages.length > 0
+                          ? "Message this thread…"
+                          : "Start a new thread…"
+                  }
                   rows={1}
                   className="flex-1 resize-none px-3 py-2 text-sm bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors max-h-40 overflow-y-auto"
                   style={{ minHeight: 40 }}

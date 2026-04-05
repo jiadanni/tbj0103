@@ -116,6 +116,24 @@ describe("Layout", () => {
     expect(dragRegions.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("keeps the workspace tab strip separate from the fixed titlebar actions", () => {
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const dragRegion = document.querySelector("[data-tauri-drag-region]");
+    const tabStrip = document.querySelector("[data-workspace-tab-strip]");
+    const fixedActions = document.querySelector("[data-workspace-titlebar-actions]");
+
+    expect(dragRegion).not.toBeNull();
+    expect(tabStrip).not.toBeNull();
+    expect(fixedActions).not.toBeNull();
+    expect(tabStrip?.parentElement).toBe(dragRegion);
+    expect(fixedActions?.parentElement).toBe(dragRegion);
+  });
+
   it("renders the sidebar in sidebar navigation mode", () => {
     useWorkspaceStore.setState({ workspaceNavigation: "sidebar" });
 

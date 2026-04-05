@@ -109,18 +109,20 @@ tauri/
 cd tauri
 npm install
 
-# 2. Start Ollama (in a separate terminal)
-ollama serve
-
-# 3. Pull a model (e.g. qwen2.5 or llama3)
+# 2. Pull a model (e.g. qwen2.5 or llama3)
 ollama pull qwen2.5
 
-# 4. Run in development mode (starts Vite + Tauri watcher)
+# 3. Run in development mode (best-effort Ollama startup + Tauri watcher)
+npm run dev:app
+
+# Or manage Ollama yourself and run Tauri directly
 npm run tauri dev
 
 # Or build backend only (without UI focus-stealing)
 npm run dev:backend
 ```
+
+> **Tip:** In the app, enable **Preferences → AI → Auto-start local Ollama** if you want Aetherium to try launching `ollama serve` automatically on startup.
 
 > **nvm users:** If `npm` is not on your `PATH`, prefix commands with the absolute path:
 > ```bash
