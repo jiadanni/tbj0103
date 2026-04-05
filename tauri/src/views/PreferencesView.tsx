@@ -102,9 +102,13 @@ export default function PreferencesView() {
   const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
 
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<PreferencesSection>("app");
+  const [activeTab, setActiveTab] = useState<PreferencesSection>(() => (window.localStorage.getItem("preferencesActiveTab") as PreferencesSection) || "app");
 
   // Handle external tab switching via router state
+  useEffect(() => {
+    window.localStorage.setItem("preferencesActiveTab", activeTab);
+  }, [activeTab]);
+
   useEffect(() => {
     const state = location.state as { settingsTab?: string } | null;
     const nextTab = normalizePreferencesSection(state?.settingsTab);
