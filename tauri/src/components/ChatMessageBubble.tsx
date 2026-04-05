@@ -112,11 +112,11 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   return (
     <div
       data-msg-id={msg.id}
-      className={`group/msg flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}
+      className={`group/msg flex w-full min-w-0 flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}
     >
       {wordDefinition && <WordDefinitionTooltip definition={wordDefinition} />}
       {editingMessageId === msg.id ? (
-        <div className="max-w-[75%] w-full flex flex-col gap-2">
+        <div className="w-full min-w-0 max-w-[75%] flex flex-col gap-2">
           <textarea
             value={editContent}
             onChange={(e) => onSetEditContent(e.target.value)}
@@ -146,7 +146,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
       ) : (
         <>
           <div
-            className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words px-4 py-2.5 text-sm ${
+            className={`min-w-0 ${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words px-4 py-2.5 text-sm ${
               chatMessageStyle === "flat"
                 ? msg.role === "user"
                   ? "rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)]"
@@ -186,7 +186,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                 </div>
               </div>
             ) : (
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+              <p className="break-words whitespace-pre-wrap">{msg.content}</p>
             )}
           </div>
           <div className={`flex gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
@@ -236,7 +236,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
           </div>
           {/* Grounded sources for this message */}
           {hasSources && (
-            <div className={`max-w-[75%] ${msg.role === "user" ? "self-end" : ""}`}>
+            <div className={`min-w-0 max-w-[75%] ${msg.role === "user" ? "self-end" : ""}`}>
               <button
                 onClick={() => onToggleSources(msg.id)}
                 className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"

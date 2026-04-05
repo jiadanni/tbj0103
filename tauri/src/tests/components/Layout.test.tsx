@@ -20,9 +20,9 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 
 vi.mock("react-resizable-panels", () => ({
-  PanelGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  PanelResizeHandle: () => <div data-testid="resize-handle" />,
+  PanelGroup: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
+  Panel: ({ children, className, id }: { children: React.ReactNode; className?: string; id?: string }) => <div className={className} data-testid={id ? `panel-${id}` : undefined}>{children}</div>,
+  PanelResizeHandle: ({ className }: { className?: string }) => <div data-testid="resize-handle" className={className} />,
 }));
 
 vi.mock("@/components/Sidebar", () => ({
@@ -68,6 +68,7 @@ vi.mock("@/views/ProjectDashboardView", () => ({ default: () => <div>Project Das
 vi.mock("@/views/PreferencesView", () => ({ default: () => <div>Preferences View</div> }));
 vi.mock("@/views/DocumentBrowserView", () => ({ default: () => <div>Documents View</div> }));
 vi.mock("@/views/LearningPathView", () => ({ default: () => <div>Learning Path View</div> }));
+vi.mock("@/views/MemoryView", () => ({ default: () => <div>Memory View</div> }));
 vi.mock("@/views/PluginManagerView", () => ({ default: () => <div>Plugins View</div> }));
 vi.mock("@/views/NoteEditorView", () => ({ default: () => <div>Notes View</div> }));
 vi.mock("@/views/WebCaptureView", () => ({ default: () => <div>Web Capture View</div> }));
@@ -149,7 +150,7 @@ describe("Layout", () => {
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
   });
 
-  it("opens chats when switching workspaces if the preference is enabled", () => {
+  it("opens chats when switching workspaces if the preference is enabled", async () => {
     useSettingsStore.setState({ switchWorkspaceToChat: true });
     useWorkspaceStore.setState({
       workspaces: [
@@ -165,12 +166,12 @@ describe("Layout", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText("Documents View")).toBeInTheDocument();
+    expect(await screen.findByText("Documents View")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Rust"));
 
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
-    expect(screen.getByText("Chat View")).toBeInTheDocument();
+    expect(await screen.findByText("Chat View")).toBeInTheDocument();
   });
 
   it("opens a custom context menu for workspace tabs", () => {
@@ -207,6 +208,27 @@ describe("Layout", () => {
 
     expect(screen.getByText("Open section")).toBeInTheDocument();
     expect(screen.getByText("Customize navigation")).toBeInTheDocument();
+  });
+
+  it("keeps the main route containers shrinkable for scrollable views", () => {
+    useWorkspaceStore.setState({ workspaceNavigation: "icon-bar" });
+
+    const { container, rerender } = render(
+      <MemoryRouter initialEntries={["/chat"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(container.querySelector("div.flex-1.overflow-hidden.flex.flex-col.min-w-0.min-h-0")).not.toBeNull();
+
+    useWorkspaceStore.setState({ workspaceNavigation: "sidebar" });
+    rerender(
+      <MemoryRouter initialEntries={["/chat"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId("panel-main")).toHaveClass("min-h-0");
   });
 
 });

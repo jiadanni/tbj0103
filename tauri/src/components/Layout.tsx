@@ -524,7 +524,7 @@ export default function Layout() {
             <div className="w-14 shrink-0 border-r border-[var(--border-color)] overflow-hidden">
               <Sidebar onOpenCommandPalette={() => setCommandPaletteOpen(true)} iconOnly />
             </div>
-            <div className="flex-1 overflow-hidden flex flex-col min-w-0">
+            <div className="flex-1 overflow-hidden flex flex-col min-w-0 min-h-0">
               <AppRoutes />
             </div>
           </div>
@@ -543,7 +543,7 @@ export default function Layout() {
 
             <PanelResizeHandle className="w-[1px] bg-[var(--border-color)] hover:bg-[var(--accent-color)] transition-colors cursor-col-resize" />
 
-            <Panel id="main" order={1} className="overflow-hidden flex flex-col min-w-0">
+            <Panel id="main" order={1} className="overflow-hidden flex flex-col min-w-0 min-h-0">
               <AppRoutes />
             </Panel>
           </PanelGroup>
