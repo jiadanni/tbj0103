@@ -326,51 +326,45 @@ function SessionSidebar({
   function renderSessionList(items: ChatSession[], depth = 0) {
     if (items.length === 0) { return null; }
     return (
-      <div style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
-        <Virtuoso
-          data={items}
-          style={{ height: "100%", flex: 1 }}
-          computeItemKey={(_, session) => session.id}
-          itemContent={(index, session) => (
-            <div className="pb-[2px]">
-              <SessionItem
-                key={session.id}
-                session={session}
-                activeChatId={activeChatId}
-                isSelected={selectedIds.has(session.id)}
-                selectMode={selectMode}
-                canRefreshTitle={canRefreshSessionTitle(session, messages)}
-                toggleSelect={(id) => {
-                  setSelectedIds((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(id)) {next.delete(id);} else {next.add(id);}
-                    return next;
-                  });
-                }}
-                openContextMenu={(event, targetSession) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setCtxMenu({ type: "session", x: event.clientX, y: event.clientY, session: targetSession });
-                }}
-                renameSession={renameSession}
-                refreshSessionTitle={refreshSessionTitle}
-                togglePin={togglePin}
-                saveSession={saveSession}
-                deleteSession={deleteSession}
-                renamingId={renamingId}
-                renameTitle={renameTitle}
-                setRenamingId={setRenamingId}
-                setRenameTitle={setRenameTitle}
-                openSession={(targetSession) => {
-                  setActiveProjectId(targetSession.project_id || null);
-                  setActiveChatId(targetSession.id);
-                  api.chat.touchSessionAccessed(targetSession.id).catch(() => {});
-                }}
-                depth={depth}
-              />
-            </div>
-          )}
-        />
+      <div className="flex min-w-0 flex-col">
+        {items.map((session) => (
+          <div key={session.id} className="pb-[2px]">
+            <SessionItem
+              session={session}
+              activeChatId={activeChatId}
+              isSelected={selectedIds.has(session.id)}
+              selectMode={selectMode}
+              canRefreshTitle={canRefreshSessionTitle(session, messages)}
+              toggleSelect={(id) => {
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(id)) {next.delete(id);} else {next.add(id);}
+                  return next;
+                });
+              }}
+              openContextMenu={(event, targetSession) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setCtxMenu({ type: "session", x: event.clientX, y: event.clientY, session: targetSession });
+              }}
+              renameSession={renameSession}
+              refreshSessionTitle={refreshSessionTitle}
+              togglePin={togglePin}
+              saveSession={saveSession}
+              deleteSession={deleteSession}
+              renamingId={renamingId}
+              renameTitle={renameTitle}
+              setRenamingId={setRenamingId}
+              setRenameTitle={setRenameTitle}
+              openSession={(targetSession) => {
+                setActiveProjectId(targetSession.project_id || null);
+                setActiveChatId(targetSession.id);
+                api.chat.touchSessionAccessed(targetSession.id).catch(() => {});
+              }}
+              depth={depth}
+            />
+          </div>
+        ))}
       </div>
     );
   }
@@ -1348,7 +1342,6 @@ export default function ChatView() {
   const chatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
-  const topSelectClassName = "h-8 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-8 text-xs font-medium text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
   const composerSelectClassName = "h-9 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 pl-3.5 pr-9 text-xs font-semibold text-[var(--text-primary)] shadow-sm outline-none transition-all hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] focus:border-[var(--accent-color)]";
   const composerToggleBaseClass = "inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold shadow-sm transition-all";
   const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-primary)]/75 text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]";
@@ -1362,6 +1355,7 @@ export default function ChatView() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [ollamaModelStatus, setOllamaModelStatus] = useState<"idle" | "available" | "empty" | "unreachable">("idle");
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
+  const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [isModelSendMenuOpen, setIsModelSendMenuOpen] = useState(false);
   type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
   const [activeContextSources, setActiveContextSources] = useState<Record<string, ContextSources>>({});
@@ -1808,6 +1802,14 @@ export default function ChatView() {
     ),
     [aiModelList, quickSearchModels, selectedModel]
   );
+  const modelPickerOptions = useMemo(
+    () => (availableModels.length > 0
+      ? availableModels
+      : selectedModel
+        ? [selectedModel]
+        : []),
+    [availableModels, selectedModel]
+  );
   const hasLoadedActiveMessages = activeChatId
     ? Object.prototype.hasOwnProperty.call(messages, activeChatId)
     : false;
@@ -1865,6 +1867,29 @@ export default function ChatView() {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [isModelSendMenuOpen]);
+
+  useEffect(() => {
+    if (!isModelPickerOpen) {return;}
+
+    function handleClick(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-active-model-menu]")) {return;}
+      setIsModelPickerOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsModelPickerOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isModelPickerOpen]);
 
   useEffect(() => {
     if (!effectiveWorkspaceId) {
@@ -3009,9 +3034,7 @@ export default function ChatView() {
     ? canRefreshSessionTitle(activeSession, messages)
     : false;
   const isComparePanelOpen = activeSubView === "compare";
-  const chatWorkspaceClassName = isComparePanelOpen
-    ? "grid flex-1 min-w-0 min-h-0 overflow-hidden grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]"
-    : "flex flex-1 min-w-0 min-h-0 overflow-hidden";
+  const chatWorkspaceClassName = "flex flex-1 min-w-0 min-h-0 overflow-hidden";
 
   // ── Main render ──────────────────────────────────────────────────────────
   return (
@@ -3069,8 +3092,8 @@ export default function ChatView() {
 
       <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
         <div className={chatWorkspaceClassName}>
-          {/* Main content area */}
-          <div className="min-w-0 flex flex-col overflow-hidden min-h-0">
+          {!isComparePanelOpen ? (
+          <div className="flex-1 min-w-0 flex min-h-0 flex-col overflow-hidden">
           {!activeChatId ? (
           <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center">
             <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
@@ -3355,12 +3378,15 @@ export default function ChatView() {
                             </button>
                             {pinnedQuickSendModels.length > 0 && (
                               <>
-                                <button
-                                  type="button"
-                                  onClick={() => setIsModelSendMenuOpen((open) => !open)}
-                                  disabled={!input.trim() || isStreaming}
-                                  className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border-l border-white/20 bg-[var(--accent-color)] text-white shadow-sm transition-all hover:-translate-y-px hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
-                                  title="Send with another pinned model"
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsModelPickerOpen(false);
+                                  setIsModelSendMenuOpen((open) => !open);
+                                }}
+                                disabled={!input.trim() || isStreaming}
+                                className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border-l border-white/20 bg-[var(--accent-color)] text-white shadow-sm transition-all hover:-translate-y-px hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                title="Send with another pinned model"
                                   aria-label="Send with another pinned model"
                                   aria-haspopup="menu"
                                   aria-expanded={isModelSendMenuOpen}
@@ -3423,26 +3449,58 @@ export default function ChatView() {
                     </div>
                   </div>
 
-                  {/* ── Composer tool row ─────────────────────────────────────── */}
-                  <div className="flex items-center gap-2 border-t border-[var(--border-color)] px-1 pt-0.5 flex-wrap">
-                    {/* Model picker */}
-                    <div className="relative max-w-[220px]">
-                      <select
-                        value={selectedModel}
-                        onChange={(e) => {
-                          setSelectedModel(e.target.value);
-                          persistModelChoice(e.target.value);
-                        }}
-                        className={`${composerSelectClassName} max-w-[220px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
-                        title="Active model"
-                      >
-                        {availableModels.length > 0
-                          ? availableModels.map((m) => <option key={m} value={m}>{modelDisplayName(m)}</option>)
-                          : <option value={selectedModel}>{modelDisplayName(selectedModel)}</option>
-                        }
-                      </select>
-                      <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                    </div>
+                {/* ── Composer tool row ─────────────────────────────────────── */}
+                <div className="flex items-center gap-2 border-t border-[var(--border-color)] px-1 pt-0.5 flex-wrap">
+                  {/* Model picker */}
+                  <div className="relative max-w-[220px]" data-active-model-menu>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (modelPickerOptions.length === 0) {return;}
+                        setIsModelSendMenuOpen(false);
+                        setIsModelPickerOpen((open) => !open);
+                      }}
+                      disabled={modelPickerOptions.length === 0}
+                      className={`${composerSelectClassName} flex max-w-[220px] items-center justify-between gap-2 bg-[var(--bg-primary)] text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60`}
+                      title="Active model"
+                      aria-haspopup="menu"
+                      aria-expanded={isModelPickerOpen}
+                    >
+                      <span className="truncate text-left">
+                        {selectedModel ? modelDisplayName(selectedModel) : "No models available"}
+                      </span>
+                      <ChevronDown size={14} className={`shrink-0 text-[var(--text-muted)] transition-transform ${isModelPickerOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {isModelPickerOpen && modelPickerOptions.length > 0 && (
+                      <div className="absolute left-0 top-full z-20 mt-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                        <div className="max-h-72 overflow-y-auto">
+                          {modelPickerOptions.map((modelId) => {
+                            const isSelected = modelId === selectedModel;
+                            return (
+                              <button
+                                key={modelId}
+                                type="button"
+                                onClick={async () => {
+                                  setSelectedModel(modelId);
+                                  setIsModelPickerOpen(false);
+                                  await persistModelChoice(modelId);
+                                }}
+                                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                                  isSelected
+                                    ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
+                                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                }`}
+                                title={modelDisplayName(modelId)}
+                              >
+                                <span className="truncate">{modelDisplayName(modelId)}</span>
+                                {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                     {/* Try better model */}
                     {nextModel && !isStreaming && activeMessages.length > 0 && (
@@ -3545,125 +3603,137 @@ export default function ChatView() {
           </div>
         )}
           </div>
-
-          {isComparePanelOpen && (
-            <div className="col-span-2 grid min-h-0 min-w-0 grid-cols-2 grid-rows-[auto_1fr_auto_auto] overflow-hidden border-l border-[var(--border-color)] bg-[var(--bg-primary)]">
-              <div className="flex min-w-0 flex-col gap-1 border-b border-r border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Model A</label>
-                </div>
-                {compareModels.length === 0 ? (
-                  <input
-                    value={compareModelA}
-                    onChange={(e) => {
-                      setCompareModelA(e.target.value);
-                      saveCompareA(e.target.value);
-                      persistSetting("compare_model_a", e.target.value);
-                    }}
-                    placeholder="e.g. llama3"
-                    className="w-full border-b border-[var(--border-color)] bg-transparent py-0.5 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
-                  />
-                ) : (
-                  <div className="relative">
-                    <select
-                      value={compareModelA}
-                      onChange={(e) => {
-                        setCompareModelA(e.target.value);
-                        saveCompareA(e.target.value);
-                        persistSetting("compare_model_a", e.target.value);
-                      }}
-                      className={topSelectClassName}
-                    >
-                      {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+          ) : (
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-primary)]">
+              <div className="grid min-h-0 min-w-0 flex-1 grid-cols-2 overflow-hidden">
+                {[
+                  {
+                    label: "Model A",
+                    model: compareModelA,
+                    text: compareResponseA,
+                    borderClassName: "border-r border-[var(--border-color)]",
+                  },
+                  {
+                    label: "Model B",
+                    model: compareModelB,
+                    text: compareResponseB,
+                    borderClassName: "",
+                  },
+                ].map((panel) => (
+                  <div key={panel.label} className={`${panel.borderClassName} flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--bg-primary)]`}>
+                    <div className="border-b border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2">
+                      <span className="text-xs font-medium text-[var(--text-primary)]">{panel.label}</span>
+                      {panel.model && <span className="ml-2 text-xs text-[var(--text-muted)]">{modelDisplayName(panel.model)}</span>}
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-4 py-4">
+                      {compareLoading && !panel.text ? (
+                        <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]"><span className="animate-pulse">●</span> Generating…</div>
+                      ) : panel.text ? (
+                        <pre className="whitespace-pre-wrap text-sm font-[inherit] leading-relaxed text-[var(--text-primary)]">{panel.text}</pre>
+                      ) : (
+                        <p className="text-sm italic text-[var(--text-muted)]">Response will appear here…</p>
+                      )}
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
 
-              <div className="flex min-w-0 flex-col gap-1 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Model B</label>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => api.ollama.listModelsFresh(ollamaUrl || undefined).then((list) => {
-                        const filtered = list.filter((m) => !m.name.toLowerCase().includes("embed"));
-                        setCompareModels(filtered);
-                      }).catch(() => {})}
-                      title="Refresh models"
-                      className="rounded-lg p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)]"
-                    >
-                      <RefreshCw size={14} />
-                    </button>
-                  </div>
-                </div>
-                {compareModels.length === 0 ? (
-                  <input
-                    value={compareModelB}
-                    onChange={(e) => {
-                      setCompareModelB(e.target.value);
-                      saveCompareB(e.target.value);
-                      persistSetting("compare_model_b", e.target.value);
-                    }}
-                    placeholder="e.g. llama3:8b"
-                    className="w-full border-b border-[var(--border-color)] bg-transparent py-0.5 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
-                  />
-                ) : (
-                  <div className="relative">
-                    <select
-                      value={compareModelB}
-                      onChange={(e) => {
-                        setCompareModelB(e.target.value);
-                        saveCompareB(e.target.value);
-                        persistSetting("compare_model_b", e.target.value);
-                      }}
-                      className={topSelectClassName}
-                    >
-                      {compareModels.map((m) => <option key={m.name} value={m.name}>{modelDisplayName(m.name)}</option>)}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                  </div>
+              <div className="flex flex-col border-t border-[var(--border-color)] bg-[var(--bg-primary)]">
+                {compareError && (
+                  <div className="border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-400">{compareError}</div>
                 )}
-              </div>
+                <div className="px-4 pb-6 pt-4">
+                  <div className="mx-auto w-full max-w-5xl rounded-[28px] border border-[var(--border-color)] bg-[var(--bg-elevated)]/90 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur-xl">
+                    <div className="flex flex-col gap-3.5">
+                      <div className="rounded-[24px] border border-[var(--border-color)] bg-[var(--bg-primary)]/80 p-2.5 shadow-[0_18px_45px_-35px_rgba(15,23,42,0.5)] transition-all focus-within:border-[var(--accent-color)] focus-within:shadow-[0_0_0_4px_rgba(var(--accent-color-rgb),0.11),0_18px_45px_-35px_rgba(15,23,42,0.5)]">
+                        <div className="flex items-end gap-2">
+                          <textarea
+                            rows={1}
+                            value={comparePrompt}
+                            onChange={(e) => setComparePrompt(e.target.value)}
+                            onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runComparison(); } }}
+                            placeholder="Ask both models… (⌘↵ to send)"
+                            className="flex-1 resize-none bg-transparent px-3.5 py-3 text-[15px] leading-6 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors max-h-40 overflow-y-auto"
+                            style={{ minHeight: 56 }}
+                            onInput={(e) => {
+                              const el = e.currentTarget;
+                              el.style.height = "auto";
+                              el.style.height = Math.min(el.scrollHeight, 160) + "px";
+                            }}
+                          />
+                          <button
+                            onClick={runComparison}
+                            disabled={!comparePrompt.trim() || compareLoading}
+                            className="mb-1 flex items-center gap-1.5 rounded-2xl bg-[var(--accent-color)] px-3 py-2 text-sm text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+                          >
+                            <Send size={14} /> {compareLoading ? "Running…" : "Compare"}
+                          </button>
+                        </div>
+                      </div>
 
-              {[{ label: "Model A", model: compareModelA, text: compareResponseA, className: "border-r border-[var(--border-color)]" }, { label: "Model B", model: compareModelB, text: compareResponseB, className: "" }].map((panel) => (
-                <div key={panel.label} className={`flex min-w-0 flex-col overflow-hidden ${panel.className}`}>
-                  <div className="border-b border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2">
-                    <span className="text-xs font-medium text-[var(--text-primary)]">{panel.label}</span>
-                    {panel.model && <span className="ml-2 text-xs text-[var(--text-muted)]">{modelDisplayName(panel.model)}</span>}
-                  </div>
-                  <div className="flex-1 overflow-y-auto px-4 py-4">
-                    {compareLoading && !panel.text ? (
-                      <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]"><span className="animate-pulse">●</span> Generating…</div>
-                    ) : panel.text ? (
-                      <pre className="whitespace-pre-wrap text-sm font-[inherit] leading-relaxed text-[var(--text-primary)]">{panel.text}</pre>
-                    ) : (
-                      <p className="text-sm italic text-[var(--text-muted)]">Response will appear here…</p>
-                    )}
+                      <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-color)] px-1 pt-0.5">
+                        <div className="relative max-w-[220px]">
+                          <select
+                            value={compareModelA}
+                            onChange={(e) => {
+                              setCompareModelA(e.target.value);
+                              saveCompareA(e.target.value);
+                              persistSetting("compare_model_a", e.target.value);
+                            }}
+                            className={`${composerSelectClassName} max-w-[220px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
+                            title="Compare model A"
+                          >
+                            {compareModels.length > 0
+                              ? compareModels.map((m) => <option key={m.name} value={m.name}>A: {modelDisplayName(m.name)}</option>)
+                              : <option value={compareModelA}>{compareModelA ? `A: ${modelDisplayName(compareModelA)}` : "Model A"}</option>
+                            }
+                          </select>
+                          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                        </div>
+
+                        <div className="relative max-w-[220px]">
+                          <select
+                            value={compareModelB}
+                            onChange={(e) => {
+                              setCompareModelB(e.target.value);
+                              saveCompareB(e.target.value);
+                              persistSetting("compare_model_b", e.target.value);
+                            }}
+                            className={`${composerSelectClassName} max-w-[220px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
+                            title="Compare model B"
+                          >
+                            {compareModels.length > 0
+                              ? compareModels.map((m) => <option key={m.name} value={m.name}>B: {modelDisplayName(m.name)}</option>)
+                              : <option value={compareModelB}>{compareModelB ? `B: ${modelDisplayName(compareModelB)}` : "Model B"}</option>
+                            }
+                          </select>
+                          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                        </div>
+
+                        <button
+                          onClick={() => setActiveSubView("chat")}
+                          title="Close model comparison"
+                          className={`${composerToggleBaseClass} ${composerToggleActiveClass}`}
+                        >
+                          <SplitSquareHorizontal size={13} />
+                          <span>Compare</span>
+                        </button>
+
+                        <button
+                          onClick={() => api.ollama.listModelsFresh(ollamaUrl || undefined).then((list) => {
+                            const filtered = list.filter((m) => !m.name.toLowerCase().includes("embed"));
+                            setCompareModels(filtered);
+                          }).catch(() => {})}
+                          title="Refresh models"
+                          className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
+                        >
+                          <RefreshCw size={13} />
+                          <span>Refresh</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              ))}
-
-              {compareError && (
-                <div className="col-span-2 border-t border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-400">{compareError}</div>
-              )}
-
-              <div className="col-span-2 flex items-end gap-3 border-t border-[var(--border-color)] px-4 py-3">
-                <textarea
-                  rows={2}
-                  value={comparePrompt}
-                  onChange={(e) => setComparePrompt(e.target.value)}
-                  onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runComparison(); } }}
-                  placeholder="Enter prompt to compare… (⌘↵ to send)"
-                  className="min-h-[40px] max-h-[120px] flex-1 resize-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                />
-                <button
-                  onClick={runComparison}
-                  disabled={!comparePrompt.trim() || compareLoading}
-                  className="flex items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-2 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-                >
-                  <Send size={14} /> {compareLoading ? "Running…" : "Compare"}
-                </button>
               </div>
             </div>
           )}
