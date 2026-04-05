@@ -151,7 +151,7 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
         data-tauri-drag-region
         onMouseDown={onDragRegionMouseDown}
         onDoubleClick={onDragRegionDoubleClick}
-        className={`flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 overflow-x-auto select-none ${isMac ? "pl-[72px]" : ""}`}
+        className={`flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 overflow-x-auto select-none ${isMac ? "pl-[72px]" : ""}`}
       >
         {hideNativeMenu && <AppHeaderMenu />}
         {workspaces.map((ws) => (
@@ -210,7 +210,7 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
                 }
               } catch { /* ignore malformed data */ }
             }}
-            className={`flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-b-2 transition-colors select-none ${
+            className={`flex items-center gap-1.5 px-3 h-full text-sm whitespace-nowrap border-b-2 transition-colors select-none ${
               dragOverWorkspaceId === ws.id
                 ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)] font-medium"
                 : activeWorkspaceId === ws.id
@@ -409,7 +409,7 @@ function NavigationTabBar() {
       className={`flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-b-2 transition-colors select-none ${
         activeSegment === item.path
           ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
-          : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
       }`}
     >
       <Icon size={13} />
@@ -419,7 +419,7 @@ function NavigationTabBar() {
 
   return (
     <div className="relative">
-      <div className="flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 overflow-x-auto select-none">
+      <div className="flex items-center h-8 border-b border-[var(--border-color)] bg-[var(--bg-base)] px-2 shrink-0 overflow-x-auto select-none">
         <div className="flex items-center shrink-0">
           {PRIMARY_NAV_ITEMS.map((item) => renderItem(item, item.icon))}
         </div>
