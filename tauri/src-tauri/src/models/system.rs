@@ -13,4 +13,7 @@ pub struct SystemSpecs {
     pub total_memory_bytes: u64,
     pub available_memory_bytes: u64,
     pub total_swap_bytes: u64,
+    pub gpu_name: Option<String>,
+    pub gpu_memory_bytes: Option<u64>,
+    pub gpu_detection_source: Option<String>,
 }

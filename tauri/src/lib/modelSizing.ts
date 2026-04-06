@@ -5,6 +5,9 @@ export interface ModelSizingSystemInfo {
   cpu_arch: string;
   total_memory_bytes: number;
   physical_cores?: number | null;
+  gpu_name?: string | null;
+  gpu_memory_bytes?: number | null;
+  gpu_detection_source?: string | null;
 }
 
 export interface HardwareModelGuidance {
@@ -58,8 +61,10 @@ function isAppleSiliconMac(system: ModelSizingSystemInfo): boolean {
 
 export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): HardwareModelGuidance {
   const totalMemoryGb = system.total_memory_bytes / (1024 ** 3);
+  const gpuMemoryGb = (system.gpu_memory_bytes ?? 0) / (1024 ** 3);
   const physicalCores = system.physical_cores ?? 0;
   const appleSiliconMac = isAppleSiliconMac(system);
+  const hasDetectedGpuMemory = Number.isFinite(gpuMemoryGb) && gpuMemoryGb > 0;
   let recommendedMaxParamsB = 3;
 
   if (appleSiliconMac) {
@@ -71,6 +76,18 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
       recommendedMaxParamsB = 14;
     } else if (totalMemoryGb >= 8) {
       recommendedMaxParamsB = 8;
+    }
+  } else if (hasDetectedGpuMemory) {
+    if (gpuMemoryGb >= 48) {
+      recommendedMaxParamsB = 70;
+    } else if (gpuMemoryGb >= 24) {
+      recommendedMaxParamsB = 32;
+    } else if (gpuMemoryGb >= 16) {
+      recommendedMaxParamsB = 14;
+    } else if (gpuMemoryGb >= 10) {
+      recommendedMaxParamsB = 8;
+    } else if (gpuMemoryGb >= 6) {
+      recommendedMaxParamsB = 3;
     }
   } else {
     if (totalMemoryGb >= 48) {
@@ -84,9 +101,13 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
     }
   }
 
-  if (physicalCores > 0 && physicalCores <= 4) {
+  if (!hasDetectedGpuMemory && physicalCores > 0 && physicalCores <= 4) {
     recommendedMaxParamsB = Math.min(recommendedMaxParamsB, 8);
   }
+
+  const gpuBasis = system.gpu_name
+    ? `Estimated from detected GPU memory${system.gpu_detection_source ? ` via ${system.gpu_detection_source}` : ""}${system.gpu_memory_bytes ? ` (${formatBytes(system.gpu_memory_bytes)} VRAM on ${system.gpu_name})` : ` on ${system.gpu_name}`}.`
+    : "Estimated conservatively from system RAM and CPU cores, not VRAM.";
 
   if (recommendedMaxParamsB <= 3) {
     return {
@@ -98,7 +119,7 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
       caution: appleSiliconMac
         ? "7B+ models may run, but they are more likely to feel slow or memory-constrained."
         : "7B+ models may still run, but this guidance intentionally avoids assuming discrete GPU VRAM is available.",
-      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : "Estimated conservatively from system RAM and CPU cores, not VRAM.",
+      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
     };
   }
 
@@ -112,7 +133,7 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
       caution: appleSiliconMac
         ? "14B-class models are possible on some systems, but they will usually feel heavier."
         : "14B-class models may fit on paper, but can still be slow without enough usable VRAM.",
-      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : "Estimated conservatively from system RAM and CPU cores, not VRAM.",
+      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
     };
   }
 
@@ -126,7 +147,7 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
       caution: appleSiliconMac
         ? "30B+ models may fit only with aggressive quantization and plenty of free memory."
         : "30B+ models are treated as a stretch unless the runtime has confirmed GPU memory headroom.",
-      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : "Estimated conservatively from system RAM and CPU cores, not VRAM.",
+      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
     };
   }
 
@@ -142,7 +163,7 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
       caution: appleSiliconMac
         ? "Very large models can still be slow without a strong GPU, so treat 70B as an experiment."
         : "Treat 30B+ models as runtime-dependent until the app can detect GPU memory directly.",
-      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : "Estimated conservatively from system RAM and CPU cores, not VRAM.",
+      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
     };
   }
 

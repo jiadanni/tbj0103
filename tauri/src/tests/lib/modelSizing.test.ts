@@ -54,6 +54,21 @@ describe("inferHardwareModelGuidance", () => {
     expect(guidance.recommendedMaxParamsB).toBe(8);
   });
 
+  it("prefers detected GPU memory on non-mac systems", () => {
+    const guidance = inferHardwareModelGuidance({
+      os_name: "Linux",
+      cpu_arch: "x86_64",
+      total_memory_bytes: 16 * 1024 ** 3,
+      physical_cores: 8,
+      gpu_name: "NVIDIA RTX 4090",
+      gpu_memory_bytes: 24 * 1024 ** 3,
+      gpu_detection_source: "nvidia-smi",
+    });
+    expect(guidance.recommendedMaxParamsB).toBe(32);
+    expect(guidance.basis).toContain("nvidia-smi");
+    expect(guidance.basis).toContain("24 GB VRAM");
+  });
+
   it("caps large-memory but low-core systems to a smaller tier", () => {
     const guidance = inferHardwareModelGuidance({
       os_name: "Linux",

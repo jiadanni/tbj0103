@@ -439,6 +439,97 @@ export interface SystemSpecs {
   total_memory_bytes: number;
   available_memory_bytes: number;
   total_swap_bytes: number;
+  gpu_name?: string | null;
+  gpu_memory_bytes?: number | null;
+  gpu_detection_source?: string | null;
+}
+
+export interface DashboardRoute {
+  path: string;
+  state?: Record<string, unknown> | null;
+}
+
+export interface DashboardOverview {
+  chat_sessions: number;
+  notes: number;
+  sources: number;
+  concepts: number;
+  flashcards: number;
+  active_goals: number;
+  completed_goals: number;
+}
+
+export interface DashboardContinueLearning {
+  session_id: string;
+  title: string;
+  project_id?: string | null;
+  project_name?: string | null;
+  updated_at: string;
+  route: DashboardRoute;
+}
+
+export interface DashboardConceptFocus {
+  concept_id: string;
+  name: string;
+  review_count: number;
+  reason: string;
+  route: DashboardRoute;
+}
+
+export interface DashboardReviewSummary {
+  due_today: number;
+  total_cards: number;
+  learned: number;
+  avg_ease: number;
+  under_reviewed_concepts: number;
+  weak_concepts: DashboardConceptFocus[];
+  route: DashboardRoute;
+}
+
+export interface DashboardGoalSummary {
+  id: string;
+  title: string;
+  progress: number;
+  is_completed: boolean;
+  due_date?: string | null;
+  updated_at: string;
+  route: DashboardRoute;
+}
+
+export interface DashboardSuggestion {
+  id: string;
+  kind: string;
+  title: string;
+  description: string;
+  route: DashboardRoute;
+}
+
+export interface DashboardKnowledgeHealth {
+  stalled_goals: number;
+  unprocessed_sources: number;
+  isolated_concepts: number;
+  active_topic_tags: string[];
+}
+
+export interface DashboardActivity {
+  id: string;
+  kind: string;
+  title: string;
+  subtitle: string;
+  timestamp: string;
+  route: DashboardRoute;
+}
+
+export interface DashboardSummary {
+  workspace_id: string;
+  workspace_name: string;
+  overview: DashboardOverview;
+  continue_learning?: DashboardContinueLearning | null;
+  review: DashboardReviewSummary;
+  goals: DashboardGoalSummary[];
+  progression: DashboardSuggestion[];
+  knowledge_health: DashboardKnowledgeHealth;
+  recent_activity: DashboardActivity[];
 }
 
 // ----- Workspaces -----
@@ -475,6 +566,10 @@ export const api = {
     delete: (id: string) => invoke<void>("delete_project", { id }),
     moveToWorkspace: (projectId: string, targetWorkspaceId: string) => invoke<Project>("move_project_to_workspace", { projectId, targetWorkspaceId }),
     getStats: (id: string) => invoke<{ note_count: number; document_count: number; chat_session_count: number; flashcard_count: number; web_capture_count: number }>("get_project_stats", { id }),
+  },
+
+  dashboard: {
+    getSummary: (workspaceId: string) => invoke<DashboardSummary>("get_dashboard_summary", { workspaceId }),
   },
 
   chat: {
