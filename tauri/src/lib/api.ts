@@ -12,17 +12,19 @@ const OBSERVABILITY_ENABLED =
   (window.location.protocol === "http:" || window.location.protocol === "https:");
 
 type ObservabilityMeta = Record<string, unknown>;
+const browserCrypto = globalThis.crypto;
+const browserPerformance = globalThis.performance;
 
 function createRequestId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
+  if (typeof browserCrypto !== "undefined" && typeof browserCrypto.randomUUID === "function") {
+    return browserCrypto.randomUUID();
   }
   return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function logIpcEvent(level: "debug" | "error", message: string, payload: ObservabilityMeta): void {
   if (!OBSERVABILITY_ENABLED) {return;}
-  const logger = level === "error" ? console.error : console.debug;
+  const logger = level === "error" ? console.error : console.warn;
   logger(`[ipc] ${message}`, payload);
 }
 
@@ -67,11 +69,11 @@ async function invokeObserved<T>(
   meta: ObservabilityMeta,
 ): Promise<T> {
   const requestId = typeof meta.requestId === "string" ? meta.requestId : createRequestId();
-  const startedAt = performance.now();
+  const startedAt = browserPerformance.now();
 
   try {
     const result = await invoke<T>(command, args);
-    const durationMs = Number((performance.now() - startedAt).toFixed(3));
+    const durationMs = Number((browserPerformance.now() - startedAt).toFixed(3));
     const status = durationMs >= ipcSlowThresholdMs(command) ? "slow" : "ok";
     logIpcEvent("debug", `<- ${command}`, {
       ...meta,
@@ -82,7 +84,7 @@ async function invokeObserved<T>(
     });
     return result;
   } catch (error) {
-    const durationMs = Number((performance.now() - startedAt).toFixed(3));
+    const durationMs = Number((browserPerformance.now() - startedAt).toFixed(3));
     logIpcEvent("error", `xx ${command}`, {
       ...meta,
       requestId,
@@ -423,6 +425,20 @@ export interface AiModel {
   role_tags: string[];
   priority: number; is_paid: boolean; enabled: boolean;
   tokens_used_total: number; created_at: string;
+}
+
+export interface SystemSpecs {
+  host_name?: string | null;
+  os_name: string;
+  os_version?: string | null;
+  kernel_version?: string | null;
+  cpu_brand: string;
+  cpu_arch: string;
+  logical_cores: number;
+  physical_cores?: number | null;
+  total_memory_bytes: number;
+  available_memory_bytes: number;
+  total_swap_bytes: number;
 }
 
 // ----- Workspaces -----
@@ -928,6 +944,11 @@ export const api = {
     getDefault: () => invoke<AiModel>("get_default_model"),
     recordTokenUsage: (modelId: string, provider: string, tokens: number) =>
       invoke<void>("record_model_token_usage", { modelId, provider, tokens }),
+  },
+
+  system: {
+    getSpecs: () => invoke<SystemSpecs>("get_system_specs"),
+    toggleDevtools: () => invoke<void>("toggle_devtools"),
   },
 
   knowledge: {

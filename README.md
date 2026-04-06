@@ -1,8 +1,8 @@
 # Aetherium
 
-> **Your local-first AI learning companion**
+> **Local-first AI learning companion**
 
-Aetherium combines ChatGPT-style conversations, NotebookLM's source grounding, Obsidian's knowledge graphs, and Notion's organisation—all powered by local Ollama AI models for complete privacy. No data leaves your machine.
+Aetherium combines conversational AI, source-grounded research, bidirectional knowledge graphs, and flexible organization—all powered by local Ollama models. Your data remains on your machine.
 
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)
 ![SwiftUI](https://img.shields.io/badge/SwiftUI-macOS%2014+-blue.svg)
@@ -26,9 +26,9 @@ The Tauri port is the primary development target and receives all new features.
 
 `todo.md` tracks the Tauri app roadmap only. It should not be read as the status board for the Swift/macOS implementation.
 
-## ✨ Features
+## Features
 
-### 🤖 AI Chat with Source Grounding
+### AI Chat with Source Grounding
 - Converse with local Ollama models (llama3, qwen2.5, etc.)
 - **Source-grounded responses** with automatic citations (RAG)
 - Upload documents (PDF, TXT, Markdown, HTML, RTF)
@@ -39,7 +39,7 @@ The Tauri port is the primary development target and receives all new features.
 - Model comparison view to benchmark responses side-by-side
 - AI-generated study guides and quizzes
 
-### 🧠 Knowledge Graph
+### Knowledge Graph
 - **Obsidian-style bidirectional linking** with `[[concept]]` syntax
 - Interactive graph visualization
 - 8 concept types: Topic, Person, Technology, Definition, Question, Insight, Resource, Custom
@@ -47,25 +47,25 @@ The Tauri port is the primary development target and receives all new features.
 - Auto-detect concept mentions across all content
 - Backlinks panel showing where concepts are referenced
 
-### 🖥️ Native UI & Navigation
+### Native UI & Navigation
 - **Split-pane layout** for side-by-side multitasking
 - Three navigation modes: Sidebar, Icon-only, or Top-tab bar
 - Full support for hidden native menus (Linux/Windows)
 
-### 🔍 Full-Text & Semantic Search
+### Full-Text & Semantic Search
 - **Cmd+K command palette** for instant FTS-powered global quick search
 - Semantic search using Ollama embeddings (nomic-embed-text)
 - Search across documents, chats, concepts, notes, and memories
 - Hybrid cosine similarity matching with fallback to keyword search
 
-### ✍️ Smart Editor
+### Smart Editor
 - **Live Obsidian-style linking** with auto-complete
 - Markdown rendering with syntax highlighting
 - Auto-save with 2-second debounce
 - Real-time `[[concept]]` detection
 - Word count, character count, link statistics
 
-### 📅 Daily Notes + Templates
+### Daily Notes + Templates
 - Interactive calendar with 7x7 grid navigation
 - **6 built-in templates**:
   - Daily Note
@@ -79,7 +79,7 @@ The Tauri port is the primary development target and receives all new features.
 - Productivity scoring (1-10)
 - Streak tracking
 
-### 🎴 Flashcards + Spaced Repetition
+### Flashcards + Spaced Repetition
 - **SM-2 algorithm** for optimal review scheduling
 - Card flipping animations with 3D rotation
 - 4 quality ratings: Forgot, Hard, Good, Easy
@@ -87,14 +87,14 @@ The Tauri port is the primary development target and receives all new features.
 - Keyboard shortcuts (Space to reveal, 0-5 for rating)
 - Leitner System alternative
 
-### 🛤️ Learning Paths
+### Learning Paths
 - Milestone tracking with progress visualization
 - Target completion dates
 - Concept linking to milestones
 - Progress percentage calculation
 - Completion celebrations
 
-### 📊 Analytics Dashboard
+### Analytics Dashboard
 - **Activity heatmap** (49-day grid)
 - Concept growth charts
 - Review accuracy charts
@@ -105,7 +105,7 @@ The Tauri port is the primary development target and receives all new features.
   - Activity consistency tracking
   - Concept connection suggestions
 
-### 🎤 Voice + Export
+### Voice + Export
 - **Real-time speech-to-text** using macOS Speech framework
 - Audio file transcription
 - **4 export formats**:
@@ -114,7 +114,7 @@ The Tauri port is the primary development target and receives all new features.
   - PDF (formatted)
   - JSON (data portability)
 
-### 🧩 Plugin System
+### Plugin System
 - **Extensible architecture** with 7 plugin types:
   - **Importers**: Bring data from external sources
   - **Exporters**: Export to custom formats
@@ -133,7 +133,7 @@ The Tauri port is the primary development target and receives all new features.
 - Install custom plugins (.aetheriumplugin bundles)
 - Permission system for plugin security
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites (both apps)
 
@@ -197,7 +197,7 @@ open Package.swift   # opens in Xcode
 2. **Create a workspace**, then a project
 3. Start learning!
 
-## 📖 Usage Guide
+## Usage Guide
 
 ### Creating a Project
 
@@ -273,7 +273,7 @@ Navigate to **Plugins** (Cmd+8):
 - **Anki Exporter** - Export flashcards to Anki CSV format
 - **Daily Summary** - Auto-generate daily summaries
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
 ### Global
 - `Cmd+K` - Command palette (semantic search)
@@ -305,7 +305,7 @@ Navigate to **Plugins** (Cmd+8):
 - `4` - Good
 - `5` - Easy
 
-## 🏗️ Architecture
+## Architecture
 
 ### Tauri App (active target)
 
@@ -379,7 +379,7 @@ Sources/Aetherium/
 - **PluginManager** — Plugin discovery, loading, permissions
 - **SecurityManager** — Biometric authentication
 
-## 🔨 Build & Check
+## Build & Check
 
 ### Swift app
 ```bash
@@ -410,7 +410,7 @@ npm run tauri dev
 
 Both `cargo check` and `npm run typecheck` must exit 0 before committing.
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -420,22 +420,22 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **Ollama** - For making local AI accessible
 - **Obsidian** - Inspiration for knowledge graph
 - **NotebookLM** - Inspiration for source grounding
 - **SuperMemo** - SM-2 algorithm for spaced repetition
 
-## 📧 Contact
+## Contact
 
 - **GitHub Issues** - For bugs and feature requests
 - **Discussions** - For questions and community
 
 ---
 
-**Built with ❤️ using Swift, Rust, React, and local-first AI principles**
+**Built with Swift, Rust, React, and local-first AI principles**

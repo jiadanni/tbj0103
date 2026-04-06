@@ -5,9 +5,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput } from "lucide-react";
-import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus } from "../lib/api";
+import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, Info } from "lucide-react";
+import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs } from "../lib/api";
 import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
+import { classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB } from "../lib/modelSizing";
 import { ACCENT_COLORS, THEMES, normalizeTheme } from "../lib/theme";
 import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore";
 import { type NavigationPresentation, type SplitNavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
@@ -72,6 +73,35 @@ function normalizeAppSettingsTheme(settings: AppSettings): AppSettings {
   };
 }
 
+function formatSystemName(specs: SystemSpecs): string {
+  return [specs.os_name, specs.os_version].filter(Boolean).join(" ");
+}
+
+function ollamaModelDetails(model: OllamaModel, systemSpecs: SystemSpecs | null): string {
+  const params = parseModelParamsB(model.name);
+  const details: string[] = [];
+  const formattedParams = formatParams(params);
+  if (formattedParams) {
+    details.push(formattedParams);
+  } else if (typeof model.size === "number" && model.size > 0) {
+    details.push(formatBytes(model.size));
+  }
+
+  if (systemSpecs) {
+    const guidance = inferHardwareModelGuidance(systemSpecs);
+    const fit = classifyModelFit(params, guidance.recommendedMaxParamsB);
+    if (fit === "good") {
+      details.push("fits this machine");
+    } else if (fit === "stretch") {
+      details.push("stretch");
+    } else if (fit === "too-large") {
+      details.push("likely heavy");
+    }
+  }
+
+  return details.join(" - ");
+}
+
 export default function PreferencesView() {
   const pillSelectClassName = "h-10 w-full appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-9 text-sm text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
   const settingsNavLayout = useSettingsStore((state) => state.settingsNavLayout);
@@ -98,10 +128,11 @@ export default function PreferencesView() {
   const setWorkspaceNavigation = useWorkspaceStore((state) => state.setWorkspaceNavigation);
   const setSectionNavigation = useWorkspaceStore((state) => state.setSectionNavigation);
   const setSplitWorkspaceNavigation = useWorkspaceStore((state) => state.setSplitWorkspaceNavigation);
+  const incrementModelRefreshCounter = useSettingsStore((state) => state.incrementModelRefreshCounter);
   const setSplitSectionNavigation = useWorkspaceStore((state) => state.setSplitSectionNavigation);
   const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
 
-  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
   const [activeTab, setActiveTab] = useState<PreferencesSection>(() => (window.localStorage.getItem("preferencesActiveTab") as PreferencesSection) || "app");
 
   // Handle external tab switching via router state
@@ -133,6 +164,9 @@ export default function PreferencesView() {
   const [_refreshingLlamacpp, setRefreshingLlamacpp] = useState(false);
   const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
   const [hasLoadedOllamaModels, setHasLoadedOllamaModels] = useState(false);
+  const [systemSpecs, setSystemSpecs] = useState<SystemSpecs | null>(null);
+  const [systemSpecsLoading, setSystemSpecsLoading] = useState(false);
+  const [systemSpecsError, setSystemSpecsError] = useState<string | null>(null);
   const dbSettingsRef = useRef<AppSettings | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const saveNoticeTimeoutRef = useRef<number | null>(null);
@@ -147,6 +181,11 @@ export default function PreferencesView() {
   const [newModelRoles, setNewModelRoles] = useState<ModelRole[]>(["chat"]);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const systemGuidance = systemSpecs
+    ? inferHardwareModelGuidance(systemSpecs)
+    : null;
+  const ollamaModelNames = ollamaModels.map((model) => model.name);
+  const nonEmbeddingOllamaModels = ollamaModels.filter((model) => !model.name.toLowerCase().includes("embed"));
 
   async function refreshLlamacppModels(paths: string[]) {
     if (paths.length === 0) {
@@ -291,6 +330,22 @@ export default function PreferencesView() {
       ? dbSettings.quick_search_models.filter((value) => value !== modelId)
       : [...dbSettings.quick_search_models, modelId];
     set("quick_search_models", next);
+    incrementModelRefreshCounter();
+  }
+
+  function loadSystemSpecs() {
+    setSystemSpecsLoading(true);
+    setSystemSpecsError(null);
+    api.system.getSpecs()
+      .then((specs) => {
+        setSystemSpecs(specs);
+      })
+      .catch((error) => {
+        setSystemSpecsError(error instanceof Error ? error.message : "Unable to read system specs.");
+      })
+      .finally(() => {
+        setSystemSpecsLoading(false);
+      });
   }
 
   function refreshOllamaModels(ollamaUrl: string, options?: { clearResult?: boolean }) {
@@ -305,7 +360,7 @@ export default function PreferencesView() {
       .then((models) => {
         if (requestId !== ollamaModelsRequestRef.current) {return;}
         setOllamaReachable(true);
-        setOllamaModels(models.filter((m) => !m.name.toLowerCase().includes("embed")).map((model) => model.name));
+        setOllamaModels(models);
       })
       .catch(() => {
         if (requestId !== ollamaModelsRequestRef.current) {return;}
@@ -319,9 +374,9 @@ export default function PreferencesView() {
       });
   }
 
-  function applyOllamaRuntimeStatus(status: { available: boolean; message: string; models: Array<{ name: string }> }) {
+  function applyOllamaRuntimeStatus(status: { available: boolean; message: string; models: OllamaModel[] }) {
     setOllamaReachable(status.available);
-    setOllamaModels(status.models.filter((m) => !m.name.toLowerCase().includes("embed")).map((model) => model.name));
+    setOllamaModels(status.models);
     setHasLoadedOllamaModels(true);
     setOllamaModelsLoading(false);
     setOllamaTestResult({ success: status.available, msg: status.message });
@@ -335,6 +390,7 @@ export default function PreferencesView() {
       syncClientSettings(normalizedSettings);
       refreshOllamaModels(normalizedSettings.ollama_base_url);
     }).catch(() => {});
+    loadSystemSpecs();
     loadAiModels();
     api.security.getStatus().then(setSecurityStatus).catch(() => {});
     api.mcp.listServers().then(setMcpServers).catch(() => {});
@@ -883,221 +939,369 @@ export default function PreferencesView() {
           {/* ── AI / Ollama ── */}
           {activeTab === "ai" && (
             <>
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Auto-start local Ollama</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    Try to launch `ollama serve` when Aetherium starts. Supported for the default local URL only.
-                  </p>
-                </div>
-                <Toggle
-                  on={dbSettings.auto_start_ollama}
-                  onToggle={() => set("auto_start_ollama", !dbSettings.auto_start_ollama)}
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between gap-3 mb-1">
-                  <label className="text-xs text-[var(--text-secondary)]">Ollama URL</label>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={async () => {
-                        setStartingOllama(true);
-                        setOllamaTestResult(null);
-                        try {
-                          const status = await api.ollama.ensureRunning(dbSettings.ollama_base_url || undefined);
-                          applyOllamaRuntimeStatus(status);
-                        } catch (error) {
-                          const msg = error instanceof Error ? error.message : "Automatic startup failed.";
-                          setOllamaReachable(false);
-                          setOllamaTestResult({ success: false, msg });
-                        } finally {
-                          setStartingOllama(false);
-                        }
-                      }}
-                      disabled={startingOllama || testingOllama}
-                      className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
-                    >
-                      {startingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Bot size={10} />}
-                      Start Ollama
-                    </button>
-                    <button
-                      onClick={async () => {
-                        setTestingOllama(true);
-                        setOllamaTestResult(null);
-                        try {
-                          const models = await api.ollama.listModelsFresh(dbSettings.ollama_base_url || undefined);
-                          setOllamaReachable(true);
-                          setOllamaModels(models.filter((m) => !m.name.toLowerCase().includes("embed")).map((model) => model.name));
-                          setHasLoadedOllamaModels(true);
-                          setOllamaTestResult({ success: true, msg: `Success! ${models.length} model(s) found.` });
-                        } catch (error) {
-                          setOllamaReachable(false);
-                          const msg = error instanceof Error ? error.message : "Connection failed.";
-                          setOllamaTestResult({ success: false, msg });
-                        } finally {
-                          setTestingOllama(false);
-                        }
-                      }}
-                      disabled={testingOllama || startingOllama}
-                      className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
-                    >
-                      {testingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
-                      Test Connection
-                    </button>
-                  </div>
-                </div>
-                <input
-                  value={dbSettings.ollama_base_url}
-                  onChange={(e) => {
-                    set("ollama_base_url", e.target.value);
-                    refreshOllamaModels(e.target.value, { clearResult: true });
-                  }}
-                  placeholder="http://localhost:11434"
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                />
-                {ollamaTestResult && (
-                  <p className={`text-[10px] mt-1.5 font-medium ${ollamaTestResult.success ? "text-green-400" : "text-red-400"}`}>
-                    {ollamaTestResult.msg}
-                  </p>
-                )}
-                {ollamaModelsLoading && (
-                  <p className="text-[10px] mt-1.5 text-[var(--text-muted)]">
-                    Loading available models...
-                  </p>
-                )}
-                {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaReachable === false && !testingOllama && !startingOllama && (
-                  <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                    <div className="flex items-center gap-2 text-red-400 mb-1">
-                      <Network size={14} />
-                      <span className="text-xs font-semibold">Ollama unavailable</span>
-                    </div>
-                    <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                      Aetherium could not reach Ollama at this URL. Start it manually with:
-                      <code className="block mt-1.5 p-1.5 rounded bg-[var(--bg-primary)] font-mono text-[10px] text-[var(--text-secondary)]">
-                        ollama serve
-                      </code>
-                      Or enable auto-start above for the default local address.
-                    </p>
-                  </div>
-                )}
-                {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaReachable === true && ollamaModels.length === 0 && !testingOllama && !startingOllama && (
-                  <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                    <div className="flex items-center gap-2 text-amber-500 mb-1">
-                      <Bot size={14} />
-                      <span className="text-xs font-semibold">No models found</span>
-                    </div>
-                    <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                      Ollama is connected but no models are installed yet. Pull any model you want to use, then refresh the connection.
-                      <code className="block mt-1.5 p-1.5 rounded bg-[var(--bg-primary)] font-mono text-[10px] text-[var(--text-secondary)]">
-                        ollama pull &lt;model-name&gt;
-                      </code>
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* MLX Section */}
-              {isMac && (
-                <div className="pt-4 border-t border-[var(--border-color)]">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs text-[var(--text-secondary)]">MLX Server URL</label>
-                    <button
-                      onClick={async () => {
-                        setTestingMlx(true);
-                        setMlxTestResult(null);
-                        try {
-                          const m = await api.mlx.listModels(dbSettings.mlx_base_url || undefined);
-                          setMlxTestResult({ success: true, msg: `Success! ${m.length} models found.` });
-                          setMlxModels(m.map((model) => model.id));
-                        } catch {
-                          setMlxTestResult({ success: false, msg: `Connection failed. Is MLX server running?` });
-                        } finally {
-                          setTestingMlx(false);
-                        }
-                      }}
-                      disabled={testingMlx}
-                      className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
-                    >
-                      {testingMlx ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
-                      Test Connection
-                    </button>
-                  </div>
-                  <input
-                    value={dbSettings.mlx_base_url}
-                    onChange={(e) => {
-                      set("mlx_base_url", e.target.value);
-                    }}
-                    placeholder="http://localhost:8080"
-                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                  />
-                  {mlxTestResult && (
-                    <p className={`text-[10px] mt-1.5 font-medium ${mlxTestResult.success ? "text-green-400" : "text-red-400"}`}>
-                      {mlxTestResult.msg}
-                    </p>
-                  )}
-                  <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
-                    Local Apple Silicon acceleration. Run via: <code className="bg-[var(--bg-primary)] px-1 rounded">mlx_lm.server --model ...</code>
-                  </p>
-                </div>
-              )}
-
-              {/* llama.cpp Section */}
-              <div className="pt-4 border-t border-[var(--border-color)]">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs text-[var(--text-secondary)]">llama.cpp (GGUF) Local Inference</label>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const selected = await openDialog({
-                          multiple: true,
-                          filters: [{ name: "GGUF Model", extensions: ["gguf"] }],
-                        });
-                        if (selected && Array.isArray(selected)) {
-                          const currentPaths = dbSettings.llamacpp_model_paths || [];
-                          const newPaths = [...new Set([...currentPaths, ...selected])];
-                          updateSettings({ llamacpp_model_paths: newPaths });
-                        }
-                      } catch (err) {
-                        console.error("Failed to open file picker:", err);
-                      }
-                    }}
-                    className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
+              <div className="rounded-2xl border border-[var(--accent-color)]/25 bg-[var(--accent-color)]/8 p-4 space-y-4">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">Ollama models</p>
+                  <span
+                    title="Rename your installed models so they are easier to recognize throughout the app."
+                    className="inline-flex items-center text-[var(--text-muted)]"
                   >
-                    <Plus size={10} /> Add GGUF File
-                  </button>
+                    <Info size={13} />
+                  </span>
                 </div>
-
-                <div className="space-y-1.5">
-                  {(dbSettings.llamacpp_model_paths || []).map((path) => (
-                    <div key={path} className="flex items-center justify-between gap-2 p-2 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] group">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <FileText size={12} className="text-[var(--text-muted)] shrink-0" />
-                        <span className="text-[11px] text-[var(--text-primary)] truncate" title={path}>
-                          {path.split("/").pop()}
-                        </span>
+                <div className="space-y-2">
+                  {ollamaModels.length === 0 ? (
+                    <p className="text-[11px] text-[var(--text-muted)]">No Ollama models found to label yet.</p>
+                  ) : (
+                    nonEmbeddingOllamaModels.map((model) => (
+                      <div key={model.name} className="grid gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] sm:items-center">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-medium text-[var(--text-primary)]" title={model.name}>{model.name}</p>
+                          <p className="text-[10px] text-[var(--text-muted)]">{ollamaModelDetails(model, systemSpecs)}</p>
+                        </div>
+                        <div>
+                          <div className="mb-1 flex items-center gap-1.5">
+                            <label className="text-[11px] font-medium text-[var(--text-secondary)]">Custom label</label>
+                            <span
+                              title="Used in chat pickers, model badges, and the priority list. Leave blank to keep the original model name."
+                              className="inline-flex items-center text-[var(--text-muted)]"
+                            >
+                              <Info size={12} />
+                            </span>
+                          </div>
+                          <input
+                            value={modelLabels[model.name] || ""}
+                            onChange={(e) => setModelLabel(model.name, e.target.value)}
+                            onBlur={async () => {
+                              const matchingAiModel = aiModels.find((am) => am.model_id === model.name);
+                              if (matchingAiModel && matchingAiModel.name !== modelLabels[model.name]) {
+                                await api.aiModel.update(matchingAiModel.id, { name: modelLabels[model.name] });
+                                loadAiModels();
+                              }
+                            }}
+                            placeholder="Set label…"
+                            className="h-10 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors focus:border-[var(--accent-color)]"
+                          />
+                        </div>
                       </div>
-                      <button
-                        onClick={() => {
-                          const next = dbSettings.llamacpp_model_paths.filter((p) => p !== path);
-                          updateSettings({ llamacpp_model_paths: next });
-                        }}
-                        className="p-1 rounded hover:bg-red-400/10 text-[var(--text-muted)] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
-                  ))}
-                  {(dbSettings.llamacpp_model_paths || []).length === 0 && (
-                    <p className="text-[10px] text-[var(--text-muted)] italic">No GGUF models added yet.</p>
+                    ))
                   )}
                 </div>
-                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
-                  Embedded inference via llama.cpp with Metal acceleration. No external server required.
+                <p className="text-[10px] text-[var(--text-muted)]">
+                  Priority list names stay in sync automatically.
                 </p>
               </div>
 
-              <div>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">Local inference providers</h3>
+                    <p className="text-xs text-[var(--text-muted)] mt-1">
+                      Kept in one place so setup feels like one workflow instead of separate tabs. Ollama is the main path, with MLX and llama.cpp as optional local runtimes.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-[var(--text-secondary)]">Ollama</p>
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                        Manage the local server, discover installed models, and power the default local chat flow.
+                      </p>
+                    </div>
+                    <Toggle
+                      on={dbSettings.auto_start_ollama}
+                      onToggle={() => set("auto_start_ollama", !dbSettings.auto_start_ollama)}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <label className="text-xs text-[var(--text-secondary)]">Ollama URL</label>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={async () => {
+                            setStartingOllama(true);
+                            setOllamaTestResult(null);
+                            try {
+                              const status = await api.ollama.ensureRunning(dbSettings.ollama_base_url || undefined);
+                              applyOllamaRuntimeStatus(status);
+                            } catch (error) {
+                              const msg = error instanceof Error ? error.message : "Automatic startup failed.";
+                              setOllamaReachable(false);
+                              setOllamaTestResult({ success: false, msg });
+                            } finally {
+                              setStartingOllama(false);
+                            }
+                          }}
+                          disabled={startingOllama || testingOllama}
+                          className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
+                        >
+                          {startingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Bot size={10} />}
+                          Start Ollama
+                        </button>
+                        <button
+                          onClick={async () => {
+                            setTestingOllama(true);
+                            setOllamaTestResult(null);
+                            try {
+                              const models = await api.ollama.listModelsFresh(dbSettings.ollama_base_url || undefined);
+                              setOllamaReachable(true);
+                              setOllamaModels(models);
+                              setHasLoadedOllamaModels(true);
+                              setOllamaTestResult({ success: true, msg: `Success! ${models.length} model(s) found.` });
+                            } catch (error) {
+                              setOllamaReachable(false);
+                              const msg = error instanceof Error ? error.message : "Connection failed.";
+                              setOllamaTestResult({ success: false, msg });
+                            } finally {
+                              setTestingOllama(false);
+                            }
+                          }}
+                          disabled={testingOllama || startingOllama}
+                          className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
+                        >
+                          {testingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
+                          Test Connection
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      value={dbSettings.ollama_base_url}
+                      onChange={(e) => {
+                        set("ollama_base_url", e.target.value);
+                        refreshOllamaModels(e.target.value, { clearResult: true });
+                      }}
+                      placeholder="http://localhost:11434"
+                      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                    <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
+                      Enable auto-start to try `ollama serve` on launch when you use the default local address.
+                    </p>
+                    {ollamaTestResult && (
+                      <p className={`text-[10px] mt-1.5 font-medium ${ollamaTestResult.success ? "text-green-400" : "text-red-400"}`}>
+                        {ollamaTestResult.msg}
+                      </p>
+                    )}
+                    {ollamaModelsLoading && (
+                      <p className="text-[10px] mt-1.5 text-[var(--text-muted)]">
+                        Loading available models...
+                      </p>
+                    )}
+                    {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaReachable === false && !testingOllama && !startingOllama && (
+                      <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                        <div className="flex items-center gap-2 text-red-400 mb-1">
+                          <Network size={14} />
+                          <span className="text-xs font-semibold">Ollama unavailable</span>
+                        </div>
+                        <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                          Aetherium could not reach Ollama at this URL. Start it manually with:
+                          <code className="block mt-1.5 p-1.5 rounded bg-[var(--bg-primary)] font-mono text-[10px] text-[var(--text-secondary)]">
+                            ollama serve
+                          </code>
+                          Or enable auto-start above for the default local address.
+                        </p>
+                      </div>
+                    )}
+                    {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaReachable === true && nonEmbeddingOllamaModels.length === 0 && !testingOllama && !startingOllama && (
+                      <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                        <div className="flex items-center gap-2 text-amber-500 mb-1">
+                          <Bot size={14} />
+                          <span className="text-xs font-semibold">No models found</span>
+                        </div>
+                        <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                          Ollama is connected but no models are installed yet. Pull any model you want to use, then refresh the connection.
+                          <code className="block mt-1.5 p-1.5 rounded bg-[var(--bg-primary)] font-mono text-[10px] text-[var(--text-secondary)]">
+                            ollama pull &lt;model-name&gt;
+                          </code>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {isMac && (
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <div>
+                        <label className="text-sm text-[var(--text-secondary)]">MLX</label>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                          Apple Silicon local inference with unified-memory friendly acceleration.
+                        </p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          setTestingMlx(true);
+                          setMlxTestResult(null);
+                          try {
+                            const m = await api.mlx.listModels(dbSettings.mlx_base_url || undefined);
+                            setMlxTestResult({ success: true, msg: `Success! ${m.length} models found.` });
+                            setMlxModels(m.map((model) => model.id));
+                          } catch {
+                            setMlxTestResult({ success: false, msg: "Connection failed. Is MLX server running?" });
+                          } finally {
+                            setTestingMlx(false);
+                          }
+                        }}
+                        disabled={testingMlx}
+                        className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
+                      >
+                        {testingMlx ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
+                        Test Connection
+                      </button>
+                    </div>
+                    <input
+                      value={dbSettings.mlx_base_url}
+                      onChange={(e) => {
+                        set("mlx_base_url", e.target.value);
+                      }}
+                      placeholder="http://localhost:8080"
+                      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                    {mlxTestResult && (
+                      <p className={`text-[10px] mt-1.5 font-medium ${mlxTestResult.success ? "text-green-400" : "text-red-400"}`}>
+                        {mlxTestResult.msg}
+                      </p>
+                    )}
+                    <p className="text-[10px] text-[var(--text-muted)]">
+                      Run via: <code className="bg-[var(--bg-elevated)] px-1 rounded">mlx_lm.server --model ...</code>
+                    </p>
+                  </div>
+                )}
+
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <label className="text-sm text-[var(--text-secondary)]">llama.cpp (GGUF)</label>
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                        Add local GGUF files for embedded inference without a separate server.
+                      </p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const selected = await openDialog({
+                            multiple: true,
+                            filters: [{ name: "GGUF Model", extensions: ["gguf"] }],
+                          });
+                          if (selected && Array.isArray(selected)) {
+                            const currentPaths = dbSettings.llamacpp_model_paths || [];
+                            const newPaths = [...new Set([...currentPaths, ...selected])];
+                            updateSettings({ llamacpp_model_paths: newPaths });
+                          }
+                        } catch (err) {
+                          console.error("Failed to open file picker:", err);
+                        }
+                      }}
+                      className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
+                    >
+                      <Plus size={10} /> Add GGUF File
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {(dbSettings.llamacpp_model_paths || []).map((path) => (
+                      <div key={path} className="flex items-center justify-between gap-2 p-2 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] group">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText size={12} className="text-[var(--text-muted)] shrink-0" />
+                          <span className="text-[11px] text-[var(--text-primary)] truncate" title={path}>
+                            {path.split("/").pop()}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const next = dbSettings.llamacpp_model_paths.filter((p) => p !== path);
+                            updateSettings({ llamacpp_model_paths: next });
+                          }}
+                          className="p-1 rounded hover:bg-red-400/10 text-[var(--text-muted)] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    ))}
+                    {(dbSettings.llamacpp_model_paths || []).length === 0 && (
+                      <p className="text-[10px] text-[var(--text-muted)] italic">No GGUF models added yet.</p>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-[var(--text-muted)]">
+                    Embedded inference via llama.cpp with local acceleration when available.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Detected hardware guidance</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      Aetherium uses RAM and CPU details to estimate a comfortable local model range for categorisation and model picking.
+                    </p>
+                  </div>
+                  <button
+                    onClick={loadSystemSpecs}
+                    disabled={systemSpecsLoading}
+                    className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {systemSpecsLoading ? <RefreshCw size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                    Refresh specs
+                  </button>
+                </div>
+
+                {systemSpecs ? (
+                  <>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">System</p>
+                        <p className="mt-1 text-sm text-[var(--text-primary)]">{formatSystemName(systemSpecs)}</p>
+                        <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{systemSpecs.cpu_arch}</p>
+                      </div>
+                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">CPU</p>
+                        <p className="mt-1 text-sm text-[var(--text-primary)]">{systemSpecs.cpu_brand}</p>
+                        <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
+                          {systemSpecs.physical_cores ? `${systemSpecs.physical_cores} physical` : "Physical cores unavailable"} / {systemSpecs.logical_cores} logical
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Memory</p>
+                        <p className="mt-1 text-sm text-[var(--text-primary)]">{formatBytes(systemSpecs.total_memory_bytes)} total</p>
+                        <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{formatBytes(systemSpecs.available_memory_bytes)} available now</p>
+                      </div>
+                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Swap</p>
+                        <p className="mt-1 text-sm text-[var(--text-primary)]">{formatBytes(systemSpecs.total_swap_bytes)} configured</p>
+                        <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
+                          {systemSpecs.host_name ? systemSpecs.host_name : (systemSpecs.kernel_version || "Kernel version unavailable")}
+                        </p>
+                      </div>
+                    </div>
+
+                    {systemGuidance && (
+                      <div className="rounded-lg border border-[var(--accent-color)]/20 bg-[var(--accent-color)]/8 px-3 py-3">
+                        <p className="text-[11px] font-semibold text-[var(--text-primary)]">{systemGuidance.headline}</p>
+                        <p className="mt-1 text-[11px] text-[var(--text-secondary)]">{systemGuidance.summary}</p>
+                        <p className="mt-1 text-[10px] text-[var(--text-muted)]">{systemGuidance.basis}</p>
+                        <p className="mt-1 text-[10px] text-[var(--text-muted)]">{systemGuidance.caution}</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    {systemSpecsLoading ? "Reading local system specs..." : (systemSpecsError || "System specs are not available yet.")}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Model defaults</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Choose the supporting local models used for background tasks, embeddings, and dual-model workflows.
+                  </p>
+                </div>
+
+                <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-1 block">Background Task Model</label>
                 <div className="relative">
                   <select
@@ -1106,8 +1310,8 @@ export default function PreferencesView() {
                     className={pillSelectClassName}
                   >
                     <option value="">Use preferred chat model</option>
-                    {ollamaModels.map((m) => (
-                      <option key={m} value={m}>{m}</option>
+                    {nonEmbeddingOllamaModels.map((m) => (
+                      <option key={m.name} value={m.name}>{m.name}</option>
                     ))}
                   </select>
                   <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
@@ -1123,7 +1327,7 @@ export default function PreferencesView() {
                   {(() => {
                     const isModelInstalled = (name: string) =>
                       !hasLoadedOllamaModels ||
-                      ollamaModels.some((m) => m === name || m.startsWith(`${name}:`));
+                      ollamaModelNames.some((modelName) => modelName === name || modelName.startsWith(`${name}:`));
                     const nomicInstalled = isModelInstalled("nomic-embed-text");
                     const isCustom = dbSettings.embedding_model !== "nomic-embed-text";
                     const customInstalled = !isCustom || isModelInstalled(dbSettings.embedding_model);
@@ -1194,6 +1398,7 @@ export default function PreferencesView() {
                   })()}
                 </div>
               </div>
+              </div>
 
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
                 <div>
@@ -1246,7 +1451,7 @@ export default function PreferencesView() {
                       >
                         <option value="">Select model...</option>
                         <optgroup label="Ollama">
-                          {ollamaModels.map((m) => <option key={`ollama-${m}`} value={m}>{m}</option>)}
+                          {nonEmbeddingOllamaModels.map((m) => <option key={`ollama-${m.name}`} value={m.name}>{m.name}</option>)}
                         </optgroup>
                         {isMac && mlxModels.length > 0 && (
                           <optgroup label="MLX">
@@ -1305,6 +1510,7 @@ export default function PreferencesView() {
                             const provider = isMlx ? "mlx" : isLlamacpp ? "llamacpp" : "ollama";
                             await api.aiModel.add(newModelName, modelId, { provider, is_paid: newModelIsPaid, role_tags: newModelRoles });
                             loadAiModels();
+                            incrementModelRefreshCounter();
                             setShowAddModel(false); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); setNewModelRoles(["chat"]);
                           }}
                           className="px-2 py-1 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
@@ -1319,7 +1525,16 @@ export default function PreferencesView() {
                   <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
                 ) : (
                   <div className="space-y-1">
-                    {aiModels.map((m, idx) => (
+                    {aiModels.map((m, idx) => {
+                      const ollamaMeta = ollamaModels.find((model) => model.name === m.model_id);
+                      const modelParams = parseModelParamsB(m.model_id) ?? parseModelParamsB(m.name);
+                      const formattedParams = formatParams(modelParams);
+                      const formattedStorage = typeof ollamaMeta?.size === "number" ? formatBytes(ollamaMeta.size) : null;
+                      const modelFit = systemGuidance
+                        ? classifyModelFit(modelParams, systemGuidance.recommendedMaxParamsB)
+                        : "unknown";
+
+                      return (
                       <div key={m.id} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2">
                         <div className="flex items-start gap-2">
                           {/* Priority arrows */}
@@ -1331,6 +1546,7 @@ export default function PreferencesView() {
                                 await api.aiModel.update(m.id, { priority: prev.priority });
                                 await api.aiModel.update(prev.id, { priority: m.priority });
                                 loadAiModels();
+                                incrementModelRefreshCounter();
                               }}
                               className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
                             >
@@ -1343,6 +1559,7 @@ export default function PreferencesView() {
                                 await api.aiModel.update(m.id, { priority: next.priority });
                                 await api.aiModel.update(next.id, { priority: m.priority });
                                 loadAiModels();
+                                incrementModelRefreshCounter();
                               }}
                               className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
                             >
@@ -1379,6 +1596,33 @@ export default function PreferencesView() {
                                   <Pencil size={10} className="shrink-0 text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </div>
                                 <div className="mt-0.5 truncate text-xs text-[var(--text-muted)]">{m.model_id}</div>
+                                <div className="mt-1 flex flex-wrap items-center gap-1">
+                                  {formattedParams && (
+                                    <span className="rounded-full bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">
+                                      {formattedParams}
+                                    </span>
+                                  )}
+                                  {formattedStorage && (
+                                    <span className="rounded-full bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+                                      {formattedStorage}
+                                    </span>
+                                  )}
+                                  {modelFit === "good" && (
+                                    <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                                      good fit
+                                    </span>
+                                  )}
+                                  {modelFit === "stretch" && (
+                                    <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-400">
+                                      stretch
+                                    </span>
+                                  )}
+                                  {modelFit === "too-large" && (
+                                    <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-400">
+                                      likely heavy
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1398,12 +1642,13 @@ export default function PreferencesView() {
                                 onToggle={async () => {
                                   await api.aiModel.update(m.id, { enabled: !m.enabled });
                                   loadAiModels();
+                                  incrementModelRefreshCounter();
                                 }}
                               />
                             </div>
 
                             <button
-                              onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); }}
+                              onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); incrementModelRefreshCounter(); }}
                               className="p-1 text-[var(--text-muted)] hover:text-red-400 transition-colors"
                             >
                               <Trash2 size={12} />
@@ -1428,6 +1673,7 @@ export default function PreferencesView() {
                                 onClick={async () => {
                                   await api.aiModel.update(m.id, { role_tags: toggleRole(m.role_tags, role) });
                                   loadAiModels();
+                                  incrementModelRefreshCounter();
                                 }}
                                 className={`rounded-full px-1.5 py-0.5 text-[10px] transition-colors ${
                                   active
@@ -1442,42 +1688,9 @@ export default function PreferencesView() {
                           })}
                         </div>
                       </div>
-                    ))}
+                    );})}
                   </div>
                 )}
-              </div>
-
-              {/* Custom Model Labels */}
-              <div className="pt-2">
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Custom Model Labels (Global)</label>
-                <div className="space-y-1.5">
-                  {ollamaModels.length === 0 ? (
-                    <p className="text-[10px] text-[var(--text-muted)]">No Ollama models found to label.</p>
-                  ) : (
-                    ollamaModels.map((modelId) => (
-                      <div key={modelId} className="flex items-center gap-2 group">
-                        <span className="text-[10px] text-[var(--text-muted)] w-24 truncate" title={modelId}>{modelId}</span>
-                        <input
-                          value={modelLabels[modelId] || ""}
-                          onChange={(e) => setModelLabel(modelId, e.target.value)}
-                          onBlur={async () => {
-                            // If this model is in the priority list, update it there too
-                            const matchingAiModel = aiModels.find(am => am.model_id === modelId);
-                            if (matchingAiModel && matchingAiModel.name !== modelLabels[modelId]) {
-                              await api.aiModel.update(matchingAiModel.id, { name: modelLabels[modelId] });
-                              loadAiModels();
-                            }
-                          }}
-                          placeholder="Set label…"
-                          className="flex-1 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] h-7"
-                        />
-                      </div>
-                    ))
-                  )}
-                </div>
-                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
-                  Labels set here will be used throughout the app. Priority list names sync automatically.
-                </p>
               </div>
             </>
           )}

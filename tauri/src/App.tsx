@@ -120,6 +120,18 @@ export default function App() {
     root.style.fontSize = `${fontSize}px`;
   }, [theme, accentColor, fontSize]);
 
+  // F12 to toggle devtools
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "F12") {
+        e.preventDefault();
+        api.system.toggleDevtools().catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // Boot: load settings + workspaces
   useEffect(() => {
     let cancelled = false;

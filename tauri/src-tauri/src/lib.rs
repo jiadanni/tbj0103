@@ -10,7 +10,9 @@ pub mod ollama;
 pub mod services;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::TrayIconBuilder;
+#[cfg(not(target_os = "linux"))]
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::Manager;
 use tauri::{WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
@@ -327,6 +329,8 @@ pub fn run() {
             // Settings commands
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::system::get_system_specs,
+            commands::system::toggle_devtools,
             commands::security::get_security_status,
             commands::security::set_pin_passcode,
             commands::security::verify_pin_passcode,
@@ -509,16 +513,16 @@ fn build_tray_icon(app: &tauri::App) -> Result<(), String> {
             }
             _ => {}
         })
-        .on_tray_icon_event(|tray, event| {
+        .on_tray_icon_event(|_tray, _event| {
             #[cfg(not(target_os = "linux"))]
             {
                 if let TrayIconEvent::Click {
                     button: MouseButton::Left,
                     button_state: MouseButtonState::Up,
                     ..
-                } = event
+                } = _event
                 {
-                    let _ = commands::quick_search::toggle_window(tray.app_handle());
+                    let _ = commands::quick_search::toggle_window(_tray.app_handle());
                 }
             }
         })

@@ -61,7 +61,6 @@ interface SessionItemProps {
   selectMode: boolean;
   isSelected: boolean;
   depth?: number;
-  canRefreshTitle: boolean;
   renamingId: string | null;
   renameTitle: string;
   setRenamingId: (id: string | null) => void;
@@ -70,10 +69,6 @@ interface SessionItemProps {
   toggleSelect: (id: string) => void;
   openContextMenu: (event: ReactMouseEvent, session: ChatSession) => void;
   renameSession: (id: string) => void;
-  refreshSessionTitle: (session: ChatSession) => void;
-  togglePin: (session: ChatSession) => void;
-  saveSession: (session: ChatSession) => void;
-  deleteSession: (id: string) => void;
 }
 
 interface SessionSidebarProps {
@@ -115,11 +110,11 @@ interface SessionSidebarProps {
 }
 
 function SessionItem({
-  session, activeChatId, selectMode, isSelected, canRefreshTitle, renamingId, renameTitle,
+  session, activeChatId, selectMode, isSelected, renamingId, renameTitle,
   depth = 0,
   setRenamingId, setRenameTitle, openSession,
   toggleSelect, openContextMenu,
-  renameSession, refreshSessionTitle, togglePin, saveSession, deleteSession,
+  renameSession,
 }: SessionItemProps) {
   const isSplitPane = useWorkspacePane() !== null;
   const isActive = activeChatId === session.id;
@@ -182,58 +177,31 @@ function SessionItem({
           }`}
         />
       ) : (
-        <span className={`min-w-0 flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{session.title || "New Chat"}</span>
+        <div className="min-w-0 flex flex-1 items-center gap-1.5">
+          <span className={`min-w-0 flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{session.title || "New Chat"}</span>
+          {session.is_incognito && <Ghost size={isSplitPane ? 12 : 11} className="text-purple-400 shrink-0" />}
+          {!session.is_incognito && session.exclude_from_analytics && <Shield size={isSplitPane ? 12 : 11} className="text-sky-400 shrink-0" />}
+        </div>
       )}
-      {session.is_incognito && <Ghost size={isSplitPane ? 12 : 11} className="text-purple-400 shrink-0" />}
-      {!session.is_incognito && session.exclude_from_analytics && <Shield size={isSplitPane ? 12 : 11} className="text-sky-400 shrink-0" />}
-      <span className={`text-[var(--text-muted)] shrink-0 mr-1 ${isSplitPane ? "text-[11px]" : "text-[10px]"}`}>
-        {timeAgo}
-      </span>
-      <div className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
-        {!isRenaming && (
+      <div className={`relative ml-1 shrink-0 ${isSplitPane ? "h-6 w-[132px]" : "h-5 w-[92px]"}`}>
+        <div
+          className={`absolute inset-y-0 right-0 flex items-center justify-end transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 ${
+            isRenaming ? "opacity-0" : "opacity-100"
+          }`}
+        >
+          <span className={`text-[var(--text-muted)] ${isSplitPane ? "text-[11px]" : "text-[10px]"}`}>
+            {timeAgo}
+          </span>
+        </div>
+        <div className="invisible absolute inset-y-0 right-0 flex items-center justify-end opacity-0 transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
           <button
-            onClick={(e) => { e.stopPropagation(); setRenamingId(session.id); setRenameTitle(session.title); }}
-            className={`rounded hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "p-1" : "p-0.5 text-[10px]"}`}
-            title="Rename"
+            onClick={(e) => { e.stopPropagation(); openContextMenu(e, session); }}
+            className={`rounded hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "p-1" : "p-0.5"}`}
+            title="More actions"
           >
-            <Pencil size={isSplitPane ? 12 : 10} />
+            <MoreHorizontal size={isSplitPane ? 12 : 10} />
           </button>
-        )}
-        <button
-          onClick={(e) => { e.stopPropagation(); if (canRefreshTitle) {refreshSessionTitle(session);} }}
-          disabled={!canRefreshTitle}
-          className={`rounded transition-colors ${canRefreshTitle ? "hover:text-[var(--accent-color)]" : "cursor-not-allowed opacity-40"} ${isSplitPane ? "p-1" : "p-0.5"}`}
-          title={canRefreshTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"}
-        >
-          <RefreshCw size={isSplitPane ? 12 : 10} />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); togglePin(session); }}
-          className={`rounded hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "p-1" : "p-0.5"}`}
-          title={session.is_pinned ? "Unpin" : "Pin"}
-        >
-          {session.is_pinned ? <PinOff size={isSplitPane ? 12 : 10} /> : <Pin size={isSplitPane ? 12 : 10} />}
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); saveSession(session); }}
-          className={`rounded hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "p-1" : "p-0.5"}`}
-          title="Save chat"
-        >
-          <Save size={isSplitPane ? 12 : 10} />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
-          className={`rounded hover:text-red-400 transition-colors ${isSplitPane ? "p-1" : "p-0.5"}`}
-        >
-          <Trash2 size={isSplitPane ? 12 : 10} />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); openContextMenu(e, session); }}
-          className={`rounded hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "p-1" : "p-0.5"}`}
-          title="More actions"
-        >
-          <MoreHorizontal size={isSplitPane ? 12 : 10} />
-        </button>
+        </div>
       </div>
     </div>
   );
@@ -334,7 +302,6 @@ function SessionSidebar({
               activeChatId={activeChatId}
               isSelected={selectedIds.has(session.id)}
               selectMode={selectMode}
-              canRefreshTitle={canRefreshSessionTitle(session, messages)}
               toggleSelect={(id) => {
                 setSelectedIds((prev) => {
                   const next = new Set(prev);
@@ -348,10 +315,6 @@ function SessionSidebar({
                 setCtxMenu({ type: "session", x: event.clientX, y: event.clientY, session: targetSession });
               }}
               renameSession={renameSession}
-              refreshSessionTitle={refreshSessionTitle}
-              togglePin={togglePin}
-              saveSession={saveSession}
-              deleteSession={deleteSession}
               renamingId={renamingId}
               renameTitle={renameTitle}
               setRenamingId={setRenamingId}
@@ -1092,6 +1055,31 @@ function SessionSidebar({
               </button>
               <button
                 onClick={() => {
+                  if (canRefreshSessionTitle(ctxMenu.session, messages)) {
+                    void refreshSessionTitle(ctxMenu.session);
+                  }
+                  setCtxMenu(null);
+                }}
+                disabled={!canRefreshSessionTitle(ctxMenu.session, messages)}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs ${
+                  canRefreshSessionTitle(ctxMenu.session, messages)
+                    ? "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                    : "cursor-not-allowed text-[var(--text-muted)] opacity-40"
+                }`}
+              >
+                <RefreshCw size={11} /> Refresh chat name
+              </button>
+              <button
+                onClick={() => {
+                  void saveSession(ctxMenu.session);
+                  setCtxMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <Save size={11} /> Save chat
+              </button>
+              <button
+                onClick={() => {
                   void api.chatFile.reveal(ctxMenu.session.id).catch((error) => {
                     const description = error instanceof Error
                       ? error.message
@@ -1818,6 +1806,12 @@ export default function ChatView() {
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
   const activeSession = activeChatId ? sessions.find((s) => s.id === activeChatId) ?? null : null;
   const activeSessionWorkspaceId = activeSession?.workspace_id ?? effectiveWorkspaceId;
+  const activeWorkspaceName = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId)?.name ?? "No workspace";
+  const effectiveProjectName = (
+    effectiveProjectId
+      ? (projectsByWorkspace[effectiveWorkspaceId ?? ""] ?? projects).find((project) => project.id === effectiveProjectId)?.name ?? null
+      : null
+  );
 
   // Web AI provider detection
   const selectedModelMeta = aiModelList.find((m) => m.model_id === selectedModel);
@@ -1899,6 +1893,7 @@ export default function ChatView() {
     }
 
     const trimmedQuery = sessionQuery.trim();
+    setSidebarSessions([]);
     if (trimmedQuery) {
       // Allow searching to trigger queries for the current workspace
       const timeoutId = window.setTimeout(() => {
@@ -1985,11 +1980,13 @@ export default function ChatView() {
   useEffect(() => {
     if (!effectiveWorkspaceId) {
       setLoadedSessionScopeKey(null);
+      setSessions([]);
       return;
     }
 
     const scopeKey = `${effectiveWorkspaceId}::${effectiveProjectId ?? ""}`;
     let cancelled = false;
+    setSessions([]);
     setLoadedSessionScopeKey(null);
 
     api.chat.listSessions(effectiveWorkspaceId, effectiveProjectId, { limit: 200, offset: 0 })
@@ -2015,7 +2012,10 @@ export default function ChatView() {
     const sessionStillVisible = sessions.some(
       (session) => session.id === currentSessionId && session.workspace_id === effectiveWorkspaceId
     );
-    if (sessionStillVisible) {return;}
+    const sessionStillVisibleInSidebar = sidebarSessions.some(
+      (session) => session.id === currentSessionId && session.workspace_id === effectiveWorkspaceId
+    );
+    if (sessionStillVisible || sessionStillVisibleInSidebar) {return;}
 
     if (activeChatId === currentSessionId) {
       setActiveChatId(null);
@@ -2032,6 +2032,7 @@ export default function ChatView() {
     navigate,
     routeSessionId,
     sessionScopeKey,
+    sidebarSessions,
     sessions,
     setActiveChatId,
   ]);
@@ -2116,6 +2117,13 @@ export default function ChatView() {
       void cleanupIncognitoSession(previousSessionId);
     };
   }, [activeChatId, cleanupIncognitoSession]);
+
+  // Reset local streaming flag when switching to a chat that isn't streaming
+  useEffect(() => {
+    if (!isCurrentlyStreaming) {
+      setIsStreaming(false);
+    }
+  }, [activeChatId, isCurrentlyStreaming]);
 
   // Load messages when session changes
   useEffect(() => {
@@ -3156,15 +3164,26 @@ export default function ChatView() {
           <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
             {/* Slim title bar */}
             <div className="flex min-w-0 items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
-              <span className="text-sm font-medium text-[var(--text-primary)] flex-1 truncate flex items-center gap-2">
-                {activeSession?.title || "New Chat"}
-                {activeSession?.is_incognito && (
-                  <span title="Incognito thread"><Ghost size={14} className="text-purple-400" /></span>
-                )}
-                {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
-                  <span title="Excluded from analytics"><Shield size={14} className="text-sky-400" /></span>
-                )}
-              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                  <span className="truncate">{activeWorkspaceName}</span>
+                  {effectiveProjectName && (
+                    <>
+                      <span>/</span>
+                      <span className="truncate">{effectiveProjectName}</span>
+                    </>
+                  )}
+                </div>
+                <span className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-sm font-medium text-[var(--text-primary)]">
+                  <span className="truncate">{activeSession?.title || "New Chat"}</span>
+                  {activeSession?.is_incognito && (
+                    <span title="Incognito thread"><Ghost size={14} className="text-purple-400" /></span>
+                  )}
+                  {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
+                    <span title="Excluded from analytics"><Shield size={14} className="text-sky-400" /></span>
+                  )}
+                </span>
+              </div>
               {activeSession && (
                 <button
                   onClick={() => { if (canRefreshActiveSessionTitle) {refreshSessionTitle(activeSession);} }}

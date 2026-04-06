@@ -318,4 +318,16 @@ describe("ChatView", () => {
 
     expect(await screen.findByPlaceholderText("Workspace name")).toBeInTheDocument();
   });
+
+  it("keeps a fixed trailing slot on session rows so hover actions do not collapse the title", async () => {
+    renderChatView();
+
+    const title = await screen.findByText("Test Session");
+    const row = title.closest("div.group");
+
+    expect(row).not.toBeNull();
+    expect(
+      Array.from(row?.querySelectorAll("div") ?? []).some((element) => element.className.includes("w-[92px]"))
+    ).toBe(true);
+  });
 });

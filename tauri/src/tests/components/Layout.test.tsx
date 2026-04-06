@@ -167,6 +167,31 @@ describe("Layout", () => {
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
   });
 
+  it("hides the global workspace tab strip in split view while keeping titlebar actions", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+      splitMode: true,
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(document.querySelector("[data-workspace-tab-strip]")).toBeNull();
+    expect(document.querySelector("[data-workspace-titlebar-actions]")).not.toBeNull();
+    expect(screen.getByText("Split View")).toBeInTheDocument();
+  });
+
   it("opens chats when switching workspaces if the preference is enabled", async () => {
     useSettingsStore.setState({ switchWorkspaceToChat: true });
     useWorkspaceStore.setState({

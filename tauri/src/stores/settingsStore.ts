@@ -36,6 +36,7 @@ interface AppSettings {
   expandChatToWindowWidth: boolean;
   switchWorkspaceToChat: boolean;
   hideNativeMenu: boolean;
+  modelRefreshCounter: number;
 }
 
 interface SettingsStore extends AppSettings {
@@ -67,6 +68,7 @@ interface SettingsStore extends AppSettings {
   setExpandChatToWindowWidth: (v: boolean) => void;
   setSwitchWorkspaceToChat: (v: boolean) => void;
   setHideNativeMenu: (v: boolean) => void;
+  incrementModelRefreshCounter: () => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -101,6 +103,7 @@ export const useSettingsStore = create<SettingsStore>()(
       expandChatToWindowWidth: false,
       switchWorkspaceToChat: false,
       hideNativeMenu: false,
+      modelRefreshCounter: 0,
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
@@ -129,9 +132,16 @@ export const useSettingsStore = create<SettingsStore>()(
       setExpandChatToWindowWidth: (expandChatToWindowWidth) => set({ expandChatToWindowWidth }),
       setSwitchWorkspaceToChat: (switchWorkspaceToChat) => set({ switchWorkspaceToChat }),
       setHideNativeMenu: (hideNativeMenu) => set({ hideNativeMenu }),
+      incrementModelRefreshCounter: () => set((state) => ({ modelRefreshCounter: state.modelRefreshCounter + 1 })),
     }),
     {
       name: "aetherium-settings",
+      // modelRefreshCounter is a transient signal — never persist it.
+      partialize: (state) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { modelRefreshCounter, ...rest } = state;
+        return rest as Omit<SettingsStore, "modelRefreshCounter">;
+      },
       merge: (persistedState, currentState) => {
         const persisted = persistedState as
           | Partial<SettingsStore>
@@ -149,6 +159,8 @@ export const useSettingsStore = create<SettingsStore>()(
           ...currentState,
           ...state,
           theme: normalizeTheme(state.theme ?? currentState.theme),
+          // Always reset to 0 on startup — it's a transient counter.
+          modelRefreshCounter: 0,
         };
       },
     }

@@ -6,77 +6,12 @@ Legend: ✅ Complete · 🔄 Partial · ⬜ Not started
 
 ---
 
-## ✅ Recently Completed
-
-### UI & Core Architecture Updates
-- [x] Split-pane layout functionality for side-by-side multitasking
-- [x] Icon-only compact sidebar and top tab-based navigation modes
-- [x] FTS-powered global Quick Search (Command Palette) with dedicated triggers
-- [x] Custom window controls and hidden native menu support
-- [x] LM Studio chat import compatibility fixes for Linux
-- [x] Workspace navigation routing preferences (`switch_workspace_to_chat`)
-
-### Performance Optimizations (commit `e90f0b8`)
-- [x] `[profile.release]` in Cargo.toml — lto, strip, codegen-units, panic, opt-level
-- [x] Tokio features trimmed from `"full"` to specific set
-- [x] `staticlib` removed from crate-type
-- [x] Pagination on `get_messages`, `list_concepts`, `list_concept_links`
-- [x] `semantic_search` — DB lock released before cosine computation
-- [x] Streaming events batched at 50 ms intervals
-- [x] Background scheduler — `AtomicBool` overlap guard + `spawn_blocking` for git sync
-
-### Security & Auth
-- [x] Biometric auth (Touch ID) via `LAContext` on macOS
-- [x] PIN-based authentication with SET/VERIFY/REMOVE commands
-
-### Chat Features
-- [x] Multi-select chats for batch delete
-- [x] Star / pin sessions (toggle pin, pinned count in sidebar)
-- [x] Move chat sessions between workspaces (with create-workspace-for-move flow)
-
-### Themes & Customization
-- [x] Light/dark mode toggle (theme classes applied to `<html>`)
-- [x] Custom accent color schemes
-- [x] Font size preferences (global slider, applied to `<html>` root)
-- [x] Adjustable sidebar width (drag-to-resize, persisted in settings)
-
-### Advanced Graph Algorithms
-- [x] PageRank for concept importance
-- [x] Community detection for topic clustering
-- [x] Shortest path between concepts (BFS)
-- [x] Graph metrics — degree centrality, degree distribution
-
-### AI Enhancements
-- [x] Multi-model support — choose a different Ollama model per session
-- [x] Dual-model (draft + refine) with serial/parallel execution modes
-- [x] Model comparison — side-by-side prompt with two models
-- [x] Custom system prompts per chat session
-- [x] Semantic deduplication — frontend dedup tab in Knowledge Graph view (client-side cosine on embeddings)
-- [x] Frictionless flashcards — `generate_flashcards`, `generate_flashcards_from_concept`, `extract_flashcards_from_content` (AI-driven, one-click)
-
-### Data Lifecycle
-- [x] Cascading deletes on workspace/project deletion (30+ `ON DELETE CASCADE` constraints in schema)
-- [x] Move chat sessions to a different workspace
-
-### Export
-- [x] Markdown export
-- [x] JSON export
-- [x] Obsidian vault export
-
-### Collaboration & Sync
-- [x] Git-based sync — `configure_git_sync`, `trigger_git_sync`, `get_git_sync_status` commands; background scheduler runs every ~5 minutes
-
----
-
-## 🚨 Imminent Changes (Priority 0)
+## Imminent (Priority 0)
 
 ### 1. 🔄 UI & Navigation Refinements
-- [x] **Project Tab Overflow** — Implemented scrollable tab strips, icon-only sidebar, and top-navigation tabs.
-- [x] **Split Pane Layout** — Added side-by-side workspace view.
 - [ ] **Project Scratchpad** — Add a dedicated quick-access scratchpad pane per project within the chat view.
 
 ### 2. 🔄 Feature Consolidation
-- [x] **Frictionless Flashcards** — AI-driven generation from topic, concept, or chat content (single-click).
 - [ ] **Chat & Thought Queue Merger** — ThoughtQueueView still exists as a standalone view; integrate into the Chat architecture. (Note: thought queue is already accessible from ChatView via inline panel, but the standalone view remains.)
 - [ ] **Graph & Flashcard Unification** — Merge Knowledge Graph and Flashcards interfaces so navigating the graph transitions into reviewing spaced-repetition cards.
 - [ ] **Unified 'Source' Concept** — Documents and Web Captures are still separate views/models. Combine into a single ingestion model.
@@ -85,14 +20,12 @@ Legend: ✅ Complete · 🔄 Partial · ⬜ Not started
 - [ ] **Forgotten PIN** — No recovery path exists. Add a recovery flow (emergency data-wipe with warning, or one-time recovery phrase at PIN-setup time). Defer until security layer stabilizes.
 
 ### 4. 🔄 Data Lifecycle & Migrations
-- [x] **Cascading deletes** — implemented via schema-level `ON DELETE CASCADE`.
-- [x] **Move chat sessions** to another workspace.
 - [ ] **Move projects between workspaces** — not yet implemented.
 - [ ] **Entity ownership rules** — define exact behavior for chats, concepts, notes, flashcards, learning goals, daily notes, and templates when a project moves.
 
 ---
 
-## 🎬 Demo Mode (Remaining Work)
+## Demo Mode (Remaining Work)
 
 Backend infrastructure exists (`activate_demo_mode` / `deactivate_demo_mode` commands seed 3 demo projects under a special workspace). Frontend wiring is partial — `workspaceStore` has `isDemoMode` and `setDemo`.
 
@@ -118,17 +51,16 @@ Each project's chat sessions should demonstrate a different capability:
 
 ---
 
-## 🏁 Polish & Production-Ready
+## Polish & Production-Ready
 - [ ] **Progress Indicators** — Show real progress bars during embedding generation, document imports, and graph rebuilds (currently only boolean loading spinners exist).
 - [ ] **Configurable keyboard shortcuts** — hotkey framework exists (`useHotkeys` hook + tests) but no user-facing remap UI in Preferences.
 - [ ] **Auto-summarization on document upload** — summarization service exists but only runs on chat sessions via background scheduler; not triggered on document import.
 
 ---
 
-## 🎯 High-Impact Features
+## High-Impact Features
 
 ### 5. ⬜ Advanced Graph — Remaining
-- [x] PageRank, community detection, shortest path, centrality, degree distribution — all implemented
 - [ ] **Time-based evolution** — a slider or animation showing how the graph grew over time, note by note
 
 ### 6. ⬜ Plugin Developer Experience
@@ -140,7 +72,7 @@ Each project's chat sessions should demonstrate a different capability:
 
 ---
 
-## 🔌 Expand Ecosystem
+## Expand Ecosystem
 
 ### 7. 🔄 More Built-in Plugins
 - [x] Markdown Exporter
@@ -171,24 +103,14 @@ Each project's chat sessions should demonstrate a different capability:
 
 ---
 
-## 🚀 Advanced Features
+## Advanced Features
 
-### 9. 🔄 AI Enhancements
-- [x] Multi-model support
-- [x] Dual-model (draft + refine) with serial/parallel modes
-- [x] Model comparison (side-by-side)
-- [x] Custom system prompts per session
-- [x] Semantic deduplication (frontend, cosine on embeddings)
-- [x] Frictionless flashcard generation (AI-driven)
+### 9. ⬜ AI Enhancements
 - [ ] Auto-summarization on document upload — generate a TL;DR note alongside raw chunks on import
+- [ ] Web model support — call OpenAI / Anthropic / Gemini APIs as optional model sources
 
 ### 10. 🔄 Collaboration & Sync
 - [x] Git-based sync — `git_sync` service with auto-commit/push every ~5 min, configurable remote URL
 - [ ] Conflict resolution UI — show a diff when two machines edited the same note offline
 - [ ] Shared projects with permissions — read-only or read-write collaborator access
 - [ ] iCloud sync — CloudKit or iCloud Drive for seamless Apple device sync
-
----
-
-bugs
-workspace deletion dialog
