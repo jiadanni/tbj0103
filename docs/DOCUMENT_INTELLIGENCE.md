@@ -328,10 +328,10 @@ RetrievalEngine
 ## Future Enhancements
 
 ### Phase 1 (Current)
-- ✅ PDF/TXT/HTML extraction
-- ✅ Keyword-based retrieval
-- ✅ Citation support
-- ✅ Document browser
+- PDF/TXT/HTML extraction
+- Keyword-based retrieval
+- Citation support
+- Document browser
 
 ### Phase 2 (Near-term)
 - [ ] Ollama embeddings integration
@@ -396,16 +396,16 @@ curl http://localhost:11434/api/embeddings -d '{
 
 | Feature | NotebookLM | Aetherium |
 |---------|------------|-----------|
-| Local Processing | ❌ Cloud | ✅ Local + Cloud |
-| Privacy | ⚠️ Google servers | ✅ Biometric lock |
-| Model Choice | ❌ Fixed | ✅ Ollama/APIs |
-| Cost | 🆓 Free | 🆓 Local (Ollama) |
-| Offline Mode | ❌ No | ✅ Yes (local) |
-| Source Types | PDF, TXT, Web | PDF, TXT, Web, Audio, Notes |
-| Project Organization | ✅ Yes | ✅ Enhanced |
-| Learning Goals | ❌ No | ✅ Yes |
-| Knowledge Graph | ⚠️ Basic | ✅ Advanced (planned) |
-| Export | ⚠️ Limited | ✅ Multiple formats |
+| **Local Processing** | Cloud | Local + Cloud |
+| **Privacy** | Google servers | Biometric lock |
+| **Model Choice** | Fixed | Ollama/APIs |
+| **Cost** | Free | Local (Ollama) |
+| **Offline Mode** | No | Yes (local) |
+| **Source Types** | PDF, TXT, Web | PDF, TXT, Web, Audio, Notes |
+| **Project Organization** | Yes | Enhanced |
+| **Learning Goals** | No | Yes |
+| **Knowledge Graph** | Basic | Advanced (planned) |
+| **Export** | Limited | Multiple formats |
 
 ## Code Examples
 
