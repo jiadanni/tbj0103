@@ -300,6 +300,11 @@ function WorkspaceTabBar({
             )}
           </div>
         </div>
+        <div
+          data-window-drag-handle
+          className="mx-2 hidden h-5 min-w-16 flex-1 rounded-full border border-transparent bg-[var(--bg-hover)]/20 sm:block"
+          title="Drag window"
+        />
         <div className="ml-2 flex shrink-0 items-center gap-1.5" data-workspace-titlebar-actions>
           <button
             onClick={() => {
