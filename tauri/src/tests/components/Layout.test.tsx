@@ -274,7 +274,7 @@ describe("Layout", () => {
     expect(screen.getByTestId("panel-main")).toHaveClass("min-h-0");
   });
 
-  it("renders a top dropdown for section navigation and navigates from it", async () => {
+  it("renders a styled top dropdown for section navigation and navigates from it", async () => {
     useWorkspaceStore.setState({ sectionNavigation: "top-dropdown" });
 
     render(
@@ -283,10 +283,11 @@ describe("Layout", () => {
       </MemoryRouter>
     );
 
-    const select = screen.getByLabelText("Section");
-    expect(select).toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "Section: Dashboard" });
+    expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
 
-    fireEvent.change(select, { target: { value: "/documents" } });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("option", { name: "Documents" }));
 
     expect(await screen.findByText("Documents View")).toBeInTheDocument();
   });

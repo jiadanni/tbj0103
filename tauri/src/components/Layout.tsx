@@ -21,6 +21,7 @@ import SplitPaneLayout from "./SplitPaneLayout";
 import ChatView from "../views/ChatView";
 import MemoryView from "../views/MemoryView";
 import { useArtifactStore } from "../stores/artifactStore";
+import CompactMenuSelect from "./CompactMenuSelect";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
@@ -542,30 +543,23 @@ function NavigationDropdownBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const activeSegment = "/" + location.pathname.split("/")[1];
-  const selectedPath = PRIMARY_NAV_ITEMS.some((item) => item.path === activeSegment)
+  const sectionOptions = PRIMARY_NAV_ITEMS.map((item) => ({ value: item.path, label: item.label }));
+  const selectedPath = sectionOptions.some((item) => item.value === activeSegment)
     ? activeSegment
-    : PRIMARY_NAV_ITEMS[0]?.path ?? "/project";
+    : sectionOptions[0]?.value ?? "/project";
 
   return (
     <div className="flex h-10 items-center gap-3 border-b border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 shrink-0">
-      <label
-        htmlFor="section-navigation-select"
-        className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]"
-      >
+      <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
         Section
-      </label>
-      <select
-        id="section-navigation-select"
+      </span>
+      <CompactMenuSelect
+        label="Section"
         value={selectedPath}
-        onChange={(event) => navigate(event.target.value)}
-        className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-      >
-        {PRIMARY_NAV_ITEMS.map((item) => (
-          <option key={item.path} value={item.path}>
-            {item.label}
-          </option>
-        ))}
-      </select>
+        options={sectionOptions}
+        onChange={(value) => navigate(value)}
+        widthClassName="min-w-0 w-full max-w-[260px] sm:w-[240px]"
+      />
     </div>
   );
 }
@@ -712,11 +706,11 @@ function AppRoutes() {
       <Route path="/grounded" element={<Navigate to="/chat" state={{ subView: "grounded" }} replace />} />
       <Route path="/chat-sessions" element={<Navigate to="/chat" state={{ subView: "sessions" }} replace />} />
       <Route path="/daily" element={<Navigate to="/notes" state={{ subView: "daily" }} replace />} />
-      <Route path="/flashcards" element={<Navigate to="/graph" state={{ subView: "flashcards" }} replace />} />
-      <Route path="/learning" element={<Navigate to="/graph" state={{ subView: "learning" }} replace />} />
+      <Route path="/flashcards" element={<Navigate to="/graph" replace />} />
+      <Route path="/learning" element={<Navigate to="/graph" replace />} />
       <Route path="/plugins" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
-      <Route path="/backlinks" element={<Navigate to="/graph" state={{ subView: "backlinks" }} replace />} />
-      <Route path="/dedup" element={<Navigate to="/graph" state={{ subView: "dedup" }} replace />} />
+      <Route path="/backlinks" element={<Navigate to="/graph" replace />} />
+      <Route path="/dedup" element={<Navigate to="/graph" replace />} />
       <Route path="/settings" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
       <Route path="/workspaces" element={<Navigate to="/preferences" state={{ settingsTab: "workspaces" }} replace />} />
       <Route path="/backup" element={<Navigate to="/preferences" state={{ settingsTab: "backup" }} replace />} />

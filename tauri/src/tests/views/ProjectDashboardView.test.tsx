@@ -83,10 +83,10 @@ describe("ProjectDashboardView", () => {
             name: "PID namespaces",
             review_count: 0,
             reason: "Not reinforced yet",
-            route: { path: "/graph", state: { subView: "flashcards" } },
+            route: { path: "/graph", state: null },
           },
         ],
-        route: { path: "/graph", state: { subView: "flashcards" } },
+        route: { path: "/graph", state: null },
       },
       goals: [
         {
@@ -96,7 +96,7 @@ describe("ProjectDashboardView", () => {
           is_completed: false,
           due_date: null,
           updated_at: "2026-04-05T10:00:00Z",
-          route: { path: "/graph", state: { subView: "learning" } },
+          route: { path: "/graph", state: null },
         },
       ],
       progression: [
@@ -105,7 +105,7 @@ describe("ProjectDashboardView", () => {
           kind: "review",
           title: "Review what is due now",
           description: "5 flashcards are ready for reinforcement.",
-          route: { path: "/graph", state: { subView: "flashcards" } },
+          route: { path: "/graph", state: null },
         },
       ],
       knowledge_health: {

@@ -1,6 +1,7 @@
 use crate::db::DbState;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 /// AI-powered knowledge graph analysis commands.
 /// analyze_workspace — infers concepts & relationships from workspace content via Ollama.
 /// suggest_learning_goals — proposes goals from the existing concept landscape.
@@ -89,6 +90,69 @@ fn is_specific_concept(name: &str) -> bool {
         return false;
     }
     true
+}
+
+fn repair_truncated_json_object(input: &str) -> Option<String> {
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut object_depth = 0usize;
+    let mut array_depth = 0usize;
+
+    for ch in input.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' => object_depth += 1,
+            '}' => object_depth = object_depth.saturating_sub(1),
+            '[' => array_depth += 1,
+            ']' => array_depth = array_depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+
+    let mut repaired = input.trim_end().to_string();
+    if repaired.is_empty() {
+        return None;
+    }
+
+    loop {
+        let trimmed = repaired.trim_end();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let Some(last) = trimmed.chars().last() else {
+            return None;
+        };
+
+        if matches!(last, ',' | ':' | '{' | '[') {
+            repaired = trimmed[..trimmed.len() - last.len_utf8()].to_string();
+            continue;
+        }
+        break;
+    }
+
+    if in_string {
+        repaired.push('"');
+    }
+
+    repaired.push_str(&"]".repeat(array_depth));
+    repaired.push_str(&"}".repeat(object_depth));
+
+    serde_json::from_str::<Value>(&repaired).ok()?;
+    Some(repaired)
 }
 
 /// Collect recent workspace content (notes, daily notes, chat messages, docs, web) capped at ~16 000 chars.
@@ -302,8 +366,16 @@ pub async fn analyze_workspace(
         "related".to_string()
     }
 
-    let output: AiOutput = serde_json::from_str(json_str)
-        .map_err(|e| format!("Failed to parse AI JSON: {e}\nRaw snippet: {json_str}"))?;
+    let output: AiOutput = match serde_json::from_str(json_str) {
+        Ok(parsed) => parsed,
+        Err(parse_error) => {
+            let repaired = repair_truncated_json_object(json_str)
+                .ok_or_else(|| format!("Failed to parse AI JSON: {parse_error}\nRaw snippet: {json_str}"))?;
+            serde_json::from_str(&repaired).map_err(|e| {
+                format!("Failed to parse AI JSON after repair: {e}\nRaw snippet: {json_str}")
+            })?
+        }
+    };
 
     // 5. Insert concepts + relationships — re-acquire lock
     let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -496,4 +568,29 @@ pub async fn suggest_learning_goals(
         .map_err(|e| format!("Failed to parse suggested goals: {e}"))?;
 
     Ok(goals)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::repair_truncated_json_object;
+
+    #[test]
+    fn repairs_truncated_concepts_array() {
+        let broken = r#"{"concepts":["Data Structure","Algorithm","Database"]"#;
+        let repaired = repair_truncated_json_object(broken).expect("should repair");
+        assert_eq!(
+            repaired,
+            r#"{"concepts":["Data Structure","Algorithm","Database"]}"#
+        );
+    }
+
+    #[test]
+    fn repairs_truncated_relationships_array() {
+        let broken = r#"{"concepts":["API"],"relationships":[{"source":"API","target":"REST","type":"related"}"#;
+        let repaired = repair_truncated_json_object(broken).expect("should repair");
+        assert_eq!(
+            repaired,
+            r#"{"concepts":["API"],"relationships":[{"source":"API","target":"REST","type":"related"}]}"#
+        );
+    }
 }
