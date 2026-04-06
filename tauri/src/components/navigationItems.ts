@@ -20,10 +20,8 @@ export const PRIMARY_NAV_ITEMS: NavigationItem[] = [
   { path: "/notes", icon: FileEdit, label: "Notes" },
   { path: "/documents", icon: FileText, label: "Documents" },
   { path: "/webcapture", icon: Globe, label: "Web Captures" },
-  { path: "/graph", icon: Network, label: "Knowledge Graph" },
+  { path: "/graph", icon: Network, label: "Knowledge" },
 ];
-
 export type ChatSubView = "chat" | "compare" | "sessions";
 export type NotesSubView = "notes" | "daily";
-export type GraphSubView = "graph" | "backlinks" | "dedup" | "flashcards" | "learning";
 export type PreferencesSection = "app" | "navigation" | "appearance" | "chat" | "ai" | "webai" | "security" | "workspaces" | "backup" | "import" | "mcp" | "sync";

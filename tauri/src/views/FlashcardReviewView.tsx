@@ -4,7 +4,7 @@
  * Manual creation available as secondary option.
  */
 import { useEffect, useState } from "react";
-import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2 } from "lucide-react";
+import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2, ChevronDown } from "lucide-react";
 import { api, type LearningCard, type ReviewStats } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace } from "../lib/workspacePane";
@@ -157,20 +157,26 @@ export default function FlashcardReviewView() {
             className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors"
           />
           <div className="flex gap-1.5">
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="flex-1 text-[11px] px-1.5 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none min-w-0"
-            >
-              {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-            <select
-              value={cardCount}
-              onChange={(e) => setCardCount(Number(e.target.value))}
-              className="w-14 text-[11px] px-1 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] outline-none"
-            >
-              {[3, 5, 8, 10, 15, 20].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
+            <div className="relative min-w-0 flex-1">
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="h-8 w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-2.5 pr-8 text-[11px] text-[var(--text-secondary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
+              >
+                {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+            </div>
+            <div className="relative w-16">
+              <select
+                value={cardCount}
+                onChange={(e) => setCardCount(Number(e.target.value))}
+                className="h-8 w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-2.5 pr-7 text-[11px] text-[var(--text-secondary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
+              >
+                {[3, 5, 8, 10, 15, 20].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <ChevronDown size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+            </div>
           </div>
           <button
             onClick={generateCards}

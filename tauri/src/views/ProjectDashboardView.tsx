@@ -84,6 +84,14 @@ function routeState(route: DashboardRoute) {
   return route.state ?? undefined;
 }
 
+function normalizeKnowledgeRoute(route: DashboardRoute): DashboardRoute {
+  if (route.path === "/graph" || route.path === "/flashcards" || route.path === "/learning" || route.path === "/backlinks" || route.path === "/dedup") {
+    return { path: "/graph", state: null };
+  }
+
+  return route;
+}
+
 function kindIcon(kind: DashboardActivity["kind"]) {
   switch (kind) {
     case "chat":
@@ -118,12 +126,14 @@ export default function ProjectDashboardView() {
       return;
     }
 
+    const workspaceId = activeWorkspaceId;
+
     async function loadSummary() {
       setIsLoading(true);
       setError(null);
 
       try {
-        const nextSummary = await api.dashboard.getSummary(activeWorkspaceId);
+        const nextSummary = await api.dashboard.getSummary(workspaceId);
         if (!cancelled) {
           setSummary(nextSummary);
         }
@@ -147,7 +157,8 @@ export default function ProjectDashboardView() {
   }, [activeWorkspaceId]);
 
   function openRoute(route: DashboardRoute) {
-    navigate(route.path, route.state ? { state: routeState(route) } : undefined);
+    const normalized = normalizeKnowledgeRoute(route);
+    navigate(normalized.path, normalized.state ? { state: routeState(normalized) } : undefined);
   }
 
   function refreshSummary() {
@@ -428,11 +439,11 @@ export default function ProjectDashboardView() {
                   Use search naturally first. When you are ready, capture a goal so the dashboard can show momentum and gaps.
                 </div>
                 <button
-                  onClick={() => navigate("/graph", { state: { subView: "learning" } })}
+                  onClick={() => navigate("/graph")}
                   className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
                 >
                   <Target size={14} />
-                  Open learning goals
+                  Open knowledge
                 </button>
               </div>
             )}

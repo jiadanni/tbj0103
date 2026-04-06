@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { useChatStore, type ChatSession } from "../stores/chatStore";
-import type { ChatSubView, NotesSubView, GraphSubView, PreferencesSection } from "./navigationItems";
+import type { ChatSubView, NotesSubView, PreferencesSection } from "./navigationItems";
 
 interface Props {
   workspaceId: string;
@@ -47,12 +47,8 @@ const COMMANDS: CommandItem[] = [
   { label: "Daily Notes",              value: "daily",          path: "/notes",        state: { subView: "daily" as NotesSubView } },
   { label: "Go to Documents",          value: "documents",      path: "/documents"     },
   { label: "Web Captures",             value: "webcapture",     path: "/webcapture"    },
-  { label: "Go to Knowledge Graph",    value: "graph",          path: "/graph"         },
-  { label: "Flashcards",               value: "flashcards",     path: "/graph",        state: { subView: "flashcards" as GraphSubView } },
-  { label: "Learning Paths",           value: "learning",       path: "/graph",        state: { subView: "learning" as GraphSubView } },
+  { label: "Go to Knowledge",          value: "graph",          path: "/graph"         },
   { label: "Chat with Documents",      value: "grounded",       path: "/chat",         state: { subView: "grounded" } },
-  { label: "Backlinks",                value: "backlinks",      path: "/graph",        state: { subView: "backlinks" as GraphSubView } },
-  { label: "Concept Deduplication",    value: "dedup",          path: "/graph",        state: { subView: "dedup" as GraphSubView } },
   { label: "Manage Workspaces",        value: "workspaces",     path: "/preferences",  state: { settingsTab: "workspaces" as PreferencesSection } },
   { label: "Go to Backups",            value: "backup",         path: "/preferences",  state: { settingsTab: "backup" as PreferencesSection } },
   { label: "Go to Imports",            value: "import",         path: "/preferences",  state: { settingsTab: "import" as PreferencesSection } },

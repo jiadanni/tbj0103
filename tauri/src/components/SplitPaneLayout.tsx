@@ -3,6 +3,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { type PaneId, type PaneView, useWorkspaceStore } from "../stores/workspaceStore";
 import { WorkspacePaneProvider, useScopedWorkspace } from "../lib/workspacePane";
 import { MessageSquare, FileText, BarChart2, LucideIcon, FileEdit, Network } from "lucide-react";
+import CompactMenuSelect from "./CompactMenuSelect";
 
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
 const ProjectDashboardView = React.lazy(() => import("../views/ProjectDashboardView"));
@@ -15,7 +16,7 @@ const PANE_NAV_ITEMS: { view: PaneView; icon: LucideIcon; label: string }[] = [
   { view: "chat", icon: MessageSquare, label: "Chat" },
   { view: "notes", icon: FileEdit, label: "Notes" },
   { view: "documents", icon: FileText, label: "Documents" },
-  { view: "graph", icon: Network, label: "Graph" },
+  { view: "graph", icon: Network, label: "Knowledge" },
 ];
 
 function resolveSplitSectionNavigation(
@@ -79,30 +80,23 @@ function SplitWorkspaceSelector({ paneId }: { paneId: PaneId }) {
 function SplitSectionDropdown({ paneId }: { paneId: PaneId }) {
   const { setPaneView } = useWorkspaceStore();
   const { activeView } = useScopedWorkspace();
-  const selectedView = PANE_NAV_ITEMS.some((item) => item.view === activeView)
+  const sectionOptions = PANE_NAV_ITEMS.map(({ view, label }) => ({ value: view, label }));
+  const selectedView = sectionOptions.some((item) => item.value === activeView)
     ? activeView
     : "project";
 
   return (
     <div className="flex items-center gap-3 px-3 py-2 border-b border-[var(--border-color)] bg-[var(--bg-elevated)]">
-      <label
-        htmlFor={`split-section-navigation-${paneId}`}
-        className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]"
-      >
+      <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
         Section
-      </label>
-      <select
-        id={`split-section-navigation-${paneId}`}
+      </span>
+      <CompactMenuSelect
+        label={`Section ${paneId}`}
         value={selectedView}
-        onChange={(event) => setPaneView(paneId, event.target.value as PaneView)}
-        className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-      >
-        {PANE_NAV_ITEMS.map(({ view, label }) => (
-          <option key={`${paneId}-${view}`} value={view}>
-            {label}
-          </option>
-        ))}
-      </select>
+        options={sectionOptions}
+        onChange={(value) => setPaneView(paneId, value as PaneView)}
+        widthClassName="min-w-0 w-full max-w-[220px] sm:w-[200px]"
+      />
     </div>
   );
 }
