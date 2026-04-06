@@ -134,6 +134,20 @@ describe("Layout", () => {
     expect(tabStrip).toHaveAttribute("data-no-drag");
   });
 
+  it("renders a dedicated draggable handle in the title bar", () => {
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const dragHandle = document.querySelector("[data-window-drag-handle]");
+
+    expect(dragHandle).not.toBeNull();
+    expect(dragHandle).not.toHaveAttribute("data-no-drag");
+    expect(dragHandle?.parentElement).toHaveAttribute("data-tauri-drag-region");
+  });
+
   it("renders the sidebar in sidebar navigation mode", () => {
     useWorkspaceStore.setState({ sectionNavigation: "sidebar" });
 
