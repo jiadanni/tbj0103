@@ -1818,10 +1818,6 @@ export default function ChatView() {
   const isWebProvider = selectedModelMeta?.provider.startsWith("web_") ?? false;
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const webProviderKey = isWebProvider ? selectedModelMeta!.provider.replace("web_", "") : "";
-  const webProviderLabel: Record<string, string> = {
-    chatgpt: "ChatGPT", deepseek: "DeepSeek", claude: "Claude", gemini: "Gemini",
-  };
-
   const { toolbarState, toolbarRef, dismiss: dismissToolbar } = useTextSelectionToolbar(messagesScrollContainerRef);
 
   const pendingPromptText = useChatStore((s) => s.pendingPromptText);
@@ -3220,11 +3216,11 @@ export default function ChatView() {
               </div>
             )}
 
-            {/* Web AI provider notice */}
+            {/* Browser automation notice */}
             {isWebProvider && webProviderKey && (
               <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-400 flex items-center gap-1.5">
                 <Globe size={12} />
-                A browser window will open — log in to {webProviderLabel[webProviderKey] ?? webProviderKey} and your query will be submitted automatically.
+                A browser window will open for your configured browser target, and your query will be submitted automatically after sign-in.
                 {!preserveWebSession && (
                   <span className="ml-auto text-[10px] opacity-60">Session cleared after query</span>
                 )}

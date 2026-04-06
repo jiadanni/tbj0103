@@ -375,6 +375,7 @@ select optgroup {
 [data-tauri-drag-region] input,
 [data-tauri-drag-region] select,
 [data-tauri-drag-region] a,
+[data-tauri-drag-region] [data-no-drag],
 [data-tauri-drag-region] [role="button"] {
   -webkit-app-region: no-drag;
 }

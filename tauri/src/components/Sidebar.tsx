@@ -18,9 +18,14 @@ const MAX_FONT_SIZE = 22;
 interface SidebarProps {
   onOpenCommandPalette: () => void;
   iconOnly?: boolean;
+  showPreferencesButton?: boolean;
 }
 
-export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: SidebarProps) {
+export default function Sidebar({
+  onOpenCommandPalette,
+  iconOnly = false,
+  showPreferencesButton = false,
+}: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
@@ -194,8 +199,30 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
         </nav>
       </div>
 
-      {/* Fixed bottom trigger */}
+      {/* Fixed bottom controls */}
       <div className={`relative border-t border-[var(--border-color)] ${iconOnly ? "p-2 flex flex-col items-center" : "p-3"}`}>
+        {showPreferencesButton && (
+          <button
+            onClick={() => {
+              setTooltip(null);
+              navigate("/preferences");
+            }}
+            onMouseEnter={(event) => showTooltip("Preferences", event.currentTarget)}
+            onMouseLeave={hideTooltip}
+            onFocus={(event) => showTooltip("Preferences", event.currentTarget)}
+            onBlur={hideTooltip}
+            aria-label="Preferences"
+            className={
+              iconOnly
+                ? "mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+                : "mb-2 flex w-full items-center gap-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+            }
+          >
+            <SettingsIcon size={16} />
+            {!iconOnly && <span className="flex-1 text-left">Preferences</span>}
+          </button>
+        )}
+
         <button
           ref={triggerRef}
           onClick={() => {
@@ -262,18 +289,6 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
             </div>
 
             <div className="mx-2 border-t border-[var(--border-color)]" />
-
-            {/* Preferences */}
-            <button
-              onClick={() => {
-                setPopoverOpen(false);
-                navigate("/preferences");
-              }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
-            >
-              <SettingsIcon size={16} />
-              <span>Preferences</span>
-            </button>
 
             {/* Command Palette */}
             <button

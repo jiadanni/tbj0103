@@ -26,7 +26,7 @@ pub fn get_dashboard_summary(
     let (workspace_name, topic_signature_json): (String, String) = conn
         .query_row(
             "SELECT name, topic_signature FROM workspaces WHERE id = ?1",
-            params![workspace_id],
+            params![&workspace_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(|e| e.to_string())?;
@@ -48,35 +48,35 @@ pub fn get_dashboard_summary(
                AND is_deleted = 0
                AND is_incognito = 0
                AND exclude_from_analytics = 0",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let notes: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM project_notes WHERE workspace_id = ?1",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let sources: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM sources WHERE workspace_id = ?1",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let concepts: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = ?1",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let flashcards: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -85,7 +85,7 @@ pub fn get_dashboard_summary(
             "SELECT COUNT(*)
              FROM learning_goals
              WHERE workspace_id = ?1 AND is_completed = 0",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -94,7 +94,7 @@ pub fn get_dashboard_summary(
             "SELECT COUNT(*)
              FROM learning_goals
              WHERE workspace_id = ?1 AND is_completed = 1",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -102,7 +102,7 @@ pub fn get_dashboard_summary(
     let total_cards: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -112,7 +112,7 @@ pub fn get_dashboard_summary(
              FROM learning_cards
              WHERE workspace_id = ?1
                AND next_review_date <= date('now')",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -121,7 +121,7 @@ pub fn get_dashboard_summary(
             "SELECT COUNT(*)
              FROM learning_cards
              WHERE workspace_id = ?1 AND repetitions > 0",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -130,7 +130,7 @@ pub fn get_dashboard_summary(
             "SELECT COALESCE(AVG(ease_factor), 2.5)
              FROM learning_cards
              WHERE workspace_id = ?1",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -140,7 +140,7 @@ pub fn get_dashboard_summary(
              FROM concept_nodes
              WHERE workspace_id = ?1
                AND review_count <= 1",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -156,7 +156,7 @@ pub fn get_dashboard_summary(
         )
         .map_err(|e| e.to_string())?;
     let weak_concepts = weak_concepts_stmt
-        .query_map(params![workspace_id], |row| {
+        .query_map(params![&workspace_id], |row| {
             let concept_id = row.get::<_, String>(0)?;
             let name = row.get::<_, String>(1)?;
             let review_count = row.get::<_, i64>(2)?;
@@ -193,7 +193,7 @@ pub fn get_dashboard_summary(
                AND s.exclude_from_analytics = 0
              ORDER BY last_seen DESC
              LIMIT 1",
-            params![workspace_id],
+            params![&workspace_id],
             |row| {
                 let session_id = row.get::<_, String>(0)?;
                 Ok(DashboardContinueLearning {
@@ -218,7 +218,7 @@ pub fn get_dashboard_summary(
         )
         .map_err(|e| e.to_string())?;
     let goals = goals_stmt
-        .query_map(params![workspace_id], |row| {
+        .query_map(params![&workspace_id], |row| {
             Ok(DashboardGoalSummary {
                 id: row.get(0)?,
                 title: row.get(1)?,
@@ -240,7 +240,7 @@ pub fn get_dashboard_summary(
              WHERE workspace_id = ?1
                AND is_completed = 0
                AND substr(updated_at, 1, 10) <= date('now', '-14 days')",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -250,7 +250,7 @@ pub fn get_dashboard_summary(
              FROM sources
              WHERE workspace_id = ?1
                AND is_processed = 0",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -264,7 +264,7 @@ pub fn get_dashboard_summary(
                    FROM concept_links l
                    WHERE l.source_id = c.id OR l.target_id = c.id
                )",
-            params![workspace_id],
+            params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -320,7 +320,7 @@ pub fn get_dashboard_summary(
         )
         .map_err(|e| e.to_string())?;
     let recent_activity = activity_stmt
-        .query_map(params![workspace_id], |row| {
+        .query_map(params![&workspace_id], |row| {
             let id = row.get::<_, String>(0)?;
             let kind = row.get::<_, String>(2)?;
             let route = match kind.as_str() {

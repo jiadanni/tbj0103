@@ -108,6 +108,7 @@ Each project's chat sessions should demonstrate a different capability:
 ### 9. ⬜ AI Enhancements
 - [ ] Auto-summarization on document upload — generate a TL;DR note alongside raw chunks on import
 - [ ] Web model support — call OpenAI / Anthropic / Gemini APIs as optional model sources
+- [ ] Browser automation rebrand follow-up — keep the current user-facing rename, then later clean up internal `web_*` identifiers, seeded labels, and provider-specific implementation names so the feature reads as manually configured browser automation throughout the codebase
 
 ### 10. 🔄 Collaboration & Sync
 - [x] Git-based sync — `git_sync` service with auto-commit/push every ~5 min, configurable remote URL

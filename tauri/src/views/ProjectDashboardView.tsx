@@ -1,835 +1,535 @@
-/**
- * ProjectDashboardView — full analytics dashboard.
- * Mirrors ProjectDashboardView.swift: header, time range, metrics,
- * activity heatmap, topic cloud, concept-growth + accuracy charts,
- * recent activity, deduplication, AI insights.
- */
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  FileText, MessageSquare, CreditCard, Network, Lightbulb,
-  Sparkles, Clock, Copy, Brain, RefreshCw, BarChart2, Cpu,
+  ArrowRight,
+  BarChart2,
+  BookOpen,
+  Brain,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  MessageSquare,
+  Network,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Target,
 } from "lucide-react";
 import {
   api,
-  type ProjectNote, type ReviewStats, type GraphStatistics, type ConceptNode, type AiModel,
+  type DashboardActivity,
+  type DashboardRoute,
+  type DashboardSummary,
 } from "../lib/api";
-import { useWorkspaceStore } from "../stores/workspaceStore";
-import { useChatStore } from "../stores/chatStore";
-import { useSettingsStore } from "../stores/settingsStore";
-import { resolveModelForRole } from "../lib/modelRoles";
-import { useNavigate } from "react-router-dom";
 import { useScopedWorkspace } from "../lib/workspacePane";
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface ProjectStats {
-  note_count: number; document_count: number;
-  chat_session_count: number; flashcard_count: number; web_capture_count: number;
-}
-
-type TimeRange = "Week" | "Month" | "Quarter";
-const TIME_RANGES: TimeRange[] = ["Week", "Month", "Quarter"];
-const RANGE_DAYS: Record<TimeRange, number> = { Week: 7, Month: 30, Quarter: 90 };
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+import { useWorkspaceStore } from "../stores/workspaceStore";
 
 function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) {return "just now";}
-  if (m < 60) {return `${m}m ago`;}
-  const h = Math.floor(m / 60);
-  if (h < 24) {return `${h}h ago`;}
-  return `${Math.floor(h / 24)}d ago`;
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) { return "just now"; }
+  if (minutes < 60) { return `${minutes}m ago`; }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) { return `${hours}h ago`; }
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
-function dateKey(d: Date) {
-  return d.toISOString().slice(0, 10);
+function progressLabel(progress: number) {
+  return `${Math.round(progress * 100)}%`;
 }
-
-/** Seeded pseudo-random for mock data (deterministic per date string) */
-function mockRng(seed: string, scale = 10): number {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) {h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0;}
-  return Math.abs(h) % (scale + 1);
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function MetricCard({
-  label, value, icon: _Icon, color: _color, sub,
+  label,
+  value,
+  accent,
 }: {
-  label: string; value: string | number; icon: React.ElementType; color: string; sub?: string;
+  label: string;
+  value: string | number;
+  accent: string;
 }) {
   return (
-    <div className="rounded-xl p-4 flex flex-col gap-1.5 bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--accent-color)' }} />
-      <div className="text-3xl font-bold text-[var(--text-primary)] leading-none">{value}</div>
-      <div className="text-xs text-[var(--text-muted)]">{label}</div>
-      {sub && <div className="text-[10px] text-[var(--text-muted)] opacity-70">{sub}</div>}
+    <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+      <div className={`mb-3 h-2 w-2 rounded-full ${accent}`} />
+      <div className="text-3xl font-semibold text-[var(--text-primary)]">{value}</div>
+      <div className="mt-1 text-xs text-[var(--text-muted)]">{label}</div>
     </div>
   );
 }
 
-function ActivityHeatmap({ days, activityMap }: { days: number; activityMap: Record<string, number> }) {
-  const cells = useMemo(() => {
-    const result: { key: string; count: number }[] = [];
-    const today = new Date();
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const key = dateKey(d);
-      result.push({ key, count: activityMap[key] ?? 0 });
+function Section({
+  title,
+  eyebrow,
+  children,
+}: {
+  title: string;
+  eyebrow?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5">
+      <div className="mb-4">
+        {eyebrow && (
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+            {eyebrow}
+          </div>
+        )}
+        <h2 className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{title}</h2>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function routeState(route: DashboardRoute) {
+  return route.state ?? undefined;
+}
+
+function kindIcon(kind: DashboardActivity["kind"]) {
+  switch (kind) {
+    case "chat":
+      return <MessageSquare size={14} className="text-[var(--accent-color)]" />;
+    case "concept":
+      return <Brain size={14} className="text-sky-400" />;
+    case "source":
+      return <FileText size={14} className="text-amber-400" />;
+    default:
+      return <BookOpen size={14} className="text-emerald-400" />;
+  }
+}
+
+export default function ProjectDashboardView() {
+  const navigate = useNavigate();
+  const { activeWorkspaceId } = useScopedWorkspace();
+  const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const workspace = useMemo(
+    () => workspaces.find((item) => item.id === activeWorkspaceId) ?? null,
+    [workspaces, activeWorkspaceId],
+  );
+  const continueLearning = summary?.continue_learning ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!activeWorkspaceId) {
+      return;
     }
-    return result;
-  }, [days, activityMap]);
 
-  const max = Math.max(1, ...cells.map((c) => c.count));
+    async function loadSummary() {
+      setIsLoading(true);
+      setError(null);
 
-  function cellStyle(count: number): { className: string; style?: React.CSSProperties } {
-    if (count === 0) {return { className: "bg-[var(--bg-primary)] border border-[var(--border-color)]" };}
-    const pct = count / max;
-    const opacity = pct > 0.75 ? 1 : pct > 0.5 ? 0.75 : pct > 0.25 ? 0.5 : 0.3;
-    return { className: "", style: { backgroundColor: 'var(--accent-color)', opacity } };
+      try {
+        const nextSummary = await api.dashboard.getSummary(activeWorkspaceId);
+        if (!cancelled) {
+          setSummary(nextSummary);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setSummary(null);
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWorkspaceId]);
+
+  function openRoute(route: DashboardRoute) {
+    navigate(route.path, route.state ? { state: routeState(route) } : undefined);
   }
 
-  const weeks = Math.ceil(cells.length / 7);
-  return (
-    <div className="rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Activity Heatmap</h3>
-      <div
-        className="grid gap-[3px]"
-        style={{ gridTemplateColumns: `repeat(${weeks}, 14px)`, gridTemplateRows: "repeat(7, 14px)" }}
-      >
-        {cells.map(({ key, count }, i) => (
-          <div
-            key={key}
-            title={`${key}: ${count} activities`}
-            className={`rounded-sm ${cellStyle(count).className}`}
-            style={{ ...cellStyle(count).style, gridRow: (i % 7) + 1, gridColumn: Math.floor(i / 7) + 1 }}
-          />
-        ))}
-      </div>
-      <div className="flex items-center gap-1.5 mt-2">
-        <span className="text-[10px] text-[var(--text-muted)]">Less</span>
-        {[0, 0.3, 0.5, 0.75, 1].map((p) => (
-          <div
-            key={p}
-            className="w-3 h-3 rounded-sm"
-            style={{ background: p === 0 ? "var(--bg-primary)" : 'var(--accent-color)', opacity: p === 0 ? 1 : p }}
-          />
-        ))}
-        <span className="text-[10px] text-[var(--text-muted)]">More</span>
-      </div>
-    </div>
-  );
-}
-
-const CLOUD_COLORS = [
-  "text-blue-400", "text-purple-400", "text-orange-400", "text-green-400",
-  "text-pink-400", "text-cyan-400", "text-indigo-400", "text-teal-400",
-];
-const CLOUD_BG = [
-  "bg-blue-400/10", "bg-purple-400/10", "bg-orange-400/10", "bg-green-400/10",
-  "bg-pink-400/10", "bg-cyan-400/10", "bg-indigo-400/10", "bg-teal-400/10",
-];
-
-function TopicCloud({
-  topics, loading, error, onRefresh,
-}: {
-  topics: { topic: string; count: number }[];
-  loading: boolean;
-  error: string | null;
-  onRefresh: () => void;
-}) {
-  const max = topics[0]?.count ?? 1;
-
-  function fontSize(count: number) {
-    const scale = count / max;
-    return 11 + scale * 12; // 11–23px
+  function refreshSummary() {
+    if (!activeWorkspaceId) { return; }
+    setIsLoading(true);
+    setError(null);
+    api.dashboard.getSummary(activeWorkspaceId)
+      .then(setSummary)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setIsLoading(false));
   }
 
-  return (
-    <div className="rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Topic Cloud</h3>
-          <span className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-color)]/10 text-[var(--accent-color)]">
-            <Sparkles size={9} /> AI
-          </span>
+  if (!activeWorkspaceId) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-lg rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 text-center">
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">No workspace selected</h1>
+          <p className="mt-2 text-sm text-[var(--text-secondary)]">
+            Pick a workspace to see your learning overview, progression suggestions, and review queue.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          {topics.length > 0 && !loading && (
-            <span className="text-[10px] text-[var(--text-muted)]">{topics.length} topics</span>
-          )}
+      </div>
+    );
+  }
+
+  if (isLoading && !summary) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="flex items-center gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-5 py-4 text-sm text-[var(--text-secondary)]">
+          <RefreshCw size={16} className="animate-spin text-[var(--accent-color)]" />
+          Loading your learning overview...
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !summary) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-lg rounded-2xl border border-red-500/20 bg-red-500/5 p-6">
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Dashboard unavailable</h1>
+          <p className="mt-2 text-sm text-[var(--text-secondary)]">{error}</p>
           <button
-            onClick={onRefresh}
-            disabled={loading}
-            title="Refresh topics with AI"
-            className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors disabled:opacity-40"
+            onClick={refreshSummary}
+            className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
           >
-            <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+            <RefreshCw size={14} />
+            Try again
           </button>
         </div>
       </div>
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-8 gap-2">
-          <RefreshCw size={18} className="animate-spin text-[var(--accent-color)]" />
-          <p className="text-xs text-[var(--text-muted)]">AI is analysing your topics…</p>
-        </div>
-      ) : error ? (
-        <div className="flex flex-col items-center justify-center py-6 gap-2">
-          <p className="text-xs text-red-400">Could not load topics: {error}</p>
-          <button onClick={onRefresh} className="text-[10px] text-[var(--accent-color)] hover:underline">Retry</button>
-        </div>
-      ) : topics.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-6 gap-2">
-          <span className="text-2xl opacity-30">☁️</span>
-          <p className="text-xs text-[var(--text-muted)]">No topics yet</p>
-          <p className="text-[10px] text-[var(--text-muted)] opacity-70">Topics will appear as you chat and take notes</p>
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {topics.slice(0, 40).map(({ topic, count }, i) => (
-            <span
-              key={topic}
-              title={`Relevance weight: ${count}`}
-              className={`px-2 py-0.5 rounded-md font-medium ${CLOUD_COLORS[i % CLOUD_COLORS.length]} ${CLOUD_BG[i % CLOUD_BG.length]}`}
-              style={{ fontSize: fontSize(count) }}
-            >
-              {topic}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+    );
+  }
 
-function ConceptGrowthChart({ growthData }: { growthData: { day: number; count: number }[] }) {
-  const W = 280, H = 100, PAD = 8;
-  const maxY = Math.max(1, ...growthData.map((d) => d.count));
-  const pts = growthData.map((d, i) => {
-    const x = PAD + (i / Math.max(growthData.length - 1, 1)) * (W - 2 * PAD);
-    const y = H - PAD - (d.count / maxY) * (H - 2 * PAD);
-    return `${x},${y}`;
-  });
-  const linePts = pts.join(" ");
-  const areaD = `M ${pts[0]} L ${pts.join(" L ")} L ${PAD + (W - 2 * PAD)},${H - PAD} L ${PAD},${H - PAD} Z`;
-
-  return (
-    <div className="flex-1 rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-      <h3 className="text-xs font-semibold text-[var(--text-primary)] mb-2">Concept Growth</h3>
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
-        <defs>
-          <linearGradient id="cgGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgb(96,165,250)" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="rgb(96,165,250)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path d={areaD} fill="url(#cgGrad)" />
-        <polyline points={linePts} fill="none" stroke="rgb(96,165,250)" strokeWidth="1.5" strokeLinejoin="round" />
-      </svg>
-    </div>
-  );
-}
-
-function AccuracyChart({ accuracyData }: { accuracyData: { day: number; accuracy: number }[] }) {
-  const W = 280, H = 100, PAD = 8;
-  const barW = (W - 2 * PAD) / Math.max(accuracyData.length, 1) - 2;
-
-  return (
-    <div className="flex-1 rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-      <h3 className="text-xs font-semibold text-[var(--text-primary)] mb-2">Review Accuracy</h3>
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`}>
-        {accuracyData.map((d, i) => {
-          const barH = (d.accuracy / 100) * (H - 2 * PAD);
-          const x = PAD + i * ((W - 2 * PAD) / accuracyData.length);
-          const y = H - PAD - barH;
-          return (
-            <rect
-              key={i}
-              x={x}
-              y={y}
-              width={barW}
-              height={barH}
-              rx="2"
-              fill="rgb(167,139,250)"
-              opacity="0.8"
-            />
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-function InsightCard({ text }: { text: string }) {
-  return (
-    <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-400/5 border border-amber-400/20">
-      <Lightbulb size={13} className="text-amber-400 mt-0.5 flex-shrink-0" />
-      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{text}</p>
-    </div>
-  );
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
-
-export default function ProjectDashboardView() {
-  const workspaces = useWorkspaceStore((s) => s.workspaces);
-  const { activeWorkspaceId } = useScopedWorkspace();
-  const sessions = useChatStore((s) => s.sessions);
-  const preferredModel = useSettingsStore((s) => s.preferredModel);
-  const backgroundModel = useSettingsStore((s) => s.backgroundModel);
-  const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
-  const modelLabels = useSettingsStore((s) => s.modelLabels);
-  const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
-  const navigate = useNavigate();
-
-  const workspace = workspaces.find((w) => w.id === activeWorkspaceId);
-  const [timeRange, setTimeRange] = useState<TimeRange>("Week");
-  const [projectStats, setProjectStats] = useState<ProjectStats | null>(null);
-  const [reviewStats, setReviewStats] = useState<ReviewStats | null>(null);
-  const [graphStats, setGraphStats] = useState<GraphStatistics | null>(null);
-  const [recentNotes, setRecentNotes] = useState<ProjectNote[]>([]);
-  const [concepts, setConcepts] = useState<ConceptNode[]>([]);
-
-  // AI-powered topic cloud
-  const [aiTopics, setAiTopics] = useState<{ topic: string; count: number }[]>([]);
-  const [topicsLoading, setTopicsLoading] = useState(false);
-  const [topicsError, setTopicsError] = useState<string | null>(null);
-
-  // AI Usage Dashboard
-  const [tokenByDate, setTokenByDate] = useState<{ day: string; total_tokens: number }[]>([]);
-  const [aiModels, setAiModels] = useState<AiModel[]>([]);
-  const dashboardLoadIdRef = useRef(0);
-  const topicLoadIdRef = useRef(0);
-
-  const workspaceSessions = useMemo(
-    () => sessions.filter((session) => session.workspace_id === activeWorkspaceId),
-    [sessions, activeWorkspaceId],
-  );
-
-  useEffect(() => {
-    const loadId = ++dashboardLoadIdRef.current;
-
-    if (!activeWorkspaceId) {
-      setProjectStats(null);
-      setReviewStats(null);
-      setGraphStats(null);
-      setRecentNotes([]);
-      setConcepts([]);
-      setTokenByDate([]);
-      setAiTopics([]);
-      setTopicsError(null);
-      setTopicsLoading(false);
-      return;
-    }
-
-    setProjectStats(null);
-    setReviewStats(null);
-    setGraphStats(null);
-    setRecentNotes([]);
-    setConcepts([]);
-    setTokenByDate([]);
-    setAiTopics([]);
-    setTopicsError(null);
-    setTopicsLoading(false);
-
-    api.project.list(activeWorkspaceId)
-      .then((projects) => Promise.all(projects.map((p) => api.project.getStats(p.id).catch(() => null))))
-      .then((statsList) => {
-        if (loadId !== dashboardLoadIdRef.current) {return;}
-        const merged: ProjectStats = { note_count: 0, document_count: 0, chat_session_count: 0, flashcard_count: 0, web_capture_count: 0 };
-        statsList.forEach((stats) => {
-          if (!stats) {return;}
-          merged.note_count += stats.note_count;
-          merged.document_count += stats.document_count;
-          merged.chat_session_count += stats.chat_session_count;
-          merged.flashcard_count += stats.flashcard_count;
-          merged.web_capture_count += stats.web_capture_count;
-        });
-        setProjectStats(merged);
-      })
-      .catch(() => {});
-
-    api.flashcard.getStats(activeWorkspaceId).then((stats) => {
-      if (loadId !== dashboardLoadIdRef.current) {return;}
-      setReviewStats(stats);
-    }).catch(() => {});
-    api.graph.getStats(activeWorkspaceId).then((stats) => {
-      if (loadId !== dashboardLoadIdRef.current) {return;}
-      setGraphStats(stats);
-    }).catch(() => {});
-    api.graph.listConcepts(activeWorkspaceId).then((nextConcepts) => {
-      if (loadId !== dashboardLoadIdRef.current) {return;}
-      setConcepts(nextConcepts);
-    }).catch(() => {});
-    api.note.list(activeWorkspaceId, { limit: 200, offset: 0 })
-      .then((notes) => {
-        if (loadId !== dashboardLoadIdRef.current) {return;}
-        setRecentNotes(notes.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
-      })
-      .catch(() => {});
-    api.chat.getTokenUsageByDate(activeWorkspaceId, 90).then((usage) => {
-      if (loadId !== dashboardLoadIdRef.current) {return;}
-      setTokenByDate(usage);
-    }).catch(() => {});
-
-    // AI models are global (not workspace-scoped)
-    api.aiModel.list().then((models) => {
-      if (loadId !== dashboardLoadIdRef.current) {return;}
-      setAiModels(models);
-    }).catch(() => {});
-  }, [activeWorkspaceId, modelRefreshCounter]);
-
-  // Fetch AI topics whenever sessions or notes change (debounced by dependency)
-  const fetchAiTopics = async () => {
-    const loadId = ++topicLoadIdRef.current;
-    const model = resolveModelForRole(aiModels, "background", backgroundModel, preferredModel);
-    const texts = [
-      ...workspaceSessions.map((s) => s.title).filter(Boolean),
-      ...recentNotes.map((n) => n.title).filter(Boolean),
-      ...concepts.map((c) => c.name).filter(Boolean),
-    ];
-    if (texts.length === 0 || !model) {
-      setAiTopics([]);
-      setTopicsLoading(false);
-      setTopicsError(null);
-      return;
-    }
-    setTopicsLoading(true);
-    setTopicsError(null);
-    try {
-      const result = await api.ollama.extractTopics(texts, model, ollamaUrl || undefined);
-      if (loadId !== topicLoadIdRef.current) {return;}
-      setAiTopics(result.map((t) => ({ topic: t.topic, count: t.weight })));
-    } catch (e: unknown) {
-      if (loadId !== topicLoadIdRef.current) {return;}
-      setTopicsError(e instanceof Error ? e.message : String(e));
-    } finally {
-      if (loadId === topicLoadIdRef.current) {
-        setTopicsLoading(false);
-      }
-    }
-  };
-
-  // Auto-fetch topics once sessions + notes are loaded
-  useEffect(() => {
-    if (workspaceSessions.length === 0 && recentNotes.length === 0) {return;}
-    if (aiTopics.length > 0) {return;} // already loaded, refresh is manual
-    fetchAiTopics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceSessions.length, recentNotes.length]);
-
-  const days = RANGE_DAYS[timeRange];
-
-  // ── Activity map: count notes, concepts, chats by created_at date ─────────
-  const activityMap = useMemo(() => {
-    const map: Record<string, number> = {};
-    const bump = (iso: string) => {
-      const k = iso.slice(0, 10);
-      map[k] = (map[k] ?? 0) + 1;
-    };
-    recentNotes.forEach((n) => bump(n.created_at));
-    concepts.forEach((c) => bump(c.created_at));
-    workspaceSessions.forEach((s) => bump(s.created_at));
-    return map;
-  }, [recentNotes, concepts, workspaceSessions]);
-
-  // ── Topic cloud fed by AI (aiTopics state replaces the useMemo word-split) ─
-  const topics = aiTopics;
-
-  // ── Mock growth data (same approach as Swift: cumulative random) ──────────
-  const growthData = useMemo(() => {
-    let cum = Math.max(0, (graphStats?.total_concepts ?? 0) - 30 * 2);
-    return Array.from({ length: 30 }, (_, i) => {
-      const key = `growth-${activeWorkspaceId}-${i}`;
-      cum += mockRng(key, 2);
-      return { day: i, count: cum };
-    });
-  }, [graphStats, activeWorkspaceId]);
-
-  // ── Mock accuracy data (7 bars) ───────────────────────────────────────────
-  const accuracyData = useMemo(() => {
-    const base = reviewStats
-      ? Math.round((reviewStats.learned / Math.max(reviewStats.total_cards, 1)) * 100)
-      : 75;
-    return Array.from({ length: 7 }, (_, i) => {
-      const key = `acc-${activeWorkspaceId}-${i}`;
-      const jitter = mockRng(key, 20) - 10;
-      return { day: i, accuracy: Math.min(100, Math.max(0, base + jitter)) };
-    });
-  }, [reviewStats, activeWorkspaceId]);
-
-  // ── Recent Activity: notes + concepts + chats merged ─────────────────────
-  const recentActivity = useMemo(() => {
-    type Entry = { id: string; label: string; kind: "Note" | "Concept" | "Chat"; time: string };
-    const items: Entry[] = [
-      ...recentNotes.slice(0, 3).map((n) => ({
-        id: n.id, label: n.title || "Untitled", kind: "Note" as const, time: n.updated_at,
-      })),
-      ...concepts
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 3)
-        .map((c) => ({ id: c.id, label: c.name, kind: "Concept" as const, time: c.created_at })),
-      ...[...workspaceSessions]
-        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-        .slice(0, 3)
-        .map((s) => ({ id: s.id, label: s.title || "Untitled chat", kind: "Chat" as const, time: s.updated_at })),
-    ];
-    return items.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 5);
-  }, [recentNotes, concepts, workspaceSessions]);
-
-  // ── AI Insights ───────────────────────────────────────────────────────────
-  const insights = useMemo(() => {
-    const out: string[] = [];
-    const totalConcepts = graphStats?.total_concepts ?? 0;
-    const totalCards = reviewStats?.total_cards ?? 0;
-    const learnedCards = reviewStats?.learned ?? 0;
-    const accuracy = totalCards > 0 ? learnedCards / totalCards : 0;
-    const dueCards = reviewStats?.due_today ?? 0;
-    const density = graphStats?.density ?? 0;
-
-    if (totalConcepts > 20) {
-      out.push(`You're building a rich knowledge base with ${totalConcepts} concepts. Consider creating learning paths to organize your learning journey.`);
-    }
-    if (totalCards > 0 && accuracy < 0.7) {
-      out.push(`Your review accuracy is ${Math.round(accuracy * 100)}%. Try spacing out your review sessions for better retention.`);
-    } else if (totalCards > 0 && accuracy >= 0.9) {
-      out.push(`Excellent retention rate! You're mastering the material with ${Math.round(accuracy * 100)}% accuracy.`);
-    }
-    // Activity consistency from heatmap (last 7 days)
-    const recentCount = Object.entries(activityMap)
-      .filter(([k]) => {
-        const diff = (Date.now() - new Date(k).getTime()) / 86400000;
-        return diff <= 7;
-      })
-      .reduce((s, [, v]) => s + v, 0);
-    if (recentCount > 0) {
-      out.push(`You've been active ${recentCount} time${recentCount !== 1 ? "s" : ""} this week. Consistency is key to effective learning!`);
-    }
-    if (dueCards > 0) {
-      out.push(`You have ${dueCards} flashcard${dueCards !== 1 ? "s" : ""} due for review today.`);
-    }
-    if (totalConcepts > 0 && density < 0.3) {
-      out.push(`Only ${Math.round(density * 100)}% of your concepts are linked. Try connecting related concepts to strengthen understanding.`);
-    }
-    if (out.length === 0) {
-      out.push("Keep it up! Your workspace is growing nicely.");
-    }
-    return out;
-  }, [graphStats, reviewStats, activityMap]);
-
-  const kindIcon = (kind: "Note" | "Concept" | "Chat") => {
-    if (kind === "Note") {return <FileText size={13} className="text-green-400 flex-shrink-0" />;}
-    if (kind === "Concept") {return <Brain size={13} className="text-blue-400 flex-shrink-0" />;}
-    return <MessageSquare size={13} className="text-purple-400 flex-shrink-0" />;
-  };
-
-  const kindRoute = (kind: "Note" | "Concept" | "Chat", id: string) => {
-    if (kind === "Chat") {return `/chat/${id}`;}
-    if (kind === "Concept") {return "/graph";}
-    return "/documents";
-  };
-
-  // Token usage map for the heatmap (day => tokens)
-  const tokenMap = useMemo(() => {
-    const map: Record<string, number> = {};
-    tokenByDate.forEach(({ day, total_tokens }) => { map[day] = total_tokens; });
-    return map;
-  }, [tokenByDate]);
-
-  // Total tokens in the selected time range
-  const totalTokensInRange = useMemo(() => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - RANGE_DAYS[timeRange]);
-    return tokenByDate
-      .filter(({ day }) => new Date(day) >= cutoff)
-      .reduce((sum, { total_tokens }) => sum + total_tokens, 0);
-  }, [tokenByDate, timeRange]);
-
-  // Messages in the selected time range
-  const messagesInRange = useMemo(() => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - RANGE_DAYS[timeRange]);
-    let count = 0;
-    workspaceSessions.forEach((s) => {
-      if (new Date(s.updated_at) >= cutoff) {count++;}
-    });
-    return count;
-  }, [workspaceSessions, timeRange]);
-
-  // Models with token usage > 0 and are enabled
-  const modelsWithUsage = useMemo(() => {
-    return aiModels
-      .filter((m) => m.tokens_used_total > 0 && m.enabled)
-      .sort((a, b) => b.tokens_used_total - a.tokens_used_total)
-      .slice(0, 8);
-  }, [aiModels]);
-
-  const maxModelTokens = modelsWithUsage[0]?.tokens_used_total ?? 1;
-
-  const title = workspace?.name ?? "Dashboard";
-  const subtitle = activeWorkspaceId ? "Workspace overview" : "";
+  const effectiveSummary = summary;
+  if (!effectiveSummary) { return null; }
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-6 py-6 space-y-5">
-
-        {/* ── Header ─────────────────────────────────────────────────── */}
-        <div>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-[var(--text-primary)]">{title}</h1>
-              {subtitle && (
-                <p className="text-xs text-[var(--text-muted)] mt-0.5">{subtitle}</p>
-              )}
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-6">
+        <header className="rounded-[28px] border border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(255,255,255,0)_50%),var(--bg-elevated)] p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                Dashboard
+              </div>
+              <h1 className="mt-2 text-3xl font-semibold text-[var(--text-primary)]">
+                {effectiveSummary.workspace_name || workspace?.name || "Learning workspace"}
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
+                Search when you want answers quickly. Come back here to review, track progress, and see what to learn next.
+              </p>
             </div>
-            <div className="text-right shrink-0">
-              {workspace?.created_at && (
-                <p className="text-[10px] text-[var(--text-muted)]">
-                  Created {timeAgo(workspace.created_at)}
-                </p>
-              )}
-              {workspace?.updated_at && (
-                <p className="text-[10px] text-[var(--text-muted)]">
-                  Updated {timeAgo(workspace.updated_at)}
-                </p>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => navigate("/chat")}
+                className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+              >
+                <Search size={15} />
+                Search
+              </button>
+              <button
+                onClick={() => openRoute(effectiveSummary.review.route)}
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+              >
+                <Clock3 size={15} />
+                Review
+              </button>
+              {continueLearning && (
+                <button
+                  onClick={() => openRoute(continueLearning.route)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                >
+                  <ArrowRight size={15} />
+                  Continue
+                </button>
               )}
             </div>
           </div>
+        </header>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard label="Due Review" value={effectiveSummary.review.due_today} accent="bg-amber-400" />
+          <MetricCard label="Active Goals" value={effectiveSummary.overview.active_goals} accent="bg-emerald-400" />
+          <MetricCard label="Concepts Tracked" value={effectiveSummary.overview.concepts} accent="bg-sky-400" />
+          <MetricCard label="Sources Captured" value={effectiveSummary.overview.sources} accent="bg-fuchsia-400" />
         </div>
 
-        {/* ── Time Range ─────────────────────────────────────────────── */}
-        <div className="flex gap-1 p-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] w-fit">
-          {TIME_RANGES.map((r) => (
-            <button
-              key={r}
-              onClick={() => setTimeRange(r)}
-              className={`px-4 py-1 rounded-md text-xs font-medium transition-colors ${
-                timeRange === r
-                  ? "bg-[var(--accent-color)] text-white"
-                  : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-              }`}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Metrics Grid ───────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <MetricCard
-            label="Notes"
-            value={recentNotes.length}
-            icon={FileText}
-            color="text-green-400"
-          />
-          <MetricCard
-            label="Concepts"
-            value={graphStats?.total_concepts ?? concepts.length}
-            icon={Network}
-            color="text-blue-400"
-            sub={graphStats ? `${graphStats.total_links} links` : undefined}
-          />
-          <MetricCard
-            label="Flashcards"
-            value={reviewStats?.total_cards ?? "—"}
-            icon={CreditCard}
-            color="text-orange-400"
-            sub={reviewStats?.due_today ? `${reviewStats.due_today} due today` : undefined}
-          />
-          <MetricCard
-            label="Chats"
-            value={projectStats?.chat_session_count ?? workspaceSessions.length}
-            icon={MessageSquare}
-            color="text-purple-400"
-          />
-        </div>
-
-        {/* ── Activity Heatmap ───────────────────────────────────────── */}
-        <ActivityHeatmap days={days} activityMap={activityMap} />
-
-        {/* ── Topic Cloud ────────────────────────────────────────────── */}
-        <TopicCloud
-          topics={topics}
-          loading={topicsLoading}
-          error={topicsError}
-          onRefresh={fetchAiTopics}
-        />
-
-        {/* ── Charts ─────────────────────────────────────────────────── */}
-        <div className="flex gap-3">
-          <ConceptGrowthChart growthData={growthData} />
-          <AccuracyChart accuracyData={accuracyData} />
-        </div>
-
-        {/* ── Recent Activity ────────────────────────────────────────── */}
-        {recentActivity.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Clock size={13} className="text-[var(--text-muted)]" />
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Recent Activity</h2>
-            </div>
-            <div className="space-y-2">
-              {recentActivity.map((item) => (
+        <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+          <Section title="Suggested Progression" eyebrow="What To Do Next">
+            <div className="space-y-3">
+              {effectiveSummary.progression.map((item) => (
                 <button
-                  key={`${item.kind}-${item.id}`}
-                  onClick={() => navigate(kindRoute(item.kind, item.id))}
-                  className="w-full flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] hover:border-[var(--accent-color)]/40 transition-colors text-left"
+                  key={item.id}
+                  onClick={() => openRoute(item.route)}
+                  className="flex w-full items-start gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 px-4 py-4 text-left transition-colors hover:border-[var(--accent-color)]"
                 >
-                  {kindIcon(item.kind)}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-[var(--text-primary)] truncate">{item.label}</p>
-                    <p className="text-[10px] text-[var(--text-muted)]">{item.kind}</p>
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
+                    {item.kind === "review" ? <Clock3 size={16} /> : item.kind === "goal" ? <Target size={16} /> : item.kind === "graph" ? <Network size={16} /> : item.kind === "source" ? <FileText size={16} /> : <Sparkles size={16} />}
                   </div>
-                  <span className="text-[10px] text-[var(--text-muted)] shrink-0">{timeAgo(item.time)}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-[var(--text-primary)]">{item.title}</div>
+                        <div className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{item.description}</div>
+                      </div>
+                      <ArrowRight size={15} className="mt-1 shrink-0 text-[var(--text-muted)]" />
+                    </div>
+                  </div>
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          </Section>
 
-        {/* ── Deduplication ──────────────────────────────────────────── */}
-        <button
-          onClick={() => navigate("/dedup")}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] hover:border-[var(--accent-color)]/40 transition-colors text-left"
-        >
-          <Copy size={14} className="text-[var(--text-muted)]" />
-          <span className="flex-1 text-sm text-[var(--text-secondary)]">Find Duplicate Notes</span>
-          <span className="text-[var(--text-muted)]">›</span>
-        </button>
-
-        {/* ── AI Usage ───────────────────────────────────────────────── */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <BarChart2 size={13} className="text-[var(--accent-color)]" />
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">AI Usage</h2>
-          </div>
-
-          {/* Summary row */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <MetricCard
-              label="Total Sessions"
-              value={workspaceSessions.length}
-              icon={MessageSquare}
-              color="text-purple-400"
-            />
-            <MetricCard
-              label={`Sent (${timeRange})`}
-              value={messagesInRange}
-              icon={MessageSquare}
-              color="text-blue-400"
-            />
-            <MetricCard
-              label={`Tokens (${timeRange})`}
-              value={totalTokensInRange > 0 ? (totalTokensInRange >= 1000 ? `${(totalTokensInRange / 1000).toFixed(1)}k` : totalTokensInRange) : "—"}
-              icon={Cpu}
-              color="text-green-400"
-            />
-          </div>
-
-          {/* Token activity heatmap */}
-          {tokenByDate.length > 0 ? (
-            <div className="rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)] mb-4">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Token Activity</h3>
-              <div
-                className="grid gap-1"
-                style={{ gridTemplateColumns: `repeat(${Math.min(days, 7)}, minmax(0, 1fr))` }}
-              >
-                {(() => {
-                  const cells: { key: string; count: number }[] = [];
-                  const today = new Date();
-                  for (let i = days - 1; i >= 0; i--) {
-                    const d = new Date(today);
-                    d.setDate(today.getDate() - i);
-                    const key = d.toISOString().slice(0, 10);
-                    cells.push({ key, count: tokenMap[key] ?? 0 });
-                  }
-                  const maxTok = Math.max(1, ...cells.map((c) => c.count));
-                  return cells.map(({ key, count }) => {
-                    const pct = count / maxTok;
-                    if (count === 0) {
-                      return (
-                        <div
-                          key={key}
-                          title={`${key}: 0 tokens`}
-                          className="aspect-square rounded-sm bg-[var(--bg-primary)] border border-[var(--border-color)]"
-                        />
-                      );
-                    }
-                    const opacity = pct > 0.75 ? 1 : pct > 0.5 ? 0.75 : pct > 0.25 ? 0.5 : 0.3;
-                    return (
-                      <div
-                        key={key}
-                        title={`${key}: ${count.toLocaleString()} tokens`}
-                        className="aspect-square rounded-sm"
-                        style={{ backgroundColor: 'var(--accent-color)', opacity }}
-                      />
-                    );
-                  });
-                })()}
-              </div>
-              <div className="flex items-center gap-1.5 mt-2">
-                <span className="text-[10px] text-[var(--text-muted)]">Less</span>
-                {[0, 0.3, 0.5, 0.75, 1].map((p) => (
-                  <div
-                    key={p}
-                    className="w-3 h-3 rounded-sm"
-                    style={{ background: p === 0 ? "var(--bg-primary)" : 'var(--accent-color)', opacity: p === 0 ? 1 : p }}
-                  />
-                ))}
-                <span className="text-[10px] text-[var(--text-muted)]">More</span>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)] mb-4 flex items-center justify-center py-8">
-              <p className="text-xs text-[var(--text-muted)]">No token data yet — start chatting to see activity</p>
-            </div>
-          )}
-
-          {/* Per-model bar chart */}
-          {modelsWithUsage.length > 0 && (
-            <div className="rounded-xl p-4 bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Token Usage by Model</h3>
-              <div className="space-y-2">
-                {modelsWithUsage.map((m) => (
-                  <div key={m.id}>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-[var(--text-secondary)] truncate max-w-[160px]">{modelLabels[m.model_id] || m.name}</span>
-                      <span className="text-[11px] text-[var(--text-muted)]">
-                        {m.tokens_used_total >= 1000
-                          ? `${(m.tokens_used_total / 1000).toFixed(1)}k`
-                          : m.tokens_used_total}
-                      </span>
+          <Section title="Continue Learning" eyebrow="Low Friction">
+            {continueLearning ? (
+              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
+                    <MessageSquare size={18} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-[var(--text-primary)]">
+                      {continueLearning.title}
                     </div>
-                    <div className="h-1.5 rounded-full bg-[var(--bg-primary)] overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-[var(--accent-color)] transition-all"
-                        style={{ width: `${(m.tokens_used_total / maxModelTokens) * 100}%` }}
-                      />
+                    <div className="mt-1 text-sm text-[var(--text-secondary)]">
+                      {continueLearning.project_name || "Workspace thread"}
+                    </div>
+                    <div className="mt-3 text-xs text-[var(--text-muted)]">
+                      Last touched {timeAgo(continueLearning.updated_at)}
                     </div>
                   </div>
-                ))}
+                </div>
+                <button
+                  onClick={() => openRoute(continueLearning.route)}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                >
+                  Open thread
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4">
+                <div className="text-sm font-medium text-[var(--text-primary)]">Nothing to resume yet</div>
+                <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                  Start with search or chat. The dashboard will begin surfacing continuation and review opportunities automatically.
+                </div>
+                <button
+                  onClick={() => navigate("/chat")}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                >
+                  <Search size={14} />
+                  Open search
+                </button>
+              </div>
+            )}
+          </Section>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
+          <Section title="Review Snapshot" eyebrow="Assessment">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                <div className="text-xs text-[var(--text-muted)]">Due today</div>
+                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">{effectiveSummary.review.due_today}</div>
+              </div>
+              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                <div className="text-xs text-[var(--text-muted)]">Cards learned</div>
+                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">{effectiveSummary.review.learned}</div>
+              </div>
+              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                <div className="text-xs text-[var(--text-muted)]">Avg ease</div>
+                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">{effectiveSummary.review.avg_ease.toFixed(2)}</div>
               </div>
             </div>
-          )}
-        </div>
 
-        {/* ── AI Insights ────────────────────────────────────────────── */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Sparkles size={13} className="text-amber-400" />
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">AI Insights</h2>
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-[var(--text-primary)]">Weak or under-reviewed concepts</div>
+                <div className="mt-1 text-sm text-[var(--text-secondary)]">
+                  {effectiveSummary.review.under_reviewed_concepts} concept{effectiveSummary.review.under_reviewed_concepts === 1 ? "" : "s"} still need more reinforcement.
+                </div>
+              </div>
+              <button
+                onClick={() => openRoute(effectiveSummary.review.route)}
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+              >
+                Review now
+                <ArrowRight size={14} />
+              </button>
             </div>
-          </div>
-          <div className="space-y-2">
-            {insights.map((ins, i) => <InsightCard key={i} text={ins} />)}
-          </div>
+
+            <div className="mt-4 space-y-2">
+              {effectiveSummary.review.weak_concepts.length > 0 ? (
+                effectiveSummary.review.weak_concepts.map((concept) => (
+                  <button
+                    key={concept.concept_id}
+                    onClick={() => openRoute(concept.route)}
+                    className="flex w-full items-center justify-between gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 px-4 py-3 text-left transition-colors hover:border-[var(--accent-color)]"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-[var(--text-primary)]">{concept.name}</div>
+                      <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                        {concept.reason} • {concept.review_count} review{concept.review_count === 1 ? "" : "s"}
+                      </div>
+                    </div>
+                    <ArrowRight size={14} className="shrink-0 text-[var(--text-muted)]" />
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4 text-sm text-[var(--text-secondary)]">
+                  No weak concepts surfaced yet. Keep using search and review to build a clearer assessment signal.
+                </div>
+              )}
+            </div>
+          </Section>
+
+          <Section title="Goals In Motion" eyebrow="Progress">
+            {effectiveSummary.goals.length > 0 ? (
+              <div className="space-y-3">
+                {effectiveSummary.goals.map((goal) => (
+                  <button
+                    key={goal.id}
+                    onClick={() => openRoute(goal.route)}
+                    className="block w-full rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-[var(--text-primary)]">{goal.title}</div>
+                        <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                          {goal.is_completed ? "Completed" : `Updated ${timeAgo(goal.updated_at)}`}
+                          {goal.due_date ? ` • Due ${goal.due_date}` : ""}
+                        </div>
+                      </div>
+                      {goal.is_completed ? (
+                        <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
+                      ) : (
+                        <Target size={16} className="shrink-0 text-[var(--accent-color)]" />
+                      )}
+                    </div>
+                    <div className="mt-3 h-2 rounded-full bg-[var(--bg-sidebar)]">
+                      <div
+                        className={`h-2 rounded-full ${goal.is_completed ? "bg-emerald-400" : "bg-[var(--accent-color)]"}`}
+                        style={{ width: `${Math.max(goal.is_completed ? 100 : goal.progress * 100, 6)}%` }}
+                      />
+                    </div>
+                    <div className="mt-2 text-xs text-[var(--text-muted)]">
+                      {goal.is_completed ? "Done" : progressLabel(goal.progress)}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4">
+                <div className="text-sm font-medium text-[var(--text-primary)]">No goals yet</div>
+                <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                  Use search naturally first. When you are ready, capture a goal so the dashboard can show momentum and gaps.
+                </div>
+                <button
+                  onClick={() => navigate("/graph", { state: { subView: "learning" } })}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                >
+                  <Target size={14} />
+                  Open learning goals
+                </button>
+              </div>
+            )}
+          </Section>
         </div>
 
+        <div className="grid gap-6 xl:grid-cols-[1fr_1.2fr]">
+          <Section title="Knowledge Health" eyebrow="Coverage">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                <div className="text-xs text-[var(--text-muted)]">Stalled goals</div>
+                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                  {effectiveSummary.knowledge_health.stalled_goals}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                <div className="text-xs text-[var(--text-muted)]">Unprocessed sources</div>
+                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                  {effectiveSummary.knowledge_health.unprocessed_sources}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                <div className="text-xs text-[var(--text-muted)]">Isolated concepts</div>
+                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                  {effectiveSummary.knowledge_health.isolated_concepts}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-sm font-medium text-[var(--text-primary)]">Active topic signals</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {effectiveSummary.knowledge_health.active_topic_tags.length > 0 ? (
+                  effectiveSummary.knowledge_health.active_topic_tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1 text-xs text-[var(--text-secondary)]"
+                    >
+                      {tag}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-[var(--text-secondary)]">
+                    Topic signals will appear after you search, capture notes, and review material.
+                  </span>
+                )}
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Recent Learning Activity" eyebrow="Fresh Signals">
+            <div className="space-y-2">
+              {effectiveSummary.recent_activity.length > 0 ? (
+                effectiveSummary.recent_activity.map((entry) => (
+                  <button
+                    key={`${entry.kind}-${entry.id}`}
+                    onClick={() => openRoute(entry.route)}
+                    className="flex w-full items-center gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 px-4 py-3 text-left transition-colors hover:border-[var(--accent-color)]"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--accent-color-rgb),0.08)]">
+                      {kindIcon(entry.kind)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-[var(--text-primary)]">{entry.title || "Untitled"}</div>
+                      <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                        {[entry.kind, entry.subtitle, timeAgo(entry.timestamp)].filter(Boolean).join(" • ")}
+                      </div>
+                    </div>
+                    <ArrowRight size={14} className="shrink-0 text-[var(--text-muted)]" />
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4 text-sm text-[var(--text-secondary)]">
+                  Nothing recent yet. Start with search, notes, or sources and the dashboard will begin reflecting your activity.
+                </div>
+              )}
+            </div>
+          </Section>
+        </div>
+
+        <footer className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+          <BarChart2 size={15} className="text-[var(--text-muted)]" />
+          <span>{effectiveSummary.overview.chat_sessions} learning thread{effectiveSummary.overview.chat_sessions === 1 ? "" : "s"}</span>
+          <span className="text-[var(--text-muted)]">•</span>
+          <span>{effectiveSummary.overview.notes} note{effectiveSummary.overview.notes === 1 ? "" : "s"}</span>
+          <span className="text-[var(--text-muted)]">•</span>
+          <span>{effectiveSummary.overview.flashcards} flashcard{effectiveSummary.overview.flashcards === 1 ? "" : "s"}</span>
+          {isLoading && (
+            <>
+              <span className="text-[var(--text-muted)]">•</span>
+              <span className="inline-flex items-center gap-2">
+                <RefreshCw size={14} className="animate-spin text-[var(--accent-color)]" />
+                Refreshing
+              </span>
+            </>
+          )}
+        </footer>
       </div>
     </div>
   );

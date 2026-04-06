@@ -35,6 +35,29 @@ type WorkspaceDialogState =
   | { kind: "last-workspace" }
   | { kind: "delete"; workspace: Workspace };
 
+function handleHorizontalWheel(event: React.WheelEvent<HTMLDivElement>) {
+  const element = event.currentTarget;
+  if (element.scrollWidth <= element.clientWidth) {return;}
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {return;}
+  element.scrollLeft += event.deltaY;
+  event.preventDefault();
+}
+
+function PreferencesDockButton() {
+  const navigate = useNavigate();
+
+  return (
+    <button
+      onClick={() => navigate("/preferences")}
+      title="Preferences"
+      className="absolute bottom-3 left-3 z-30 inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 px-3 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+    >
+      <SettingsIcon size={16} />
+      <span>Preferences</span>
+    </button>
+  );
+}
+
 function WorkspaceTabBar({
   onToggleSplit,
   showWorkspaceTabs = true,
@@ -164,7 +187,12 @@ function WorkspaceTabBar({
         className={`flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""}`}
       >
         {(hideNativeMenu || isLinux) && <AppHeaderMenu />}
-        <div className="min-w-0 flex-1 overflow-x-auto" {...(showWorkspaceTabs ? { "data-workspace-tab-strip": "" } : {})}>
+        <div
+          data-no-drag
+          onWheel={handleHorizontalWheel}
+          className="min-w-0 flex-1 overflow-x-auto scrollbar-none"
+          {...(showWorkspaceTabs ? { "data-workspace-tab-strip": "" } : {})}
+        >
           <div className="flex min-w-max items-center">
             {showWorkspaceTabs ? (
               workspaces.map((ws) => (
@@ -272,13 +300,6 @@ function WorkspaceTabBar({
           </div>
         </div>
         <div className="ml-2 flex shrink-0 items-center gap-1.5" data-workspace-titlebar-actions>
-          <button
-            onClick={() => navigate("/preferences")}
-            title="Preferences"
-            className="w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-          >
-            <SettingsIcon size={20} />
-          </button>
           <button
             onClick={() => {
               if (sectionNavigation === "sidebar") {
@@ -570,6 +591,7 @@ export default function Layout() {
   const { enterSplitMode, exitSplitMode, setPaneView, setPaneChatSession, workspaces } = useWorkspaceStore();
   const loadArtifact = useArtifactStore((state) => state.loadArtifact);
   const setArtifactPanelOpen = useArtifactStore((state) => state.setPanelOpen);
+  const hasLeftRail = !splitMode && (sectionNavigation === "icon-bar" || sectionNavigation === "sidebar");
 
   const toggleSplitModeFromShell = React.useCallback(() => {
     if (splitMode) {
@@ -612,7 +634,7 @@ export default function Layout() {
   }, [loadArtifact, setArtifactPanelOpen]);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
+    <div className="relative flex flex-col h-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
       {commandPaletteOpen && (
         <CommandPalette
           workspaceId={activeWorkspaceId ?? ""}
@@ -632,7 +654,7 @@ export default function Layout() {
         ) : sectionNavigation === "icon-bar" ? (
           <div className="flex h-full overflow-hidden min-h-0">
             <div className="w-14 shrink-0 border-r border-[var(--border-color)] overflow-hidden">
-              <Sidebar onOpenCommandPalette={() => setCommandPaletteOpen(true)} iconOnly />
+              <Sidebar onOpenCommandPalette={() => setCommandPaletteOpen(true)} iconOnly showPreferencesButton />
             </div>
             <div className="flex-1 overflow-hidden flex flex-col min-w-0 min-h-0">
               <AppRoutes />
@@ -648,7 +670,7 @@ export default function Layout() {
               maxSize={30}
               className="border-r border-[var(--border-color)] overflow-hidden"
             >
-              <Sidebar onOpenCommandPalette={() => setCommandPaletteOpen(true)} />
+              <Sidebar onOpenCommandPalette={() => setCommandPaletteOpen(true)} showPreferencesButton />
             </Panel>
 
             <PanelResizeHandle className="w-[1px] bg-[var(--border-color)] hover:bg-[var(--accent-color)] transition-colors cursor-col-resize" />
@@ -661,6 +683,7 @@ export default function Layout() {
           <AppRoutes />
         )}
       </div>
+      {!hasLeftRail && <PreferencesDockButton />}
       <ArtifactPanel />
     </div>
   );
