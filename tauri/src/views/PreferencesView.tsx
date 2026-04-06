@@ -1235,7 +1235,7 @@ export default function PreferencesView() {
                   <div>
                     <p className="text-sm text-[var(--text-secondary)]">Detected hardware guidance</p>
                     <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Aetherium uses RAM and CPU details to estimate a comfortable local model range for categorisation and model picking.
+                      Aetherium uses unified memory on Apple Silicon, detected GPU memory when available, and otherwise falls back to conservative RAM and CPU estimates.
                     </p>
                   </div>
                   <button
@@ -1269,10 +1269,20 @@ export default function PreferencesView() {
                         <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{formatBytes(systemSpecs.available_memory_bytes)} available now</p>
                       </div>
                       <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Swap</p>
-                        <p className="mt-1 text-sm text-[var(--text-primary)]">{formatBytes(systemSpecs.total_swap_bytes)} configured</p>
+                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                          {systemSpecs.gpu_name ? "GPU" : "Swap"}
+                        </p>
+                        <p className="mt-1 text-sm text-[var(--text-primary)]">
+                          {systemSpecs.gpu_name
+                            ? systemSpecs.gpu_name
+                            : `${formatBytes(systemSpecs.total_swap_bytes)} configured`}
+                        </p>
                         <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
-                          {systemSpecs.host_name ? systemSpecs.host_name : (systemSpecs.kernel_version || "Kernel version unavailable")}
+                          {systemSpecs.gpu_name
+                            ? (systemSpecs.gpu_memory_bytes
+                              ? `${formatBytes(systemSpecs.gpu_memory_bytes)} VRAM${systemSpecs.gpu_detection_source ? ` via ${systemSpecs.gpu_detection_source}` : ""}`
+                              : (systemSpecs.gpu_detection_source || "GPU memory unavailable"))
+                            : (systemSpecs.host_name ? systemSpecs.host_name : (systemSpecs.kernel_version || "Kernel version unavailable"))}
                         </p>
                       </div>
                     </div>
