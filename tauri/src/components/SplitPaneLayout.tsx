@@ -115,8 +115,8 @@ function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
   return (
     <div
       className="flex h-full flex-col min-w-0 min-h-0 bg-[var(--bg-primary)]"
-      onMouseDown={() => setActivePaneId(paneId)}
-      onClickCapture={() => setActivePaneId(paneId)}
+      onClick={() => setActivePaneId(paneId)}
+      onFocusCapture={() => setActivePaneId(paneId)}
     >
       <div className="flex flex-col shrink-0 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]">
         <div className="flex items-center min-w-0 px-2 h-10 gap-2 border-b border-[var(--border-color)]">

@@ -27,6 +27,7 @@ pub mod security;
 pub mod settings;
 pub mod source;
 pub mod summary;
+pub mod system;
 pub mod thought_queue;
 pub mod topic_signature;
 pub mod web_ai;

@@ -1,13 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useSettingsStore } from "../stores/settingsStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   ExternalLink,
   Zap,
   Settings as SettingsIcon,
+  ChevronUp,
 } from "lucide-react";
 import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
+import { api } from "../lib/api";
+
+const MIN_FONT_SIZE = 11;
+const MAX_FONT_SIZE = 22;
 
 interface SidebarProps {
   onOpenCommandPalette: () => void;
@@ -19,9 +25,13 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
   const location = useLocation();
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const activeSegment = "/" + location.pathname.split("/")[1];
+  const fontSize = useSettingsStore((s) => s.fontSize);
   const [contextMenu, setContextMenu] = useState<{ item: NavigationItem; x: number; y: number } | null>(null);
-  const [tooltip, setTooltip] = useState<{ label: string; top: number; left: number } | null>(null);
+  const [tooltip, setTooltip] = useState<{ label: string; top: number; left: number; path: string; iconOnly: boolean } | null>(null);
+  const [popoverOpen, setPopoverOpen] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   function showTooltip(label: string, element: HTMLElement) {
     if (!iconOnly) {return;}
@@ -30,6 +40,8 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
       label,
       top: rect.top + rect.height / 2,
       left: rect.right + 12,
+      path: location.pathname,
+      iconOnly,
     });
   }
 
@@ -79,8 +91,25 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
   }, [tooltip]);
 
   useEffect(() => {
-    setTooltip(null);
-  }, [location.pathname, iconOnly]);
+    if (!popoverOpen) {return;}
+
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (popoverRef.current?.contains(target) || triggerRef.current?.contains(target)) {return;}
+      setPopoverOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") { setPopoverOpen(false); }
+    }
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [popoverOpen]);
 
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) {return;}
@@ -99,9 +128,22 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
     }
   }, [contextMenu]);
 
+  function changeFontSize(delta: number) {
+    const next = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize + delta));
+    if (next === fontSize) {return;}
+    useSettingsStore.getState().setFontSize(next);
+    api.settings.get().then((s) => {
+      api.settings.update({ ...s, font_size: next }).catch(() => {});
+    }).catch(() => {});
+  }
+
   if (sectionNavigation !== "sidebar" && sectionNavigation !== "icon-bar") {
     return null;
   }
+
+  const visibleTooltip = tooltip && tooltip.path === location.pathname && tooltip.iconOnly === iconOnly
+    ? tooltip
+    : null;
 
   return (
     <div className={`flex h-full flex-col bg-[var(--bg-sidebar)] ${iconOnly ? "items-center" : ""}`}>
@@ -152,69 +194,110 @@ export default function Sidebar({ onOpenCommandPalette, iconOnly = false }: Side
         </nav>
       </div>
 
-      {/* Fixed bottom actions */}
-      <div className={`border-t border-[var(--border-color)] ${iconOnly ? "p-2 flex flex-col items-center gap-1" : "p-4 space-y-2"}`}>
+      {/* Fixed bottom trigger */}
+      <div className={`relative border-t border-[var(--border-color)] ${iconOnly ? "p-2 flex flex-col items-center" : "p-3"}`}>
         <button
+          ref={triggerRef}
           onClick={() => {
             setTooltip(null);
-            navigate("/preferences");
+            setPopoverOpen((prev) => !prev);
           }}
-          onMouseEnter={(event) => showTooltip("Preferences", event.currentTarget)}
+          onMouseEnter={(event) => showTooltip("Menu", event.currentTarget)}
           onMouseLeave={hideTooltip}
-          onFocus={(event) => showTooltip("Preferences", event.currentTarget)}
-          onBlur={hideTooltip}
-          aria-label={iconOnly ? "Preferences" : undefined}
+          aria-label="Menu"
           className={
             iconOnly
               ? `flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
-                  activeSegment === "/preferences"
-                    ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                  popoverOpen
+                    ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
                     : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                 }`
               : `w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors ${
-                  activeSegment === "/preferences"
-                    ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  popoverOpen
+                    ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                 }`
           }
         >
-          <SettingsIcon size={iconOnly ? 20 : 18} />
-          {!iconOnly && <span className="flex-1 text-left">Preferences</span>}
-        </button>
-
-        <button
-          onClick={() => {
-            setTooltip(null);
-            onOpenCommandPalette();
-          }}
-          onMouseEnter={(event) => showTooltip("Command Palette (⌘K)", event.currentTarget)}
-          onMouseLeave={hideTooltip}
-          onFocus={(event) => showTooltip("Command Palette (⌘K)", event.currentTarget)}
-          onBlur={hideTooltip}
-          aria-label={iconOnly ? "Command Palette (⌘K)" : undefined}
-          className={
-            iconOnly
-              ? "flex items-center justify-center w-10 h-10 rounded-xl text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)] transition-colors"
-              : "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)] transition-colors"
-          }
-        >
-          <Zap size={iconOnly ? 20 : 18} />
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--accent-color)] text-white text-xs font-bold">
+            A
+          </div>
           {!iconOnly && (
             <>
-              <span className="flex-1 text-left">Command Palette</span>
-              <kbd className="text-[10px] px-1 py-0.5 bg-[var(--bg-hover)] rounded font-mono">⌘K</kbd>
+              <span className="flex-1 text-left font-medium">Aetherium</span>
+              <ChevronUp size={14} className={`transition-transform ${popoverOpen ? "" : "rotate-180"}`} />
             </>
           )}
         </button>
+
+        {/* Popover menu */}
+        {popoverOpen && (
+          <div
+            ref={popoverRef}
+            className="absolute bottom-full left-2 right-2 mb-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1.5 shadow-xl z-50"
+            style={iconOnly ? { left: 0, right: "auto", minWidth: 200 } : undefined}
+          >
+            {/* Font size controls */}
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Font Size</div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => changeFontSize(-1)}
+                  disabled={fontSize <= MIN_FONT_SIZE}
+                  className="rounded-lg border border-[var(--border-color)] px-2.5 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  A-
+                </button>
+                <span className="text-xs font-medium text-[var(--text-muted)] w-7 text-center bg-[var(--bg-hover)] px-1.5 py-1 rounded-md">
+                  {fontSize}
+                </span>
+                <button
+                  onClick={() => changeFontSize(1)}
+                  disabled={fontSize >= MAX_FONT_SIZE}
+                  className="rounded-lg border border-[var(--border-color)] px-2.5 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  A+
+                </button>
+              </div>
+            </div>
+
+            <div className="mx-2 border-t border-[var(--border-color)]" />
+
+            {/* Preferences */}
+            <button
+              onClick={() => {
+                setPopoverOpen(false);
+                navigate("/preferences");
+              }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              <SettingsIcon size={16} />
+              <span>Preferences</span>
+            </button>
+
+            {/* Command Palette */}
+            <button
+              onClick={() => {
+                setPopoverOpen(false);
+                onOpenCommandPalette();
+              }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              <Zap size={16} />
+              <span className="flex-1">Command Palette</span>
+              <kbd className="text-[10px] px-1 py-0.5 bg-[var(--bg-hover)] rounded font-mono text-[var(--text-muted)]">⌘K</kbd>
+            </button>
+          </div>
+        )}
       </div>
 
-      {iconOnly && tooltip && (
+      {iconOnly && visibleTooltip && (
         <div
           role="tooltip"
           className="pointer-events-none fixed z-40 -translate-y-1/2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] shadow-lg"
-          style={{ top: tooltip.top, left: tooltip.left }}
+          style={{ top: visibleTooltip.top, left: visibleTooltip.left }}
         >
-          {tooltip.label}
+          {visibleTooltip.label}
         </div>
       )}
 

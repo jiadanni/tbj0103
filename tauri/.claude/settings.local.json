@@ -8,7 +8,8 @@
       "Bash(cargo check:*)",
       "Bash(~/.nvm/versions/node/v20.19.0/bin/npx tsc:*)",
       "Bash(git status:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(~/.nvm/versions/node/v22.22.1/bin/npx tsc:*)"
     ]
   },
   "outputStyle": "Learning",

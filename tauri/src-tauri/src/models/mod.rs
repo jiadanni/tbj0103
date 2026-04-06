@@ -13,5 +13,6 @@ pub mod note;
 pub mod project;
 pub mod source;
 pub mod summary;
+pub mod system;
 pub mod thought_queue;
 pub mod workspace;

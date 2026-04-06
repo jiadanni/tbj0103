@@ -19,12 +19,12 @@ Chat 1: What are closures?
 Chat 2: Tell me about async     [[Closures]] ←──→ [[Functions]]
 Chat 3: Explain functions               ↓             ↓
                                    [[Async/Await]] ←→ [[Concurrency]]
-❌ Isolated                             ↓             ↓
-❌ Repetitive                      [[Swift]] ←────────┘
-❌ No connections
-                                ✅ Connected
-                                ✅ Discoverable
-                                ✅ Learning paths emerge
+Isolated                                ↓             ↓
+Repetitive                         [[Swift]] ←────────┘
+No connections
+                                Connected
+                                Discoverable
+                                Learning paths emerge
 ```
 
 ## Architecture
@@ -693,25 +693,25 @@ incrementReference()
 
 | Feature | Obsidian | Aetherium |
 |---------|----------|-----------|
-| **Bidirectional Links** | ✅ Manual | ✅ Manual + Auto |
-| **Graph Visualization** | ✅ Advanced | ✅ Good |
-| **Auto-Extraction** | ❌ No | ✅ Yes (AI) |
-| **Backlinks** | ✅ Yes | ✅ Yes + Context |
-| **Tags** | ✅ Hierarchical | ✅ Flat (now) |
-| **Templates** | ✅ Yes | 🔮 Planned |
-| **Plugins** | ✅ Extensive | 🔮 Future |
-| **AI Integration** | ⚠️ Plugins | ✅ Native |
-| **Local-First** | ✅ Yes | ✅ Yes |
-| **Source Grounding** | ❌ No | ✅ Yes |
+| **Bidirectional Links** | Manual | Manual + Auto |
+| **Graph Visualization** | Advanced | Good |
+| **Auto-Extraction** | No | Yes (AI) |
+| **Backlinks** | Yes | Yes + Context |
+| **Tags** | Hierarchical | Flat (now) |
+| **Templates** | Yes | Planned |
+| **Plugins** | Extensive | Future |
+| **AI Integration** | Plugins | Native |
+| **Local-First** | Yes | Yes |
+| **Source Grounding** | No | Yes |
 
 ## Conclusion
 
 The Knowledge Graph system transforms Aetherium into a **thinking tool** that:
 
-✅ **Automatically organizes** your learning
-✅ **Reveals hidden connections** between ideas
-✅ **Tracks your knowledge** growth over time
-✅ **Suggests learning paths** through backlinks
-✅ **Combines** chat + documents + notes into unified knowledge
+- **Automatically organizes** your learning
+- **Reveals hidden connections** between ideas
+- **Tracks your knowledge** growth over time
+- **Suggests learning paths** through backlinks
+- **Combines** chat + documents + notes into unified knowledge
 
 **The result**: Your AI companion that not only answers questions but helps you **build a connected, queryable knowledge base** of everything you learn.

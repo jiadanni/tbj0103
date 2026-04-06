@@ -4,6 +4,8 @@ use crate::db::DbState;
 use crate::models::chat::ChatSession;
 use crate::services::chat_file_store;
 use std::process::Command;
+#[cfg(target_os = "linux")]
+use std::path::Path;
 use tauri::State;
 
 /// In-memory passphrase state — populated at startup from keyring if
@@ -36,6 +38,50 @@ fn keyring_delete() {
     if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
         let _ = entry.delete_credential();
     }
+}
+
+#[cfg(target_os = "linux")]
+fn try_linux_file_selection(reveal_path: &Path) -> Result<(), String> {
+    let file_uri = format!("file://{}", reveal_path.to_string_lossy());
+
+    let gdbus_status = Command::new("gdbus")
+        .args([
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.FileManager1",
+            "--object-path",
+            "/org/freedesktop/FileManager1",
+            "--method",
+            "org.freedesktop.FileManager1.ShowItems",
+            &format!("[\"{file_uri}\"]"),
+            "\"\"",
+        ])
+        .status();
+
+    if matches!(gdbus_status, Ok(status) if status.success()) {
+        return Ok(());
+    }
+
+    let dolphin_status = Command::new("dolphin")
+        .arg("--select")
+        .arg(reveal_path)
+        .status();
+
+    if matches!(dolphin_status, Ok(status) if status.success()) {
+        return Ok(());
+    }
+
+    let parent = reveal_path
+        .parent()
+        .ok_or_else(|| "Chat folder not found".to_string())?;
+
+    Command::new("xdg-open")
+        .arg(parent)
+        .status()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 // ── Commands ─────────────────────────────────────────────────────────────────
@@ -92,13 +138,7 @@ pub fn reveal_chat_file(
 
     #[cfg(target_os = "linux")]
     {
-        let parent = reveal_path
-            .parent()
-            .ok_or_else(|| "Chat folder not found".to_string())?;
-        Command::new("xdg-open")
-            .arg(parent)
-            .status()
-            .map_err(|e| e.to_string())?;
+        try_linux_file_selection(&reveal_path)?;
         return Ok(());
     }
 

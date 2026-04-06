@@ -9,7 +9,7 @@ This document describes the Model Context Protocol (MCP) integration added to Ae
 1. **Exposure of app data** to external LLM clients (Claude Desktop, etc.) via an MCP server
 2. **Connection to external MCP services** from within the app via an MCP client
 
-## Phase 1: MCP Server Implementation ✅
+## Phase 1: MCP Server Implementation
 
 ### Binary Executable
 - **File:** `tauri/src-tauri/src/bin/aetherium-mcp-server.rs`
@@ -79,7 +79,7 @@ This document describes the Model Context Protocol (MCP) integration added to Ae
 
 ---
 
-## Phase 2: MCP Client Integration ✅
+## Phase 2: MCP Client Integration
 
 ### Client Manager (`tauri/src-tauri/src/mcp_client/mod.rs`)
 
@@ -200,10 +200,10 @@ The MCP client commands currently return placeholder responses. Full implementat
 
 ## Build Status
 
-✅ **cargo check** passes cleanly
-✅ **All 16 MCP commands** registered in tauri invoke_handler
-✅ **All dependencies** in Cargo.toml
-✅ **Type safety** enforced with TypeScript frontend bindings
+**cargo check** passes cleanly
+**All 16 MCP commands** registered in tauri invoke_handler
+**All dependencies** in Cargo.toml
+**Type safety** enforced with TypeScript frontend bindings
 
 ---
 

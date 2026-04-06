@@ -35,7 +35,13 @@ type WorkspaceDialogState =
   | { kind: "last-workspace" }
   | { kind: "delete"; workspace: Workspace };
 
-function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
+function WorkspaceTabBar({
+  onToggleSplit,
+  showWorkspaceTabs = true,
+}: {
+  onToggleSplit: () => void;
+  showWorkspaceTabs?: boolean;
+}) {
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
   const splitMode = useWorkspaceStore((state) => state.splitMode);
@@ -55,6 +61,7 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
   const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
   const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
+  const activeWorkspaceName = workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.name ?? "Split View";
 
   function activateWorkspace(workspaceId: string) {
     const isChanged = workspaceId !== activeWorkspaceId;
@@ -157,78 +164,85 @@ function WorkspaceTabBar({ onToggleSplit }: { onToggleSplit: () => void }) {
         className={`flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""}`}
       >
         {(hideNativeMenu || isLinux) && <AppHeaderMenu />}
-        <div className="min-w-0 flex-1 overflow-x-auto" data-workspace-tab-strip>
+        <div className="min-w-0 flex-1 overflow-x-auto" {...(showWorkspaceTabs ? { "data-workspace-tab-strip": "" } : {})}>
           <div className="flex min-w-max items-center">
-            {workspaces.map((ws) => (
-              <button
-                key={ws.id}
-                onClick={() => activateWorkspace(ws.id)}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setContextMenu({ workspace: ws, x: event.clientX, y: event.clientY });
-                }}
-                onDragOver={(event) => {
-                  if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
-                    return;
-                  }
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                }}
-                onDragEnter={(event) => {
-                  if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
-                    return;
-                  }
-                  event.preventDefault();
-                  setDragOverWorkspaceId(ws.id);
-                  if (dragHoverTimerRef.current) {
-                    clearTimeout(dragHoverTimerRef.current);
-                  }
-                  dragHoverTimerRef.current = setTimeout(() => {
-                    setActiveWorkspaceId(ws.id);
-                  }, 600);
-                }}
-                onDragLeave={(event) => {
-                  const related = event.relatedTarget as Node | null;
-                  if (related && event.currentTarget.contains(related)) {
-                    return;
-                  }
-                  if (dragOverWorkspaceId === ws.id) {
-                    setDragOverWorkspaceId(null);
-                  }
-                  if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  setDragOverWorkspaceId(null);
-                  if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
-                  const raw = event.dataTransfer.getData("application/x-chat-session-ids");
-                  if (!raw) {
-                    return;
-                  }
-                  try {
-                    const sessionIds = JSON.parse(raw) as string[];
-                    if (sessionIds.length > 0) {
-                      void api.chat.moveSessions(sessionIds, ws.id).then(() => {
-                        activateWorkspace(ws.id);
-                      });
+            {showWorkspaceTabs ? (
+              workspaces.map((ws) => (
+                <button
+                  key={ws.id}
+                  onClick={() => activateWorkspace(ws.id)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setContextMenu({ workspace: ws, x: event.clientX, y: event.clientY });
+                  }}
+                  onDragOver={(event) => {
+                    if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                      return;
                     }
-                  } catch { /* ignore malformed data */ }
-                }}
-                className={`relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
-                  dragOverWorkspaceId === ws.id
-                    ? "border-[rgba(var(--accent-color-rgb),0.45)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] shadow-sm"
-                    : activeWorkspaceId === ws.id
-                    ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
-                    : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
-                }`}
-              >
-                {(dragOverWorkspaceId === ws.id || activeWorkspaceId === ws.id) && (
-                  <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
-                )}
-                {ws.name}
-              </button>
-            ))}
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDragEnter={(event) => {
+                    if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                      return;
+                    }
+                    event.preventDefault();
+                    setDragOverWorkspaceId(ws.id);
+                    if (dragHoverTimerRef.current) {
+                      clearTimeout(dragHoverTimerRef.current);
+                    }
+                    dragHoverTimerRef.current = setTimeout(() => {
+                      setActiveWorkspaceId(ws.id);
+                    }, 600);
+                  }}
+                  onDragLeave={(event) => {
+                    const related = event.relatedTarget as Node | null;
+                    if (related && event.currentTarget.contains(related)) {
+                      return;
+                    }
+                    if (dragOverWorkspaceId === ws.id) {
+                      setDragOverWorkspaceId(null);
+                    }
+                    if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDragOverWorkspaceId(null);
+                    if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
+                    const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+                    if (!raw) {
+                      return;
+                    }
+                    try {
+                      const sessionIds = JSON.parse(raw) as string[];
+                      if (sessionIds.length > 0) {
+                        void api.chat.moveSessions(sessionIds, ws.id).then(() => {
+                          activateWorkspace(ws.id);
+                        });
+                      }
+                    } catch { /* ignore malformed data */ }
+                  }}
+                  className={`relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
+                    dragOverWorkspaceId === ws.id
+                      ? "border-[rgba(var(--accent-color-rgb),0.45)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] shadow-sm"
+                      : activeWorkspaceId === ws.id
+                      ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
+                      : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  {(dragOverWorkspaceId === ws.id || activeWorkspaceId === ws.id) && (
+                    <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+                  )}
+                  {ws.name}
+                </button>
+              ))
+            ) : (
+              <div className="flex h-10 items-center px-3 text-sm font-medium text-[var(--text-secondary)]">
+                <span className="truncate text-[var(--text-primary)]">{activeWorkspaceName}</span>
+                <span className="ml-2 text-xs uppercase tracking-[0.08em] text-[var(--text-muted)]">Split View</span>
+              </div>
+            )}
             {creating ? (
               <div className="flex items-center gap-1.5 ml-1">
                 <input
@@ -607,13 +621,13 @@ export default function Layout() {
         />
       )}
 
-      <WorkspaceTabBar onToggleSplit={toggleSplitModeFromShell} />
+      <WorkspaceTabBar onToggleSplit={toggleSplitModeFromShell} showWorkspaceTabs={!splitMode} />
 
       {!splitMode && sectionNavigation === "top-tabs" && <NavigationTabBar />}
       {!splitMode && sectionNavigation === "top-dropdown" && <NavigationDropdownBar />}
 
       <div className="flex-1 overflow-hidden min-h-0">
-        {splitMode ? (
+        {splitMode && !["/preferences", "/memory", "/webcapture"].some(p => location.pathname.startsWith(p)) ? (
           <SplitPaneLayout />
         ) : sectionNavigation === "icon-bar" ? (
           <div className="flex h-full overflow-hidden min-h-0">

@@ -283,6 +283,7 @@ export default function ProjectDashboardView() {
   const backgroundModel = useSettingsStore((s) => s.backgroundModel);
   const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
   const modelLabels = useSettingsStore((s) => s.modelLabels);
+  const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
   const navigate = useNavigate();
 
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId);
@@ -380,7 +381,7 @@ export default function ProjectDashboardView() {
       if (loadId !== dashboardLoadIdRef.current) {return;}
       setAiModels(models);
     }).catch(() => {});
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, modelRefreshCounter]);
 
   // Fetch AI topics whenever sessions or notes change (debounced by dependency)
   const fetchAiTopics = async () => {
@@ -559,10 +560,10 @@ export default function ProjectDashboardView() {
     return count;
   }, [workspaceSessions, timeRange]);
 
-  // Models with token usage > 0
+  // Models with token usage > 0 and are enabled
   const modelsWithUsage = useMemo(() => {
     return aiModels
-      .filter((m) => m.tokens_used_total > 0)
+      .filter((m) => m.tokens_used_total > 0 && m.enabled)
       .sort((a, b) => b.tokens_used_total - a.tokens_used_total)
       .slice(0, 8);
   }, [aiModels]);

@@ -246,6 +246,25 @@ describe("workspace/project selection", () => {
     expect(useChatStore.getState().activeChatId).toBe("chat-1");
   });
 
+  it("setActiveWorkspaceId clears the primary pane selection when the workspace changes", () => {
+    useWorkspaceStore.setState({
+      activeWorkspaceId: "ws-1",
+      activeProjectId: "p1",
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: "p1", view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: null, view: "project", chatSessionId: "chat-2", noteSelection: null },
+      },
+    });
+
+    useWorkspaceStore.getState().setActiveWorkspaceId("ws-2");
+
+    const state = useWorkspaceStore.getState();
+    expect(state.panes.primary.workspaceId).toBe("ws-2");
+    expect(state.panes.primary.projectId).toBeNull();
+    expect(state.panes.primary.chatSessionId).toBeNull();
+    expect(state.panes.secondary.chatSessionId).toBe("chat-2");
+  });
+
   it("setActiveProjectId does not affect activeWorkspaceId", () => {
     useWorkspaceStore.setState({ activeWorkspaceId: "ws-1" });
     useWorkspaceStore.getState().setActiveProjectId("p-2");
