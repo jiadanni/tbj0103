@@ -198,7 +198,7 @@ export default function App() {
       <MenuEventHandler />
       <Routes>
         <Route path="/*" element={<Layout />} />
-        <Route path="/" element={<Navigate to="/chat" replace />} />
+        <Route path="/" element={<Navigate to="/project" replace />} />
       </Routes>
     </BrowserRouter>
   );

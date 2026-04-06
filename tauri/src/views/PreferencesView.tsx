@@ -28,7 +28,7 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "appearance",  label: "Appearance",  Icon: Palette },
   { id: "chat",        label: "Chat",        Icon: MessageSquare },
   { id: "ai",          label: "AI",          Icon: Bot },
-  { id: "webai",       label: "Web AI",      Icon: Globe },
+  { id: "webai",       label: "Browser Automation", Icon: Globe },
   { id: "security",    label: "Security",    Icon: ShieldCheck },
   { id: "workspaces",  label: "Workspaces",  Icon: LayoutGrid },
   { id: "backup",      label: "Backup",      Icon: HardDrive },
@@ -1865,13 +1865,13 @@ export default function PreferencesView() {
             </>
           )}
 
-          {/* ── Web AI ── */}
+          {/* ── Browser Automation ── */}
           {activeTab === "webai" && (
             <>
               <div>
-                <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Web AI Providers</h3>
+                <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Manual Browser Targets</h3>
                 <p className="text-xs text-[var(--text-muted)] mb-3">
-                  Use ChatGPT, DeepSeek, Claude, and Gemini via browser automation. Select a web provider from the Chat view model dropdown to activate. Requires Node.js and the <code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">playwright</code> npm package (<code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">npm install -g playwright && npx playwright install chromium</code>).
+                  Use manual browser automation for user-configured web targets. Select an enabled browser-backed model from the Chat view model dropdown to activate it. Requires Node.js and the <code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">playwright</code> npm package (<code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">npm install -g playwright && npx playwright install chromium</code>).
                 </p>
               </div>
 
@@ -1894,9 +1894,9 @@ export default function PreferencesView() {
               </div>
 
               <div className="pt-2 space-y-2">
-                <p className="text-xs text-[var(--text-secondary)] font-medium">Enabling web providers</p>
+                <p className="text-xs text-[var(--text-secondary)] font-medium">Enabling browser-backed models</p>
                 <p className="text-xs text-[var(--text-muted)]">
-                  Go to the <strong>AI</strong> tab → Model Priority List and enable any web AI entry (ChatGPT Web, DeepSeek Web, Claude Web, Gemini Web) to make it appear in the Chat view model dropdown.
+                  Go to the <strong>AI</strong> tab → Model Priority List and enable any browser-backed entry to make it appear in the Chat view model dropdown.
                 </p>
               </div>
 

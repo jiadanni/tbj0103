@@ -7,7 +7,7 @@ import { useWorkspaceStore } from "@/stores/workspaceStore";
 
 describe("Sidebar", () => {
   beforeEach(() => {
-    useWorkspaceStore.setState({ workspaceNavigation: "icon-bar" });
+    useWorkspaceStore.setState({ sectionNavigation: "icon-bar" });
   });
 
   it("shows a tooltip for icon-only navigation items on hover", () => {

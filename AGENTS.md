@@ -195,7 +195,6 @@ PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v22.22.1/bin:$PATH" npm run taur
 
 ## Debugging Runtime Bugs
 
--**ask for the devtools console output first** where relevant before reading code. 
 ## What to Avoid
 
 - Do **not** add `@tailwind` directives outside `src/styles/`.

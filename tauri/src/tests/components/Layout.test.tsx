@@ -131,6 +131,7 @@ describe("Layout", () => {
     expect(fixedActions).not.toBeNull();
     expect(tabStrip?.parentElement).toBe(dragRegion);
     expect(fixedActions?.parentElement).toBe(dragRegion);
+    expect(tabStrip).toHaveAttribute("data-no-drag");
   });
 
   it("renders the sidebar in sidebar navigation mode", () => {
