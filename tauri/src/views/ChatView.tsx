@@ -1280,7 +1280,7 @@ function StreamingBubble({
   if (!isCurrentlyStreaming || !streamingContent) { return null; }
 
   return (
-    <div className="flex flex-col gap-1 items-start">
+    <div className="flex flex-col gap-1 items-start px-4">
       <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${
         chatMessageStyle === "flat"
           ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]"
@@ -1342,6 +1342,7 @@ export default function ChatView() {
   const chatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
+  const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
   const composerSelectClassName = "h-9 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 pl-3.5 pr-9 text-xs font-semibold text-[var(--text-primary)] shadow-sm outline-none transition-all hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] focus:border-[var(--accent-color)]";
   const composerToggleBaseClass = "inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold shadow-sm transition-all";
   const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-primary)]/75 text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]";
@@ -2168,8 +2169,9 @@ export default function ChatView() {
       const enabledNonOllamaModels = enabledModels
         .filter((model) => model.provider !== "ollama")
         .map((model) => model.model_id);
+      const managedModelIds = aiModels.map((m) => m.model_id);
       const unmanagedInstalledModels = installedOllamaModels
-        .filter((modelId) => !enabledInstalledOllamaModels.includes(modelId));
+        .filter((modelId) => !managedModelIds.includes(modelId));
 
       const nextAvailableModels = [
         ...enabledInstalledOllamaModels,
@@ -2177,7 +2179,10 @@ export default function ChatView() {
         ...unmanagedInstalledModels,
       ];
 
-      const withSessionModel = sessionModel && !nextAvailableModels.includes(sessionModel)
+      // Keep session model in the list ONLY if it's already selected, 
+      // but don't add it back if it's disabled unless it's the current session's model.
+      const isSessionModelEnabled = aiModels.find(m => m.model_id === sessionModel)?.enabled ?? true;
+      const withSessionModel = sessionModel && (!nextAvailableModels.includes(sessionModel) && isSessionModelEnabled)
         ? [sessionModel, ...nextAvailableModels]
         : nextAvailableModels;
 
@@ -2195,7 +2200,7 @@ export default function ChatView() {
       setSelectedModel((current) => shouldAdoptSessionModel ? sessionModel : current);
       syncedSessionModelRef.current = { sessionId: activeChatId, modelName: sessionModel };
     });
-  }, [ollamaUrl, activeChatId, activeSession?.model_name, preferredModel]);
+  }, [ollamaUrl, activeChatId, activeSession?.model_name, preferredModel, modelRefreshCounter]);
 
   // Scroll to bottom on new messages or session switch.
   // Does NOT depend on streamingContent — a separate interval handles that.
@@ -3224,10 +3229,10 @@ export default function ChatView() {
                   initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
                   followOutput="smooth"
                   alignToBottom={true}
-                  className="w-full min-w-0 overflow-x-hidden px-4 py-4 scroll-smooth"
+                  className="w-full min-w-0 overflow-x-hidden py-4 scroll-smooth"
                   computeItemKey={(_, msg) => msg.id}
                   itemContent={(i, msg) => (
-                    <div className="pb-4">
+                    <div className="pb-4 px-4">
                       <ChatMessageBubble
                         key={msg.id}
                         msg={msg}
@@ -3260,7 +3265,7 @@ export default function ChatView() {
 
               {/* Thinking indicator — spinner shown before the first token arrives */}
               {isStreaming && !isCurrentlyStreaming && (
-                <div className="flex flex-col gap-1 items-start">
+                <div className="flex flex-col gap-1 items-start px-4">
                   <div className="flex items-center gap-2.5 max-w-[75%] overflow-hidden rounded-2xl px-4 py-3 text-sm message-assistant">
                     <span className="flex gap-1 items-center">
                       <span
@@ -3300,7 +3305,7 @@ export default function ChatView() {
             {/* Input / composer area */}
             <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-5"}`}>
               <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[var(--border-color)] bg-[var(--bg-elevated)]/90 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur-xl`}>
-                <div className="flex flex-col gap-3.5">
+                <div className="flex flex-col gap-3.5 min-w-0">
                   {activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
                     <div className="px-1 pt-1">
                       <TopicChips
@@ -3472,7 +3477,7 @@ export default function ChatView() {
                       <ChevronDown size={14} className={`shrink-0 text-[var(--text-muted)] transition-transform ${isModelPickerOpen ? "rotate-180" : ""}`} />
                     </button>
                     {isModelPickerOpen && modelPickerOptions.length > 0 && (
-                      <div className="absolute left-0 top-full z-20 mt-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                      <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
                         <div className="max-h-72 overflow-y-auto">
                           {modelPickerOptions.map((modelId) => {
                             const isSelected = modelId === selectedModel;
@@ -3643,8 +3648,8 @@ export default function ChatView() {
                   <div className="border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-400">{compareError}</div>
                 )}
                 <div className="px-4 pb-6 pt-4">
-                  <div className="mx-auto w-full max-w-5xl rounded-[28px] border border-[var(--border-color)] bg-[var(--bg-elevated)]/90 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur-xl">
-                    <div className="flex flex-col gap-3.5">
+                  <div className="mx-auto w-full min-w-0 max-w-5xl rounded-[28px] border border-[var(--border-color)] bg-[var(--bg-elevated)]/90 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur-xl">
+                    <div className="flex flex-col gap-3.5 min-w-0">
                       <div className="rounded-[24px] border border-[var(--border-color)] bg-[var(--bg-primary)]/80 p-2.5 shadow-[0_18px_45px_-35px_rgba(15,23,42,0.5)] transition-all focus-within:border-[var(--accent-color)] focus-within:shadow-[0_0_0_4px_rgba(var(--accent-color-rgb),0.11),0_18px_45px_-35px_rgba(15,23,42,0.5)]">
                         <div className="flex items-end gap-2">
                           <textarea
@@ -3720,10 +3725,23 @@ export default function ChatView() {
                         </button>
 
                         <button
-                          onClick={() => api.ollama.listModelsFresh(ollamaUrl || undefined).then((list) => {
-                            const filtered = list.filter((m) => !m.name.toLowerCase().includes("embed"));
-                            setCompareModels(filtered);
-                          }).catch(() => {})}
+                          onClick={async () => {
+                            try {
+                              const [ollamaList, managedModels] = await Promise.all([
+                                api.ollama.listModelsFresh(ollamaUrl || undefined),
+                                api.aiModel.list()
+                              ]);
+                              const disabledManagedIds = managedModels.filter(m => !m.enabled).map(m => m.model_id);
+                              
+                              const filtered = ollamaList
+                                .filter((m) => !m.name.toLowerCase().includes("embed"))
+                                .filter((m) => !disabledManagedIds.includes(m.name));
+                                
+                              setCompareModels(filtered);
+                            } catch (e) {
+                              console.error("Failed to refresh models in comparison view:", e);
+                            }
+                          }}
                           title="Refresh models"
                           className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
                         >
