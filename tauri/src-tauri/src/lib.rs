@@ -225,6 +225,7 @@ pub fn run() {
             commands::project::update_project,
             commands::project::delete_project,
             commands::project::move_project_to_workspace,
+            commands::dashboard::get_dashboard_summary,
             // Artifact commands
             commands::artifact::create_artifact,
             commands::artifact::get_artifact,

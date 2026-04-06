@@ -6,6 +6,7 @@ pub mod backup;
 pub mod chat;
 pub mod chat_file;
 pub mod context;
+pub mod dashboard;
 pub mod demo;
 pub mod document;
 pub mod export;

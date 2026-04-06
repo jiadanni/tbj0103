@@ -2,7 +2,7 @@
 
 Scope: `todo.md` tracks the Tauri app only. Swift/macOS work may differ and is not reflected here unless explicitly noted.
 
-Legend: ✅ Complete · 🔄 Partial · ⬜ Not started
+Legend: [x] Complete · [/] Partial · [ ] Not started
 
 ---
 
