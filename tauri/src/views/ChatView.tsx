@@ -2379,6 +2379,16 @@ export default function ChatView() {
       setActiveChatId(session.id);
       api.chat.touchSessionAccessed(session.id).catch(() => {});
       setMessages(session.id, []);
+    } else {
+      const existingSession = useChatStore.getState().sessions.find((session) => session.id === sid);
+      if (existingSession && existingSession.model_name !== modelId) {
+        await api.chat.updateSession(effectiveWorkspaceId, sid, { model_name: modelId });
+        useChatStore.getState().updateSession({
+          ...existingSession,
+          model_name: modelId,
+          updated_at: new Date().toISOString(),
+        });
+      }
     }
 
     if (contentOverride === undefined) {

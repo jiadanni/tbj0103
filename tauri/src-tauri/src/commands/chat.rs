@@ -623,6 +623,7 @@ pub fn update_chat_session(
     title: Option<String>,
     is_pinned: Option<bool>,
     system_prompt: Option<String>,
+    model_name: Option<String>,
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
@@ -631,12 +632,14 @@ pub fn update_chat_session(
             title = COALESCE(?1, title),
             is_pinned = COALESCE(?2, is_pinned),
             system_prompt = COALESCE(?3, system_prompt),
-            updated_at = ?4
-         WHERE id = ?5",
+            model_name = COALESCE(?4, model_name),
+            updated_at = ?5
+         WHERE id = ?6",
         rusqlite::params![
             title,
             is_pinned.map(|value| value as i32),
             system_prompt,
+            model_name,
             now,
             id,
         ],

@@ -12,13 +12,13 @@ Aetherium combines conversational AI, source-grounded research, bidirectional kn
 
 ## Two Implementations
 
-| | Swift / macOS (On hold - May be revived in the future) | Tauri (active) |
+| | Swift / macOS (On hold) | Tauri (active) |
 |---|---|---|
 | **Language** | Swift 5.9 + SwiftUI + SwiftData | Rust (Tauri v2) + React + TypeScript |
 | **Platform** | macOS 14+ only | macOS, Windows, Linux |
 | **Storage** | SwiftData (Core Data) | SQLite via `rusqlite` |
 | **Entry point** | `Sources/Aetherium/` | `tauri/` |
-| **Status** | Feature-complete | **Active development target** |
+| **Status** | Feature-complete | **Active production target** |
 
 The Tauri port is the primary development target and receives all new features.
 
@@ -31,252 +31,87 @@ The Tauri port is the primary development target and receives all new features.
 ### AI Chat with Source Grounding
 - Converse with local Ollama models (llama3, qwen2.5, etc.)
 - **Source-grounded responses** with automatic citations (RAG)
-- Upload documents (PDF, TXT, Markdown, HTML, RTF)
-- Capture web pages; audio transcriptions via macOS Speech framework
-- Chat session history with rename / soft-delete
-- **Import chat histories** from other platforms (LM Studio, Google Gemini Takeout)
-- **Chat Recycle Bin**: Restore deleted chats or permanently erase them
-- Model comparison view to benchmark responses side-by-side
-- AI-generated study guides and quizzes
+- **Artifacts**: Side-by-side rendering of generated code, diagrams, and markdown documents
+- **Dual-model comparison**: Benchmark different models against the same prompt
+- Chat session history with rename / soft-delete; Recycle Bin for restoration
+
+### Intelligent Memory
+- **Fact Extraction**: Automatically identifies and saves user facts and preferences from conversations
+- **Context Persistence**: Durable memory that can be pinned or scoped to specific workspaces
+- **Embedding-based Retrieval**: Fast semantic lookup of relevant memories during chat
 
 ### Knowledge Graph
-- **Obsidian-style bidirectional linking** with `[[concept]]` syntax
-- Interactive graph visualization
-- 8 concept types: Topic, Person, Technology, Definition, Question, Insight, Resource, Custom
-- 6 link types: Related, PartOf, Prerequisite, Contradicts, Supports, Example
-- Auto-detect concept mentions across all content
+- **Bidirectional linking**: Obsidian-style `[[concept]]` syntax across all notes and chats
+- Interactive graph visualization with force-directed layout
+- Multiple concept and link types (Topic, Person, Technology, Related, Prerequisite, etc.)
 - Backlinks panel showing where concepts are referenced
 
-### Native UI & Navigation
-- **Split-pane layout** for side-by-side multitasking
-- Three navigation modes: Sidebar, Icon-only, or Top-tab bar
-- Full support for hidden native menus (Linux/Windows)
+### Data Synchronization & Resilience
+- **Git-based Sync**: Automatic background synchronization to private Git repositories via SSH
+- **Automated Backups**: Configurable local database backups with version history
+- **Data Portability**: Import from LM Studio, Google Gemini, and export to Markdown, PDF, or Obsidian Vaults
 
 ### Full-Text & Semantic Search
-- **Cmd+K command palette** for instant FTS-powered global quick search
-- Semantic search using Ollama embeddings (nomic-embed-text)
-- Search across documents, chats, concepts, notes, and memories
-- Hybrid cosine similarity matching with fallback to keyword search
+- **Command Palette (Cmd+K)**: Instant global search across all content
+- Semantic search using local Ollama embeddings
+- Hybrid matching combining vector similarity with keyword search
 
-### Smart Editor
-- **Live Obsidian-style linking** with auto-complete
-- Markdown rendering with syntax highlighting
-- Auto-save with 2-second debounce
-- Real-time `[[concept]]` detection
-- Word count, character count, link statistics
+### Smart Editor & Daily Notes
+- **Live Markdown**: Real-time rendering with syntax highlighting
+- **Daily Notes**: Performance-optimized calendar view with mood and productivity tracking
+- **Templates**: Variable substitution (`{{date}}`, `{{project}}`) for meeting notes, study sessions, etc.
 
-### Daily Notes + Templates
-- Interactive calendar with 7x7 grid navigation
-- **6 built-in templates**:
-  - Daily Note
-  - Meeting Notes
-  - Learning Session
-  - Weekly Review
-  - Project Planning
-  - Quick Note
-- Variable substitution: `{{date}}`, `{{project}}`, `{{username}}`, etc.
-- Mood tracking (5 levels)
-- Productivity scoring (1-10)
-- Streak tracking
-
-### Flashcards + Spaced Repetition
-- **SM-2 algorithm** for optimal review scheduling
-- Card flipping animations with 3D rotation
-- 4 quality ratings: Forgot, Hard, Good, Easy
-- Session stats with accuracy tracking
-- Keyboard shortcuts (Space to reveal, 0-5 for rating)
-- Leitner System alternative
-
-### Learning Paths
-- Milestone tracking with progress visualization
-- Target completion dates
-- Concept linking to milestones
-- Progress percentage calculation
-- Completion celebrations
-
-### Analytics Dashboard
-- **Activity heatmap** (49-day grid)
-- Concept growth charts
-- Review accuracy charts
-- Recent activity feed
-- **AI-powered insights**:
-  - Learning pace recommendations
-  - Review accuracy feedback
-  - Activity consistency tracking
-  - Concept connection suggestions
-
-### Voice + Export
-- **Real-time speech-to-text** using macOS Speech framework
-- Audio file transcription
-- **4 export formats**:
-  - Markdown (single file)
-  - Obsidian Vault (folder structure)
-  - PDF (formatted)
-  - JSON (data portability)
-
-### Plugin System
-- **Extensible architecture** with 7 plugin types:
-  - **Importers**: Bring data from external sources
-  - **Exporters**: Export to custom formats
-  - **AI Models**: Integrate custom AI models
-  - **Visualizations**: Custom data visualizations
-  - **Automations**: Triggered actions
-  - **Note Types**: Custom note formats
-  - **Integrations**: External service sync
-- **5 built-in plugins**:
-  - Markdown Exporter
-  - Obsidian Vault Exporter
-  - YouTube Transcript Importer
-  - Anki Flashcard Exporter
-  - Daily Summary Automation
-- Plugin discovery and management UI
-- Install custom plugins (.aetheriumplugin bundles)
-- Permission system for plugin security
+### Spaced Repetition (Flashcards)
+- **SM-2 Algorithm**: Optimized review scheduling for long-term retention
+- Card generation from documents or concept nodes
+- Full keyboard-driven review interface
 
 ## Getting Started
 
-### Prerequisites (both apps)
+### Prerequisites
 
 - **Ollama** installed ([ollama.ai](https://ollama.ai))
 
 ```bash
-# Install Ollama
-brew install ollama
-
 # Pull required models
 ollama pull qwen2.5
 ollama pull nomic-embed-text
 ```
 
-> **Note:** The active Tauri app can auto-start Ollama for the default local URL from **Preferences → AI**. The legacy Swift app still expects Ollama to already be running.
+> **Note:** The Tauri app can auto-start Ollama if the binary is in your path.
 
 ---
 
-### Tauri App (cross-platform — recommended)
+### Tauri App (Cross-platform — Recommended)
 
 **Additional prerequisites:**
 - [Rust](https://rustup.rs) toolchain (`cargo`)
-- Node.js 20+ (via [nvm](https://github.com/nvm-sh/nvm) or directly)
-- On macOS: Xcode command-line tools
+- Node.js 20+
+- macOS: Xcode command-line tools
 
 ```bash
-# Clone
-git clone https://github.com/your-username/aetherium.git
-cd aetherium/tauri
-
-# Install JS dependencies
+cd tauri
 npm install
-
-# Run in development mode (best-effort Ollama startup)
-npm run dev:app
-
-# Or run Tauri manually if you prefer to manage Ollama yourself
 npm run tauri dev
 ```
-
-> **Note:** If `node`/`npm` are not on `$PATH`, use absolute paths:
-> ```bash
-> PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v20.19.5/bin:$PATH" npm run tauri dev
-> ```
 
 ---
 
 ### Swift App (macOS only)
 
 **Additional prerequisites:**
-- macOS 14.0+ (Sonoma or later)
+- macOS 14.0+
 - Xcode 15.0+
 
 ```bash
 # From repo root
 open Package.swift   # opens in Xcode
-# or: swift run Aetherium
 ```
-
-1. **Authenticate** with Touch ID / Face ID
-2. **Create a workspace**, then a project
-3. Start learning!
-
-## Usage Guide
-
-### Creating a Project
-
-1. Press `Cmd+N` or click "Create New Project"
-2. Enter a title and description
-3. Set learning goals
-4. Start adding sources and chatting!
-
-### Adding Sources
-
-Navigate to **Documents** (Cmd+4):
-- **Import documents**: PDF, TXT, Markdown, HTML, RTF
-- **Capture webpages**: Extract content from URLs
-- **Create notes**: Write directly in Aetherium
-- **Record audio**: Transcribe voice recordings
-
-All sources are automatically processed and chunked for semantic search.
-
-### Chatting with AI
-
-Navigate to **Chat** (Cmd+2):
-1. Create a new chat (Cmd+Shift+N)
-2. Type your question
-3. AI responds with **citations** from your sources
-4. Click citations to see source context
-
-### Building Knowledge
-
-Navigate to **Knowledge Graph** (Cmd+5):
-1. View your concept network
-2. Create concepts manually or from documents
-3. Link related concepts
-4. Explore connections visually
-
-### Taking Daily Notes
-
-Navigate to **Daily Notes** (Cmd+3):
-1. Select a date from the calendar
-2. Choose a template or start blank
-3. Use `[[concept]]` syntax to link ideas
-4. Set mood and productivity for the day
-
-### Creating Flashcards
-
-Navigate to **Flashcards** (Cmd+6):
-1. Create cards from concepts
-2. Or auto-generate from documents
-3. Review due cards
-4. Rate your recall: Forgot, Hard, Good, Easy
-5. Watch your retention improve!
-
-### Tracking Progress
-
-Navigate to **Dashboard** (Cmd+1):
-- View activity heatmap
-- Track concept growth
-- Monitor review accuracy
-- Get AI insights
-
-### Managing Plugins
-
-Navigate to **Plugins** (Cmd+8):
-1. **View installed plugins** - See all active and loaded plugins
-2. **Browse available plugins** - 5 built-in plugins ready to use
-3. **Load/unload plugins** - Activate or deactivate plugins
-4. **Install custom plugins** - Import .aetheriumplugin bundles
-5. **Plugin permissions** - Review required permissions
-
-**Built-in Plugins:**
-- **Markdown Exporter** - Export entire project as Markdown
-- **Obsidian Vault Exporter** - Create Obsidian-compatible vault
-- **YouTube Importer** - Import video transcripts
-- **Anki Exporter** - Export flashcards to Anki CSV format
-- **Daily Summary** - Auto-generate daily summaries
 
 ## Keyboard Shortcuts
 
 ### Global
-- `Cmd+K` - Command palette (semantic search)
+- `Cmd+K` - Command palette
 - `Cmd+N` - New project
 - `Cmd+Shift+N` - New chat
 - `Cmd+S` - Save
@@ -288,154 +123,55 @@ Navigate to **Plugins** (Cmd+8):
 - `Cmd+3` - Daily Notes
 - `Cmd+4` - Documents
 - `Cmd+5` - Knowledge Graph
-- `Cmd+6` - Flashcards
+- `Cmd+6` - Flashcard Review
 - `Cmd+7` - Learning Paths
 - `Cmd+8` - Plugins
 - `Cmd+9` - Recycle Bin
 
-### Editor
-- `[[` - Trigger concept autocomplete
-- `Cmd+S` - Save note
-- `Cmd+Enter` - Send message
-
-### Flashcards
-- `Space` - Reveal answer
-- `0` - Forgot
-- `3` - Hard
-- `4` - Good
-- `5` - Easy
-
-## Architecture
-
-### Tauri App (active target)
+## Architecture (Tauri Target)
 
 ```
 tauri/
-├── src/                    # React + TypeScript frontend
-│   ├── views/              # 20 page-level views
+├── src/                    # Frontend
+│   ├── views/              # Page components (Dashboard, Chat, Memory, Graph…)
 │   ├── components/         # Shared UI (Layout, Sidebar, CommandPalette…)
-│   ├── lib/api.ts          # All Tauri invoke() wrappers (single source)
-│   ├── stores/             # Zustand global state
-│   └── styles/             # Tailwind CSS v3
-└── src-tauri/              # Rust backend (Tauri v2)
-    ├── src/commands/       # Thin Tauri command handlers
-    ├── src/services/       # Business logic (linking, search, RAG…)
-    ├── src/models/         # Rust structs (Serialize / Deserialize)
-    ├── src/db/             # SQLite connection pool (rusqlite + Mutex)
-    ├── src/ollama/         # Ollama HTTP client
-    └── schema.sql          # SQLite schema — source of truth
+│   ├── lib/api.ts          # Type-safe IPC bridge
+│   └── stores/             # Zustand state management
+└── src-tauri/              # Backend
+    ├── src/commands/       # Tauri command handlers
+    ├── src/services/       # Business logic (Sync, RAG, Memory, Search…)
+    ├── src/models/         # Database and wire models
+    └── schema.sql          # SQLite source of truth
 ```
 
-**Frontend stack:** React 18, TypeScript (strict), Tailwind CSS v3, Zustand, Vite  
-**Backend stack:** Rust, Tauri v2, rusqlite, serde, reqwest
+**Frontend:** React 18, TypeScript, Tailwind CSS, Zustand, Vite  
+**Backend:** Rust, Tauri v2, rusqlite, serde, reqwest
 
-#### SQLite Tables
+### SQLite Schema Overview
 
 | Table | Purpose |
 |---|---|
-| `workspaces` | Top-level multi-workspace |
-| `projects` | Chat-only containers within a workspace |
-| `chat_sessions` / `messages` / `citations` | Chat history + RAG citations |
-| `concept_nodes` / `concept_links` / `concept_mentions` | Knowledge graph |
-| `daily_notes` / `note_templates` | Notes + templates |
-| `learning_cards` / `learning_paths` / `path_milestones` | Flashcards + SM-2 |
-| `uploaded_documents` / `document_chunks` | Documents + embeddings |
-| `web_captures` | Saved web pages |
-| `audio_transcriptions` | Voice recordings |
-| `calendar_alarms` | Scheduled reminders |
-| `project_notes` | Workspace-scoped freeform notes |
-
----
-
-### Swift App (macOS)
-
-**Tech stack:** SwiftUI, SwiftData, Ollama HTTP, AVFoundation, Speech, Charts
-
-```
-Sources/Aetherium/
-├── Models/        # @Model SwiftData entities
-├── Views/         # SwiftUI views
-├── Services/      # Business logic
-├── Demo/          # Demo mode infrastructure
-├── Managers/      # Theme, shortcuts
-└── Plugins/       # Plugin system
-```
-
-#### Services
-
-- **OllamaService** — AI model communication
-- **ModelOrchestrator** — Model selection and routing
-- **DocumentProcessor** — Text extraction, chunking, embedding
-- **SemanticSearchEngine** — Vector similarity search
-- **LinkingEngine** — Bidirectional `[[wiki-link]]` management
-- **ConceptExtractor** — AI-powered concept detection
-- **RetrievalEngine** — RAG retrieval
-- **SpacedRepetitionEngine** — SM-2 algorithm
-- **NoteTemplateEngine** — Template variable substitution
-- **ExportEngine** — Markdown, Obsidian Vault, PDF, JSON
-- **VoiceTranscriptionService** — macOS Speech framework
-- **AIContentGenerator** — Auto-tagging, summaries, quizzes
-- **BackupService** — Incremental backups with timeline
-- **PluginManager** — Plugin discovery, loading, permissions
-- **SecurityManager** — Biometric authentication
-
-## Build & Check
-
-### Swift app
-```bash
-swift build     # compile
-swift test      # run tests
-```
-
-### Tauri app
-```bash
-# TypeScript type-check
-cd tauri
-npm run typecheck
-
-# Rust type-check
-cargo check --manifest-path tauri/src-tauri/Cargo.toml
-
-# Run unit tests (Vitest)
-cd tauri
-npm test
-
-# Run Rust tests
-cargo test --manifest-path tauri/src-tauri/Cargo.toml
-
-# Development server
-cd tauri
-npm run tauri dev
-```
-
-Both `cargo check` and `npm run typecheck` must exit 0 before committing.
+| `workspaces` | Isolation for different namespaces |
+| `projects` | Categorical organization within workspaces |
+| `memories` | Long-term facts and preferences with embeddings |
+| `artifacts` | Renderable documents and code generated in chat |
+| `chat_sessions` | Conversational threads with RAG support |
+| `concept_nodes` | Nodes in the bidirectional knowledge graph |
+| `daily_notes` | Chronological learning logs |
+| `learning_cards` | Spaced-repetition items (SM-2) |
+| `uploaded_documents` | Vectorized sources for RAG |
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+Contributions are welcome. Please refer to [AGENTS.md](AGENTS.md) for development conventions.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
 
 ## Acknowledgments
 
-- **Ollama** - For making local AI accessible
-- **Obsidian** - Inspiration for knowledge graph
-- **NotebookLM** - Inspiration for source grounding
-- **SuperMemo** - SM-2 algorithm for spaced repetition
-
-## Contact
-
-- **GitHub Issues** - For bugs and feature requests
-- **Discussions** - For questions and community
-
----
-
-**Built with Swift, Rust, React, and local-first AI principles**
+- **Ollama**: Local AI infrastructure
+- **Obsidian**: Knowledge organization inspiration
+- **NotebookLM**: Focused research patterns
+- **SuperMemo**: Spaced-repetition concepts

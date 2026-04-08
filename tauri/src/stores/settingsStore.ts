@@ -31,6 +31,10 @@ interface AppSettings {
   promptInstructions: string;
   autoGenerateFlashcards: boolean;
   showGenInfo: boolean;
+  showGenInfoTokenCount: boolean;
+  showGenInfoDuration: boolean;
+  showGenInfoSpeed: boolean;
+  showGenInfoModel: boolean;
   scrollToTopOnSend: boolean;
   chatMessageStyle: ChatMessageStyle;
   expandChatToWindowWidth: boolean;
@@ -63,6 +67,10 @@ interface SettingsStore extends AppSettings {
   setPromptInstructions: (v: string) => void;
   setAutoGenerateFlashcards: (v: boolean) => void;
   setShowGenInfo: (v: boolean) => void;
+  setShowGenInfoTokenCount: (v: boolean) => void;
+  setShowGenInfoDuration: (v: boolean) => void;
+  setShowGenInfoSpeed: (v: boolean) => void;
+  setShowGenInfoModel: (v: boolean) => void;
   setScrollToTopOnSend: (v: boolean) => void;
   setChatMessageStyle: (v: ChatMessageStyle) => void;
   setExpandChatToWindowWidth: (v: boolean) => void;
@@ -98,6 +106,10 @@ export const useSettingsStore = create<SettingsStore>()(
       promptInstructions: "",
       autoGenerateFlashcards: false,
       showGenInfo: true,
+      showGenInfoTokenCount: true,
+      showGenInfoDuration: true,
+      showGenInfoSpeed: true,
+      showGenInfoModel: true,
       scrollToTopOnSend: false,
       chatMessageStyle: "bubble",
       expandChatToWindowWidth: false,
@@ -127,6 +139,10 @@ export const useSettingsStore = create<SettingsStore>()(
       setPromptInstructions: (promptInstructions) => set({ promptInstructions }),
       setAutoGenerateFlashcards: (autoGenerateFlashcards) => set({ autoGenerateFlashcards }),
       setShowGenInfo: (showGenInfo) => set({ showGenInfo }),
+      setShowGenInfoTokenCount: (showGenInfoTokenCount) => set({ showGenInfoTokenCount }),
+      setShowGenInfoDuration: (showGenInfoDuration) => set({ showGenInfoDuration }),
+      setShowGenInfoSpeed: (showGenInfoSpeed) => set({ showGenInfoSpeed }),
+      setShowGenInfoModel: (showGenInfoModel) => set({ showGenInfoModel }),
       setScrollToTopOnSend: (scrollToTopOnSend) => set({ scrollToTopOnSend }),
       setChatMessageStyle: (chatMessageStyle) => set({ chatMessageStyle }),
       setExpandChatToWindowWidth: (expandChatToWindowWidth) => set({ expandChatToWindowWidth }),

@@ -94,9 +94,12 @@ CREATE TABLE IF NOT EXISTS concept_nodes (
     x_position REAL NOT NULL DEFAULT 0.0,
     y_position REAL NOT NULL DEFAULT 0.0,
     review_count INTEGER NOT NULL DEFAULT 0,
+    hierarchy_level TEXT NOT NULL DEFAULT 'concept',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_concept_nodes_hierarchy ON concept_nodes(workspace_id, hierarchy_level);
 
 CREATE TABLE IF NOT EXISTS concept_links (
     id TEXT PRIMARY KEY NOT NULL,

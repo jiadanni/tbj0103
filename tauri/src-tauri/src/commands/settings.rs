@@ -41,6 +41,11 @@ pub struct Settings {
     pub prompt_instructions: String,
     pub switch_workspace_to_chat: bool,
     pub hide_native_menu: bool,
+    pub show_gen_info: bool,
+    pub show_gen_info_token_count: bool,
+    pub show_gen_info_duration: bool,
+    pub show_gen_info_speed: bool,
+    pub show_gen_info_model: bool,
 }
 
 impl Default for Settings {
@@ -81,6 +86,11 @@ impl Default for Settings {
             prompt_instructions: String::new(),
             switch_workspace_to_chat: false,
             hide_native_menu: false,
+            show_gen_info: true,
+            show_gen_info_token_count: true,
+            show_gen_info_duration: true,
+            show_gen_info_speed: true,
+            show_gen_info_model: true,
         }
     }
 }
@@ -250,6 +260,21 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         hide_native_menu: get_setting(&conn, "hide_native_menu")
             .map(|v| v == "true")
             .unwrap_or(def.hide_native_menu),
+        show_gen_info: get_setting(&conn, "show_gen_info")
+            .map(|v| v == "true")
+            .unwrap_or(def.show_gen_info),
+        show_gen_info_token_count: get_setting(&conn, "show_gen_info_token_count")
+            .map(|v| v == "true")
+            .unwrap_or(def.show_gen_info_token_count),
+        show_gen_info_duration: get_setting(&conn, "show_gen_info_duration")
+            .map(|v| v == "true")
+            .unwrap_or(def.show_gen_info_duration),
+        show_gen_info_speed: get_setting(&conn, "show_gen_info_speed")
+            .map(|v| v == "true")
+            .unwrap_or(def.show_gen_info_speed),
+        show_gen_info_model: get_setting(&conn, "show_gen_info_model")
+            .map(|v| v == "true")
+            .unwrap_or(def.show_gen_info_model),
     })
 }
 
@@ -438,6 +463,31 @@ pub fn update_settings(
         &conn,
         "hide_native_menu",
         &settings.hide_native_menu.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "show_gen_info",
+        &settings.show_gen_info.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "show_gen_info_token_count",
+        &settings.show_gen_info_token_count.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "show_gen_info_duration",
+        &settings.show_gen_info_duration.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "show_gen_info_speed",
+        &settings.show_gen_info_speed.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "show_gen_info_model",
+        &settings.show_gen_info_model.to_string(),
     )?;
 
     if settings.start_at_login {
