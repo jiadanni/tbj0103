@@ -34,6 +34,7 @@ import {
   type DashboardRoute,
   type DashboardSummary,
   type LearningCard,
+  type LearningPathItem,
 } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace } from "../lib/workspacePane";
@@ -173,6 +174,10 @@ export default function KnowledgeGraphView() {
   const [isGeneratingCards, setIsGeneratingCards] = useState(false);
   const [genCardError, setGenCardError] = useState("");
 
+  const [learningPath, setLearningPath] = useState<LearningPathItem[]>([]);
+  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(null);
@@ -207,15 +212,18 @@ export default function KnowledgeGraphView() {
     if (!activeWorkspaceId) {
       setNodes([]);
       setLinks([]);
+      setLearningPath([]);
       return;
     }
 
-    const [nextNodes, nextLinks] = await Promise.all([
+    const [nextNodes, nextLinks, nextPath] = await Promise.all([
       api.graph.listConcepts(activeWorkspaceId),
       api.graph.listLinks(activeWorkspaceId),
+      api.graph.getLearningPath(activeWorkspaceId).catch(() => [] as LearningPathItem[]),
     ]);
     setNodes(nextNodes);
     setLinks(nextLinks);
+    setLearningPath(nextPath);
   }, [activeWorkspaceId]);
 
   const loadSummary = useCallback(async () => {
@@ -254,7 +262,7 @@ export default function KnowledgeGraphView() {
     api.flashcard.listByConcept(selectedConcept.id).then(setConceptCards).catch(() => setConceptCards([]));
   }, [selectedConcept]);
 
-  const filteredConcepts = useMemo(
+  const _filteredConcepts = useMemo(
     () => nodes.filter((node) => !conceptSearch || node.name.toLowerCase().includes(conceptSearch.toLowerCase())),
     [conceptSearch, nodes],
   );
@@ -267,12 +275,48 @@ export default function KnowledgeGraphView() {
   const graphData = useMemo(() => {
     const visibleIds = new Set(filteredNodes.map((node) => node.id));
     return {
-      nodes: filteredNodes.map((node) => ({ ...node, val: 1 })),
+      nodes: filteredNodes.map((node) => ({
+        ...node,
+        val: node.hierarchy_level === 'chapter' ? 20 : node.hierarchy_level === 'section' ? 8 : 2,
+      })),
       links: links
         .filter((link) => visibleIds.has(link.source_id) && visibleIds.has(link.target_id))
         .map((link) => ({ ...link, source: link.source_id, target: link.target_id })),
     };
   }, [filteredNodes, links]);
+
+  const hierarchyTree = useMemo(() => {
+    const parentOf = new Map(
+      links.filter((l) => l.link_type === 'part_of').map((l) => [l.source_id, l.target_id])
+    );
+    const chapters = nodes.filter((n) => n.hierarchy_level === 'chapter');
+    const sections = nodes.filter((n) => n.hierarchy_level === 'section');
+    const concepts = nodes.filter((n) => n.hierarchy_level === 'concept');
+    return {
+      chapters: chapters.map((ch) => ({
+        ...ch,
+        sections: sections
+          .filter((s) => parentOf.get(s.id) === ch.id)
+          .map((s) => ({
+            ...s,
+            concepts: concepts.filter((c) => parentOf.get(c.id) === s.id),
+          })),
+      })),
+      orphans: concepts.filter((c) => !parentOf.has(c.id)),
+    };
+  }, [nodes, links]);
+
+  useEffect(() => {
+    if (!fgRef.current) { return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    fgRef.current.d3Force('charge')?.strength((n: any) =>
+      n.hierarchy_level === 'chapter' ? -300 : n.hierarchy_level === 'section' ? -150 : -60
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    fgRef.current.d3Force('link')?.strength((l: any) =>
+      l.link_type === 'part_of' ? 0.8 : 0.3
+    );
+  }, [graphData]);
 
   async function handleAnalyze() {
     if (!activeWorkspaceId || !selectedModel || isAnalyzing) { return; }
@@ -415,7 +459,7 @@ export default function KnowledgeGraphView() {
 
           {analyzeResult && (
             <p className="mt-2 text-[10px] text-[var(--text-muted)]">
-              +{analyzeResult.concepts_created} concepts and +{analyzeResult.links_created} links added
+              +{analyzeResult.chapters_created} chapters, +{analyzeResult.sections_created} sections, +{analyzeResult.concepts_created} concepts, +{analyzeResult.links_created} links added
             </p>
           )}
           {analyzeError && (
@@ -448,25 +492,82 @@ export default function KnowledgeGraphView() {
               className="w-full rounded bg-[var(--bg-input)] border border-[var(--border-color)] py-1 pl-6 pr-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
             />
           </div>
-          <div className="max-h-44 space-y-0.5 overflow-y-auto">
-            {filteredConcepts.map((node) => (
-              <button
-                key={node.id}
-                onClick={() => setSelectedConcept(selectedConcept?.id === node.id ? null : node)}
-                className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors ${
-                  selectedConcept?.id === node.id
-                    ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                }`}
-              >
-                <span
-                  className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                  style={{ backgroundColor: colorFor(node.concept_type) }}
-                />
-                <span className="truncate">{node.name}</span>
-              </button>
-            ))}
-            {filteredConcepts.length === 0 && (
+          <div className="max-h-64 overflow-y-auto space-y-0.5">
+            {hierarchyTree.chapters.map((chapter) => {
+              const chVisible = !conceptSearch || chapter.name.toLowerCase().includes(conceptSearch.toLowerCase()) ||
+                chapter.sections.some((s) => s.name.toLowerCase().includes(conceptSearch.toLowerCase()) ||
+                  s.concepts.some((c) => c.name.toLowerCase().includes(conceptSearch.toLowerCase())));
+              if (!chVisible) { return null; }
+              const chExpanded = expandedChapters.has(chapter.id);
+              return (
+                <div key={chapter.id}>
+                  <button
+                    onClick={() => setExpandedChapters((prev) => { const next = new Set(prev); if (chExpanded) { next.delete(chapter.id); } else { next.add(chapter.id); } return next; })}
+                    className="flex w-full items-center gap-1 rounded px-1 py-1 text-left text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    <ChevronDown size={10} className={`flex-shrink-0 transition-transform ${chExpanded ? '' : '-rotate-90'}`} />
+                    <span className="truncate">{chapter.name}</span>
+                  </button>
+                  {chExpanded && chapter.sections.map((section) => {
+                    const secVisible = !conceptSearch || section.name.toLowerCase().includes(conceptSearch.toLowerCase()) ||
+                      section.concepts.some((c) => c.name.toLowerCase().includes(conceptSearch.toLowerCase()));
+                    if (!secVisible) { return null; }
+                    const secExpanded = expandedSections.has(section.id);
+                    return (
+                      <div key={section.id} className="ml-3">
+                        <button
+                          onClick={() => setExpandedSections((prev) => { const next = new Set(prev); if (secExpanded) { next.delete(section.id); } else { next.add(section.id); } return next; })}
+                          className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        >
+                          <ChevronDown size={9} className={`flex-shrink-0 transition-transform ${secExpanded ? '' : '-rotate-90'}`} />
+                          <span className="truncate">{section.name}</span>
+                        </button>
+                        {secExpanded && section.concepts
+                          .filter((c) => !conceptSearch || c.name.toLowerCase().includes(conceptSearch.toLowerCase()))
+                          .map((node) => (
+                            <button
+                              key={node.id}
+                              onClick={() => setSelectedConcept(selectedConcept?.id === node.id ? null : node)}
+                              className={`ml-3 flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-xs transition-colors ${
+                                selectedConcept?.id === node.id
+                                  ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
+                                  : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
+                              }`}
+                            >
+                              <span className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: colorFor(node.concept_type) }} />
+                              <span className="truncate">{node.name}</span>
+                            </button>
+                          ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            {hierarchyTree.orphans
+              .filter((node) => !conceptSearch || node.name.toLowerCase().includes(conceptSearch.toLowerCase()))
+              .length > 0 && (
+              <div>
+                <div className="px-1 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">Uncategorized</div>
+                {hierarchyTree.orphans
+                  .filter((node) => !conceptSearch || node.name.toLowerCase().includes(conceptSearch.toLowerCase()))
+                  .map((node) => (
+                    <button
+                      key={node.id}
+                      onClick={() => setSelectedConcept(selectedConcept?.id === node.id ? null : node)}
+                      className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors ${
+                        selectedConcept?.id === node.id
+                          ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
+                          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      }`}
+                    >
+                      <span className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: colorFor(node.concept_type) }} />
+                      <span className="truncate">{node.name}</span>
+                    </button>
+                  ))}
+              </div>
+            )}
+            {hierarchyTree.chapters.length === 0 && hierarchyTree.orphans.length === 0 && (
               <p className="px-2 py-3 text-[10px] text-[var(--text-muted)]">No concepts match this filter yet.</p>
             )}
           </div>
@@ -801,16 +902,29 @@ export default function KnowledgeGraphView() {
                     nodeRelSize={6}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     nodeColor={(node: any) => colorFor(node.concept_type)}
-                    linkColor={() => "#475569"}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    linkWidth={(link: any) => Math.max(1, link.strength * 2)}
+                    linkColor={(link: any) =>
+                      link.link_type === 'part_of' ? 'rgba(100,116,139,0.2)' :
+                      link.link_type === 'prerequisite' ? '#f59e0b' :
+                      link.link_type === 'supports' ? '#34d399' :
+                      link.link_type === 'contradicts' ? '#f87171' : '#475569'
+                    }
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    linkWidth={(link: any) => link.link_type === 'part_of' ? 0.5 : Math.max(1, link.strength * 2)}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    linkDirectionalArrowLength={(link: any) => link.link_type === 'part_of' ? 0 : 4}
+                    linkDirectionalArrowRelPos={1}
                     linkLabel="link_type"
                     nodeCanvasObjectMode={() => "after"}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     nodeCanvasObject={(node: any, ctx, globalScale) => {
-                      const label = node.name.slice(0, 16) + (node.name.length > 16 ? "..." : "");
-                      const fontSize = 12 / globalScale;
-                      ctx.font = `${fontSize}px Sans-Serif`;
+                      const level: string = node.hierarchy_level ?? 'concept';
+                      const baseSize = level === 'chapter' ? 14 : level === 'section' ? 11 : 9;
+                      const bold = level === 'chapter';
+                      const maxLen = level === 'chapter' ? 24 : level === 'section' ? 20 : 16;
+                      const label = node.name.slice(0, maxLen) + (node.name.length > maxLen ? "..." : "");
+                      const fontSize = baseSize / globalScale;
+                      ctx.font = `${bold ? 'bold ' : ''}${fontSize}px Sans-Serif`;
                       ctx.fillStyle = "#94a3b8";
                       ctx.textAlign = "center";
                       ctx.textBaseline = "middle";
@@ -824,6 +938,48 @@ export default function KnowledgeGraphView() {
               </div>
             </div>
           </Section>
+
+          {learningPath.length > 0 && (
+            <Section title="Learning Path" eyebrow="Next Steps">
+              <div className="space-y-3">
+                {learningPath.slice(0, 3).map((item) => (
+                  <div key={item.concept_id} className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-[var(--text-primary)]">{item.concept_name}</div>
+                        {item.hierarchy_path && (
+                          <div className="mt-0.5 text-xs text-[var(--text-muted)]">{item.hierarchy_path}</div>
+                        )}
+                        {item.concept_description && (
+                          <div className="mt-1 text-xs text-[var(--text-secondary)] line-clamp-2">{item.concept_description}</div>
+                        )}
+                        <div className="mt-2 flex items-center gap-2">
+                          <div className="flex-1 overflow-hidden rounded-full bg-[var(--border-color)] h-1.5">
+                            <div
+                              className="h-1.5 rounded-full bg-emerald-400 transition-all"
+                              style={{ width: item.met_prereqs + item.unmet_prereqs > 0 ? `${Math.round((item.met_prereqs / (item.met_prereqs + item.unmet_prereqs)) * 100)}%` : '100%' }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-[var(--text-muted)]">
+                            {item.met_prereqs}/{item.met_prereqs + item.unmet_prereqs} prereqs
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const node = nodes.find((n) => n.id === item.concept_id);
+                          if (node) { setSelectedConcept(node); }
+                        }}
+                        className="flex-shrink-0 rounded-lg border border-[var(--border-color)] px-2 py-1 text-xs text-[var(--accent-color)] transition-colors hover:bg-[var(--accent-color)]/10"
+                      >
+                        Focus
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
 
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
             <Section title="Concept Focus" eyebrow="Signals">

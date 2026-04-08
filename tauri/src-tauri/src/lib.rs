@@ -263,6 +263,7 @@ pub fn run() {
             commands::knowledge_graph::list_concept_links,
             commands::knowledge_graph::delete_concept_link,
             commands::knowledge_graph::get_graph_stats,
+            commands::knowledge_graph::get_learning_path,
             // Learning goal commands
             commands::learning_goal::create_learning_goal,
             commands::learning_goal::list_learning_goals,

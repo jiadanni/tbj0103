@@ -1,6 +1,7 @@
 use crate::db::DbState;
 use crate::models::knowledge_graph::{
     ConceptLink, ConceptNode, CreateConceptRequest, CreateLinkRequest, GraphStatistics,
+    HierarchyLevel,
 };
 use tauri::State;
 
@@ -9,6 +10,7 @@ fn row_to_concept(row: &rusqlite::Row) -> rusqlite::Result<ConceptNode> {
     let tags_json: String = row.get(5)?;
     let aliases_json: String = row.get(6)?;
     let refs_json: String = row.get(7)?;
+    let level_str: String = row.get(13).unwrap_or_else(|_| "concept".to_string());
     Ok(ConceptNode {
         id: row.get(0)?,
         workspace_id: row.get(1)?,
@@ -25,6 +27,7 @@ fn row_to_concept(row: &rusqlite::Row) -> rusqlite::Result<ConceptNode> {
         review_count: row.get(10)?,
         created_at: row.get(11)?,
         updated_at: row.get(12)?,
+        hierarchy_level: level_str.parse().unwrap_or_default(),
     })
 }
 
@@ -47,14 +50,18 @@ pub fn create_concept(
     if let Some(aliases) = req.aliases {
         c.aliases = aliases;
     }
+    if let Some(level) = req.hierarchy_level {
+        c.hierarchy_level = level;
+    }
     let type_str = c.concept_type.to_string();
+    let level_str = c.hierarchy_level.to_string();
     let tags_json = serde_json::to_string(&c.tags).unwrap_or_default();
     let aliases_json = serde_json::to_string(&c.aliases).unwrap_or_default();
     let refs_json = serde_json::to_string(&c.references).unwrap_or_default();
     conn.execute(
-        "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-        rusqlite::params![c.id, c.workspace_id, c.name, c.concept_description, type_str, tags_json, aliases_json, refs_json, c.x_position, c.y_position, c.review_count, c.created_at, c.updated_at],
+        "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        rusqlite::params![c.id, c.workspace_id, c.name, c.concept_description, type_str, tags_json, aliases_json, refs_json, c.x_position, c.y_position, c.review_count, c.created_at, c.updated_at, level_str],
     ).map_err(|e| e.to_string())?;
     Ok(c)
 }
@@ -70,7 +77,7 @@ pub fn list_concepts(
     let limit = limit.unwrap_or(500).clamp(1, 5000);
     let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at
+        "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level
          FROM concept_nodes WHERE workspace_id = ?1 ORDER BY name ASC
          LIMIT ?2 OFFSET ?3"
     ).map_err(|e| e.to_string())?;
@@ -89,7 +96,7 @@ pub fn list_concepts(
 pub fn get_concept(state: State<DbState>, id: String) -> Result<Option<ConceptNode>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at
+        "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level
          FROM concept_nodes WHERE id = ?1",
         rusqlite::params![id],
         row_to_concept,
@@ -249,4 +256,133 @@ pub fn get_graph_stats(
         density,
         updated_at: chrono::Utc::now().to_rfc3339(),
     })
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct LearningPathItem {
+    pub concept_id: String,
+    pub concept_name: String,
+    pub concept_description: String,
+    pub hierarchy_path: String,
+    pub met_prereqs: usize,
+    pub unmet_prereqs: usize,
+}
+
+#[tauri::command]
+pub fn get_learning_path(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<Vec<LearningPathItem>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+
+    // Load all concept nodes for workspace
+    let mut all_nodes: std::collections::HashMap<String, ConceptNode> =
+        std::collections::HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, \
+                 x_position, y_position, review_count, created_at, updated_at, hierarchy_level \
+                 FROM concept_nodes WHERE workspace_id = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![workspace_id], row_to_concept)
+            .map_err(|e| e.to_string())?;
+        for node in rows.flatten() {
+            all_nodes.insert(node.id.clone(), node);
+        }
+    }
+
+    // Load all links for this workspace
+    let mut links: Vec<(String, String, String)> = Vec::new(); // (id, source_id, target_id, link_type)
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT cl.id, cl.source_id, cl.target_id, cl.link_type \
+                 FROM concept_links cl \
+                 JOIN concept_nodes cn ON cl.source_id = cn.id \
+                 WHERE cn.workspace_id = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![workspace_id], |row| {
+                Ok((
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows.flatten() {
+            links.push(row);
+        }
+    }
+
+    // Build parent map from part_of links: child_id -> parent_id
+    let mut parent_of: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for (src, tgt, ltype) in &links {
+        if ltype == "part_of" {
+            parent_of.insert(src.clone(), tgt.clone());
+        }
+    }
+
+    // For each unreviewed concept node, count met/unmet prerequisites
+    let mut items: Vec<LearningPathItem> = Vec::new();
+    for (id, node) in &all_nodes {
+        if node.review_count > 0 {
+            continue;
+        }
+        if node.hierarchy_level != HierarchyLevel::Concept {
+            continue;
+        }
+
+        let mut met = 0usize;
+        let mut unmet = 0usize;
+        for (src, tgt, ltype) in &links {
+            if ltype == "prerequisite" && tgt == id {
+                // src is a prerequisite of this concept
+                if let Some(prereq) = all_nodes.get(src) {
+                    if prereq.review_count > 0 {
+                        met += 1;
+                    } else {
+                        unmet += 1;
+                    }
+                }
+            }
+        }
+
+        // Build hierarchy_path by walking part_of links
+        let mut path_parts: Vec<String> = Vec::new();
+        let mut current_id = id.clone();
+        let mut depth = 0;
+        while let Some(parent_id) = parent_of.get(&current_id) {
+            if let Some(parent_node) = all_nodes.get(parent_id) {
+                path_parts.push(parent_node.name.clone());
+            }
+            current_id = parent_id.clone();
+            depth += 1;
+            if depth > 10 {
+                break; // prevent cycles
+            }
+        }
+        path_parts.reverse();
+        let hierarchy_path = path_parts.join(" > ");
+
+        items.push(LearningPathItem {
+            concept_id: id.clone(),
+            concept_name: node.name.clone(),
+            concept_description: node.concept_description.clone(),
+            hierarchy_path,
+            met_prereqs: met,
+            unmet_prereqs: unmet,
+        });
+    }
+
+    // Sort by fewest unmet prereqs, then by name
+    items.sort_by(|a, b| a.unmet_prereqs.cmp(&b.unmet_prereqs).then(a.concept_name.cmp(&b.concept_name)));
+    items.truncate(5);
+
+    Ok(items)
 }
