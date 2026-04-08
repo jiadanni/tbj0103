@@ -2,8 +2,16 @@ use crate::ollama::client::{ModelInfo, OllamaClient, OllamaMessage};
 use serde::{Deserialize, Serialize};
 use std::process::{Command, Stdio};
 use tauri::AppHandle;
+use tokio::sync::oneshot;
 
-pub struct StreamAbortState(pub std::sync::Mutex<std::collections::HashMap<String, bool>>);
+pub struct StreamAbortEntry {
+    pub aborted: bool,
+    pub cancel_tx: Option<oneshot::Sender<()>>,
+}
+
+pub struct StreamAbortState(
+    pub std::sync::Mutex<std::collections::HashMap<String, StreamAbortEntry>>,
+);
 const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -377,11 +385,15 @@ pub async fn stop_stream(
     session_id: String,
     state: tauri::State<'_, StreamAbortState>,
 ) -> Result<(), String> {
-    state
-        .0
-        .lock()
-        .map_err(|e| e.to_string())?
-        .insert(session_id, true);
+    let mut abort_map = state.0.lock().map_err(|e| e.to_string())?;
+    let entry = abort_map.entry(session_id).or_insert(StreamAbortEntry {
+        aborted: false,
+        cancel_tx: None,
+    });
+    entry.aborted = true;
+    if let Some(cancel_tx) = entry.cancel_tx.take() {
+        let _ = cancel_tx.send(());
+    }
     Ok(())
 }
 

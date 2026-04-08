@@ -1,4 +1,4 @@
-use crate::commands::ollama::StreamAbortState;
+use crate::commands::ollama::{StreamAbortEntry, StreamAbortState};
 /// Ollama HTTP Client
 /// Ported from Services/OllamaService.swift
 ///
@@ -306,21 +306,46 @@ impl OllamaClient {
         let abort_state = app.state::<StreamAbortState>();
         let mut abort_map = abort_state.0.lock().map_err(
             |e: std::sync::PoisonError<
-                std::sync::MutexGuard<'_, std::collections::HashMap<String, bool>>,
+                std::sync::MutexGuard<'_, std::collections::HashMap<String, StreamAbortEntry>>,
             >| e.to_string(),
         )?;
         abort_map.remove(session_id);
         Ok(())
     }
 
+    fn register_abort_listener(
+        app: &AppHandle,
+        session_id: &str,
+    ) -> Result<tokio::sync::oneshot::Receiver<()>, String> {
+        let abort_state = app.state::<StreamAbortState>();
+        let mut abort_map = abort_state.0.lock().map_err(
+            |e: std::sync::PoisonError<
+                std::sync::MutexGuard<'_, std::collections::HashMap<String, StreamAbortEntry>>,
+            >| e.to_string(),
+        )?;
+        let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+        let entry = abort_map
+            .entry(session_id.to_string())
+            .or_insert(StreamAbortEntry {
+                aborted: false,
+                cancel_tx: None,
+            });
+        entry.aborted = false;
+        entry.cancel_tx = Some(cancel_tx);
+        Ok(cancel_rx)
+    }
+
     fn should_abort(app: &AppHandle, session_id: &str) -> Result<bool, String> {
         let abort_state = app.state::<StreamAbortState>();
         let abort_map = abort_state.0.lock().map_err(
             |e: std::sync::PoisonError<
-                std::sync::MutexGuard<'_, std::collections::HashMap<String, bool>>,
+                std::sync::MutexGuard<'_, std::collections::HashMap<String, StreamAbortEntry>>,
             >| e.to_string(),
         )?;
-        let should_abort = abort_map.get(session_id).copied().unwrap_or(false);
+        let should_abort = abort_map
+            .get(session_id)
+            .map(|entry| entry.aborted)
+            .unwrap_or(false);
         Ok(should_abort)
     }
 
@@ -539,6 +564,7 @@ impl OllamaClient {
         let mut stream = response.bytes_stream();
         let mut stream_done = false;
         let mut aborted = false;
+        let mut cancel_rx = Self::register_abort_listener(app, session_id)?;
         let mut pending_chunk = String::new();
         let mut last_emit = std::time::Instant::now();
         const EMIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
@@ -550,6 +576,10 @@ impl OllamaClient {
             }
 
             let chunk_result = tokio::select! {
+                _ = &mut cancel_rx => {
+                    aborted = true;
+                    break;
+                }
                 next_chunk = stream.next() => next_chunk,
                 _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
                     // Flush any pending text on timeout
