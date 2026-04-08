@@ -1431,10 +1431,10 @@ export default function ChatView() {
 
   // Sync selectedModel with store if store hydrates after initial render
   useEffect(() => {
-    if (preferredModel && !selectedModel) {
+    if (preferredModel && !selectedModel && availableModels.includes(preferredModel)) {
       setSelectedModel(preferredModel);
     }
-  }, [preferredModel, selectedModel]);
+  }, [availableModels, preferredModel, selectedModel]);
 
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -1792,12 +1792,8 @@ export default function ChatView() {
     [aiModelList, quickSearchModels, selectedModel]
   );
   const modelPickerOptions = useMemo(
-    () => (availableModels.length > 0
-      ? availableModels
-      : selectedModel
-        ? [selectedModel]
-        : []),
-    [availableModels, selectedModel]
+    () => availableModels,
+    [availableModels]
   );
   const hasLoadedActiveMessages = activeChatId
     ? Object.prototype.hasOwnProperty.call(messages, activeChatId)
@@ -2185,14 +2181,15 @@ export default function ChatView() {
 
       // Keep session model in the list ONLY if it's already selected, 
       // but don't add it back if it's disabled unless it's the current session's model.
-      const isSessionModelEnabled = aiModels.find(m => m.model_id === sessionModel)?.enabled ?? true;
+      const isSessionModelEnabled = aiModels.find((m) => m.model_id === sessionModel)?.enabled ?? true;
       const withSessionModel = sessionModel && (!nextAvailableModels.includes(sessionModel) && isSessionModelEnabled)
         ? [sessionModel, ...nextAvailableModels]
         : nextAvailableModels;
+      const canAdoptSessionModel = shouldAdoptSessionModel && withSessionModel.includes(sessionModel);
 
       setAvailableModels(withSessionModel);
       setSelectedModel((current) => {
-        if (shouldAdoptSessionModel) {return sessionModel;}
+        if (canAdoptSessionModel) {return sessionModel;}
         if (withSessionModel.includes(current)) {return current;}
         if (preferredModel && withSessionModel.includes(preferredModel)) {return preferredModel;}
         return withSessionModel[0] ?? "";
