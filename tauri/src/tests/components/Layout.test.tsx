@@ -160,6 +160,28 @@ describe("Layout", () => {
     expect(screen.getByText("Sidebar")).toBeInTheDocument();
   });
 
+  it("does not render the floating Preferences dock button when the standard sidebar shell is shown", () => {
+    render(
+      <MemoryRouter initialEntries={["/preferences"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByTitle("Preferences")).not.toBeInTheDocument();
+  });
+
+  it("renders the floating Preferences dock button in split mode", () => {
+    useWorkspaceStore.setState({ splitMode: true });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTitle("Preferences")).toBeInTheDocument();
+  });
+
   it("renders workspace tabs and allows switching", () => {
     useWorkspaceStore.setState({
       workspaces: [

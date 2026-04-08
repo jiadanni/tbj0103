@@ -108,15 +108,18 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
 
   const assistantProseRef = useRef<HTMLDivElement>(null);
   const wordDefinition = useWordHover(assistantProseRef);
+  const messageWidthClassName = expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]";
+  const assistantColumnClassName = msg.role === "assistant" ? "w-full self-center" : "";
+  const userBubbleWidthClassName = msg.role === "user" ? "w-fit self-end" : "";
 
   return (
     <div
       data-msg-id={msg.id}
-      className={`group/msg flex w-full min-w-0 flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}
+      className={`group/msg flex w-full min-w-0 flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-center"}`}
     >
       {wordDefinition && <WordDefinitionTooltip definition={wordDefinition} />}
       {editingMessageId === msg.id ? (
-        <div className="w-full min-w-0 max-w-[75%] flex flex-col gap-2">
+        <div className={`w-full min-w-0 ${messageWidthClassName} flex flex-col gap-2`}>
           <textarea
             value={editContent}
             onChange={(e) => onSetEditContent(e.target.value)}
@@ -146,7 +149,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
       ) : (
         <>
           <div
-            className={`min-w-0 ${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words px-4 py-2.5 text-sm ${
+            className={`min-w-0 ${messageWidthClassName} ${assistantColumnClassName} ${userBubbleWidthClassName} break-words px-4 py-2.5 text-left text-sm ${
               chatMessageStyle === "flat"
                 ? msg.role === "user"
                   ? "rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)]"
@@ -189,7 +192,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
               <p className="break-words whitespace-pre-wrap">{msg.content}</p>
             )}
           </div>
-          <div className={`flex gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
+          <div className={`flex gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
             <button
               onClick={() => onCopy(msg.id, msg.content)}
               className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
@@ -216,7 +219,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
               </button>
             )}
           </div>
-          <div className={`flex items-center gap-2 text-[10px] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
+          <div className={`flex items-center gap-2 text-[10px] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
             <span>{formatMessageTimestamp(msg.created_at)}</span>
             {showGenInfo && msg.role === "assistant" && msg.tokens_used ? (
               <span>{msg.tokens_used.toLocaleString()} tok</span>
@@ -236,7 +239,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
           </div>
           {/* Grounded sources for this message */}
           {hasSources && (
-            <div className={`min-w-0 max-w-[75%] ${msg.role === "user" ? "self-end" : ""}`}>
+            <div className={`min-w-0 ${messageWidthClassName} ${msg.role === "user" ? "self-end" : "w-full self-center"}`}>
               <button
                 onClick={() => onToggleSources(msg.id)}
                 className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"

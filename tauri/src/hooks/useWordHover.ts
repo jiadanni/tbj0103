@@ -25,6 +25,11 @@ interface DictApiEntry {
 
 const CACHE = new Map<string, Omit<WordDefinition, "x" | "y"> | "not_found">();
 
+function hasActiveSelection() {
+  const selection = window.getSelection();
+  return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
+}
+
 /**
  * Hook that detects when the mouse hovers over a word for a certain period
  * and returns a definition from a tech dictionary or a public API.
@@ -46,12 +51,14 @@ export function useWordHover(containerRef: React.RefObject<HTMLDivElement | null
     setDefinition(null);
 
     // Skip if streaming or container not available
-    if (isStreaming || !containerRef.current) {return;}
+    if (isStreaming || !containerRef.current || hasActiveSelection()) {return;}
 
     const x = e.clientX;
     const y = e.clientY;
 
     timerRef.current = setTimeout(async () => {
+      if (hasActiveSelection()) {return;}
+
       // Get the character at the mouse position
       // Using standard caretRangeFromPoint (Chrome/Webkit)
       const range = document.caretRangeFromPoint(x, y);
@@ -136,19 +143,27 @@ export function useWordHover(containerRef: React.RefObject<HTMLDivElement | null
     setDefinition(null);
   }, [clearTimer]);
 
+  const handleSelectionChange = useCallback(() => {
+    if (!hasActiveSelection()) {return;}
+    clearTimer();
+    setDefinition(null);
+  }, [clearTimer]);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) {return;}
 
     el.addEventListener("mousemove", handleMouseMove);
     el.addEventListener("mouseleave", handleMouseLeave);
+    document.addEventListener("selectionchange", handleSelectionChange);
 
     return () => {
       el.removeEventListener("mousemove", handleMouseMove);
       el.removeEventListener("mouseleave", handleMouseLeave);
+      document.removeEventListener("selectionchange", handleSelectionChange);
       clearTimer();
     };
-  }, [containerRef, handleMouseMove, handleMouseLeave, clearTimer]);
+  }, [containerRef, handleMouseMove, handleMouseLeave, handleSelectionChange, clearTimer]);
 
   return definition;
 }
