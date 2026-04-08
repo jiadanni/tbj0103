@@ -248,7 +248,20 @@ function SessionSidebar({
   const visibleSessions = sidebarSessions;
   const byProject: Record<string, ChatSession[]> = {};
   const ungrouped: ChatSession[] = [];
+  const [sidebarTooltip, setSidebarTooltip] = useState<{ label: string; top: number; left: number } | null>(null);
   const selectedCount = selectedIds.size + selectedProjectIds.size;
+
+  const showSidebarTooltip = (label: string, e: ReactMouseEvent<HTMLElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setSidebarTooltip({
+      label,
+      top: rect.top + rect.height / 2,
+      left: rect.right + 8,
+    });
+  };
+
+  const hideSidebarTooltip = () => setSidebarTooltip(null);
+
 
   visibleSessions.forEach((session) => {
     if (session.project_id) {
@@ -600,53 +613,73 @@ function SessionSidebar({
       }}
     >
       {/* Header */}
-      <div className="px-3 py-2.5 border-b border-[var(--border-color)]">
-        <span className={`font-medium text-[var(--text-secondary)] truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>
+      <div className="flex items-center justify-between gap-1 border-b border-[var(--border-color)] px-3 py-2">
+        <span className={`truncate font-medium text-[var(--text-secondary)] ${isSplitPane ? "text-sm" : "text-xs"}`}>
           Conversations
         </span>
-      </div>
-
-      <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <button
-            onClick={() => setSelectMode((value) => !value)}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`}
-            title="Select items"
+            onClick={() => {
+              hideSidebarTooltip();
+              setSelectMode((value) => !value);
+            }}
+            onMouseEnter={(e) => showSidebarTooltip("Select items", e)}
+            onMouseLeave={hideSidebarTooltip}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] ${
+              selectMode ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : ""
+            }`}
+            aria-label="Select items"
           >
             <Check size={12} />
-            Select
           </button>
           <button
-            onClick={() => { setCreatingFolder(true); setNewFolderName(""); }}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`}
-            title="New folder"
+            onClick={() => {
+              hideSidebarTooltip();
+              setCreatingFolder(true);
+              setNewFolderName("");
+            }}
+            onMouseEnter={(e) => showSidebarTooltip("New folder", e)}
+            onMouseLeave={hideSidebarTooltip}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            aria-label="New folder"
           >
             <FolderPlus size={12} />
-            Folder
           </button>
           <button
-            onClick={() => createNewSession()}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`}
-            title="New chat"
+            onClick={() => {
+              hideSidebarTooltip();
+              createNewSession();
+            }}
+            onMouseEnter={(e) => showSidebarTooltip("New chat", e)}
+            onMouseLeave={hideSidebarTooltip}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            aria-label="New chat"
           >
             <Plus size={12} />
-            Chat
           </button>
           <button
-            onClick={() => createNewSession({ isIncognito: true })}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-purple-500/10 hover:text-purple-400`}
-            title="New incognito chat"
+            onClick={() => {
+              hideSidebarTooltip();
+              createNewSession({ isIncognito: true });
+            }}
+            onMouseEnter={(e) => showSidebarTooltip("New incognito chat", e)}
+            onMouseLeave={hideSidebarTooltip}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-purple-500/10 hover:text-purple-400"
+            aria-label="New incognito chat"
           >
             <Ghost size={12} />
-            Incognito
           </button>
           <button
-            onClick={() => createNewSession({ excludeFromAnalytics: true })}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-sky-500/10 hover:text-sky-400`}
-            title="New private chat"
+            onClick={() => {
+              hideSidebarTooltip();
+              createNewSession({ excludeFromAnalytics: true });
+            }}
+            onMouseEnter={(e) => showSidebarTooltip("New private chat", e)}
+            onMouseLeave={hideSidebarTooltip}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-sky-500/10 hover:text-sky-400"
+            aria-label="New private chat"
           >
             <Shield size={12} />
-            Private
           </button>
         </div>
       </div>
@@ -1016,6 +1049,16 @@ function SessionSidebar({
         )}
       </div>
 
+      {sidebarTooltip && (
+        <div
+          role="tooltip"
+          className="pointer-events-none fixed z-50 -translate-y-1/2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] shadow-lg"
+          style={{ top: sidebarTooltip.top, left: sidebarTooltip.left }}
+        >
+          {sidebarTooltip.label}
+        </div>
+      )}
+
       {/* Footer stats */}
       {sidebarSessions.length > 0 && (
         <div className="px-3 py-1.5 border-t border-[var(--border-color)] shrink-0">
@@ -1262,19 +1305,49 @@ function StreamingBubble({
   expandChatToWindowWidth: boolean;
 }) {
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
-  const streamingContent = useChatStore((s) => s.streamingContent);
   const isCurrentlyStreaming = activeChatId ? streamingSessionId === activeChatId : false;
 
-  if (!isCurrentlyStreaming || !streamingContent) { return null; }
+  // Direct DOM updates via rAF — avoids React reconciliation on every token.
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const rafRef = useRef(0);
+  const visibleRef = useRef(false);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (!isCurrentlyStreaming) {
+      visibleRef.current = false;
+      return;
+    }
+    const unsub = useChatStore.subscribe((state) => {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        if (textRef.current) {
+          textRef.current.textContent = state.streamingContent;
+        }
+        if (state.streamingContent && !visibleRef.current) {
+          visibleRef.current = true;
+          setVisible(true);
+        }
+      });
+    });
+    return () => {
+      unsub();
+      window.cancelAnimationFrame(rafRef.current);
+      setVisible(false);
+      visibleRef.current = false;
+    };
+  }, [isCurrentlyStreaming]);
+
+  if (!isCurrentlyStreaming || !visible) { return null; }
 
   return (
-    <div className="flex flex-col gap-1 items-start px-4">
+    <div className="flex flex-col gap-1 items-start px-4 pb-4">
       <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${
         chatMessageStyle === "flat"
           ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]"
           : ""
       }`}>
-        <p className="whitespace-pre-wrap">{streamingContent}</p>
+        <p ref={textRef} className="whitespace-pre-wrap" />
         <span className="streaming-cursor" />
       </div>
     </div>
@@ -1331,10 +1404,10 @@ export default function ChatView() {
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
   const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
-  const composerSelectClassName = "h-9 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 pl-3.5 pr-9 text-xs font-semibold text-[var(--text-primary)] shadow-sm outline-none transition-all hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] focus:border-[var(--accent-color)]";
-  const composerToggleBaseClass = "inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold shadow-sm transition-all";
-  const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-primary)]/75 text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]";
-  const composerToggleActiveClass = "border-[rgba(var(--accent-color-rgb),0.28)] bg-[rgba(var(--accent-color-rgb),0.11)] text-[var(--accent-color)]";
+  const composerSelectClassName = "h-10 w-full appearance-none rounded-full border border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.9)] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] outline-none transition-all hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] focus:border-[rgba(var(--accent-color-rgb),0.42)] focus:bg-[rgba(var(--accent-color-rgb),0.06)]";
+  const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] transition-all";
+  const composerToggleInactiveClass = "border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.78)] hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] hover:text-white";
+  const composerToggleActiveClass = "border-[rgba(var(--accent-color-rgb),0.34)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]";
   const composerUtilitySelectClassName = "h-9 appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 pl-3.5 pr-9 text-xs font-semibold text-[var(--text-secondary)] shadow-sm outline-none transition-all hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)] focus:border-[var(--accent-color)]";
 
   const [input, setInput] = useState("");
@@ -1800,6 +1873,28 @@ export default function ChatView() {
     : false;
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
+
+  // Stable Virtuoso Footer — lives inside the scroll area so growing content
+  // doesn't resize the Virtuoso container (which causes layout thrashing).
+  const VirtuosoFooter = useCallback(() => (
+    <>
+      {isStreaming && !isCurrentlyStreaming && (
+        <div className="flex flex-col gap-1 items-start px-4 pb-4">
+          <div className="flex items-center gap-2.5 max-w-[75%] overflow-hidden rounded-2xl px-4 py-3 text-sm message-assistant">
+            <span className="flex gap-1 items-center">
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80" style={{ animation: "thinking-dot 1.2s ease-in-out infinite" }} />
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80" style={{ animation: "thinking-dot 1.2s ease-in-out 0.2s infinite" }} />
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80" style={{ animation: "thinking-dot 1.2s ease-in-out 0.4s infinite" }} />
+            </span>
+          </div>
+        </div>
+      )}
+      <StreamingBubble activeChatId={activeChatId} chatMessageStyle={chatMessageStyle} expandChatToWindowWidth={expandChatToWindowWidth} />
+    </>
+  ), [isStreaming, isCurrentlyStreaming, activeChatId, chatMessageStyle, expandChatToWindowWidth]);
+
+  const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), [VirtuosoFooter]);
+
   const activeSession = activeChatId ? sessions.find((s) => s.id === activeChatId) ?? null : null;
   const activeSessionWorkspaceId = activeSession?.workspace_id ?? effectiveWorkspaceId;
   const activeWorkspaceName = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId)?.name ?? "No workspace";
@@ -2229,15 +2324,8 @@ export default function ChatView() {
     }
   }, [activeChatId, activeMessages, isCurrentlyStreaming, scrollToTopOnSend]);
 
-  // Throttled scroll-to-bottom during streaming — runs at ~7 fps instead of
-  // on every chunk, avoiding layout thrashing while keeping the view pinned.
-  useEffect(() => {
-    if (!isCurrentlyStreaming || activeMessages.length === 0) { return; }
-    const interval = setInterval(() => {
-      virtuosoRef.current?.scrollToIndex({ index: activeMessages.length - 1, behavior: "auto" });
-    }, 150);
-    return () => clearInterval(interval);
-  }, [isCurrentlyStreaming, activeMessages.length]);
+  // Virtuoso's followOutput + Footer handle scroll-pinning during streaming;
+  // no manual interval needed.
 
   useEffect(() => {
     if (!activeChatId || !hasLoadedActiveMessages || activeMessages.length > 0 || isStreaming) {return;}
@@ -3032,6 +3120,10 @@ export default function ChatView() {
     activeMessages,
     followUps,
   ]);
+  const [isComposerHeaderCollapsed, setIsComposerHeaderCollapsed] = useState(false);
+  const hasComposerHeader =
+    (activeTopicSignature?.domain_tags.length ?? 0) > 0 || composerSuggestionRows.length > 0;
+  const showComposerHeader = hasComposerHeader && !isComposerHeaderCollapsed;
 
   // Map model_id to display name from global labels or priority list
   const modelDisplayName = (modelId: string) => {
@@ -3249,9 +3341,9 @@ export default function ChatView() {
                   ref={virtuosoRef}
                   data={activeMessages}
                   initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
-                  followOutput="smooth"
+                  followOutput={isCurrentlyStreaming ? "auto" : "smooth"}
                   alignToBottom={true}
-                  className="w-full min-w-0 overflow-x-hidden py-4 scroll-smooth"
+                  className="w-full min-w-0 overflow-x-hidden py-4"
                   computeItemKey={(_, msg) => msg.id}
                   itemContent={(i, msg) => (
                     <div className="pb-4 px-4">
@@ -3282,36 +3374,9 @@ export default function ChatView() {
                       />
                     </div>
                   )}
+                  components={virtuosoComponents}
                 />
               </div>
-
-              {/* Thinking indicator — spinner shown before the first token arrives */}
-              {isStreaming && !isCurrentlyStreaming && (
-                <div className="flex flex-col gap-1 items-start px-4">
-                  <div className="flex items-center gap-2.5 max-w-[75%] overflow-hidden rounded-2xl px-4 py-3 text-sm message-assistant">
-                    <span className="flex gap-1 items-center">
-                      <span
-                        className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
-                        style={{ animation: "thinking-dot 1.2s ease-in-out infinite" }}
-                      />
-                      <span
-                        className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
-                        style={{ animation: "thinking-dot 1.2s ease-in-out 0.2s infinite" }}
-                      />
-                      <span
-                        className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80"
-                        style={{ animation: "thinking-dot 1.2s ease-in-out 0.4s infinite" }}
-                      />
-                    </span>
-                  </div>
-                </div>
-              )}
-              {/* Normal Streaming bubble */}
-              <StreamingBubble
-                activeChatId={activeChatId}
-                chatMessageStyle={chatMessageStyle}
-                expandChatToWindowWidth={expandChatToWindowWidth}
-              />
             </div>
 
             {toolbarState && (
@@ -3326,10 +3391,13 @@ export default function ChatView() {
 
             {/* Input / composer area */}
             <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-5"}`}>
-              <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[var(--border-color)] bg-[var(--bg-elevated)]/90 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur-xl`}>
+              <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[rgba(var(--accent-color-rgb),0.12)] bg-[rgba(11,14,19,0.94)] ${showComposerHeader ? "p-3" : "p-1.5"} shadow-[0_30px_90px_-46px_rgba(0,0,0,0.95)] backdrop-blur-xl`}>
                 <div className="flex flex-col gap-3.5 min-w-0">
-                  {activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
+                  {showComposerHeader && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
                     <div className="px-1 pt-1">
+                      <div className="px-1.5 pb-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
+                        General
+                      </div>
                       <TopicChips
                         tags={activeTopicSignature.domain_tags}
                         onChipClick={(tag) => setInput(prev => `[${tag}] ${prev}`)}
@@ -3337,16 +3405,33 @@ export default function ChatView() {
                     </div>
                   )}
 
-                  <ComposerSuggestionRows
-                    rows={composerSuggestionRows}
-                    disabled={isStreaming}
-                    disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
-                    onSuggestionClick={handleComposerSuggestion}
-                  />
+                  {showComposerHeader && (
+                    <ComposerSuggestionRows
+                      rows={composerSuggestionRows}
+                      disabled={isStreaming}
+                      disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
+                      onSuggestionClick={handleComposerSuggestion}
+                    />
+                  )}
 
-                  <div className="rounded-[24px] border border-[var(--border-color)] bg-[var(--bg-primary)]/80 p-2.5 shadow-[0_18px_45px_-35px_rgba(15,23,42,0.5)] transition-all focus-within:border-[var(--accent-color)] focus-within:shadow-[0_0_0_4px_rgba(var(--accent-color-rgb),0.11),0_18px_45px_-35px_rgba(15,23,42,0.5)]">
+                  {hasComposerHeader && (
+                    <div className={`flex justify-end ${showComposerHeader ? "-mt-1 px-1 pb-0.5" : "px-1"}`}>
+                      <button
+                        type="button"
+                        onClick={() => setIsComposerHeaderCollapsed((collapsed) => !collapsed)}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(var(--accent-color-rgb),0.14)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.46)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:text-white"
+                        aria-label={showComposerHeader ? "Hide suggestions" : "Show suggestions"}
+                        aria-expanded={showComposerHeader}
+                        title={showComposerHeader ? "Hide suggestions" : "Show suggestions"}
+                      >
+                        {showComposerHeader ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </button>
+                    </div>
+                  )}
+
+                  <div className={`${showComposerHeader ? "rounded-[24px] border border-[rgba(255,255,255,0.09)] bg-[rgba(9,12,16,0.96)] p-2.5 shadow-[0_22px_52px_-34px_rgba(0,0,0,0.95)]" : "rounded-[24px] border border-transparent bg-transparent p-1 shadow-none"} transition-all focus-within:border-[rgba(var(--accent-color-rgb),0.3)] focus-within:shadow-[0_0_0_2px_rgba(var(--accent-color-rgb),0.07),0_22px_52px_-34px_rgba(0,0,0,0.95)]`}>
                     {/* Textarea + send button */}
-                    <div className="flex items-end gap-2">
+                    <div className="flex items-end gap-2.5">
                       <textarea
                         ref={inputRef}
                         value={input}
@@ -3365,7 +3450,7 @@ export default function ChatView() {
                                 : "Start a new thread…"
                         }
                         rows={1}
-                        className="flex-1 resize-none bg-transparent px-3.5 py-3 text-[15px] leading-6 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors max-h-40 overflow-y-auto"
+                        className="flex-1 resize-none bg-transparent px-4 py-3 text-[15px] font-medium leading-6 tracking-[0.01em] text-[rgba(255,255,255,0.94)] placeholder:text-[rgba(255,255,255,0.34)] outline-none transition-colors max-h-40 overflow-y-auto"
                         style={{ minHeight: 56 }}
                         onInput={(e) => {
                           const el = e.currentTarget;
@@ -3382,13 +3467,13 @@ export default function ChatView() {
                               api.webAI.stopStream(activeChatId).catch(() => {});
                             }
                           }}
-                          className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-red-500 text-white shadow-sm transition-opacity hover:opacity-90"
+                          className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-red-500 text-white shadow-[0_12px_30px_-18px_rgba(239,68,68,0.65)] transition-opacity hover:opacity-90"
                           title="Stop generation"
                         >
                           <X size={16} />
                         </button>
                       ) : (
-                        <div className="mb-1 mr-0.5 flex items-center gap-1.5">
+                        <div className="mb-1 mr-0.5 flex items-center gap-2">
                           <div className="relative flex flex-shrink-0 items-center" data-send-model-menu>
                             <button
                               onClick={async () => {
@@ -3396,12 +3481,12 @@ export default function ChatView() {
                                 await sendMessage();
                               }}
                               disabled={!input.trim() || !selectedModel}
-                              className={`flex h-10 items-center justify-center bg-[var(--accent-color)] text-white shadow-sm transition-all hover:-translate-y-px hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${
+                              className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.28)] bg-[rgba(var(--accent-color-rgb),0.14)] text-white shadow-[0_14px_32px_-20px_rgba(var(--accent-color-rgb),0.45)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.42)] hover:bg-[rgba(var(--accent-color-rgb),0.18)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${
                                 pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
                               }`}
                               title={selectedModel ? `Send with ${modelDisplayName(selectedModel)}` : "Send"}
                             >
-                              <ArrowUpCircle size={18} />
+                              <ArrowUpCircle size={19} strokeWidth={2.2} />
                             </button>
                             {pinnedQuickSendModels.length > 0 && (
                               <>
@@ -3412,13 +3497,13 @@ export default function ChatView() {
                                   setIsModelSendMenuOpen((open) => !open);
                                 }}
                                 disabled={!input.trim() || isStreaming}
-                                className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border-l border-white/20 bg-[var(--accent-color)] text-white shadow-sm transition-all hover:-translate-y-px hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.28)] border-l-white/20 bg-[rgba(var(--accent-color-rgb),0.14)] text-white shadow-[0_14px_32px_-20px_rgba(var(--accent-color-rgb),0.45)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.42)] hover:bg-[rgba(var(--accent-color-rgb),0.18)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
                                 title="Send with another pinned model"
                                   aria-label="Send with another pinned model"
                                   aria-haspopup="menu"
                                   aria-expanded={isModelSendMenuOpen}
                                 >
-                                  <ChevronDown size={14} />
+                                  <ChevronDown size={14} strokeWidth={2.2} />
                                 </button>
                                 {isModelSendMenuOpen && (
                                   <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
@@ -3466,10 +3551,10 @@ export default function ChatView() {
                               setInput("");
                             }}
                             disabled={!input.trim() || !selectedModel}
-                            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/75 text-[var(--text-muted)] shadow-sm transition-all hover:-translate-y-px hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.56)] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
                             title="Schedule for background processing"
                           >
-                            <Clock size={14} />
+                            <Clock size={14} strokeWidth={2.2} />
                           </button>
                         </div>
                       )}
@@ -3477,7 +3562,7 @@ export default function ChatView() {
                   </div>
 
                 {/* ── Composer tool row ─────────────────────────────────────── */}
-                <div className="flex items-center gap-2 border-t border-[var(--border-color)] px-1 pt-0.5 flex-wrap">
+                <div className="flex items-center gap-2.5 border-t border-[rgba(var(--accent-color-rgb),0.1)] px-1 pt-2 flex-wrap">
                   {/* Model picker */}
                   <div className="relative max-w-[220px]" data-active-model-menu>
                     <button
@@ -3496,7 +3581,7 @@ export default function ChatView() {
                       <span className="truncate text-left">
                         {selectedModel ? modelDisplayName(selectedModel) : "No models available"}
                       </span>
-                      <ChevronDown size={14} className={`shrink-0 text-[var(--text-muted)] transition-transform ${isModelPickerOpen ? "rotate-180" : ""}`} />
+                      <ChevronDown size={14} strokeWidth={2.2} className={`shrink-0 text-[rgba(255,255,255,0.46)] transition-transform ${isModelPickerOpen ? "rotate-180" : ""}`} />
                     </button>
                     {isModelPickerOpen && modelPickerOptions.length > 0 && (
                       <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
@@ -3586,7 +3671,7 @@ export default function ChatView() {
                         >
                           {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
                         </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                        <ChevronDown size={14} strokeWidth={2.2} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.46)]" />
                       </div>
                     )}
 
@@ -3613,9 +3698,9 @@ export default function ChatView() {
                     </button>
 
                     {sessionTokensUsed > 0 && (
-                      <div className="ml-auto flex h-9 items-center gap-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 px-3 text-[11px] text-[var(--text-secondary)] shadow-sm">
-                        <span className="text-[var(--text-muted)]">Tokens</span>
-                        <span className="font-mono text-[var(--text-primary)]">
+                      <div className="ml-auto flex h-10 items-center gap-2 rounded-full border border-[rgba(var(--accent-color-rgb),0.14)] bg-[rgba(255,255,255,0.02)] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.78)] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)]">
+                        <span className="text-[rgba(255,255,255,0.42)]">Tokens</span>
+                        <span className="font-mono text-[rgba(255,255,255,0.95)]">
                           {sessionTokensUsed >= 1000 ? `${(sessionTokensUsed / 1000).toFixed(1)}k` : sessionTokensUsed}
                         </span>
                       </div>

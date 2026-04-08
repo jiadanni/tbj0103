@@ -21,10 +21,10 @@ export default function ComposerSuggestionRows({
     <div className="px-1.5 pt-1 pb-0.5 space-y-3">
       {visibleRows.map((row) => (
         <div key={row.id} className="flex flex-col gap-2">
-          <div className="px-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">
+          <div className="px-1.5 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
             {row.label}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2.5">
             {row.suggestions.map((suggestion) => {
               const isImmediate = suggestion.action === "send_immediately";
               const isDisabled = disabled || (isImmediate && disableImmediateSend);
@@ -35,10 +35,10 @@ export default function ComposerSuggestionRows({
                   type="button"
                   disabled={isDisabled}
                   onClick={() => onSuggestionClick(suggestion)}
-                  className={`inline-flex items-center rounded-full border px-3.5 py-2 text-left text-[12px] font-medium leading-none shadow-sm transition-all duration-150 hover:-translate-y-px ${
+                  className={`inline-flex items-center rounded-full border px-3.5 py-2 text-left text-[12px] font-semibold leading-none tracking-[0.01em] shadow-[0_10px_26px_-20px_rgba(0,0,0,0.9)] transition-all duration-150 hover:-translate-y-px ${
                     isImmediate
-                      ? "border-[rgba(var(--accent-color-rgb),0.24)] bg-[rgba(var(--accent-color-rgb),0.08)] text-[var(--accent-color)] hover:border-[rgba(var(--accent-color-rgb),0.38)] hover:bg-[rgba(var(--accent-color-rgb),0.12)]"
-                      : "border-[var(--border-color)] bg-[var(--bg-primary)]/75 text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]"
+                      ? "border-[rgba(var(--accent-color-rgb),0.32)] bg-[rgba(var(--accent-color-rgb),0.08)] text-[rgba(255,255,255,0.94)] hover:border-[rgba(var(--accent-color-rgb),0.46)] hover:bg-[rgba(var(--accent-color-rgb),0.14)]"
+                      : "border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.8)] hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.06)] hover:text-white"
                   } disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0`}
                   title={isImmediate ? "Send immediately" : "Add to composer"}
                 >

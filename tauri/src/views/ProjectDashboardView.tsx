@@ -3,21 +3,15 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
   BarChart2,
-  BookOpen,
-  Brain,
   CheckCircle2,
   Clock3,
-  FileText,
   MessageSquare,
-  Network,
   RefreshCw,
   Search,
-  Sparkles,
   Target,
 } from "lucide-react";
 import {
   api,
-  type DashboardActivity,
   type DashboardRoute,
   type DashboardSummary,
 } from "../lib/api";
@@ -92,18 +86,6 @@ function normalizeKnowledgeRoute(route: DashboardRoute): DashboardRoute {
   return route;
 }
 
-function kindIcon(kind: DashboardActivity["kind"]) {
-  switch (kind) {
-    case "chat":
-      return <MessageSquare size={14} className="text-[var(--accent-color)]" />;
-    case "concept":
-      return <Brain size={14} className="text-sky-400" />;
-    case "source":
-      return <FileText size={14} className="text-amber-400" />;
-    default:
-      return <BookOpen size={14} className="text-emerald-400" />;
-  }
-}
 
 export default function ProjectDashboardView() {
   const navigate = useNavigate();
@@ -229,7 +211,7 @@ export default function ProjectDashboardView() {
                 {effectiveSummary.workspace_name || workspace?.name || "Learning workspace"}
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                Search when you want answers quickly. Come back here to review, track progress, and see what to learn next.
+                {workspace?.description || "Search when you want answers quickly. Come back here to review, track progress, and see what to learn next."}
               </p>
             </div>
 
@@ -268,33 +250,7 @@ export default function ProjectDashboardView() {
           <MetricCard label="Sources Captured" value={effectiveSummary.overview.sources} accent="bg-fuchsia-400" />
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-          <Section title="Suggested Progression" eyebrow="What To Do Next">
-            <div className="space-y-3">
-              {effectiveSummary.progression.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => openRoute(item.route)}
-                  className="flex w-full items-start gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 px-4 py-4 text-left transition-colors hover:border-[var(--accent-color)]"
-                >
-                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
-                    {item.kind === "review" ? <Clock3 size={16} /> : item.kind === "goal" ? <Target size={16} /> : item.kind === "graph" ? <Network size={16} /> : item.kind === "source" ? <FileText size={16} /> : <Sparkles size={16} />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-medium text-[var(--text-primary)]">{item.title}</div>
-                        <div className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{item.description}</div>
-                      </div>
-                      <ArrowRight size={15} className="mt-1 shrink-0 text-[var(--text-muted)]" />
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </Section>
-
-          <Section title="Continue Learning" eyebrow="Low Friction">
+        <Section title="Continue Learning" eyebrow="Low Friction">
             {continueLearning ? (
               <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
                 <div className="flex items-start gap-3">
@@ -337,67 +293,8 @@ export default function ProjectDashboardView() {
               </div>
             )}
           </Section>
-        </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
-          <Section title="Review Snapshot" eyebrow="Assessment">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                <div className="text-xs text-[var(--text-muted)]">Due today</div>
-                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">{effectiveSummary.review.due_today}</div>
-              </div>
-              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                <div className="text-xs text-[var(--text-muted)]">Cards learned</div>
-                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">{effectiveSummary.review.learned}</div>
-              </div>
-              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                <div className="text-xs text-[var(--text-muted)]">Avg ease</div>
-                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">{effectiveSummary.review.avg_ease.toFixed(2)}</div>
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-medium text-[var(--text-primary)]">Weak or under-reviewed concepts</div>
-                <div className="mt-1 text-sm text-[var(--text-secondary)]">
-                  {effectiveSummary.review.under_reviewed_concepts} concept{effectiveSummary.review.under_reviewed_concepts === 1 ? "" : "s"} still need more reinforcement.
-                </div>
-              </div>
-              <button
-                onClick={() => openRoute(effectiveSummary.review.route)}
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-              >
-                Review now
-                <ArrowRight size={14} />
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {effectiveSummary.review.weak_concepts.length > 0 ? (
-                effectiveSummary.review.weak_concepts.map((concept) => (
-                  <button
-                    key={concept.concept_id}
-                    onClick={() => openRoute(concept.route)}
-                    className="flex w-full items-center justify-between gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 px-4 py-3 text-left transition-colors hover:border-[var(--accent-color)]"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-[var(--text-primary)]">{concept.name}</div>
-                      <div className="mt-1 text-xs text-[var(--text-secondary)]">
-                        {concept.reason} • {concept.review_count} review{concept.review_count === 1 ? "" : "s"}
-                      </div>
-                    </div>
-                    <ArrowRight size={14} className="shrink-0 text-[var(--text-muted)]" />
-                  </button>
-                ))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4 text-sm text-[var(--text-secondary)]">
-                  No weak concepts surfaced yet. Keep using search and review to build a clearer assessment signal.
-                </div>
-              )}
-            </div>
-          </Section>
-
-          <Section title="Goals In Motion" eyebrow="Progress">
+        <Section title="Goals In Motion" eyebrow="Progress">
             {effectiveSummary.goals.length > 0 ? (
               <div className="space-y-3">
                 {effectiveSummary.goals.map((goal) => (
@@ -448,81 +345,6 @@ export default function ProjectDashboardView() {
               </div>
             )}
           </Section>
-        </div>
-
-        <div className="grid gap-6 xl:grid-cols-[1fr_1.2fr]">
-          <Section title="Knowledge Health" eyebrow="Coverage">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                <div className="text-xs text-[var(--text-muted)]">Stalled goals</div>
-                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
-                  {effectiveSummary.knowledge_health.stalled_goals}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                <div className="text-xs text-[var(--text-muted)]">Unprocessed sources</div>
-                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
-                  {effectiveSummary.knowledge_health.unprocessed_sources}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                <div className="text-xs text-[var(--text-muted)]">Isolated concepts</div>
-                <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
-                  {effectiveSummary.knowledge_health.isolated_concepts}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <div className="text-sm font-medium text-[var(--text-primary)]">Active topic signals</div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {effectiveSummary.knowledge_health.active_topic_tags.length > 0 ? (
-                  effectiveSummary.knowledge_health.active_topic_tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1 text-xs text-[var(--text-secondary)]"
-                    >
-                      {tag}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-[var(--text-secondary)]">
-                    Topic signals will appear after you search, capture notes, and review material.
-                  </span>
-                )}
-              </div>
-            </div>
-          </Section>
-
-          <Section title="Recent Learning Activity" eyebrow="Fresh Signals">
-            <div className="space-y-2">
-              {effectiveSummary.recent_activity.length > 0 ? (
-                effectiveSummary.recent_activity.map((entry) => (
-                  <button
-                    key={`${entry.kind}-${entry.id}`}
-                    onClick={() => openRoute(entry.route)}
-                    className="flex w-full items-center gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 px-4 py-3 text-left transition-colors hover:border-[var(--accent-color)]"
-                  >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--accent-color-rgb),0.08)]">
-                      {kindIcon(entry.kind)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-[var(--text-primary)]">{entry.title || "Untitled"}</div>
-                      <div className="mt-1 text-xs text-[var(--text-secondary)]">
-                        {[entry.kind, entry.subtitle, timeAgo(entry.timestamp)].filter(Boolean).join(" • ")}
-                      </div>
-                    </div>
-                    <ArrowRight size={14} className="shrink-0 text-[var(--text-muted)]" />
-                  </button>
-                ))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4 text-sm text-[var(--text-secondary)]">
-                  Nothing recent yet. Start with search, notes, or sources and the dashboard will begin reflecting your activity.
-                </div>
-              )}
-            </div>
-          </Section>
-        </div>
 
         <footer className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--text-secondary)]">
           <BarChart2 size={15} className="text-[var(--text-muted)]" />

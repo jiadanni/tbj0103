@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, Suspense } from "react";
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
-  Panel, PanelGroup, PanelResizeHandle,
+  
 } from "react-resizable-panels";
 import { Plus, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -25,6 +25,7 @@ import CompactMenuSelect from "./CompactMenuSelect";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
+const HistoryView = React.lazy(() => import("../views/HistoryView"));
 const ProjectDashboardView = React.lazy(() => import("../views/ProjectDashboardView"));
 const PreferencesView = React.lazy(() => import("../views/PreferencesView"));
 const DocumentBrowserView = React.lazy(() => import("../views/DocumentBrowserView"));
@@ -272,32 +273,13 @@ function WorkspaceTabBar({
                 <span className="ml-2 text-xs uppercase tracking-[0.08em] text-[var(--text-muted)]">Split View</span>
               </div>
             )}
-            {creating ? (
-              <div className="flex items-center gap-1.5 ml-1">
-                <input
-                  autoFocus
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {createWorkspace();}
-                    if (e.key === "Escape") {setCreating(false);}
-                  }}
-                  placeholder="Workspace name"
-                  className="text-xs px-2 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none w-36"
-                />
-                <button onClick={createWorkspace} className="text-xs px-2 py-0.5 bg-[var(--accent-color)] text-white rounded">
-                  Add
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setCreating(true)}
-                title="New Workspace"
-                className="ml-1 w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-              >
-                <Plus size={20} />
-              </button>
-            )}
+            <button
+              onClick={() => setCreating(true)}
+              title="New Workspace"
+              className="ml-1 w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+            >
+              <Plus size={20} />
+            </button>
           </div>
         </div>
         <div
@@ -423,11 +405,53 @@ function WorkspaceTabBar({
           }}
         />
       )}
+      {creating && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => { setCreating(false); setNewName(""); }}
+        >
+          <div
+            className="mx-4 flex w-full max-w-sm flex-col gap-5 rounded-3xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">New Workspace</div>
+              <h3 className="mt-1 text-base font-semibold text-[var(--text-primary)]">Name your workspace</h3>
+            </div>
+            <input
+              autoFocus
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { void createWorkspace(); }
+                if (e.key === "Escape") { setCreating(false); setNewName(""); }
+              }}
+              placeholder="e.g. Python deep dive"
+              className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setCreating(false); setNewName(""); }}
+                className="rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { void createWorkspace(); }}
+                disabled={!newName.trim()}
+                className="rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function NavigationTabBar() {
+function TopTabsNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
   const activeSegment = "/" + location.pathname.split("/")[1];
@@ -544,11 +568,16 @@ function NavigationTabBar() {
   );
 }
 
-function NavigationDropdownBar() {
+function CompactSectionNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
   const activeSegment = "/" + location.pathname.split("/")[1];
-  const sectionOptions = PRIMARY_NAV_ITEMS.map((item) => ({ value: item.path, label: item.label }));
+  const sectionOptions = PRIMARY_NAV_ITEMS.map((item) => ({
+    label: item.label,
+    value: item.path,
+    icon: item.icon,
+  }));
+
   const selectedPath = sectionOptions.some((item) => item.value === activeSegment)
     ? activeSegment
     : sectionOptions[0]?.value ?? "/project";
@@ -584,13 +613,13 @@ export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
   const splitMode = useWorkspaceStore((state) => state.splitMode);
   const { enterSplitMode, exitSplitMode, setPaneView, setPaneChatSession, workspaces } = useWorkspaceStore();
+  const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const loadArtifact = useArtifactStore((state) => state.loadArtifact);
   const setArtifactPanelOpen = useArtifactStore((state) => state.setPanelOpen);
-  const hasLeftRail = !splitMode && (sectionNavigation === "icon-bar" || sectionNavigation === "sidebar");
+  const hasLeftRail = !splitMode && sectionNavigation === "sidebar";
 
   const toggleSplitModeFromShell = React.useCallback(() => {
     if (splitMode) {
@@ -644,42 +673,19 @@ export default function Layout() {
 
       <WorkspaceTabBar onToggleSplit={toggleSplitModeFromShell} showWorkspaceTabs={!splitMode} />
 
-      {!splitMode && sectionNavigation === "top-tabs" && <NavigationTabBar />}
-      {!splitMode && sectionNavigation === "top-dropdown" && <NavigationDropdownBar />}
+      {!splitMode && sectionNavigation === "top-tabs" && <TopTabsNavigation />}
+      {!splitMode && sectionNavigation === "top-dropdown" && <CompactSectionNavigation />}
 
       <div className="flex-1 overflow-hidden min-h-0">
         {splitMode && !["/preferences", "/memory", "/webcapture"].some(p => location.pathname.startsWith(p)) ? (
           <SplitPaneLayout />
-        ) : sectionNavigation === "icon-bar" ? (
+        ) : (
           <div className="flex h-full overflow-hidden min-h-0">
-            <div className="w-14 shrink-0 border-r border-[var(--border-color)] overflow-hidden">
-              <Sidebar onOpenCommandPalette={() => setCommandPaletteOpen(true)} iconOnly showPreferencesButton />
-            </div>
+            <Sidebar onOpenCommandPalette={() => setCommandPaletteOpen(true)} showPreferencesButton />
             <div className="flex-1 overflow-hidden flex flex-col min-w-0 min-h-0">
               <AppRoutes />
             </div>
           </div>
-        ) : sectionNavigation === "sidebar" ? (
-          <PanelGroup direction="horizontal" className="flex-1 flex overflow-hidden min-h-0">
-            <Panel
-              id="sidebar"
-              order={0}
-              defaultSize={18}
-              minSize={12}
-              maxSize={30}
-              className="border-r border-[var(--border-color)] overflow-hidden"
-            >
-              <Sidebar onOpenCommandPalette={() => setCommandPaletteOpen(true)} showPreferencesButton />
-            </Panel>
-
-            <PanelResizeHandle className="w-[1px] bg-[var(--border-color)] hover:bg-[var(--accent-color)] transition-colors cursor-col-resize" />
-
-            <Panel id="main" order={1} className="overflow-hidden flex flex-col min-w-0 min-h-0">
-              <AppRoutes />
-            </Panel>
-          </PanelGroup>
-        ) : (
-          <AppRoutes />
         )}
       </div>
       {!hasLeftRail && <PreferencesDockButton />}
@@ -704,6 +710,7 @@ function AppRoutes() {
       <Route path="/documents" element={<DocumentBrowserView />} />
       <Route path="/webcapture" element={<WebCaptureView />} />
       <Route path="/graph" element={<KnowledgeGraphView />} />
+      <Route path="/history" element={<HistoryView />} />
       <Route path="/memory" element={<MemoryView />} />
       <Route path="/preferences" element={<PreferencesView />} />
       

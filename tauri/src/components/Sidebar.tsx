@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  ExternalLink,
-  Zap,
-  Settings as SettingsIcon,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
+  ExternalLink,
+  Settings as SettingsIcon,
+  Zap,
 } from "lucide-react";
 import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
@@ -17,37 +18,29 @@ const MAX_FONT_SIZE = 22;
 
 interface SidebarProps {
   onOpenCommandPalette: () => void;
-  iconOnly?: boolean;
   showPreferencesButton?: boolean;
 }
 
 export default function Sidebar({
   onOpenCommandPalette,
-  iconOnly = false,
   showPreferencesButton = false,
 }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const activeSegment = "/" + location.pathname.split("/")[1];
   const fontSize = useSettingsStore((s) => s.fontSize);
+  const [labelsVisible, setLabelsVisible] = useState(true);
   const [contextMenu, setContextMenu] = useState<{ item: NavigationItem; x: number; y: number } | null>(null);
-  const [tooltip, setTooltip] = useState<{ label: string; top: number; left: number; path: string; iconOnly: boolean } | null>(null);
+  const [tooltip, setTooltip] = useState<{ label: string; top: number; left: number; path: string } | null>(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   function showTooltip(label: string, element: HTMLElement) {
-    if (!iconOnly) {return;}
+    if (labelsVisible) {return;}
     const rect = element.getBoundingClientRect();
-    setTooltip({
-      label,
-      top: rect.top + rect.height / 2,
-      left: rect.right + 12,
-      path: location.pathname,
-      iconOnly,
-    });
+    setTooltip({ label, top: rect.top + rect.height / 2, left: rect.right + 12, path: location.pathname });
   }
 
   function hideTooltip() {
@@ -142,19 +135,13 @@ export default function Sidebar({
     }).catch(() => {});
   }
 
-  if (sectionNavigation !== "sidebar" && sectionNavigation !== "icon-bar") {
-    return null;
-  }
-
-  const visibleTooltip = tooltip && tooltip.path === location.pathname && tooltip.iconOnly === iconOnly
-    ? tooltip
-    : null;
+  const visibleTooltip = tooltip && tooltip.path === location.pathname ? tooltip : null;
 
   return (
-    <div className={`flex h-full flex-col bg-[var(--bg-sidebar)] ${iconOnly ? "items-center" : ""}`}>
+    <div className={`flex h-full flex-col bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] shrink-0 transition-[width] duration-200 overflow-hidden ${labelsVisible ? "w-48" : "w-14 items-center"}`}>
       {/* Scrollable nav section */}
-      <div className={`flex-1 overflow-y-auto py-4 ${iconOnly ? "w-full" : ""}`}>
-        <nav className={iconOnly ? "flex flex-col items-center gap-1 px-1.5" : "px-3 space-y-1"}>
+      <div className="flex-1 overflow-y-auto py-4 w-full">
+        <nav className={labelsVisible ? "px-3 space-y-1" : "flex flex-col items-center gap-1 px-1.5"}>
           {PRIMARY_NAV_ITEMS.map((item) => {
             const isActive = activeSegment === item.path;
             const Icon = item.icon;
@@ -176,9 +163,9 @@ export default function Sidebar({
                   setTooltip(null);
                   setContextMenu({ item, x: event.clientX, y: event.clientY });
                 }}
-                aria-label={iconOnly ? item.label : undefined}
+                aria-label={!labelsVisible ? item.label : undefined}
                 className={
-                  iconOnly
+                  !labelsVisible
                     ? `flex items-center justify-center w-10 h-10 rounded-xl transition-colors select-none ${
                         isActive
                           ? "bg-[var(--accent-color)] text-white shadow-sm"
@@ -191,8 +178,8 @@ export default function Sidebar({
                       }`
                 }
               >
-                <Icon size={iconOnly ? 20 : 18} />
-                {!iconOnly && <span className="flex-1 text-left">{item.label}</span>}
+                <Icon size={!labelsVisible ? 20 : 18} />
+                {labelsVisible && <span className="flex-1 text-left">{item.label}</span>}
               </button>
             );
           })}
@@ -200,11 +187,28 @@ export default function Sidebar({
       </div>
 
       {/* Fixed bottom controls */}
-      <div className={`relative border-t border-[var(--border-color)] ${iconOnly ? "p-2 flex flex-col items-center" : "p-3"}`}>
+      <div className={`relative border-t border-[var(--border-color)] ${!labelsVisible ? "p-2 flex flex-col items-center" : "p-3"}`}>
+        {/* Collapse / expand toggle */}
+        <button
+          onClick={() => { setTooltip(null); setLabelsVisible((v) => !v); }}
+          onMouseEnter={(event) => showTooltip(labelsVisible ? "Collapse" : "Expand", event.currentTarget)}
+          onMouseLeave={hideTooltip}
+          aria-label={labelsVisible ? "Collapse sidebar" : "Expand sidebar"}
+          className={
+            !labelsVisible
+              ? "mb-2 flex h-10 w-10 items-center justify-center rounded-xl text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              : "mb-2 flex w-full items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }
+        >
+          {labelsVisible ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+          {labelsVisible && <span className="flex-1 text-left">Collapse</span>}
+        </button>
+
         {showPreferencesButton && (
           <button
             onClick={() => {
               setTooltip(null);
+              setPopoverOpen(false);
               navigate("/preferences");
             }}
             onMouseEnter={(event) => showTooltip("Preferences", event.currentTarget)}
@@ -213,13 +217,13 @@ export default function Sidebar({
             onBlur={hideTooltip}
             aria-label="Preferences"
             className={
-              iconOnly
+              !labelsVisible
                 ? "mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-                : "mb-2 flex w-full items-center gap-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+                : "mb-3 flex w-full items-center gap-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
             }
           >
             <SettingsIcon size={16} />
-            {!iconOnly && <span className="flex-1 text-left">Preferences</span>}
+            {labelsVisible && <span className="flex-1 text-left">Preferences</span>}
           </button>
         )}
 
@@ -233,26 +237,26 @@ export default function Sidebar({
           onMouseLeave={hideTooltip}
           aria-label="Menu"
           className={
-            iconOnly
+            !labelsVisible
               ? `flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
                   popoverOpen
                     ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
                     : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                 }`
-              : `w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors ${
+              : `w-full min-w-0 flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors ${
                   popoverOpen
                     ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
                     : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                 }`
           }
         >
-          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--accent-color)] text-white text-xs font-bold">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-color)] text-white text-xs font-bold">
             A
           </div>
-          {!iconOnly && (
+          {labelsVisible && (
             <>
-              <span className="flex-1 text-left font-medium">Aetherium</span>
-              <ChevronUp size={14} className={`transition-transform ${popoverOpen ? "" : "rotate-180"}`} />
+              <span className="min-w-0 flex-1 truncate text-left font-medium">Aetherium</span>
+              <ChevronUp size={14} className={`shrink-0 transition-transform ${popoverOpen ? "" : "rotate-180"}`} />
             </>
           )}
         </button>
@@ -262,7 +266,7 @@ export default function Sidebar({
           <div
             ref={popoverRef}
             className="absolute bottom-full left-2 right-2 mb-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1.5 shadow-xl z-50"
-            style={iconOnly ? { left: 0, right: "auto", minWidth: 200 } : undefined}
+            style={!labelsVisible ? { left: 0, right: "auto", minWidth: 200 } : undefined}
           >
             {/* Font size controls */}
             <div className="px-3 py-2">
@@ -306,7 +310,7 @@ export default function Sidebar({
         )}
       </div>
 
-      {iconOnly && visibleTooltip && (
+      {visibleTooltip && (
         <div
           role="tooltip"
           className="pointer-events-none fixed z-40 -translate-y-1/2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] shadow-lg"

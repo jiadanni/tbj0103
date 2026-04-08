@@ -11,6 +11,17 @@ final class ChatSession {
     var isLocal: Bool // Whether using Ollama or cloud API
     var lastProcessedMessageCount: Int
 
+    // Flags and tracking parity with Tauri schema
+    var isPinned: Bool
+    var isIncognito: Bool
+    var excludeFromAnalytics: Bool
+    var isDeleted: Bool
+    var deletedAt: Date?
+    var lastAccessedAt: Date?
+    var isImported: Bool
+    var parentSessionID: UUID?
+    var branchMessageID: UUID?
+
     @Relationship(deleteRule: .cascade) var messages: [Message]
     var project: Project?
     var workspace: Workspace? // For project-less chats attached directly to a workspace
@@ -35,7 +46,16 @@ final class ChatSession {
         systemPrompt: String? = nil,
         parentMessageID: UUID? = nil,
         branchLabel: String? = nil,
-        lastProcessedMessageCount: Int = 0
+        lastProcessedMessageCount: Int = 0,
+        isPinned: Bool = false,
+        isIncognito: Bool = false,
+        excludeFromAnalytics: Bool = false,
+        isDeleted: Bool = false,
+        deletedAt: Date? = nil,
+        lastAccessedAt: Date? = nil,
+        isImported: Bool = false,
+        parentSessionID: UUID? = nil,
+        branchMessageID: UUID? = nil
     ) {
         self.id = id
         self.title = title
@@ -50,6 +70,15 @@ final class ChatSession {
         self.parentMessageID = parentMessageID
         self.branchLabel = branchLabel
         self.lastProcessedMessageCount = lastProcessedMessageCount
+        self.isPinned = isPinned
+        self.isIncognito = isIncognito
+        self.excludeFromAnalytics = excludeFromAnalytics
+        self.isDeleted = isDeleted
+        self.deletedAt = deletedAt
+        self.lastAccessedAt = lastAccessedAt
+        self.isImported = isImported
+        self.parentSessionID = parentSessionID
+        self.branchMessageID = branchMessageID
     }
 
     var needsAutoTitle: Bool {
@@ -127,6 +156,11 @@ final class Message {
     var role: MessageRole
     var timestamp: Date
     var tokenCount: Int?
+    // Parity fields
+    var createdAt: Date
+    var modelName: String?
+    var tokensUsed: Int?
+    var durationMs: Int?
 
     @Relationship(deleteRule: .cascade) var citations: [Citation]
     var chatSession: ChatSession?
@@ -136,13 +170,21 @@ final class Message {
         content: String,
         role: MessageRole,
         timestamp: Date = Date(),
-        tokenCount: Int? = nil
+        tokenCount: Int? = nil,
+        createdAt: Date = Date(),
+        modelName: String? = nil,
+        tokensUsed: Int? = nil,
+        durationMs: Int? = nil
     ) {
         self.id = id
         self.content = content
         self.role = role
         self.timestamp = timestamp
         self.tokenCount = tokenCount
+        self.createdAt = createdAt
+        self.modelName = modelName
+        self.tokensUsed = tokensUsed
+        self.durationMs = durationMs
         self.citations = []
     }
 }
@@ -156,6 +198,8 @@ final class Citation {
     var excerpt: String
     var relevanceScore: Double
     var pageNumber: Int?
+
+    var createdAt: Date
 
     var message: Message?
 
@@ -175,6 +219,7 @@ final class Citation {
         self.excerpt = excerpt
         self.relevanceScore = relevanceScore
         self.pageNumber = pageNumber
+        self.createdAt = Date()
     }
 }
 

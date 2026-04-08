@@ -4,6 +4,7 @@ import {
   FileEdit,
   FileText,
   Globe,
+  History,
   MessageSquare,
   Network,
 } from "lucide-react";
@@ -21,6 +22,7 @@ export const PRIMARY_NAV_ITEMS: NavigationItem[] = [
   { path: "/documents", icon: FileText, label: "Documents" },
   { path: "/webcapture", icon: Globe, label: "Web Captures" },
   { path: "/graph", icon: Network, label: "Knowledge" },
+  { path: "/history", icon: History, label: "History" },
 ];
 export type ChatSubView = "chat" | "compare" | "sessions";
 export type NotesSubView = "notes" | "daily";
