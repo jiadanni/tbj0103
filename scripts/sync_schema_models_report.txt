@@ -1,0 +1,204 @@
+Schema vs SwiftData Model Sync Report
+Workspace: /home/urljenkins/Source/tbj0103
+
+TABLE: workspaces  <->  MODEL: Workspace (Sources/Aetherium/Models/Workspace.swift)
+  columns: id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at
+  properties: id, title, workspaceDescription, createdAt, updatedAt, learningGoals, projects, sources, concepts, directChatSessions, chatSessions
+  MISSING IN MODEL: description, is_hidden, name, prompt_instructions, signature_updated_at, topic_signature
+  MISSING IN TABLE: chat_sessions, concepts, direct_chat_sessions, learning_goals, projects, sources, title, workspace_description
+
+TABLE: projects  <->  MODEL: Project (Sources/Aetherium/Models/Project.swift)
+  columns: id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
+  properties: id, title, customInstructions, createdAt, updatedAt, chatSessions, documents, workspace
+  MISSING IN MODEL: color, icon, name, project_description, workspace_id
+  MISSING IN TABLE: chat_sessions, documents, title, workspace
+
+TABLE: chat_sessions  <->  MODEL: ChatSession (Sources/Aetherium/Models/ChatSession.swift)
+  columns: id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id, created_at, updated_at
+  properties: id, title, createdAt, updatedAt, modelName, isLocal, lastProcessedMessageCount, messages, project, workspace, systemPrompt, extractedTopics, relatedGoalIDs, parentMessageID, branchLabel, needsAutoTitle
+  MISSING IN MODEL: branch_message_id, deleted_at, exclude_from_analytics, is_deleted, is_imported, is_incognito, is_pinned, last_accessed_at, parent_session_id, project_id, workspace_id
+  MISSING IN TABLE: branch_label, extracted_topics, is_local, messages, needs_auto_title, parent_message_id, project, related_goal_i_ds, workspace
+
+TABLE: messages  <->  MODEL: Message (Sources/Aetherium/Models/ChatSession.swift)
+  columns: id, session_id, role, content, model_name, tokens_used, duration_ms, created_at
+  properties: id, content, role, timestamp, tokenCount, citations, chatSession
+  MISSING IN MODEL: created_at, duration_ms, model_name, session_id, tokens_used
+  MISSING IN TABLE: chat_session, citations, timestamp, token_count
+
+TABLE: citations  <->  MODEL: Citation (Sources/Aetherium/Models/ChatSession.swift)
+  columns: id, message_id, source_id, source_type, excerpt, relevance_score, created_at
+  properties: id, sourceID, sourceTitle, sourceType, excerpt, relevanceScore, pageNumber, message
+  MISSING IN MODEL: created_at, message_id
+  MISSING IN TABLE: message, page_number, source_title
+
+TABLE: learning_goals  <->  MODEL: LearningGoal (Sources/Aetherium/Models/LearningGoal.swift)
+  columns: id, workspace_id, title, goal_description, progress, is_completed, due_date, prerequisite_ids, related_chat_ids, created_at, updated_at
+  properties: id, title, goalDescription, progress, createdAt, updatedAt, project, prerequisiteIDs, relatedChatIDs, prerequisites
+  MISSING IN MODEL: due_date, is_completed, prerequisite_ids, related_chat_ids, workspace_id
+  MISSING IN TABLE: prerequisite_i_ds, prerequisites, project, related_chat_i_ds
+
+TABLE: concept_nodes  <->  MODEL: ConceptNode (Sources/Aetherium/Models/KnowledgeGraph.swift)
+  columns: id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, hierarchy_level, created_at, updated_at
+  properties: id, name, conceptDescription, createdAt, lastReferencedAt, referenceCount, nodeType, aliases, outgoingLinks, incomingLinks, mentions, project, tags, relatedGoalIDs, type, linkedConcepts, backlinkedConcepts
+  MISSING IN MODEL: concept_type, hierarchy_level, references_json, review_count, updated_at, workspace_id, x_position, y_position
+  MISSING IN TABLE: backlinked_concepts, incoming_links, last_referenced_at, linked_concepts, mentions, node_type, outgoing_links, project, reference_count, related_goal_i_ds, type
+
+TABLE: concept_links  <->  MODEL: ConceptLink (Sources/Aetherium/Models/KnowledgeGraph.swift)
+  columns: id, source_id, target_id, link_type, strength, context, created_at
+  properties: id, linkType, strength, createdAt, context, source, target, type
+  MISSING IN MODEL: source_id, target_id
+  MISSING IN TABLE: source, target, type
+
+TABLE: concept_mentions  <->  MODEL: ConceptMention (Sources/Aetherium/Models/KnowledgeGraph.swift)
+  columns: id, concept_id, source_type, source_id, context, created_at
+  properties: id, mentionContext, position, createdAt, sourceType, sourceID, concept
+  MISSING IN MODEL: concept_id, context
+  MISSING IN TABLE: concept, mention_context, position
+
+TABLE: graph_statistics  <->  MODEL: GraphStatistics (Sources/Aetherium/Models/GraphStatistics.swift)
+  columns: id, workspace_id, total_concepts, total_links, avg_degree, density, updated_at
+  properties: id, workspace, totalConcepts, totalLinks, avgDegree, density, updatedAt
+  MISSING IN MODEL: workspace_id
+  MISSING IN TABLE: workspace
+
+TABLE: note_templates  <->  MODEL: NoteTemplate (Sources/Aetherium/Models/NoteTemplate.swift)
+  columns: id, workspace_id, name, template_description, content, icon, is_built_in, variables, created_at, updated_at
+  properties: id, name, templateDescription, content, category, isBuiltIn, createdAt, tags, variables, project
+  MISSING IN MODEL: icon, updated_at, workspace_id
+  MISSING IN TABLE: category, project, tags
+
+TABLE: daily_notes  <->  MODEL: DailyNote (Sources/Aetherium/Models/NoteTemplate.swift)
+  columns: id, workspace_id, date, content, mood, productivity, template_id, created_at, updated_at
+  properties: id, date, content, mood, productivity, completedTasks, learningHighlights, gratitude, createdAt, updatedAt, project, note
+  MISSING IN MODEL: template_id, workspace_id
+  MISSING IN TABLE: completed_tasks, gratitude, learning_highlights, note, project
+
+TABLE: learning_cards  <->  MODEL: LearningCard (Sources/Aetherium/Models/NoteTemplate.swift)
+  columns: id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+  properties: id, front, back, cardType, difficulty, tags, easeFactor, interval, repetitions, nextReviewDate, lastReviewDate, totalReviews, correctReviews, createdAt, concept, project
+  MISSING IN MODEL: last_reviewed_at, source_id, source_type, workspace_id
+  MISSING IN TABLE: card_type, concept, correct_reviews, difficulty, last_review_date, project, tags, total_reviews
+
+TABLE: learning_paths  <->  MODEL: LearningPath (Sources/Aetherium/Models/NoteTemplate.swift)
+  columns: id, workspace_id, title, path_description, created_at, updated_at
+  properties: id, title, pathDescription, targetCompletionDate, isCompleted, createdAt, completedAt, milestones, project, progress
+  MISSING IN MODEL: updated_at, workspace_id
+  MISSING IN TABLE: completed_at, is_completed, milestones, progress, project, target_completion_date
+
+TABLE: path_milestones  <->  MODEL: PathMilestone (Sources/Aetherium/Models/NoteTemplate.swift)
+  columns: id, path_id, title, milestone_description, is_completed, order_index, completed_at, created_at
+  properties: id, title, milestoneDescription, orderIndex, isCompleted, completedAt, dueDate, learningPath, relatedConcepts
+  MISSING IN MODEL: created_at, path_id
+  MISSING IN TABLE: due_date, learning_path, related_concepts
+
+TABLE: uploaded_documents  <->  MODEL: UploadedDocument (Sources/Aetherium/Models/ProjectSource.swift)
+  columns: id, workspace_id, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at
+  properties: id, filename, fileType, filePath, extractedText, pageCount, fileSize, processedAt, metadata, chunks, source, decodedMetadata
+  MISSING IN MODEL: content, created_at, is_processed, summary, updated_at, workspace_id
+  MISSING IN TABLE: chunks, decoded_metadata, extracted_text, file_path, metadata, page_count, processed_at, source
+
+TABLE: document_chunks  <->  MODEL: DocumentChunk (Sources/Aetherium/Models/ProjectSource.swift)
+  columns: id, document_id, content, chunk_index, embedding, created_at
+  properties: id, content, embeddingsData, pageNumber, sectionTitle, chunkIndex, tokenCount, cachedEmbedding, document, embeddings
+  MISSING IN MODEL: created_at, document_id, embedding
+  MISSING IN TABLE: cached_embedding, document, embeddings, embeddings_data, page_number, section_title, token_count
+
+TABLE: web_captures  <->  MODEL: WebCapture (Sources/Aetherium/Models/ProjectSource.swift)
+  columns: id, workspace_id, url, title, content, summary, favicon_data, is_processed, created_at
+  properties: id, url, pageTitle, extractedContent, capturedAt, faviconData, source
+  MISSING IN MODEL: content, created_at, is_processed, summary, title, workspace_id
+  MISSING IN TABLE: captured_at, extracted_content, page_title, source
+
+TABLE: sources  <->  MODEL: Source (Sources/Aetherium/Models/Source.swift)
+  columns: id, workspace_id, source_type, title, filename, file_type, file_size, url, content, summary, favicon_data, is_processed, folder, token_count, created_at, updated_at
+  properties: id, workspace, sourceType, title, filename, fileType, fileSize, url, content, summary, faviconData, isProcessed, folder, tokenCount, createdAt, updatedAt
+  MISSING IN MODEL: workspace_id
+  MISSING IN TABLE: workspace
+
+TABLE: source_chunks  <->  MODEL: SourceChunk (Sources/Aetherium/Models/SourceChunk.swift)
+  columns: id, source_id, content, chunk_index, embedding, created_at
+  properties: id, source, content, chunkIndex, embeddingData, createdAt
+  MISSING IN MODEL: embedding, source_id
+  MISSING IN TABLE: embedding_data, source
+
+TABLE: audio_transcriptions  <->  MODEL: AudioTranscription (Sources/Aetherium/Models/ProjectSource.swift)
+  columns: id, workspace_id, project_id, filename, transcript, duration_seconds, is_processed, created_at
+  properties: id, filename, filePath, transcription, duration, transcribedAt, modelUsed, source
+  MISSING IN MODEL: created_at, duration_seconds, is_processed, project_id, transcript, workspace_id
+  MISSING IN TABLE: duration, file_path, model_used, source, transcribed_at, transcription
+
+TABLE: project_notes  <->  MODEL: ProjectNote (Sources/Aetherium/Models/ProjectSource.swift)
+  columns: id, workspace_id, title, content, note_type, tags, created_at, updated_at
+  properties: id, title, content, noteType, createdAt, updatedAt, tags, source
+  MISSING IN MODEL: workspace_id
+  MISSING IN TABLE: source
+
+TABLE: calendar_alarms  <->  MODEL: CalendarAlarm (Sources/Aetherium/Models/CalendarAlarm.swift)
+  columns: id, workspace_id, title, fire_date, duration_seconds, input_prompt, is_dismissed, created_at
+  properties: id, title, note, durationSeconds, fireDate, isActive, isCompleted, inputPrompt, createdAt, project, dailyNote, remainingSeconds, isExpired, formattedDuration, formattedRemaining
+  MISSING IN MODEL: is_dismissed, workspace_id
+  MISSING IN TABLE: daily_note, formatted_duration, formatted_remaining, is_active, is_completed, is_expired, note, project, remaining_seconds
+
+TABLE: thought_queue  <->  MODEL: ThoughtQueueItem (Sources/Aetherium/Models/ThoughtQueue.swift)
+  columns: id, workspace_id, content, status, process_at, model_name, prompt_prefix, result, result_at, session_id, created_at, updated_at
+  properties: id, content, status, processAt, modelName, promptPrefix, result, resultAt, createdAt, updatedAt, workspace, currentStatus
+  MISSING IN MODEL: session_id, workspace_id
+  MISSING IN TABLE: current_status, workspace
+
+TABLE: memories  <->  MODEL: Memory (Sources/Aetherium/Models/Memory.swift)
+  columns: id, workspace_id, project_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at
+  properties: id, projectId, content, memoryType, sourceSessionId, isPinned, isActive, createdAt, updatedAt, workspace, embeddingsData, cachedEmbedding, type, embeddings
+  MISSING IN MODEL: scope, workspace_id
+  MISSING IN TABLE: cached_embedding, embeddings, embeddings_data, type, workspace
+
+TABLE: ai_models  <->  MODEL: AIModel (Sources/Aetherium/Models/AIModelShim.swift)
+  columns: id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at
+  properties: id, name, modelId, provider, roleTags, priority, isPaid, enabled, tokensUsedTotal, createdAt
+
+TABLE: settings  <->  MODEL: Setting (Sources/Aetherium/Models/Setting.swift)
+  columns: key, value
+  properties: key, value
+
+TABLE: conversation_summaries  <->  MODEL: ConversationSummary (Sources/Aetherium/Models/ConversationSummary.swift)
+  columns: id, session_id, workspace_id, summary_type, content, key_topics, message_range_start, message_range_end, token_count, embedding, created_at, updated_at
+  properties: id, summaryType, content, keyTopics, messageRangeStart, messageRangeEnd, tokenCount, createdAt, updatedAt, workspace, chatSession, embeddingsData, cachedEmbedding, type, embeddings
+  MISSING IN MODEL: embedding, session_id, workspace_id
+  MISSING IN TABLE: cached_embedding, chat_session, embeddings, embeddings_data, type, workspace
+
+TABLE: artifacts  <->  MODEL: Artifact (Sources/Aetherium/Models/Artifact.swift)
+  columns: id, workspace_id, session_id, message_id, title, artifact_type, language, content, description, tags, is_pinned, version, parent_artifact_id, token_count, created_at, updated_at
+  properties: id, title, artifactType, language, content, artifactDescription, tags, isPinned, version, tokenCount, createdAt, updatedAt, workspace, chatSession, messageId, parentArtifactId, embeddingsData, cachedEmbedding, type, embeddings
+  MISSING IN MODEL: description, session_id, workspace_id
+  MISSING IN TABLE: artifact_description, cached_embedding, chat_session, embeddings, embeddings_data, type, workspace
+
+TABLE: artifact_embeddings  <->  MODEL: ArtifactEmbedding (Sources/Aetherium/Models/ArtifactEmbedding.swift)
+  columns: artifact_id, embedding, model, created_at
+  properties: id, artifactId, embeddingData, model, createdAt
+  MISSING IN MODEL: embedding
+  MISSING IN TABLE: embedding_data, id
+
+TABLE: memory_embeddings  <->  MODEL: MemoryEmbedding (Sources/Aetherium/Models/MemoryEmbedding.swift)
+  columns: memory_id, embedding, model, created_at
+  properties: id, memoryId, embeddingData, model, createdAt
+  MISSING IN MODEL: embedding
+  MISSING IN TABLE: embedding_data, id
+
+TABLE: context_snapshots  <->  MODEL: ContextSnapshot (Sources/Aetherium/Models/ConversationSummary.swift)
+  columns: id, session_id, message_id, assembled_context, token_budget, tokens_used, sources_json, created_at
+  properties: id, messageId, assembledContext, tokenBudget, tokensUsed, sourcesJson, createdAt, chatSession
+  MISSING IN MODEL: session_id
+  MISSING IN TABLE: chat_session
+
+TABLE: quick_search_documents  <->  MODEL: QuickSearchDocument (Sources/Aetherium/Models/QuickSearchDocument.swift)
+  columns: rowid, doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+  properties: rowid, docId, targetId, kind, workspaceId, projectId, sessionId, sourceSessionId, title, subtitle, body, updatedAt
+
+MODELS WITHOUT TABLE:
+  AIModelEntity (Sources/Aetherium/Models/AIModel.swift) - props: id, name, provider, roleTags, priority, isPaid, enabled, tokensUsedTotal, createdAt
+  AIModel (Sources/Aetherium/Models/AIModelShim.swift) - props: id, name, modelId, provider, roleTags, priority, isPaid, enabled, tokensUsedTotal, createdAt
+  BackupModels (Sources/Aetherium/Models/BackupModels.swift) - props: entries, id, timestamp, directoryName, projectCount, totalItems, changeSummary, sizeBytes, backupID, createdAt, appVersion, projects, id, title, projectDescription, createdAt, updatedAt, learningGoals, chatSessions, sources, concepts, noteTemplates, dailyNotes, learningCards, learningPaths, alarms, id, title, goalDescription, progress, createdAt, updatedAt, prerequisiteIDs, relatedChatIDs, projectID, id, title, createdAt, updatedAt, modelName, isLocal, extractedTopics, relatedGoalIDs, parentMessageID, branchLabel, messages, projectID, id, content, role, timestamp, tokenCount, citations, chatSessionID, id, sourceID, sourceTitle, sourceType, excerpt, relevanceScore, pageNumber, messageID, id, name, conceptDescription, createdAt, lastReferencedAt, referenceCount, nodeType, aliases, tags, relatedGoalIDs, outgoingLinks, mentions, projectID, id, linkType, strength, createdAt, context, sourceID, targetID, id, mentionContext, position, createdAt, sourceType, sourceID, conceptID, id, sourceType, title, createdAt, processedAt, isProcessing, projectID, document, webpage, audioFile, note, id, filename, fileType, filePath, extractedText, pageCount, fileSize, processedAt, metadata, chunks, id, content, pageNumber, sectionTitle, chunkIndex, tokenCount, id, url, pageTitle, extractedContent, capturedAt, faviconData, id, filename, filePath, transcription, duration, transcribedAt, modelUsed, id, title, content, noteType, createdAt, updatedAt, tags, id, name, templateDescription, content, category, isBuiltIn, createdAt, tags, variables, projectID, id, date, content, mood, productivity, completedTasks, learningHighlights, gratitude, createdAt, updatedAt, projectID, noteID, id, front, back, cardType, difficulty, tags, easeFactor, interval, repetitions, nextReviewDate, lastReviewDate, totalReviews, correctReviews, createdAt, conceptID, projectID, id, title, pathDescription, targetCompletionDate, isCompleted, createdAt, completedAt, milestones, projectID, id, title, milestoneDescription, orderIndex, isCompleted, completedAt, dueDate, learningPathID, relatedConceptIDs, id, title, note, durationSeconds, fireDate, isActive, isCompleted, inputPrompt, createdAt, projectID, dailyNoteID, backupID, previousBackupID, timestamp, sections, id, category, added, modified, removed, isEmpty, id, title, detail
+  ConversationSummary (Sources/Aetherium/Models/ConversationSummary.swift) - props: id, summaryType, content, keyTopics, messageRangeStart, messageRangeEnd, tokenCount, createdAt, updatedAt, workspace, chatSession, embeddingsData, cachedEmbedding, type, embeddings
+  GraphAlgorithms (Sources/Aetherium/Models/GraphAlgorithms.swift) - props: events, evolution, currentDay, queue
+  Memory (Sources/Aetherium/Models/Memory.swift) - props: id, projectId, content, memoryType, sourceSessionId, isPinned, isActive, createdAt, updatedAt, workspace, embeddingsData, cachedEmbedding, type, embeddings
+  ProjectSource (Sources/Aetherium/Models/ProjectSource.swift) - props: id, sourceType, title, createdAt, processedAt, isProcessing, project, document, webpage, audioFile, note, type
+  ThoughtQueueItem (Sources/Aetherium/Models/ThoughtQueue.swift) - props: id, content, status, processAt, modelName, promptPrefix, result, resultAt, createdAt, updatedAt, workspace, currentStatus

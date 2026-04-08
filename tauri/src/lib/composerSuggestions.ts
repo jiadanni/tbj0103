@@ -13,6 +13,8 @@ export interface ComposerSuggestion {
 export interface ComposerSuggestionRow {
   id: string;
   label: string;
+  collapsible?: boolean;
+  defaultExpanded?: boolean;
   suggestions: ComposerSuggestion[];
 }
 
@@ -131,6 +133,8 @@ export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext):
   return {
     id: "workspace",
     label: "Workspace",
+    collapsible: true,
+    defaultExpanded: true,
     suggestions: terms.map((term, index) => ({
       id: `workspace-${index}`,
       label: buildWorkspacePrompt(term, index, hasDocs),

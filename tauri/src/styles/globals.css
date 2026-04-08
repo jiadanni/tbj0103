@@ -343,6 +343,33 @@ input[type="radio"]:focus {
 /* =====================================================
    Textarea and Input Focus Styling
    ===================================================== */
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+:root[data-platform="linux"] input:not([type="checkbox"]):not([type="radio"]),
+:root[data-platform="linux"] textarea,
+:root[data-platform="linux"] select {
+  color: var(--text-primary);
+  caret-color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+}
+
+:root[data-platform="linux"] input:not([type="checkbox"]):not([type="radio"])::placeholder,
+:root[data-platform="linux"] textarea::placeholder {
+  color: var(--text-muted);
+  -webkit-text-fill-color: var(--text-muted);
+  opacity: 1;
+}
+
 textarea:focus,
 input[type="text"]:focus,
 input[type="email"]:focus,
