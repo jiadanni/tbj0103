@@ -620,6 +620,7 @@ export default function Layout() {
   const loadArtifact = useArtifactStore((state) => state.loadArtifact);
   const setArtifactPanelOpen = useArtifactStore((state) => state.setPanelOpen);
   const hasLeftRail = !splitMode && sectionNavigation === "sidebar";
+  const showSplitPaneLayout = splitMode && !["/preferences", "/memory", "/webcapture"].some((path) => location.pathname.startsWith(path));
 
   const toggleSplitModeFromShell = React.useCallback(() => {
     if (splitMode) {
@@ -677,7 +678,7 @@ export default function Layout() {
       {!splitMode && sectionNavigation === "top-dropdown" && <CompactSectionNavigation />}
 
       <div className="flex-1 overflow-hidden min-h-0">
-        {splitMode && !["/preferences", "/memory", "/webcapture"].some(p => location.pathname.startsWith(p)) ? (
+        {showSplitPaneLayout ? (
           <SplitPaneLayout />
         ) : (
           <div className="flex h-full overflow-hidden min-h-0">
@@ -688,7 +689,7 @@ export default function Layout() {
           </div>
         )}
       </div>
-      {!hasLeftRail && <PreferencesDockButton />}
+      {showSplitPaneLayout && !hasLeftRail && <PreferencesDockButton />}
       <ArtifactPanel />
     </div>
   );

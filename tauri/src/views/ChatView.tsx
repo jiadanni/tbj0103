@@ -3864,9 +3864,10 @@ export default function ChatView() {
           )}
         </div>
 
-      {/* ── Thought Queue right panel ─────────────────────────────────────── */}
+      {/* ── Thought Queue overlay panel ───────────────────────────────────── */}
       {thoughtPanelOpen && (
-        <div className="w-72 shrink-0 border-l border-[var(--border-color)] flex flex-col bg-[var(--bg-sidebar)] overflow-hidden">
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-30 flex w-72 max-w-[min(24rem,100%)] justify-end">
+          <div className="pointer-events-auto flex h-full w-full flex-col overflow-hidden border-l border-[var(--border-color)] bg-[var(--bg-sidebar)] shadow-[-20px_0_50px_-30px_rgba(0,0,0,0.8)]">
           {/* header */}
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)] shrink-0">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
@@ -3957,6 +3958,7 @@ export default function ChatView() {
               ))
             )}
           </div>
+        </div>
         </div>
       )}
       </div>
