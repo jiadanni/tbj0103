@@ -2,6 +2,42 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub enum HierarchyLevel {
+    Chapter,
+    Section,
+    Concept,
+}
+
+impl Default for HierarchyLevel {
+    fn default() -> Self {
+        HierarchyLevel::Concept
+    }
+}
+
+impl std::fmt::Display for HierarchyLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            HierarchyLevel::Chapter => "chapter",
+            HierarchyLevel::Section => "section",
+            HierarchyLevel::Concept => "concept",
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl std::str::FromStr for HierarchyLevel {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "chapter" => Ok(HierarchyLevel::Chapter),
+            "section" => Ok(HierarchyLevel::Section),
+            _ => Ok(HierarchyLevel::Concept),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum ConceptType {
     Topic,
     Person,
@@ -99,6 +135,7 @@ pub struct ConceptNode {
     pub x_position: f64,
     pub y_position: f64,
     pub review_count: i64,
+    pub hierarchy_level: HierarchyLevel,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -143,6 +180,7 @@ pub struct CreateConceptRequest {
     pub concept_type: Option<ConceptType>,
     pub tags: Option<Vec<String>>,
     pub aliases: Option<Vec<String>>,
+    pub hierarchy_level: Option<HierarchyLevel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +207,7 @@ impl ConceptNode {
             x_position: 0.0,
             y_position: 0.0,
             review_count: 0,
+            hierarchy_level: HierarchyLevel::Concept,
             created_at: now.clone(),
             updated_at: now,
         }

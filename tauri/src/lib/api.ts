@@ -138,6 +138,7 @@ export interface ConceptNode {
   id: string; workspace_id: string; name: string; concept_description: string;
   concept_type: string; tags: string[]; aliases: string[];
   x_position: number; y_position: number; review_count: number;
+  hierarchy_level: string;
   created_at: string; updated_at: string;
 }
 
@@ -417,6 +418,17 @@ export interface AnalysisResult {
   concepts_created: number;
   links_created: number;
   concepts_skipped: number;
+  chapters_created: number;
+  sections_created: number;
+}
+
+export interface LearningPathItem {
+  concept_id: string;
+  concept_name: string;
+  concept_description: string;
+  hierarchy_path: string;
+  met_prereqs: number;
+  unmet_prereqs: number;
 }
 
 export interface SuggestedGoal {
@@ -658,6 +670,7 @@ export const api = {
     listLinks: (workspaceId: string, limit?: number, offset?: number) => invoke<ConceptLink[]>("list_concept_links", { workspaceId, limit, offset }),
     deleteLink: (id: string) => invoke<void>("delete_concept_link", { id }),
     getStats: (workspaceId: string) => invoke<GraphStatistics>("get_graph_stats", { workspaceId }),
+    getLearningPath: (workspaceId: string) => invoke<LearningPathItem[]>("get_learning_path", { workspaceId }),
   },
 
   learningGoal: {

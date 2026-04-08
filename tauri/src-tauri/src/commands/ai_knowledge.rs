@@ -12,6 +12,8 @@ pub struct AnalysisResult {
     pub concepts_created: usize,
     pub links_created: usize,
     pub concepts_skipped: usize,
+    pub chapters_created: usize,
+    pub sections_created: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -315,18 +317,25 @@ pub async fn analyze_workspace(
         .map(|t| format!(" Focus especially on concepts related to: {t}."))
         .unwrap_or_default();
 
+    let content = if snapshot.text.len() > 15_000 {
+        &snapshot.text[..15_000]
+    } else {
+        &snapshot.text
+    };
+
     let prompt = format!(
-        "You are a knowledge graph assistant. Analyze the following learning content and extract key concepts and relationships.{focus}\n\n\
+        "You are a knowledge graph assistant. Analyze this learning content and organize it like a textbook.{focus}\n\n\
         Content:\n{content}\n\n\
-        Respond with ONLY valid JSON (no markdown, no explanation):\n\
-        {{\"concepts\":[\"concept1\",\"concept2\",...],\"relationships\":[{{\"source\":\"concept1\",\"target\":\"concept2\",\"type\":\"related\"}},...]}}\n\
-        - List 5-15 important concepts as strings.\n\
-        - Prefer specific domain concepts, named techniques, libraries, APIs, protocols, tools, or concrete topics.\n\
-        - Do NOT include generic words like code, method, process, result, question, variable, bug, test, artifact, input, output, condition, or programming.\n\
-        - List relationships between concepts. Type must be one of: related, part_of, prerequisite, contradicts, supports, example.\n\
-        - Only output the raw JSON object.",
+        Respond with ONLY raw JSON:\n\
+        {{\"chapters\":[{{\"name\":\"...\",\"description\":\"...\",\"sections\":[{{\"name\":\"...\",\"description\":\"...\",\"concepts\":[{{\"name\":\"...\",\"description\":\"...\",\"type\":\"definition\"}}]}}]}}],\"relationships\":[{{\"source\":\"exact concept name\",\"target\":\"exact concept name\",\"type\":\"prerequisite\",\"description\":\"why\"}}]}}\n\n\
+        Rules:\n\
+        - 2-4 chapters, 2-3 sections per chapter, 3-6 concepts per section\n\
+        - concept type: topic, definition, technology, insight, question, resource\n\
+        - relationship type: related, prerequisite, supports, contradicts, example\n\
+        - source/target MUST be the exact concept name as listed in the hierarchy above\n\
+        - No markdown, only raw JSON",
         focus = focus_clause,
-        content = if snapshot.text.len() > 15_000 { &snapshot.text[..15_000] } else { &snapshot.text },
+        content = content,
     );
 
     // 3. Call Ollama (no DB lock held)
@@ -350,23 +359,47 @@ pub async fn analyze_workspace(
     };
 
     #[derive(Deserialize)]
-    struct AiOutput {
-        concepts: Vec<String>,
+    struct AiConcept {
+        name: String,
+        description: Option<String>,
+        #[serde(rename = "type")]
+        concept_type: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct AiSection {
+        name: String,
+        description: Option<String>,
         #[serde(default)]
-        relationships: Vec<AiRelationship>,
+        concepts: Vec<AiConcept>,
+    }
+    #[derive(Deserialize)]
+    struct AiChapter {
+        name: String,
+        description: Option<String>,
+        #[serde(default)]
+        sections: Vec<AiSection>,
     }
     #[derive(Deserialize)]
     struct AiRelationship {
         source: String,
         target: String,
-        #[serde(default = "default_rel_type")]
+        #[serde(rename = "type", default = "default_rel_type")]
         r#type: String,
+        description: Option<String>,
+        strength: Option<f64>,
     }
     fn default_rel_type() -> String {
         "related".to_string()
     }
+    #[derive(Deserialize)]
+    struct AiHierarchicalOutput {
+        #[serde(default)]
+        chapters: Vec<AiChapter>,
+        #[serde(default)]
+        relationships: Vec<AiRelationship>,
+    }
 
-    let output: AiOutput = match serde_json::from_str(json_str) {
+    let output: AiHierarchicalOutput = match serde_json::from_str(json_str) {
         Ok(parsed) => parsed,
         Err(parse_error) => {
             let repaired = repair_truncated_json_object(json_str)
@@ -377,16 +410,14 @@ pub async fn analyze_workspace(
         }
     };
 
-    // 5. Insert concepts + relationships — re-acquire lock
+    // 5. Insert hierarchy + relationships — re-acquire lock
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
 
-    let mut concepts_created = 0usize;
-    let mut concepts_skipped = 0usize;
     let mut name_to_id: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
 
-    // Load existing concepts into name_to_id map
+    // Load existing concepts into name_to_id map (lowercase key)
     if let Ok(mut stmt) =
         conn.prepare("SELECT id, LOWER(name) FROM concept_nodes WHERE workspace_id = ?1")
     {
@@ -401,80 +432,162 @@ pub async fn analyze_workspace(
             });
     }
 
-    for raw_name in &output.concepts {
-        let name = raw_name.trim().to_string();
-        if name.is_empty() {
-            continue;
+    // Fuzzy name lookup: exact match first, then substring fallback
+    fn fuzzy_lookup(
+        name_to_id: &std::collections::HashMap<String, String>,
+        query: &str,
+    ) -> Option<String> {
+        let q = query.trim().to_lowercase();
+        if let Some(id) = name_to_id.get(&q) {
+            return Some(id.clone());
         }
-        if !is_specific_concept(&name) {
-            concepts_skipped += 1;
-            continue;
-        }
-        let lower = name.to_lowercase();
-
-        if name_to_id.contains_key(&lower) {
-            concepts_skipped += 1;
-        } else {
-            let id = uuid::Uuid::new_v4().to_string();
-            let result = conn.execute(
-                "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at) \
-                 VALUES (?1, ?2, ?3, '', 'topic', '[]', '[]', '[]', 0.0, 0.0, 0, ?4, ?4)",
-                rusqlite::params![id, req.workspace_id, name, now],
-            );
-            if result.is_ok() {
-                name_to_id.insert(lower, id);
-                concepts_created += 1;
-            }
-        }
+        name_to_id
+            .iter()
+            .filter(|(k, _)| k.len() >= 4)
+            .find(|(k, _)| k.contains(q.as_str()) || q.contains(k.as_str()))
+            .map(|(_, v)| v.clone())
     }
 
-    let mut links_created = 0usize;
-    let valid_types = [
-        "related",
-        "part_of",
-        "prerequisite",
-        "contradicts",
-        "supports",
-        "example",
-    ];
-
-    for rel in &output.relationships {
-        let src_lower = rel.source.trim().to_lowercase();
-        let tgt_lower = rel.target.trim().to_lowercase();
-        let link_type = if valid_types.contains(&rel.r#type.as_str()) {
-            rel.r#type.as_str()
+    // Upsert helper: returns existing id or inserts new node
+    let upsert_node = |name: &str,
+                       description: &str,
+                       concept_type: &str,
+                       hierarchy_level: &str,
+                       name_to_id: &mut std::collections::HashMap<String, String>|
+     -> Option<String> {
+        let lower = name.trim().to_lowercase();
+        if lower.is_empty() {
+            return None;
+        }
+        if let Some(existing_id) = name_to_id.get(&lower) {
+            return Some(existing_id.clone());
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        let result = conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level) \
+             VALUES (?1, ?2, ?3, ?4, ?5, '[]', '[]', '[]', 0.0, 0.0, 0, ?6, ?6, ?7)",
+            rusqlite::params![id, req.workspace_id, name.trim(), description, concept_type, now, hierarchy_level],
+        );
+        if result.is_ok() {
+            name_to_id.insert(lower, id.clone());
+            Some(id)
         } else {
-            "related"
-        };
+            None
+        }
+    };
 
-        let src_id = match name_to_id.get(&src_lower) {
-            Some(id) => id.clone(),
-            None => continue,
-        };
-        let tgt_id = match name_to_id.get(&tgt_lower) {
-            Some(id) => id.clone(),
-            None => continue,
-        };
-
-        // Check for existing link
+    // Link upsert helper
+    let upsert_link = |source_id: &str, target_id: &str, link_type: &str, strength: f64, context: &str| {
         let exists: bool = conn
             .query_row(
                 "SELECT COUNT(*) FROM concept_links WHERE source_id = ?1 AND target_id = ?2",
-                rusqlite::params![src_id, tgt_id],
+                rusqlite::params![source_id, target_id],
                 |row| row.get::<_, i64>(0),
             )
             .unwrap_or(0)
             > 0;
-
         if !exists {
             let link_id = uuid::Uuid::new_v4().to_string();
-            if conn.execute(
+            conn.execute(
                 "INSERT INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at) \
-                 VALUES (?1, ?2, ?3, ?4, 0.7, 'ai_inferred', ?5)",
-                rusqlite::params![link_id, src_id, tgt_id, link_type, now],
-            ).is_ok() {
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![link_id, source_id, target_id, link_type, strength, context, now],
+            ).is_ok()
+        } else {
+            false
+        }
+    };
+
+    let mut chapters_created = 0usize;
+    let mut sections_created = 0usize;
+    let mut concepts_created = 0usize;
+    let mut concepts_skipped = 0usize;
+    let mut links_created = 0usize;
+
+    for chapter in &output.chapters {
+        let ch_name = chapter.name.trim();
+        if ch_name.is_empty() {
+            continue;
+        }
+        let ch_desc = chapter.description.as_deref().unwrap_or("");
+        let ch_id_opt = upsert_node(ch_name, ch_desc, "topic", "chapter", &mut name_to_id);
+        let ch_id = match ch_id_opt {
+            Some(id) => {
+                chapters_created += 1;
+                id
+            }
+            None => continue,
+        };
+
+        for section in &chapter.sections {
+            let sec_name = section.name.trim();
+            if sec_name.is_empty() {
+                continue;
+            }
+            let sec_desc = section.description.as_deref().unwrap_or("");
+            let sec_id_opt = upsert_node(sec_name, sec_desc, "topic", "section", &mut name_to_id);
+            let sec_id = match sec_id_opt {
+                Some(id) => {
+                    sections_created += 1;
+                    id
+                }
+                None => continue,
+            };
+
+            // section part_of chapter
+            if upsert_link(&sec_id, &ch_id, "part_of", 1.0, "hierarchy") {
                 links_created += 1;
             }
+
+            for concept in &section.concepts {
+                let con_name = concept.name.trim();
+                if con_name.is_empty() || !is_specific_concept(con_name) {
+                    concepts_skipped += 1;
+                    continue;
+                }
+                let con_desc = concept.description.as_deref().unwrap_or("");
+                let con_type = concept.concept_type.as_deref().unwrap_or("topic");
+                let valid_types = ["topic", "definition", "technology", "insight", "question", "resource"];
+                let con_type = if valid_types.contains(&con_type) { con_type } else { "topic" };
+
+                let con_id_opt = upsert_node(con_name, con_desc, con_type, "concept", &mut name_to_id);
+                match con_id_opt {
+                    Some(con_id) => {
+                        concepts_created += 1;
+                        // concept part_of section
+                        if upsert_link(&con_id, &sec_id, "part_of", 1.0, "hierarchy") {
+                            links_created += 1;
+                        }
+                    }
+                    None => {
+                        concepts_skipped += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    for rel in &output.relationships {
+        let src_id = match fuzzy_lookup(&name_to_id, &rel.source) {
+            Some(id) => id,
+            None => continue,
+        };
+        let tgt_id = match fuzzy_lookup(&name_to_id, &rel.target) {
+            Some(id) => id,
+            None => continue,
+        };
+
+        let valid_rel_types = ["related", "prerequisite", "supports", "contradicts", "example"];
+        let link_type = if valid_rel_types.contains(&rel.r#type.as_str()) {
+            rel.r#type.as_str()
+        } else {
+            "related"
+        };
+        let strength = rel.strength.unwrap_or(0.7).clamp(0.0, 1.0);
+        let context = rel.description.as_deref().unwrap_or("ai_inferred");
+
+        if upsert_link(&src_id, &tgt_id, link_type, strength, context) {
+            links_created += 1;
         }
     }
 
@@ -482,6 +595,8 @@ pub async fn analyze_workspace(
         concepts_created,
         links_created,
         concepts_skipped,
+        chapters_created,
+        sections_created,
     })
 }
 
