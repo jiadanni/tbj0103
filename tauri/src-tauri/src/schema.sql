@@ -99,8 +99,6 @@ CREATE TABLE IF NOT EXISTS concept_nodes (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_concept_nodes_hierarchy ON concept_nodes(workspace_id, hierarchy_level);
-
 CREATE TABLE IF NOT EXISTS concept_links (
     id TEXT PRIMARY KEY NOT NULL,
     source_id TEXT NOT NULL REFERENCES concept_nodes(id) ON DELETE CASCADE,
