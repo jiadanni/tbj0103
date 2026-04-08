@@ -10,7 +10,7 @@ fn row_to_concept(row: &rusqlite::Row) -> rusqlite::Result<ConceptNode> {
     let tags_json: String = row.get(5)?;
     let aliases_json: String = row.get(6)?;
     let refs_json: String = row.get(7)?;
-    let level_str: String = row.get(13).unwrap_or_else(|_| "concept".to_string());
+    let level_str: String = row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "concept".to_string());
     Ok(ConceptNode {
         id: row.get(0)?,
         workspace_id: row.get(1)?,

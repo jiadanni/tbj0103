@@ -792,12 +792,12 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         |row| row.get(0),
     )?;
     if applied_v35 == 0 {
-        conn.execute_batch(
-            "ALTER TABLE concept_nodes ADD COLUMN hierarchy_level TEXT NOT NULL DEFAULT 'concept';"
-        ).unwrap_or(()); // silently swallow if column already exists
-        conn.execute_batch(
+        let _ = conn.execute_batch(
+            "ALTER TABLE concept_nodes ADD COLUMN hierarchy_level TEXT DEFAULT 'concept';"
+        );
+        let _ = conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_concept_nodes_hierarchy ON concept_nodes(workspace_id, hierarchy_level);"
-        )?;
+        );
         conn.execute_batch(
             "INSERT INTO _migrations(name) VALUES('v35_concept_nodes_hierarchy_level');",
         )?;

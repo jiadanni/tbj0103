@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS concept_nodes (
     x_position REAL NOT NULL DEFAULT 0.0,
     y_position REAL NOT NULL DEFAULT 0.0,
     review_count INTEGER NOT NULL DEFAULT 0,
-    hierarchy_level TEXT NOT NULL DEFAULT 'concept',
+    hierarchy_level TEXT DEFAULT 'concept',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
