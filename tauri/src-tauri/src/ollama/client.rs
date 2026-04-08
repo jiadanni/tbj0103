@@ -217,7 +217,7 @@ impl OllamaClient {
     ) {
         let severity = Self::severity(path, duration, false, false, ctx);
         let fields = Self::summary_fields(ctx, method, path, Some(duration), Some(status), extras);
-        eprintln!("[OLLAMA][{}] {}", severity, fields.join(" "),);
+        eprintln!("[AETHERIUM → OLLAMA][{}] {}", severity, fields.join(" "),);
     }
 
     #[cfg(debug_assertions)]
@@ -233,14 +233,14 @@ impl OllamaClient {
         let mut extra_parts = extras.to_vec();
         extra_parts.push(("error", error.to_string()));
         let fields = Self::summary_fields(ctx, method, path, Some(duration), None, &extra_parts);
-        eprintln!("[OLLAMA][ERR] {}", fields.join(" "),);
+        eprintln!("[AETHERIUM → OLLAMA][ERR] {}", fields.join(" "),);
     }
 
     #[cfg(debug_assertions)]
     fn log_cache_event(&self, path: &str, ctx: &RequestContext, cache_status: &str) {
         let extras = [("cache", cache_status.to_string())];
         let fields = Self::summary_fields(ctx, "GET", path, None, None, &extras);
-        eprintln!("[OLLAMA][CACHE] {}", fields.join(" "),);
+        eprintln!("[AETHERIUM → OLLAMA][CACHE] {}", fields.join(" "),);
     }
 
     #[cfg(not(debug_assertions))]
