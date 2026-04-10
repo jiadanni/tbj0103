@@ -17,7 +17,9 @@
       "WebFetch(domain:medium.com)",
       "Bash(ls -la /Users/daniel.jatto/Source/mine/tbj0103/tauri/src-tauri/src/commands/*.rs)",
       "Bash(xargs -I {} basename {} .rs)",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('\\\\n'.join\\(f'{k}: {v}' for k,v in d.get\\('dependencies',{}\\).items\\(\\)\\)\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('\\\\n'.join\\(f'{k}: {v}' for k,v in d.get\\('dependencies',{}\\).items\\(\\)\\)\\)\")",
+      "Bash(xargs basename:*)",
+      "Bash(git add:*)"
     ]
   }
 }

@@ -1891,6 +1891,7 @@ export default function ChatView() {
   const prevScrollChatIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pendingSentScrollId = useRef<string | null>(null);
+  const pendingNewSessionRef = useRef<Promise<ChatSession | null> | null>(null);
   const incognitoSessionIdsRef = useRef<Set<string>>(new Set());
 
   const activeMessages = useMemo(
@@ -2377,12 +2378,35 @@ export default function ChatView() {
     });
   }, [activeChatId, hasLoadedActiveMessages, activeMessages.length, isStreaming]);
 
-  async function createNewSession(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
-    if (!effectiveWorkspaceId) {return;}
+  function activateSession(session: ChatSession) {
+    setActiveChatId(session.id);
+    api.chat.touchSessionAccessed(session.id).catch(() => {});
+
+    const store = useChatStore.getState();
+    if (!store.sessions.some((existingSession) => existingSession.id === session.id)) {
+      store.addSession(session);
+    }
+    if (store.messages[session.id] === undefined) {
+      setMessages(session.id, []);
+    }
+  }
+
+  async function findOrCreateEmptySession(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
+    if (!effectiveWorkspaceId) {return null;}
+
     const privacy = {
       isIncognito: options?.isIncognito ?? false,
       excludeFromAnalytics: options?.excludeFromAnalytics ?? false,
     };
+    const store = useChatStore.getState();
+    const localUnusedSession = findUnusedSession(
+      store.sessions,
+      store.messages,
+      effectiveWorkspaceId,
+    );
+    if (localUnusedSession) {
+      return localUnusedSession;
+    }
 
     const workspaceSessions = await api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0 });
     const unusedSession = findUnusedSession(
@@ -2391,23 +2415,38 @@ export default function ChatView() {
       effectiveWorkspaceId,
     );
     if (unusedSession) {
-      setActiveChatId(unusedSession.id);
-      api.chat.touchSessionAccessed(unusedSession.id).catch(() => {});
-      if (!sessions.some((session) => session.id === unusedSession.id)) {
-        useChatStore.getState().addSession(unusedSession);
-      }
-      return;
+      return unusedSession;
     }
 
-    const session = await api.chat.createSession(effectiveWorkspaceId, effectiveProjectId, {
+    return api.chat.createSession(effectiveWorkspaceId, effectiveProjectId, {
       modelName: selectedModel,
       is_incognito: privacy.isIncognito,
       exclude_from_analytics: privacy.excludeFromAnalytics,
     });
-    useChatStore.getState().addSession(session);
-    setActiveChatId(session.id);
-    api.chat.touchSessionAccessed(session.id).catch(() => {});
-    setMessages(session.id, []);
+  }
+
+  async function createNewSession(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
+    if (!effectiveWorkspaceId) {return;}
+
+    if (pendingNewSessionRef.current) {
+      const pendingSession = await pendingNewSessionRef.current;
+      if (pendingSession) {
+        activateSession(pendingSession);
+      }
+      return;
+    }
+
+    const nextSessionPromise = findOrCreateEmptySession(options).finally(() => {
+      if (pendingNewSessionRef.current === nextSessionPromise) {
+        pendingNewSessionRef.current = null;
+      }
+    });
+    pendingNewSessionRef.current = nextSessionPromise;
+
+    const session = await nextSessionPromise;
+    if (session) {
+      activateSession(session);
+    }
   }
   async function generateSessionTitleIfNeeded(sessionId: string, model: string, firstMessage: string) {
     const settings = await api.settings.get().catch(() => null);
