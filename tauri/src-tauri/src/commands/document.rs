@@ -1,5 +1,6 @@
 use crate::db::DbState;
 use crate::models::source::{ProcessDocumentRequest, UploadDocumentRequest, UploadedDocument};
+use crate::services::linking_engine;
 use tauri::State;
 
 const MAX_UPLOAD_FILE_SIZE_BYTES: i64 = 50 * 1024 * 1024;
@@ -43,6 +44,19 @@ pub fn upload_document(
             doc.updated_at
         ],
     ).map_err(|e| e.to_string())?;
+
+    // Index any [[wiki-links]] present in the uploaded document so documents
+    // participate in the knowledge graph (mirrors the pattern in commands::note::create_note).
+    if !doc.content.is_empty() {
+        let _ = linking_engine::index_note_links(
+            &conn,
+            "document",
+            &doc.id,
+            &doc.workspace_id,
+            &doc.content,
+        );
+    }
+
     Ok(doc)
 }
 
@@ -158,7 +172,7 @@ pub fn process_document(state: State<DbState>, req: ProcessDocumentRequest) -> R
 }
 
 /// Split text into overlapping word chunks.
-fn chunk_text(text: &str, chunk_words: usize, overlap_words: usize) -> Vec<String> {
+pub(crate) fn chunk_text(text: &str, chunk_words: usize, overlap_words: usize) -> Vec<String> {
     let words: Vec<&str> = text.split_whitespace().collect();
     if words.is_empty() {
         return vec![];

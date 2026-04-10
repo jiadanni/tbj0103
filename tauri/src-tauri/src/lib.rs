@@ -291,6 +291,9 @@ pub fn run() {
             commands::note::apply_template,
             commands::note::get_backlinks,
             commands::note::get_note_outbound_links,
+            // Chat → Note / Document conversion
+            commands::chat_conversion::convert_chat_to_note,
+            commands::chat_conversion::convert_chat_to_document,
             // Document commands
             commands::document::upload_document,
             commands::document::list_documents,

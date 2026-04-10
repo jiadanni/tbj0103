@@ -4,6 +4,7 @@ pub mod alarm;
 pub mod artifact;
 pub mod backup;
 pub mod chat;
+pub mod chat_conversion;
 pub mod chat_file;
 pub mod context;
 pub mod dashboard;
