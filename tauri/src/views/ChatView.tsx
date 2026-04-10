@@ -2448,6 +2448,36 @@ export default function ChatView() {
       activateSession(session);
     }
   }
+
+  async function ensureSessionForChat(modelId: string, options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
+    if (!effectiveWorkspaceId) {return null;}
+
+    let sessionId = activeChatId;
+    let session = sessionId
+      ? useChatStore.getState().sessions.find((existingSession) => existingSession.id === sessionId) ?? null
+      : null;
+
+    if (!sessionId) {
+      const nextSession = await findOrCreateEmptySession(options);
+      if (!nextSession) {return null;}
+      activateSession(nextSession);
+      sessionId = nextSession.id;
+      session = nextSession;
+    }
+
+    if (session && session.model_name !== modelId) {
+      await api.chat.updateSession(effectiveWorkspaceId, session.id, { model_name: modelId });
+      const updatedSession = {
+        ...session,
+        model_name: modelId,
+        updated_at: new Date().toISOString(),
+      };
+      useChatStore.getState().updateSession(updatedSession);
+      session = updatedSession;
+    }
+
+    return { sessionId, session };
+  }
   async function generateSessionTitleIfNeeded(sessionId: string, model: string, firstMessage: string) {
     const settings = await api.settings.get().catch(() => null);
     if (!settings || settings.chat_title_auto_refresh === "disabled") {return;}
@@ -2537,25 +2567,9 @@ export default function ChatView() {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const oneOffWebProviderKey = isOneOffWebProvider ? modelMeta!.provider.replace("web_", "") : "";
 
-    let sid = activeChatId;
-    if (!sid) {
-      const session = await api.chat.createSession(effectiveWorkspaceId, effectiveProjectId, { modelName: modelId });
-      useChatStore.getState().addSession(session);
-      sid = session.id;
-      setActiveChatId(session.id);
-      api.chat.touchSessionAccessed(session.id).catch(() => {});
-      setMessages(session.id, []);
-    } else {
-      const existingSession = useChatStore.getState().sessions.find((session) => session.id === sid);
-      if (existingSession && existingSession.model_name !== modelId) {
-        await api.chat.updateSession(effectiveWorkspaceId, sid, { model_name: modelId });
-        useChatStore.getState().updateSession({
-          ...existingSession,
-          model_name: modelId,
-          updated_at: new Date().toISOString(),
-        });
-      }
-    }
+    const ensuredSession = await ensureSessionForChat(modelId);
+    if (!ensuredSession) {return;}
+    const sid = ensuredSession.sessionId;
 
     if (contentOverride === undefined) {
       setInput("");
@@ -3612,18 +3626,11 @@ export default function ChatView() {
                           <button
                             onClick={async () => {
                               if (!input.trim() || !effectiveWorkspaceId || !selectedModel) {return;}
-                              let sid = activeChatId;
-                              if (!sid) {
-                                const session = await api.chat.createSession(effectiveWorkspaceId, effectiveProjectId, { modelName: selectedModel });
-                                useChatStore.getState().addSession(session);
-                                sid = session.id;
-                                setActiveChatId(session.id);
-                                api.chat.touchSessionAccessed(session.id).catch(() => {});
-                                setMessages(session.id, []);
-                              }
+                              const ensuredSession = await ensureSessionForChat(selectedModel);
+                              if (!ensuredSession) {return;}
                               await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
                                 modelName: selectedModel,
-                                sessionId: sid,
+                                sessionId: ensuredSession.sessionId,
                                 processAt: new Date(Date.now() + 60_000).toISOString(),
                               });
                               setInput("");
