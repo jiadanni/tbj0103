@@ -620,6 +620,10 @@ export const api = {
       invoke<void>("touch_session_accessed", { sessionId }),
     getRecentSessions: (workspaceId: string, limit?: number) =>
       invoke<ChatSession[]>("get_recent_sessions", { workspaceId, limit }),
+    convertToNote: (sessionId: string, ollamaUrl?: string) =>
+      invoke<ProjectNote>("convert_chat_to_note", { req: { session_id: sessionId, ollama_url: ollamaUrl } }),
+    convertToDocument: (sessionId: string, ollamaUrl?: string) =>
+      invoke<Source>("convert_chat_to_document", { req: { session_id: sessionId, ollama_url: ollamaUrl } }),
   },
 
   chatFile: {

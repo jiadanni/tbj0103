@@ -14,6 +14,7 @@ import ComposerSuggestionRows from "../components/ComposerSuggestionRows";
 import { TopicChips } from "../components/TopicChips";
 import { WorkspaceMigrationBanner } from "../components/WorkspaceMigrationBanner";
 import ChatMessageBubble from "../components/ChatMessageBubble";
+import ConvertChatModal, { type ConvertKind } from "../components/ConvertChatModal";
 import { useScopedChat, useScopedProjects, useScopedWorkspace, useWorkspacePane } from "../lib/workspacePane";
 import {
   buildChatSuggestionRow,
@@ -241,6 +242,9 @@ function SessionSidebar({
     | { type: "project"; x: number; y: number; project: Project }
     | null
   >(null);
+  const [convertTarget, setConvertTarget] = useState<{ session: ChatSession; kind: ConvertKind } | null>(null);
+  const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
+  const navigate = useNavigate();
   const cancelCreateFolder = () => {
     setCreatingFolder(false);
     setNewFolderName("");
@@ -603,6 +607,7 @@ function SessionSidebar({
   }, [ctxMenu]);
 
   return (
+    <>
     <div
       className="relative z-10 flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]"
       style={{
@@ -1148,6 +1153,24 @@ function SessionSidebar({
                 {ctxMenu.session.is_pinned ? <PinOff size={11} /> : <Pin size={11} />}
                 {ctxMenu.session.is_pinned ? "Unpin" : "Pin"}
               </button>
+              <button
+                onClick={() => {
+                  setConvertTarget({ session: ctxMenu.session, kind: "note" });
+                  setCtxMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <FileText size={11} /> Convert to note
+              </button>
+              <button
+                onClick={() => {
+                  setConvertTarget({ session: ctxMenu.session, kind: "document" });
+                  setCtxMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <BookOpen size={11} /> Convert to document
+              </button>
               <div className="my-1 border-t border-[var(--border-color)]" />
               <div
                 className="relative"
@@ -1246,6 +1269,22 @@ function SessionSidebar({
         </div>
       )}
     </div>
+    {convertTarget && (
+      <ConvertChatModal
+        session={convertTarget.session}
+        kind={convertTarget.kind}
+        ollamaUrl={ollamaUrl}
+        onClose={() => setConvertTarget(null)}
+        onSuccess={(kind) => {
+          if (kind === "note") {
+            navigate("/notes");
+          } else {
+            navigate("/documents");
+          }
+        }}
+      />
+    )}
+    </>
   );
 }
 

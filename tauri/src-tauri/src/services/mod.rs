@@ -2,6 +2,7 @@ pub mod ai_content_generator;
 pub mod artifact_service;
 pub mod background_scheduler;
 pub mod backup_service;
+pub mod chat_conversion;
 pub mod chat_file_store;
 pub mod concept_extractor;
 pub mod context_assembler;
