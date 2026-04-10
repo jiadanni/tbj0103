@@ -97,3 +97,4 @@ conversations-mac/
 # Patch artifacts
 *.orig
 *.rej
+.claude/settings.local.json

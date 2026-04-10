@@ -7,6 +7,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { api } from "@/lib/api";
 import ChatView from "@/views/ChatView";
+import type { ChatSession } from "@/stores/chatStore";
 
 vi.mock("lucide-react", () => ({
   Send: () => <div data-testid="icon-send" />,
@@ -329,5 +330,66 @@ describe("ChatView", () => {
     expect(
       Array.from(row?.querySelectorAll("div") ?? []).some((element) => element.className.includes("w-[92px]"))
     ).toBe(true);
+  });
+
+  it("reuses the same pending empty chat when new chat is clicked repeatedly", async () => {
+    (api.chat.listSessions as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (api.chat.createSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "session-new",
+      title: "New Chat",
+      model_name: "test-model",
+      system_prompt: "",
+      project_id: "",
+      workspace_id: "ws-1",
+      created_at: "",
+      updated_at: "",
+      is_incognito: false,
+      exclude_from_analytics: false,
+      is_pinned: false,
+      is_deleted: false,
+      message_count_at_title_gen: 0,
+    } satisfies ChatSession);
+
+    renderChatView();
+
+    const newChatButton = await screen.findByRole("button", { name: /start a new chat/i });
+    fireEvent.click(newChatButton);
+    fireEvent.click(newChatButton);
+    fireEvent.click(newChatButton);
+
+    await waitFor(() => {
+      expect(api.chat.createSession).toHaveBeenCalledTimes(1);
+      expect(setActiveChatId).toHaveBeenCalledWith("session-new");
+    });
+  });
+
+  it("focuses an existing empty chat instead of creating another one", async () => {
+    (api.chat.listSessions as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "session-empty",
+        title: "New Chat",
+        model_name: "test-model",
+        system_prompt: "",
+        project_id: "",
+        workspace_id: "ws-1",
+        created_at: "",
+        updated_at: "",
+        is_incognito: false,
+        exclude_from_analytics: false,
+        is_pinned: false,
+        is_deleted: false,
+        message_count_at_title_gen: 0,
+      },
+    ]);
+
+    renderChatView();
+
+    const newChatButton = await screen.findByRole("button", { name: /start a new chat/i });
+    fireEvent.click(newChatButton);
+
+    await waitFor(() => {
+      expect(setActiveChatId).toHaveBeenCalledWith("session-empty");
+    });
+    expect(api.chat.createSession).not.toHaveBeenCalled();
   });
 });
