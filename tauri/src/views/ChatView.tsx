@@ -3,8 +3,9 @@ import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEve
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
-import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings, type ModelSpeedStat } from "../lib/api";
+import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Project, type Workspace } from "../stores/workspaceStore";
@@ -30,9 +31,14 @@ import type { ChatSubView } from "../components/navigationItems";
 
 const MIN_SESSION_SIDEBAR_WIDTH = 220;
 const MAX_SESSION_SIDEBAR_WIDTH = 420;
+const MIN_SPLIT_SESSION_SIDEBAR_WIDTH = 180;
+const MAX_SPLIT_SESSION_SIDEBAR_WIDTH = 248;
 
-function clampSessionSidebarWidth(width: number) {
-  return Math.max(MIN_SESSION_SIDEBAR_WIDTH, Math.min(width, MAX_SESSION_SIDEBAR_WIDTH));
+function clampSessionSidebarWidth(width: number, isSplitPane = false) {
+  const minWidth = isSplitPane ? MIN_SPLIT_SESSION_SIDEBAR_WIDTH : MIN_SESSION_SIDEBAR_WIDTH;
+  const maxWidth = isSplitPane ? MAX_SPLIT_SESSION_SIDEBAR_WIDTH : MAX_SESSION_SIDEBAR_WIDTH;
+
+  return Math.max(minWidth, Math.min(width, maxWidth));
 }
 
 interface ConfirmDialogState {
@@ -53,24 +59,6 @@ function canRefreshSessionTitle(
   }
 
   return (session.message_count_at_title_gen ?? 0) > 0;
-}
-
-function formatModelSpeed(stat: ModelSpeedStat | undefined): { chatAverage: string; weighted: string; compact: string } | null {
-  if (
-    !stat ||
-    !Number.isFinite(stat.avg_chat_tokens_per_second) ||
-    stat.avg_chat_tokens_per_second <= 0 ||
-    !Number.isFinite(stat.weighted_tokens_per_second) ||
-    stat.weighted_tokens_per_second <= 0
-  ) {
-    return null;
-  }
-
-  return {
-    chatAverage: `${stat.avg_chat_tokens_per_second.toFixed(1)} tok/s chat avg`,
-    weighted: `${stat.weighted_tokens_per_second.toFixed(1)} tok/s weighted`,
-    compact: `${stat.avg_chat_tokens_per_second.toFixed(1)} / ${stat.weighted_tokens_per_second.toFixed(1)} tok/s`,
-  };
 }
 
 // ── Session sidebar types ─────────────────────────────────────────────────────
@@ -126,7 +114,19 @@ interface SessionSidebarProps {
   saveSession: (session: ChatSession) => void;
   deleteSession: (id: string) => void;
   showAlertDialog: (title: string, description: string, tone?: ConfirmDialogState["tone"]) => void;
+  sidebarWidth: number;
+  openSession: (session: ChatSession) => void;
 }
+
+type WorkspaceProjectFlyoutState = {
+  mode: "session-move" | "bulk-move";
+  workspaceId: string;
+  workspaceName: string;
+  projects: Project[];
+  left: number;
+  top: number;
+  maxHeight: number;
+};
 
 function SessionItem({
   session, activeChatId, selectMode, isSelected, renamingId, renameTitle,
@@ -143,10 +143,10 @@ function SessionItem({
     // eslint-disable-next-line react-hooks/purity
     const diff = Date.now() - new Date(session.updated_at).getTime();
     const m = Math.floor(diff / 60000);
-    if (m < 1) {return "now";}
-    if (m < 60) {return `${m}m`;}
+    if (m < 1) { return "now"; }
+    if (m < 60) { return `${m}m`; }
     const h = Math.floor(m / 60);
-    if (h < 24) {return `${h}h`;}
+    if (h < 24) { return `${h}h`; }
     return `${Math.floor(h / 24)}d`;
   }, [session.updated_at]);
 
@@ -159,23 +159,21 @@ function SessionItem({
       }}
       onContextMenu={(e) => openContextMenu(e, session)}
       onClick={() => selectMode ? toggleSelect(session.id) : openSession(session)}
-      className={`group flex min-w-0 items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${
-        isSelected
+      className={`group flex min-w-0 items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${isSelected
           ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
           : isActive
-          ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-      }`}
+            ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+        }`}
       style={{ paddingLeft: `${12 + depth * 20}px` }}
     >
       {selectMode && (
         <button
           onClick={(e) => { e.stopPropagation(); toggleSelect(session.id); }}
-          className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-            isSelected
+          className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${isSelected
               ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
               : "border-[var(--text-muted)] text-transparent"
-          }`}
+            }`}
         >
           <Check size={10} />
         </button>
@@ -186,14 +184,13 @@ function SessionItem({
           value={renameTitle}
           onChange={(e) => setRenameTitle(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {renameSession(session.id);}
-            if (e.key === "Escape") {setRenamingId(null);}
+            if (e.key === "Enter") { renameSession(session.id); }
+            if (e.key === "Escape") { setRenamingId(null); }
           }}
           onBlur={() => renameSession(session.id)}
           onClick={(e) => e.stopPropagation()}
-          className={`min-w-0 flex-1 bg-[var(--bg-elevated)] border border-[var(--accent-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${
-            isSplitPane ? "text-xs" : "text-[11px]"
-          }`}
+          className={`min-w-0 flex-1 bg-[var(--bg-elevated)] border border-[var(--accent-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${isSplitPane ? "text-xs" : "text-[11px]"
+            }`}
         />
       ) : (
         <div className="min-w-0 flex flex-1 items-center gap-1.5">
@@ -202,13 +199,12 @@ function SessionItem({
           {!session.is_incognito && session.exclude_from_analytics && <Shield size={isSplitPane ? 12 : 11} className="text-sky-400 shrink-0" />}
         </div>
       )}
-      <div className={`relative ml-1 shrink-0 ${isSplitPane ? "h-6 w-[132px]" : "h-5 w-[92px]"}`}>
+      <div className={`relative ml-1 shrink-0 ${isSplitPane ? "h-5 w-[42px]" : "h-5 w-[92px]"}`}>
         <div
-          className={`absolute inset-y-0 right-0 flex items-center justify-end transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 ${
-            isRenaming ? "opacity-0" : "opacity-100"
-          }`}
+          className={`absolute inset-y-0 right-0 flex items-center justify-end transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 ${isRenaming ? "opacity-0" : "opacity-100"
+            }`}
         >
-          <span className={`text-[var(--text-muted)] ${isSplitPane ? "text-[11px]" : "text-[10px]"}`}>
+          <span className={`text-[var(--text-muted)] ${isSplitPane ? "text-[10px]" : "text-[10px]"}`}>
             {timeAgo}
           </span>
         </div>
@@ -227,34 +223,46 @@ function SessionItem({
 }
 
 function SessionSidebar({
-  sidebarSessions, workspaces, projectsByWorkspace, projects, activeProjectId, setActiveProjectId,
+  sidebarSessions, workspaces, projectsByWorkspace, projects, activeProjectId: _activeProjectId, setActiveProjectId,
   activeProject: _activeProject, moveSessionsToTarget, bulkDeleteSessions, renameProject, deleteProject, moveProjectToWorkspace, createWorkspaceForMove, sessionQuery, setSessionQuery,
   creatingFolder, setCreatingFolder, newFolderName, setNewFolderName,
   creatingFolderPending,
-  folderInputRef, handleCreateFolder, createNewSession,
-  activeChatId, renamingId, renameTitle, setRenamingId, setRenameTitle,
-  setActiveChatId, renameSession, refreshSessionTitle, togglePin, saveSession, deleteSession, showAlertDialog,
+  folderInputRef,
+  handleCreateFolder,
+  createNewSession,
+  activeChatId,
+  sidebarWidth,
+  openSession,
+  renamingId,
+  renameTitle,
+  setRenamingId,
+  setRenameTitle,
+  renameSession,
+  refreshSessionTitle,
+  togglePin,
+  saveSession,
+  deleteSession,
+  showAlertDialog,
 }: SessionSidebarProps) {
   const isSplitPane = useWorkspacePane() !== null;
-  const sidebarWidth = useSettingsStore((state) => state.sidebarWidth);
-  const clampedSidebarWidth = clampSessionSidebarWidth(sidebarWidth);
-  const messages = useChatStore((state) => state.messages);
+  const clampedSidebarWidth = clampSessionSidebarWidth(sidebarWidth, isSplitPane);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
   const [moveMenuOpen, setMoveMenuOpen] = useState(false);
-  const [bulkMoveWorkspaceId, setBulkMoveWorkspaceId] = useState<string | null>(null);
+  const [_bulkMoveWorkspaceId, setBulkMoveWorkspaceId] = useState<string | null>(null);
   const [bulkActionPending, setBulkActionPending] = useState<"move" | "delete" | null>(null);
   const [projectRenamingId, setProjectRenamingId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState("");
   const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
   const [ctxMoveOpen, setCtxMoveOpen] = useState(false);
-  const [ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
+  const [_ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
   const [ctxProjectMoveWorkspaceId, setCtxProjectMoveWorkspaceId] = useState<string | null>(null);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [showNewWorkspaceInput, setShowNewWorkspaceInput] = useState(false);
   const [workspaceMoveQuery, setWorkspaceMoveQuery] = useState("");
+  const [workspaceProjectFlyout, setWorkspaceProjectFlyout] = useState<WorkspaceProjectFlyoutState | null>(null);
   const [ctxMenu, setCtxMenu] = useState<
     | { type: "session"; x: number; y: number; session: ChatSession }
     | { type: "project"; x: number; y: number; project: Project }
@@ -299,6 +307,29 @@ function SessionSidebar({
     ? workspaces.filter((workspace) => workspace.name.toLowerCase().includes(normalizedWorkspaceMoveQuery))
     : workspaces;
 
+  function openWorkspaceProjectFlyout(
+    mode: WorkspaceProjectFlyoutState["mode"],
+    workspace: Workspace,
+    workspaceProjects: Project[],
+    anchor: HTMLElement,
+  ) {
+    const rect = anchor.getBoundingClientRect();
+    const estimatedHeight = Math.min(28 * 16, (workspaceProjects.length + 1) * 32 + 16);
+    const top = Math.max(8, Math.min(rect.top, window.innerHeight - estimatedHeight - 8));
+    const maxHeight = Math.max(120, window.innerHeight - top - 8);
+    const left = Math.min(rect.right + 4, window.innerWidth - 220 - 8);
+
+    setWorkspaceProjectFlyout({
+      mode,
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      projects: workspaceProjects,
+      left,
+      top,
+      maxHeight,
+    });
+  }
+
   function toggleProjectSelection(projectId: string) {
     const projectSessionIds = (byProject[projectId] ?? []).map((session) => session.id);
     const shouldSelect = !selectedProjectIds.has(projectId);
@@ -340,7 +371,7 @@ function SessionSidebar({
               toggleSelect={(id) => {
                 setSelectedIds((prev) => {
                   const next = new Set(prev);
-                  if (next.has(id)) {next.delete(id);} else {next.add(id);}
+                  if (next.has(id)) { next.delete(id); } else { next.add(id); }
                   return next;
                 });
               }}
@@ -355,9 +386,7 @@ function SessionSidebar({
               setRenamingId={setRenamingId}
               setRenameTitle={setRenameTitle}
               openSession={(targetSession) => {
-                setActiveProjectId(targetSession.project_id || null);
-                setActiveChatId(targetSession.id);
-                api.chat.touchSessionAccessed(targetSession.id).catch(() => {});
+                openSession(targetSession);
               }}
               depth={depth}
             />
@@ -379,6 +408,7 @@ function SessionSidebar({
     setCtxProjectMoveWorkspaceId(null);
     setShowNewWorkspaceInput(false);
     setNewWorkspaceName("");
+    setWorkspaceProjectFlyout(null);
   }
 
   async function handleProjectDrop(event: React.DragEvent, project: Project) {
@@ -403,7 +433,6 @@ function SessionSidebar({
       }
 
       await moveSessionsToTarget(sessionsToMove, project.workspace_id, project.id);
-      setActiveProjectId(project.id);
       setExpanded((prev) => ({ ...prev, [project.id]: true }));
     } catch (error) {
       console.error("Failed to drop chat into folder:", error);
@@ -415,7 +444,7 @@ function SessionSidebar({
   ) {
     function handleCreateWorkspace() {
       const name = newWorkspaceName.trim();
-      if (!name) {return;}
+      if (!name) { return; }
       setShowNewWorkspaceInput(false);
       setNewWorkspaceName("");
       void createWorkspaceForMove(name)
@@ -473,11 +502,20 @@ function SessionSidebar({
               <div
                 key={workspace.id}
                 className="relative"
-                onMouseEnter={() => setCtxMoveWorkspaceId(hasProjects ? workspace.id : null)}
+                onMouseEnter={(event) => {
+                  if (!hasProjects) {
+                    setWorkspaceProjectFlyout((current) => current?.mode === "session-move" ? null : current);
+                    setCtxMoveWorkspaceId(null);
+                    return;
+                  }
+                  setCtxMoveWorkspaceId(workspace.id);
+                  openWorkspaceProjectFlyout("session-move", workspace, workspaceProjects, event.currentTarget);
+                }}
               >
                 <button
                   onClick={() => {
                     if (!hasProjects) {
+                      setWorkspaceProjectFlyout(null);
                       onSelect(workspace.id, null);
                       return;
                     }
@@ -488,25 +526,6 @@ function SessionSidebar({
                   <span className="truncate flex-1">{workspace.name}</span>
                   {hasProjects && <ChevronRight size={11} />}
                 </button>
-                {hasProjects && ctxMoveWorkspaceId === workspace.id && (
-                  <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-lg">
-                    <button
-                      onClick={() => onSelect(workspace.id, null)}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                    >
-                      <MessageSquare size={11} /> Workspace root
-                    </button>
-                    {workspaceProjects.map((project) => (
-                      <button
-                        key={project.id}
-                        onClick={() => onSelect(workspace.id, project.id)}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      >
-                        <Folder size={11} /> <span className="truncate">{project.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -524,7 +543,7 @@ function SessionSidebar({
   ) {
     function handleCreateWorkspace() {
       const name = newWorkspaceName.trim();
-      if (!name) {return;}
+      if (!name) { return; }
       setShowNewWorkspaceInput(false);
       setNewWorkspaceName("");
       setCtxProjectMoveWorkspaceId(null);
@@ -602,11 +621,11 @@ function SessionSidebar({
   }
 
   useEffect(() => {
-    if (!ctxMenu) {return;}
+    if (!ctxMenu) { return; }
 
     function handleClick(event: MouseEvent) {
       const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-chat-tree-context-menu]")) {return;}
+      if (target?.closest("[data-chat-tree-context-menu]")) { return; }
       setCtxMenu(null);
     }
 
@@ -626,689 +645,755 @@ function SessionSidebar({
 
   return (
     <>
-    <div
-      className="relative z-10 flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]"
-      style={{
-        flexBasis: `${clampedSidebarWidth}px`,
-        width: `${clampedSidebarWidth}px`,
-        minWidth: `${clampedSidebarWidth}px`,
-        maxWidth: `${clampedSidebarWidth}px`,
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between gap-1 border-b border-[var(--border-color)] px-3 py-2">
-        <span className={`truncate font-medium text-[var(--text-secondary)] ${isSplitPane ? "text-sm" : "text-xs"}`}>
-          Conversations
-        </span>
-        <div className="flex items-center gap-0.5">
-          <button
-            onClick={() => {
-              hideSidebarTooltip();
-              setSelectMode((value) => !value);
-            }}
-            onMouseEnter={(e) => showSidebarTooltip("Select items", e)}
-            onMouseLeave={hideSidebarTooltip}
-            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] ${
-              selectMode ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : ""
-            }`}
-            aria-label="Select items"
-          >
-            <Check size={12} />
-          </button>
-          <button
-            onClick={() => {
-              hideSidebarTooltip();
-              setCreatingFolder(true);
-              setNewFolderName("");
-            }}
-            onMouseEnter={(e) => showSidebarTooltip("New folder", e)}
-            onMouseLeave={hideSidebarTooltip}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-            aria-label="New folder"
-          >
-            <FolderPlus size={12} />
-          </button>
-          <button
-            onClick={() => {
-              hideSidebarTooltip();
-              createNewSession();
-            }}
-            onMouseEnter={(e) => showSidebarTooltip("New chat", e)}
-            onMouseLeave={hideSidebarTooltip}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-            aria-label="New chat"
-          >
-            <Plus size={12} />
-          </button>
-          <button
-            onClick={() => {
-              hideSidebarTooltip();
-              createNewSession({ isIncognito: true });
-            }}
-            onMouseEnter={(e) => showSidebarTooltip("New incognito chat", e)}
-            onMouseLeave={hideSidebarTooltip}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-purple-500/10 hover:text-purple-400"
-            aria-label="New incognito chat"
-          >
-            <Ghost size={12} />
-          </button>
-          <button
-            onClick={() => {
-              hideSidebarTooltip();
-              createNewSession({ excludeFromAnalytics: true });
-            }}
-            onMouseEnter={(e) => showSidebarTooltip("New private chat", e)}
-            onMouseLeave={hideSidebarTooltip}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-sky-500/10 hover:text-sky-400"
-            aria-label="New private chat"
-          >
-            <Shield size={12} />
-          </button>
+      <div
+        className="relative z-10 flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]"
+        style={{
+          flexBasis: `${clampedSidebarWidth}px`,
+          width: `${clampedSidebarWidth}px`,
+          minWidth: `${clampedSidebarWidth}px`,
+          maxWidth: `${clampedSidebarWidth}px`,
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between gap-1 border-b border-[var(--border-color)] px-3 py-2">
+          <span className={`truncate font-medium text-[var(--text-secondary)] ${isSplitPane ? "text-sm" : "text-xs"}`}>
+            Chats
+          </span>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => {
+                hideSidebarTooltip();
+                setSelectMode((value) => !value);
+              }}
+              onMouseEnter={(e) => showSidebarTooltip("Select items", e)}
+              onMouseLeave={hideSidebarTooltip}
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] ${selectMode ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : ""
+                }`}
+              aria-label="Select items"
+            >
+              <Check size={12} />
+            </button>
+            <button
+              onClick={() => {
+                hideSidebarTooltip();
+                setCreatingFolder(true);
+                setNewFolderName("");
+              }}
+              onMouseEnter={(e) => showSidebarTooltip("New folder", e)}
+              onMouseLeave={hideSidebarTooltip}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              aria-label="New folder"
+            >
+              <FolderPlus size={12} />
+            </button>
+            <button
+              onClick={() => {
+                hideSidebarTooltip();
+                createNewSession();
+              }}
+              onMouseEnter={(e) => showSidebarTooltip("New chat", e)}
+              onMouseLeave={hideSidebarTooltip}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              aria-label="New chat"
+            >
+              <Plus size={12} />
+            </button>
+            <button
+              onClick={() => {
+                hideSidebarTooltip();
+                createNewSession({ isIncognito: true });
+              }}
+              onMouseEnter={(e) => showSidebarTooltip("New incognito chat", e)}
+              onMouseLeave={hideSidebarTooltip}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-purple-500/10 hover:text-purple-400"
+              aria-label="New incognito chat"
+            >
+              <Ghost size={12} />
+            </button>
+            <button
+              onClick={() => {
+                hideSidebarTooltip();
+                createNewSession({ excludeFromAnalytics: true });
+              }}
+              onMouseEnter={(e) => showSidebarTooltip("New private chat", e)}
+              onMouseLeave={hideSidebarTooltip}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-sky-500/10 hover:text-sky-400"
+              aria-label="New private chat"
+            >
+              <Shield size={12} />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {selectMode && (
-        <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
-          <div className="flex flex-wrap items-center gap-1">
-            <div className="relative">
-              <button
-                onClick={() => setMoveMenuOpen((value) => !value)}
-                disabled={selectedIds.size === 0 || bulkActionPending !== null}
-                className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
-                title="Move selected chats"
-              >
-                <MoveRight size={12} />
-                {bulkActionPending === "move" ? "Moving..." : "Move"}
-              </button>
-              {moveMenuOpen && bulkActionPending === null && (
-                <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
-                  <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
-                    {shouldShowWorkspaceSearch && !showNewWorkspaceInput && (
-                      <div className="px-2 pb-2">
-                        <input
-                          value={workspaceMoveQuery}
-                          onChange={(e) => setWorkspaceMoveQuery(e.target.value)}
-                          placeholder="Search workspaces..."
-                          className="w-full rounded border border-[var(--border-color)] bg-[var(--bg-input)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        />
-                      </div>
-                    )}
-                    {showNewWorkspaceInput ? (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const name = newWorkspaceName.trim();
-                          if (!name) {return;}
-                          setShowNewWorkspaceInput(false);
-                          setNewWorkspaceName("");
-                          void createWorkspaceForMove(name)
-                            .then((workspace) => {
-                              setBulkActionPending("move");
-                              void moveSessionsToTarget(Array.from(selectedIds), workspace.id, null).then(() => {
-                                resetSelectionState();
-                              }).finally(() => {
-                                setBulkActionPending(null);
-                              });
-                            })
-                            .catch((error) => {
-                              const description = error instanceof Error
-                                ? error.message
-                                : typeof error === "string" && error.trim()
-                                  ? error
-                                  : "Failed to create workspace.";
-                              showAlertDialog("Create workspace failed", description, "danger");
-                            });
-                        }}
-                        className="px-2 py-1"
-                      >
-                        <input
-                          autoFocus
-                          value={newWorkspaceName}
-                          onChange={(e) => setNewWorkspaceName(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Escape") { setShowNewWorkspaceInput(false); setNewWorkspaceName(""); } }}
-                          placeholder="Workspace name"
-                          className="w-full rounded border border-[var(--border-color)] bg-[var(--bg-input)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        />
-                      </form>
-                    ) : (
-                      <button
-                        onClick={() => setShowNewWorkspaceInput(true)}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      >
-                        <Plus size={11} /> Create workspace...
-                      </button>
-                    )}
-                    <div className="my-1 border-t border-[var(--border-color)]" />
-                    {filteredWorkspaces.map((workspace) => {
-                      const workspaceProjects = projectsByWorkspace[workspace.id] ?? [];
-                      const hasProjects = workspaceProjects.length > 0;
-                      return (
-                        <div
-                          key={workspace.id}
-                          className="relative"
-                          onMouseEnter={() => setBulkMoveWorkspaceId(hasProjects ? workspace.id : null)}
-                        >
-                          <button
-                            onClick={() => {
-                              if (!hasProjects) {
+        {selectMode && (
+          <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
+            <div className="flex flex-wrap items-center gap-1">
+              <div className="relative">
+                <button
+                  onClick={() => setMoveMenuOpen((value) => !value)}
+                  disabled={selectedIds.size === 0 || bulkActionPending !== null}
+                  className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
+                  title="Move selected chats"
+                >
+                  <MoveRight size={12} />
+                  {bulkActionPending === "move" ? "Moving..." : "Move"}
+                </button>
+                {moveMenuOpen && bulkActionPending === null && (
+                  <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
+                    <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
+                      {shouldShowWorkspaceSearch && !showNewWorkspaceInput && (
+                        <div className="px-2 pb-2">
+                          <input
+                            value={workspaceMoveQuery}
+                            onChange={(e) => setWorkspaceMoveQuery(e.target.value)}
+                            placeholder="Search workspaces..."
+                            className="w-full rounded border border-[var(--border-color)] bg-[var(--bg-input)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                          />
+                        </div>
+                      )}
+                      {showNewWorkspaceInput ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const name = newWorkspaceName.trim();
+                            if (!name) { return; }
+                            setShowNewWorkspaceInput(false);
+                            setNewWorkspaceName("");
+                            void createWorkspaceForMove(name)
+                              .then((workspace) => {
                                 setBulkActionPending("move");
                                 void moveSessionsToTarget(Array.from(selectedIds), workspace.id, null).then(() => {
                                   resetSelectionState();
                                 }).finally(() => {
                                   setBulkActionPending(null);
                                 });
+                              })
+                              .catch((error) => {
+                                const description = error instanceof Error
+                                  ? error.message
+                                  : typeof error === "string" && error.trim()
+                                    ? error
+                                    : "Failed to create workspace.";
+                                showAlertDialog("Create workspace failed", description, "danger");
+                              });
+                          }}
+                          className="px-2 py-1"
+                        >
+                          <input
+                            autoFocus
+                            value={newWorkspaceName}
+                            onChange={(e) => setNewWorkspaceName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Escape") { setShowNewWorkspaceInput(false); setNewWorkspaceName(""); } }}
+                            placeholder="Workspace name"
+                            className="w-full rounded border border-[var(--border-color)] bg-[var(--bg-input)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                          />
+                        </form>
+                      ) : (
+                        <button
+                          onClick={() => setShowNewWorkspaceInput(true)}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        >
+                          <Plus size={11} /> Create workspace...
+                        </button>
+                      )}
+                      <div className="my-1 border-t border-[var(--border-color)]" />
+                      {filteredWorkspaces.map((workspace) => {
+                        const workspaceProjects = projectsByWorkspace[workspace.id] ?? [];
+                        const hasProjects = workspaceProjects.length > 0;
+                        return (
+                          <div
+                            key={workspace.id}
+                            className="relative"
+                            onMouseEnter={(event) => {
+                              if (!hasProjects) {
+                                setWorkspaceProjectFlyout((current) => current?.mode === "bulk-move" ? null : current);
+                                setBulkMoveWorkspaceId(null);
                                 return;
                               }
-                              setBulkMoveWorkspaceId((current) => current === workspace.id ? null : workspace.id);
+                              setBulkMoveWorkspaceId(workspace.id);
+                              openWorkspaceProjectFlyout("bulk-move", workspace, workspaceProjects, event.currentTarget);
                             }}
-                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                           >
-                            <span className="truncate flex-1">{workspace.name}</span>
-                            {hasProjects && <ChevronRight size={11} />}
-                          </button>
-                          {hasProjects && bulkMoveWorkspaceId === workspace.id && (
-                            <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-lg">
-                              <button
-                                onClick={() => {
+                            <button
+                              onClick={() => {
+                                if (!hasProjects) {
+                                  setWorkspaceProjectFlyout(null);
                                   setBulkActionPending("move");
                                   void moveSessionsToTarget(Array.from(selectedIds), workspace.id, null).then(() => {
                                     resetSelectionState();
                                   }).finally(() => {
                                     setBulkActionPending(null);
                                   });
-                                }}
-                                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                              >
-                                <MessageSquare size={11} /> Workspace root
-                              </button>
-                              {workspaceProjects.map((project) => (
-                                <button
-                                  key={project.id}
-                                  onClick={() => {
-                                    setBulkActionPending("move");
-                                    void moveSessionsToTarget(Array.from(selectedIds), workspace.id, project.id).then(() => {
-                                      resetSelectionState();
-                                    }).finally(() => {
-                                      setBulkActionPending(null);
-                                    });
-                                  }}
-                                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                                >
-                                  <Folder size={11} /> <span className="truncate">{project.name}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {filteredWorkspaces.length === 0 && (
-                      <p className="px-3 py-2 text-xs text-[var(--text-muted)]">No matching workspaces.</p>
-                    )}
+                                  return;
+                                }
+                                setBulkMoveWorkspaceId((current) => current === workspace.id ? null : workspace.id);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                            >
+                              <span className="truncate flex-1">{workspace.name}</span>
+                              {hasProjects && <ChevronRight size={11} />}
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {filteredWorkspaces.length === 0 && (
+                        <p className="px-3 py-2 text-xs text-[var(--text-muted)]">No matching workspaces.</p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-            <button
-              onClick={() => {
-                setBulkActionPending("delete");
-                void bulkDeleteSessions(Array.from(selectedIds), Array.from(selectedProjectIds)).then(() => {
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setBulkActionPending("delete");
+                  void bulkDeleteSessions(Array.from(selectedIds), Array.from(selectedProjectIds)).then(() => {
+                    resetSelectionState();
+                  }).finally(() => {
+                    setBulkActionPending(null);
+                  });
+                }}
+                disabled={selectedCount === 0 || bulkActionPending !== null}
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-red-400 transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] disabled:opacity-30`}
+                title="Delete selected items"
+              >
+                <Trash2 size={12} />
+                {bulkActionPending === "delete" ? "Deleting..." : "Delete"}
+              </button>
+              <button
+                onClick={() => {
                   resetSelectionState();
-                }).finally(() => {
-                  setBulkActionPending(null);
-                });
+                }}
+                disabled={bulkActionPending !== null}
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
+                title="Exit selection mode"
+              >
+                <X size={12} />
+                Cancel
+              </button>
+              <span className={`ml-auto text-[var(--text-muted)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}>
+                {selectedCount} selected
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Search */}
+        <div className={`border-b border-[var(--border-color)] ${isSplitPane ? "px-1.5 py-1" : "px-2 py-1.5"}`}>
+          <div className={`flex min-w-0 items-center gap-1.5 bg-[var(--bg-elevated)] ${isSplitPane ? "rounded-md px-1.5 py-1" : "rounded-lg px-2 py-1"}`}>
+            <Search size={isSplitPane ? 12 : 11} className="text-[var(--text-muted)]" />
+            <input
+              value={sessionQuery}
+              onChange={(e) => setSessionQuery(e.target.value)}
+              placeholder="Search…"
+              className={`min-w-0 flex-1 bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none ${isSplitPane ? "text-xs" : "text-[11px]"}`}
+            />
+          </div>
+        </div>
+
+        {/* Inline folder creation */}
+        {creatingFolder && (
+          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[var(--border-color)]">
+            <Folder size={isSplitPane ? 13 : 12} className="text-[var(--text-muted)] flex-shrink-0" />
+            <input
+              ref={folderInputRef}
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              disabled={creatingFolderPending}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (creatingFolderPending) {
+                  return;
+                }
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void handleCreateFolder(e.currentTarget.value);
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancelCreateFolder();
+                }
               }}
-              disabled={selectedCount === 0 || bulkActionPending !== null}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-red-400 transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] disabled:opacity-30`}
-              title="Delete selected items"
+              onClick={(e) => e.stopPropagation()}
+              placeholder="Folder name…"
+              className={`flex-1 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] disabled:cursor-wait disabled:opacity-70 ${isSplitPane ? "text-xs" : "text-[11px]"}`}
+            />
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void handleCreateFolder(folderInputRef.current?.value)}
+              disabled={creatingFolderPending}
+              className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors disabled:cursor-wait disabled:opacity-50"
+              title="Create folder"
             >
-              <Trash2 size={12} />
-              {bulkActionPending === "delete" ? "Deleting..." : "Delete"}
+              {creatingFolderPending ? (
+                <Loader2 size={isSplitPane ? 13 : 12} className="animate-spin" />
+              ) : (
+                <Check size={isSplitPane ? 13 : 12} />
+              )}
             </button>
             <button
-              onClick={() => {
-                resetSelectionState();
-              }}
-              disabled={bulkActionPending !== null}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
-              title="Exit selection mode"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={cancelCreateFolder}
+              disabled={creatingFolderPending}
+              className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              title="Cancel folder creation"
             >
-              <X size={12} />
-              Cancel
+              <X size={isSplitPane ? 13 : 12} />
             </button>
-            <span className={`ml-auto text-[var(--text-muted)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}>
-              {selectedCount} selected
-            </span>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Search */}
-      <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
-        <div className="flex items-center gap-1.5 bg-[var(--bg-elevated)] rounded-lg px-2 py-1">
-          <Search size={isSplitPane ? 12 : 11} className="text-[var(--text-muted)]" />
-          <input
-            value={sessionQuery}
-            onChange={(e) => setSessionQuery(e.target.value)}
-            placeholder="Search…"
-            className={`flex-1 bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none ${isSplitPane ? "text-xs" : "text-[11px]"}`}
-          />
-        </div>
-      </div>
-
-      {/* Inline folder creation */}
-      {creatingFolder && (
-        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[var(--border-color)]">
-          <Folder size={isSplitPane ? 13 : 12} className="text-[var(--text-muted)] flex-shrink-0" />
-          <input
-            ref={folderInputRef}
-            value={newFolderName}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            disabled={creatingFolderPending}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (creatingFolderPending) {
-                return;
-              }
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void handleCreateFolder(e.currentTarget.value);
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                cancelCreateFolder();
-              }
-            }}
-            onClick={(e) => e.stopPropagation()}
-            placeholder="Folder name…"
-            className={`flex-1 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] disabled:cursor-wait disabled:opacity-70 ${isSplitPane ? "text-xs" : "text-[11px]"}`}
-          />
-          <button
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => void handleCreateFolder(folderInputRef.current?.value)}
-            disabled={creatingFolderPending}
-            className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors disabled:cursor-wait disabled:opacity-50"
-            title="Create folder"
-          >
-            {creatingFolderPending ? (
-              <Loader2 size={isSplitPane ? 13 : 12} className="animate-spin" />
-            ) : (
-              <Check size={isSplitPane ? 13 : 12} />
-            )}
-          </button>
-          <button
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={cancelCreateFolder}
-            disabled={creatingFolderPending}
-            className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-            title="Cancel folder creation"
-          >
-            <X size={isSplitPane ? 13 : 12} />
-          </button>
-        </div>
-      )}
-
-      {/* Session list */}
-      <div className="flex-1 overflow-y-auto">
-        {visibleSessions.length === 0 && projects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-3">
-            <MessageSquare size={isSplitPane ? 22 : 20} className="text-[var(--text-muted)] opacity-30" />
-            <p className={`text-[var(--text-muted)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}>No conversations yet</p>
-          </div>
-        ) : sessionQuery.trim() && visibleSessions.length === 0 ? (
-          <p className={`px-3 py-4 text-[var(--text-muted)] text-center ${isSplitPane ? "text-xs" : "text-[11px]"}`}>No matches</p>
-        ) : (
-          <>
-            {ungrouped.length > 0 && (
-              renderSessionList(ungrouped)
-            )}
-            {projects.map((project) => {
-              const projectSessions = byProject[project.id] ?? [];
-              const isOpen = expanded[project.id] ?? true;
-              return (
-                <div key={project.id}>
-                  <button
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setCtxMenu({ type: "project", x: event.clientX, y: event.clientY, project });
-                    }}
-                    onDragOver={(event) => {
-                      if (selectMode || !event.dataTransfer.types.includes("application/x-chat-session-ids")) {
-                        return;
-                      }
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                      setDragOverProjectId(project.id);
-                    }}
-                    onDragLeave={(event) => {
-                      const relatedTarget = event.relatedTarget as Node | null;
-                      if (relatedTarget && event.currentTarget.contains(relatedTarget)) {
-                        return;
-                      }
-                      setDragOverProjectId((current) => current === project.id ? null : current);
-                    }}
-                    onDrop={(event) => {
-                      void handleProjectDrop(event, project);
-                    }}
-                    onClick={() => {
-                      if (selectMode) {
-                        toggleProjectSelection(project.id);
-                        return;
-                      }
-                      setActiveProjectId(project.id);
-                      if (activeProjectId === project.id) {
-                        setExpanded((prev) => ({ ...prev, [project.id]: !isOpen }));
-                      }
-                    }}
-                    className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${
-                      dragOverProjectId === project.id
-                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
-                        : selectedProjectIds.has(project.id)
-                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                        : activeProjectId === project.id
-                        ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
-                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                    }`}
-                  >
-                    {selectMode && (
-                      <button
-                        onClick={(event) => {
-                          event.stopPropagation();
+        {/* Session list */}
+        <div className="flex-1 overflow-y-auto">
+          {visibleSessions.length === 0 && projects.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-3">
+              <MessageSquare size={isSplitPane ? 22 : 20} className="text-[var(--text-muted)] opacity-30" />
+              <p className={`text-[var(--text-muted)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}>No conversations yet</p>
+            </div>
+          ) : sessionQuery.trim() && visibleSessions.length === 0 ? (
+            <p className={`px-3 py-4 text-[var(--text-muted)] text-center ${isSplitPane ? "text-xs" : "text-[11px]"}`}>No matches</p>
+          ) : (
+            <>
+              {ungrouped.length > 0 && (
+                renderSessionList(ungrouped)
+              )}
+              {projects.map((project) => {
+                const projectSessions = byProject[project.id] ?? [];
+                const isOpen = expanded[project.id] ?? true;
+                return (
+                  <div key={project.id}>
+                    <button
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setCtxMenu({ type: "project", x: event.clientX, y: event.clientY, project });
+                      }}
+                      onDragOver={(event) => {
+                        if (selectMode || !event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                          return;
+                        }
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                        setDragOverProjectId(project.id);
+                      }}
+                      onDragLeave={(event) => {
+                        const relatedTarget = event.relatedTarget as Node | null;
+                        if (relatedTarget && event.currentTarget.contains(relatedTarget)) {
+                          return;
+                        }
+                        setDragOverProjectId((current) => current === project.id ? null : current);
+                      }}
+                      onDrop={(event) => {
+                        void handleProjectDrop(event, project);
+                      }}
+                      onClick={() => {
+                        if (selectMode) {
                           toggleProjectSelection(project.id);
-                        }}
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                          selectedProjectIds.has(project.id)
-                            ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
-                            : "border-[var(--text-muted)] text-transparent"
+                          return;
+                        }
+                        setExpanded((prev) => ({ ...prev, [project.id]: !isOpen }));
+                      }}
+                      className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${dragOverProjectId === project.id
+                          ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
+                          : selectedProjectIds.has(project.id)
+                            ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                         }`}
-                      >
-                        <Check size={10} />
-                      </button>
-                    )}
-                    <Folder size={isSplitPane ? 14 : 13} className="text-[var(--text-muted)] shrink-0" />
-                    {projectRenamingId === project.id ? (
-                      <input
-                        autoFocus
-                        value={projectRenameValue}
-                        onChange={(event) => setProjectRenameValue(event.target.value)}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
+                    >
+                      {selectMode && (
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleProjectSelection(project.id);
+                          }}
+                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${selectedProjectIds.has(project.id)
+                              ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+                              : "border-[var(--text-muted)] text-transparent"
+                            }`}
+                        >
+                          <Check size={10} />
+                        </button>
+                      )}
+                      <Folder size={isSplitPane ? 14 : 13} className="text-[var(--text-muted)] shrink-0" />
+                      {projectRenamingId === project.id ? (
+                        <input
+                          autoFocus
+                          value={projectRenameValue}
+                          onChange={(event) => setProjectRenameValue(event.target.value)}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void renameProject(project.id, projectRenameValue).then(() => {
+                                setProjectRenamingId(null);
+                                setProjectRenameValue("");
+                              });
+                            }
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setProjectRenamingId(null);
+                              setProjectRenameValue("");
+                            }
+                          }}
+                          onBlur={() => {
                             void renameProject(project.id, projectRenameValue).then(() => {
                               setProjectRenamingId(null);
                               setProjectRenameValue("");
                             });
-                          }
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            setProjectRenamingId(null);
-                            setProjectRenameValue("");
-                          }
-                        }}
-                        onBlur={() => {
-                          void renameProject(project.id, projectRenameValue).then(() => {
-                            setProjectRenamingId(null);
-                            setProjectRenameValue("");
-                          });
-                        }}
-                        className={`flex-1 rounded border border-[var(--accent-color)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${isSplitPane ? "text-sm" : "text-xs"}`}
-                      />
-                    ) : (
-                      <span className={`flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{project.name}</span>
+                          }}
+                          className={`flex-1 rounded border border-[var(--accent-color)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${isSplitPane ? "text-sm" : "text-xs"}`}
+                        />
+                      ) : (
+                        <span className={`flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{project.name}</span>
+                      )}
+                      <ChevronDown size={12} className={`text-[var(--text-muted)] transition-transform ${isOpen ? "" : "-rotate-90"}`} />
+                    </button>
+                    {isOpen && (
+                      <div className="ml-3 border-l border-[var(--border-color)]/70">
+                        {projectSessions.map((session) => (
+                          <div key={session.id} className="pb-[2px]">
+                            <SessionItem
+                              session={session}
+                              activeChatId={activeChatId}
+                              isSelected={selectedIds.has(session.id)}
+                              selectMode={selectMode}
+                              toggleSelect={(id) => {
+                                setSelectedIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(id)) { next.delete(id); } else { next.add(id); }
+                                  return next;
+                                });
+                              }}
+                              openContextMenu={(event, targetSession) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setCtxMenu({ type: "session", x: event.clientX, y: event.clientY, session: targetSession });
+                              }}
+                              renameSession={renameSession}
+                              renamingId={renamingId}
+                              renameTitle={renameTitle}
+                              setRenamingId={setRenamingId}
+                              setRenameTitle={setRenameTitle}
+                              openSession={(targetSession) => {
+                                openSession(targetSession);
+                              }}
+                              depth={1}
+                            />
+                          </div>
+                        ))}
+                      </div>
                     )}
-                    <ChevronDown size={12} className={`text-[var(--text-muted)] transition-transform ${isOpen ? "" : "-rotate-90"}`} />
-                  </button>
-                  {isOpen && (
-                    <div className="ml-3 border-l border-[var(--border-color)]/70">
-                      {renderSessionList(projectSessions, 1)}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </>
-        )}
-      </div>
-
-      {sidebarTooltip && (
-        <div
-          role="tooltip"
-          className="pointer-events-none fixed z-50 -translate-y-1/2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] shadow-lg"
-          style={{ top: sidebarTooltip.top, left: sidebarTooltip.left }}
-        >
-          {sidebarTooltip.label}
-        </div>
-      )}
-
-      {/* Footer stats */}
-      {sidebarSessions.length > 0 && (
-        <div className="px-3 py-1.5 border-t border-[var(--border-color)] shrink-0">
-          <p className={`text-[var(--text-muted)] ${isSplitPane ? "text-[11px]" : "text-[10px]"}`}>
-            {sidebarSessions.length} session{sidebarSessions.length !== 1 ? "s" : ""}{sidebarSessions.some((session) => session.is_pinned) ? ` · ${sidebarSessions.filter((session) => session.is_pinned).length} pinned` : ""}
-          </p>
-        </div>
-      )}
-
-      {ctxMenu && (
-        <div
-          data-chat-tree-context-menu
-          className="fixed z-50 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
-        >
-          {ctxMenu.type === "session" ? (
-            <>
-              <button
-                onClick={() => {
-                  setActiveChatId(ctxMenu.session.id);
-                  api.chat.touchSessionAccessed(ctxMenu.session.id).catch(() => {});
-                  setCtxMenu(null);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                <ExternalLink size={11} /> Open chat
-              </button>
-              <button
-                onClick={() => {
-                  setRenamingId(ctxMenu.session.id);
-                  setRenameTitle(ctxMenu.session.title);
-                  setCtxMenu(null);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                <Pencil size={11} /> Rename
-              </button>
-              <button
-                onClick={() => {
-                  if (canRefreshSessionTitle(ctxMenu.session, messages)) {
-                    void refreshSessionTitle(ctxMenu.session);
-                  }
-                  setCtxMenu(null);
-                }}
-                disabled={!canRefreshSessionTitle(ctxMenu.session, messages)}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs ${
-                  canRefreshSessionTitle(ctxMenu.session, messages)
-                    ? "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                    : "cursor-not-allowed text-[var(--text-muted)] opacity-40"
-                }`}
-              >
-                <RefreshCw size={11} /> Refresh chat name
-              </button>
-              <button
-                onClick={() => {
-                  void saveSession(ctxMenu.session);
-                  setCtxMenu(null);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                <Save size={11} /> Save chat
-              </button>
-              <button
-                onClick={() => {
-                  void api.chatFile.reveal(ctxMenu.session.id).catch((error) => {
-                    const description = error instanceof Error
-                      ? error.message
-                      : typeof error === "string" && error.trim()
-                        ? error
-                        : "Failed to reveal chat file.";
-                    console.error("Failed to reveal chat file:", error);
-                    showAlertDialog("Show in Explorer failed", description, "danger");
-                  });
-                  setCtxMenu(null);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                <ExternalLink size={11} /> Show in Explorer
-              </button>
-              <button
-                onClick={() => {
-                  void togglePin(ctxMenu.session);
-                  setCtxMenu(null);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                {ctxMenu.session.is_pinned ? <PinOff size={11} /> : <Pin size={11} />}
-                {ctxMenu.session.is_pinned ? "Unpin" : "Pin"}
-              </button>
-              <button
-                onClick={() => {
-                  setConvertTarget({ session: ctxMenu.session, kind: "note" });
-                  setCtxMenu(null);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                <FileText size={11} /> Convert to note
-              </button>
-              <button
-                onClick={() => {
-                  setConvertTarget({ session: ctxMenu.session, kind: "document" });
-                  setCtxMenu(null);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                <BookOpen size={11} /> Convert to document
-              </button>
-              <div className="my-1 border-t border-[var(--border-color)]" />
-              <div
-                className="relative"
-                onMouseEnter={() => setCtxMoveOpen(true)}
-                onMouseLeave={() => { setCtxMoveOpen(false); setCtxMoveWorkspaceId(null); }}
-              >
-                <button
-                  onClick={() => setCtxMoveOpen((v) => !v)}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                >
-                  <MoveRight size={11} />
-                  <span className="truncate flex-1">Move to</span>
-                  <ChevronRight size={11} />
-                </button>
-                {ctxMoveOpen && renderSessionMoveSubmenu((targetWorkspaceId, targetProjectId) => {
-                  void moveSessionsToTarget([ctxMenu.session.id], targetWorkspaceId, targetProjectId).catch((error) => {
-                    const description = error instanceof Error
-                      ? error.message
-                      : typeof error === "string" && error.trim()
-                        ? error
-                        : "Failed to move chat.";
-                    console.error("Failed to move chat:", error);
-                    showAlertDialog("Move failed", description, "danger");
-                  });
-                  setCtxMoveWorkspaceId(null);
-                  setCtxMoveOpen(false);
-                  setCtxMenu(null);
-                })}
-              </div>
-              <div className="my-1 border-t border-[var(--border-color)]" />
-              <button
-                onClick={() => {
-                  void deleteSession(ctxMenu.session.id);
-                  setCtxMenu(null);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
-              >
-                <Trash2 size={11} /> Delete
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => {
-                  setActiveProjectId(ctxMenu.project.id);
-                  setCtxMenu(null);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                <ExternalLink size={11} /> Open folder
-              </button>
-              <button
-                onClick={() => {
-                  setProjectRenamingId(ctxMenu.project.id);
-                  setProjectRenameValue(ctxMenu.project.name);
-                  setCtxMenu(null);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                <Pencil size={11} /> Rename folder
-              </button>
-              <div className="my-1 border-t border-[var(--border-color)]" />
-              <div
-                className="relative"
-                onMouseEnter={() => setCtxProjectMoveWorkspaceId("open")}
-                onMouseLeave={() => setCtxProjectMoveWorkspaceId(null)}
-              >
-                <button
-                  onClick={() => setCtxProjectMoveWorkspaceId((current) => current === "open" ? null : "open")}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                >
-                  <MoveRight size={11} />
-                  <span className="truncate flex-1">Move to workspace</span>
-                  <ChevronRight size={11} />
-                </button>
-                {ctxProjectMoveWorkspaceId === "open" && (() => {
-                  const project = ctxMenu.project;
-                  return renderProjectWorkspaceMoveSubmenu(project, (targetWorkspaceId) => {
-                    setCtxProjectMoveWorkspaceId(null);
-                    setCtxMenu(null);
-                    void moveProjectToWorkspace(project, targetWorkspaceId);
-                  });
-                })()}
-              </div>
-              <button
-                onClick={() => {
-                  void deleteProject(ctxMenu.project.id);
-                  setCtxMenu(null);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
-              >
-                <Trash2 size={11} /> Delete folder
-              </button>
+                  </div>
+                );
+              })}
             </>
           )}
         </div>
+
+        {sidebarTooltip && (
+          <div
+            role="tooltip"
+            className="pointer-events-none fixed z-50 -translate-y-1/2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] shadow-lg"
+            style={{ top: sidebarTooltip.top, left: sidebarTooltip.left }}
+          >
+            {sidebarTooltip.label}
+          </div>
+        )}
+
+        {/* Footer stats */}
+        {sidebarSessions.length > 0 && (
+          <div className="px-3 py-1.5 border-t border-[var(--border-color)] shrink-0">
+            <p className={`text-[var(--text-muted)] ${isSplitPane ? "text-[11px]" : "text-[10px]"}`}>
+              {sidebarSessions.length} session{sidebarSessions.length !== 1 ? "s" : ""}{sidebarSessions.some((session) => session.is_pinned) ? ` · ${sidebarSessions.filter((session) => session.is_pinned).length} pinned` : ""}
+            </p>
+          </div>
+        )}
+
+        {ctxMenu && (
+          <div
+            data-chat-tree-context-menu
+            className="fixed z-50 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          >
+            {ctxMenu.type === "session" ? (
+              <>
+                <button
+                  onClick={() => {
+                    openSession(ctxMenu.session);
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <ExternalLink size={11} /> Open chat
+                </button>
+                <button
+                  onClick={() => {
+                    setRenamingId(ctxMenu.session.id);
+                    setRenameTitle(ctxMenu.session.title);
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <Pencil size={11} /> Rename
+                </button>
+                <button
+                  onClick={() => {
+                    const currentMessages = useChatStore.getState().messages;
+                    if (canRefreshSessionTitle(ctxMenu.session, currentMessages)) {
+                      void refreshSessionTitle(ctxMenu.session);
+                    }
+                    setCtxMenu(null);
+                  }}
+                  disabled={!canRefreshSessionTitle(ctxMenu.session, useChatStore.getState().messages)}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs ${canRefreshSessionTitle(ctxMenu.session, useChatStore.getState().messages)
+                      ? "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      : "cursor-not-allowed text-[var(--text-muted)] opacity-40"
+                    }`}
+                >
+                  <RefreshCw size={11} /> Refresh chat name
+                </button>
+                <button
+                  onClick={() => {
+                    void saveSession(ctxMenu.session);
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <Save size={11} /> Save chat
+                </button>
+                <button
+                  onClick={() => {
+                    void api.chatFile.reveal(ctxMenu.session.id).catch((error) => {
+                      console.error("Failed to reveal chat file:", error);
+                    });
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <ExternalLink size={11} /> Show in Explorer
+                </button>
+                <button
+                  onClick={() => {
+                    void togglePin(ctxMenu.session);
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  {ctxMenu.session.is_pinned ? <PinOff size={11} /> : <Pin size={11} />}
+                  {ctxMenu.session.is_pinned ? "Unpin" : "Pin"}
+                </button>
+                <button
+                  onClick={() => {
+                    setConvertTarget({ session: ctxMenu.session, kind: "note" });
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <FileText size={11} /> Convert to note
+                </button>
+                <button
+                  onClick={() => {
+                    setConvertTarget({ session: ctxMenu.session, kind: "document" });
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <BookOpen size={11} /> Convert to document
+                </button>
+                <div className="my-1 border-t border-[var(--border-color)]" />
+                <div
+                  className="relative"
+                  onMouseEnter={() => setCtxMoveOpen(true)}
+                  onMouseLeave={() => { setCtxMoveOpen(false); setCtxMoveWorkspaceId(null); }}
+                >
+                  <button
+                    onClick={() => setCtxMoveOpen((v) => !v)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    <MoveRight size={11} />
+                    <span className="truncate flex-1">Move to</span>
+                    <ChevronRight size={11} />
+                  </button>
+                  {ctxMoveOpen && renderSessionMoveSubmenu((targetWorkspaceId, targetProjectId) => {
+                    void moveSessionsToTarget([ctxMenu.session.id], targetWorkspaceId, targetProjectId).catch((error: unknown) => {
+                      const description = error instanceof Error
+                        ? error.message
+                        : typeof error === "string" && error.trim()
+                          ? error
+                          : "Failed to move chat.";
+                      console.error("Failed to move chat:", error);
+                      showAlertDialog("Move failed", description, "danger");
+                    });
+                    setCtxMoveWorkspaceId(null);
+                    setCtxMoveOpen(false);
+                    setCtxMenu(null);
+                  })}
+                </div>
+                <div className="my-1 border-t border-[var(--border-color)]" />
+                <button
+                  onClick={() => {
+                    void deleteSession(ctxMenu.session.id);
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
+                >
+                  <Trash2 size={11} /> Delete
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    setActiveProjectId(ctxMenu.project.id);
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <ExternalLink size={11} /> Open folder
+                </button>
+                <button
+                  onClick={() => {
+                    setProjectRenamingId(ctxMenu.project.id);
+                    setProjectRenameValue(ctxMenu.project.name);
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <Pencil size={11} /> Rename folder
+                </button>
+                <div className="my-1 border-t border-[var(--border-color)]" />
+                <div
+                  className="relative"
+                  onMouseEnter={() => setCtxProjectMoveWorkspaceId("open")}
+                  onMouseLeave={() => setCtxProjectMoveWorkspaceId(null)}
+                >
+                  <button
+                    onClick={() => setCtxProjectMoveWorkspaceId((current) => current === "open" ? null : "open")}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    <MoveRight size={11} />
+                    <span className="truncate flex-1">Move to workspace</span>
+                    <ChevronRight size={11} />
+                  </button>
+                  {ctxProjectMoveWorkspaceId === "open" && (() => {
+                    const project = ctxMenu.project;
+                    return renderProjectWorkspaceMoveSubmenu(project, (targetWorkspaceId) => {
+                      setCtxProjectMoveWorkspaceId(null);
+                      setCtxMenu(null);
+                      void moveProjectToWorkspace(project, targetWorkspaceId);
+                    });
+                  })()}
+                </div>
+                <button
+                  onClick={() => {
+                    void deleteProject(ctxMenu.project.id);
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
+                >
+                  <Trash2 size={11} /> Delete folder
+                </button>
+              </>
+            )}
+          </div>
+        )}
+        {workspaceProjectFlyout && (
+          <div
+            data-chat-tree-context-menu={workspaceProjectFlyout.mode === "session-move" ? "" : undefined}
+            className="fixed z-[55] min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
+            style={{
+              left: workspaceProjectFlyout.left,
+              top: workspaceProjectFlyout.top,
+              maxHeight: `${workspaceProjectFlyout.maxHeight}px`,
+            }}
+          >
+            <div className="max-h-full overflow-y-auto">
+              <button
+                onClick={() => {
+                  if (workspaceProjectFlyout.mode === "session-move" && ctxMenu?.type === "session") {
+                    void moveSessionsToTarget([ctxMenu.session.id], workspaceProjectFlyout.workspaceId, null).catch((error: unknown) => {
+                      const description = error instanceof Error
+                        ? error.message
+                        : typeof error === "string" && error.trim()
+                          ? error
+                          : "Failed to move chat.";
+                      console.error("Failed to move chat:", error);
+                      showAlertDialog("Move failed", description, "danger");
+                    });
+                    setCtxMoveWorkspaceId(null);
+                    setCtxMoveOpen(false);
+                    setCtxMenu(null);
+                  } else if (workspaceProjectFlyout.mode === "bulk-move") {
+                    setBulkActionPending("move");
+                    void moveSessionsToTarget(Array.from(selectedIds), workspaceProjectFlyout.workspaceId, null).then(() => {
+                      resetSelectionState();
+                    }).finally(() => {
+                      setBulkActionPending(null);
+                    });
+                  }
+                  setWorkspaceProjectFlyout(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <MessageSquare size={11} /> Workspace root
+              </button>
+              {workspaceProjectFlyout.projects.map((project) => (
+                <button
+                  key={project.id}
+                  onClick={() => {
+                    if (workspaceProjectFlyout.mode === "session-move" && ctxMenu?.type === "session") {
+                      void moveSessionsToTarget([ctxMenu.session.id], workspaceProjectFlyout.workspaceId, project.id).catch((error: unknown) => {
+                        const description = error instanceof Error
+                          ? error.message
+                          : typeof error === "string" && error.trim()
+                            ? error
+                            : "Failed to move chat.";
+                        console.error("Failed to move chat:", error);
+                        showAlertDialog("Move failed", description, "danger");
+                      });
+                      setCtxMoveWorkspaceId(null);
+                      setCtxMoveOpen(false);
+                      setCtxMenu(null);
+                    } else if (workspaceProjectFlyout.mode === "bulk-move") {
+                      setBulkActionPending("move");
+                      void moveSessionsToTarget(Array.from(selectedIds), workspaceProjectFlyout.workspaceId, project.id).then(() => {
+                        resetSelectionState();
+                      }).finally(() => {
+                        setBulkActionPending(null);
+                      });
+                    }
+                    setWorkspaceProjectFlyout(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <Folder size={11} /> <span className="truncate">{project.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      {convertTarget && (
+        <ConvertChatModal
+          session={convertTarget.session}
+          kind={convertTarget.kind}
+          ollamaUrl={ollamaUrl}
+          onClose={() => setConvertTarget(null)}
+          onSuccess={(kind) => {
+            if (kind === "note") {
+              navigate("/notes");
+            } else {
+              navigate("/documents");
+            }
+          }}
+        />
       )}
-    </div>
-    {convertTarget && (
-      <ConvertChatModal
-        session={convertTarget.session}
-        kind={convertTarget.kind}
-        ollamaUrl={ollamaUrl}
-        onClose={() => setConvertTarget(null)}
-        onSuccess={(kind) => {
-          if (kind === "note") {
-            navigate("/notes");
-          } else {
-            navigate("/documents");
-          }
-        }}
-      />
-    )}
     </>
   );
 }
 
 function _formatMessageTimestamp(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {return value;}
+  if (Number.isNaN(date.getTime())) { return value; }
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -1399,11 +1484,10 @@ function StreamingBubble({
 
   return (
     <div className="flex flex-col gap-1 items-start px-4 pb-4">
-      <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${
-        chatMessageStyle === "flat"
+      <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${chatMessageStyle === "flat"
           ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]"
           : ""
-      }`}>
+        }`}>
         <p ref={textRef} className="whitespace-pre-wrap" />
         <span className="streaming-cursor" />
       </div>
@@ -1417,8 +1501,11 @@ export default function ChatView() {
   const { sessionId: routeSessionId } = useParams();
   const isSplitPane = useWorkspacePane() !== null;
 
+  const { activeChatId, setActiveChatId } = useScopedChat();
   const sessions = useChatStore((s) => s.sessions);
-  const messages = useChatStore((s) => s.messages);
+  // Granular selectors to avoid re-rendering entire view on every message update in background sessions
+  const activeChatMessages = useChatStore(useCallback((s) => activeChatId ? (s.messages[activeChatId] ?? []) : [], [activeChatId]));
+  const hasLoadedActiveMessages = useChatStore(useCallback((s) => activeChatId ? s.messages[activeChatId] !== undefined : false, [activeChatId]));
   const setSessions = useChatStore((s) => s.setSessions);
   const setMessages = useChatStore((s) => s.setMessages);
   const appendMessage = useChatStore((s) => s.appendMessage);
@@ -1426,10 +1513,10 @@ export default function ChatView() {
   const finalizeStream = useChatStore((s) => s.finalizeStream);
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
   const updateMessage = useChatStore((s) => s.updateMessage);
-  const { activeChatId, setActiveChatId } = useScopedChat();
 
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const isDemoMode = useWorkspaceStore((s) => s.isDemoMode);
   const setProjectsForWorkspace = useWorkspaceStore((s) => s.setProjectsForWorkspace);
   const projectsByWorkspace = useWorkspaceStore((s) => s.projectsByWorkspace);
   const addWorkspace = useWorkspaceStore((s) => s.addWorkspace);
@@ -1460,6 +1547,7 @@ export default function ChatView() {
   const scrollToTopOnSend = useSettingsStore((s) => s.scrollToTopOnSend);
   const chatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
+  const sidebarWidth = useSettingsStore((state) => state.sidebarWidth);
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
   const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
   const composerSelectClassName = "h-10 w-full appearance-none rounded-full border border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.9)] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] outline-none transition-all hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] focus:border-[rgba(var(--accent-color-rgb),0.42)] focus:bg-[rgba(var(--accent-color-rgb),0.06)]";
@@ -1467,6 +1555,7 @@ export default function ChatView() {
   const composerToggleInactiveClass = "border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.78)] hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] hover:text-white";
   const composerToggleActiveClass = "border-[rgba(var(--accent-color-rgb),0.34)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]";
   const composerUtilitySelectClassName = "h-9 appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 pl-3.5 pr-9 text-xs font-semibold text-[var(--text-secondary)] shadow-sm outline-none transition-all hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)] focus:border-[var(--accent-color)]";
+  const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.54)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.2)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -1475,7 +1564,6 @@ export default function ChatView() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [ollamaModelStatus, setOllamaModelStatus] = useState<"idle" | "available" | "empty" | "unreachable">("idle");
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
-  const [modelSpeedStats, setModelSpeedStats] = useState<Record<string, ModelSpeedStat>>({});
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [isModelSendMenuOpen, setIsModelSendMenuOpen] = useState(false);
   type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
@@ -1514,7 +1602,7 @@ export default function ChatView() {
 
       const bounds = container.getBoundingClientRect();
       const relativeWidth = event.clientX - bounds.left;
-      setSidebarWidth(clampSessionSidebarWidth(relativeWidth));
+      setSidebarWidth(clampSessionSidebarWidth(relativeWidth, isSplitPane));
     }
 
     function handleMouseUp() {
@@ -1532,11 +1620,11 @@ export default function ChatView() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [sessionSidebarDragActive, setSidebarWidth]);
+  }, [isSplitPane, sessionSidebarDragActive, setSidebarWidth]);
 
   // Persist model choice to global settings
   const persistModelChoice = useCallback(async (model: string) => {
-    if (!model) {return;}
+    if (!model) { return; }
     setPreferredModel(model);
     try {
       const current = await api.settings.get();
@@ -1579,18 +1667,18 @@ export default function ChatView() {
 
   // Handle external subview switching via router state
   useEffect(() => {
-    const state = location.state as { subView?: ChatSubView | "grounded" } | null;
-    if (state?.subView) {
-      if (state.subView === "grounded") {
+    const locState = location.state as { subView?: ChatSubView | "grounded" } | null;
+    if (locState?.subView) {
+      if (locState.subView === "grounded") {
         setGroundedEnabled(true);
         setActiveSubView("chat");
       } else {
-        setActiveSubView(state.subView as ChatSubView);
+        setActiveSubView(locState.subView as ChatSubView);
       }
       // Clear state so it doesn't persist on manual refreshes
       window.history.replaceState({}, document.title);
     }
-  }, [location.state, setActiveSubView]);  
+  }, [location.state, setActiveSubView]);
 
   // Session list features
   const [sessionQuery, setSessionQuery] = useState("");
@@ -1629,7 +1717,7 @@ export default function ChatView() {
   }, []);
 
   async function handleCreateFolder(nameOverride?: string) {
-    if (creatingFolderRequestRef.current) {return;}
+    if (creatingFolderRequestRef.current) { return; }
     const folderName = (nameOverride ?? newFolderName).trim();
     const previousProjectId = effectiveProjectId;
     if (!folderName || !effectiveWorkspaceId) {
@@ -1655,7 +1743,7 @@ export default function ChatView() {
   }
 
   useEffect(() => {
-    if (!creatingFolder || !folderInputRef.current) {return;}
+    if (!creatingFolder || !folderInputRef.current) { return; }
     if (document.activeElement !== folderInputRef.current) {
       folderInputRef.current.focus();
     }
@@ -1696,8 +1784,8 @@ export default function ChatView() {
   }, [skipLinkConfirm]);
 
   const confirmOpenLink = useCallback(() => {
-    if (pendingLink) {open(pendingLink);}
-    if (linkDontAsk) {setSkipLinkConfirm(true);}
+    if (pendingLink) { open(pendingLink); }
+    if (linkDontAsk) { setSkipLinkConfirm(true); }
     setPendingLink(null);
   }, [pendingLink, linkDontAsk, setSkipLinkConfirm]);
 
@@ -1759,7 +1847,7 @@ export default function ChatView() {
         href={href}
         onClick={(e) => {
           e.preventDefault();
-          if (href) {handleLinkClick(href);}
+          if (href) { handleLinkClick(href); }
         }}
         style={{ cursor: "pointer" }}
       >
@@ -1837,7 +1925,7 @@ export default function ChatView() {
   const thoughtProcessingRef = useRef<Set<string>>(new Set());
 
   const loadThoughts = useCallback(async () => {
-    if (!effectiveWorkspaceId) {return;}
+    if (!effectiveWorkspaceId) { return; }
     try {
       const items = await api.thoughtQueue.list(effectiveWorkspaceId);
       setThoughts(items);
@@ -1845,12 +1933,12 @@ export default function ChatView() {
   }, [effectiveWorkspaceId]);
 
   useEffect(() => {
-    if (!thoughtPanelOpen) {return;}
+    if (!thoughtPanelOpen) { return; }
     loadThoughts();
   }, [thoughtPanelOpen, loadThoughts]);
 
   const processDueThought = useCallback(async (thought: ThoughtItem) => {
-    if (thoughtProcessingRef.current.has(thought.id)) {return;}
+    if (thoughtProcessingRef.current.has(thought.id)) { return; }
     thoughtProcessingRef.current.add(thought.id);
     try {
       await api.thoughtQueue.updateStatus(thought.id, "processing");
@@ -1863,7 +1951,7 @@ export default function ChatView() {
       setThoughts((prev) => prev.map((t) => t.id === thought.id ? { ...t, status: "done", result, result_at: new Date().toISOString() } : t));
       setThoughtExpandedId(thought.id);
     } catch {
-      await api.thoughtQueue.updateStatus(thought.id, "scheduled").catch(() => {});
+      await api.thoughtQueue.updateStatus(thought.id, "scheduled").catch(() => { });
       setThoughts((prev) => prev.map((t) => t.id === thought.id ? { ...t, status: "scheduled" } : t));
     } finally {
       thoughtProcessingRef.current.delete(thought.id);
@@ -1871,12 +1959,12 @@ export default function ChatView() {
   }, [ollamaUrl]);
 
   useEffect(() => {
-    if (!effectiveWorkspaceId || !thoughtPanelOpen) {return;}
+    if (!effectiveWorkspaceId || !thoughtPanelOpen) { return; }
     async function pollDue() {
-      if (!effectiveWorkspaceId) {return;}
+      if (!effectiveWorkspaceId) { return; }
       try {
         const due = await api.thoughtQueue.getDue(effectiveWorkspaceId);
-        for (const t of due) {processDueThought(t);}
+        for (const t of due) { processDueThought(t); }
       } catch { /* ignore */ }
     }
     pollDue();
@@ -1885,7 +1973,7 @@ export default function ChatView() {
   }, [effectiveWorkspaceId, thoughtPanelOpen, processDueThought]);
 
   async function submitThought() {
-    if (!effectiveWorkspaceId || !thoughtDraft.trim()) {return;}
+    if (!effectiveWorkspaceId || !thoughtDraft.trim()) { return; }
     setThoughtSubmitting(true);
     try {
       const processAt = thoughtScheduleEnabled && thoughtSchedule ? new Date(thoughtSchedule).toISOString() : undefined;
@@ -1898,13 +1986,13 @@ export default function ChatView() {
     } finally {
       setThoughtSubmitting(false);
     }
-  } 
+  }
 
   // Web AI session settings
   const [preserveWebSession, setPreserveWebSession] = useState(false);
 
   useEffect(() => {
-    api.settings.get().then((s) => setPreserveWebSession(s.web_session_preserve)).catch(() => {});
+    api.settings.get().then((s) => setPreserveWebSession(s.web_session_preserve)).catch(() => { });
   }, []);
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -1914,10 +2002,7 @@ export default function ChatView() {
   const pendingNewSessionRef = useRef<Promise<ChatSession | null> | null>(null);
   const incognitoSessionIdsRef = useRef<Set<string>>(new Set());
 
-  const activeMessages = useMemo(
-    () => (activeChatId ? (messages[activeChatId] ?? []) : []),
-    [activeChatId, messages]
-  );
+  const activeMessages = activeChatMessages;
   const pinnedQuickSendModels = useMemo(
     () => quickSearchModels.filter((modelId) =>
       modelId !== selectedModel && aiModelList.some((model) => model.model_id === modelId && model.enabled)
@@ -1928,9 +2013,7 @@ export default function ChatView() {
     () => availableModels,
     [availableModels]
   );
-  const hasLoadedActiveMessages = activeChatId
-    ? Object.prototype.hasOwnProperty.call(messages, activeChatId)
-    : false;
+  // uses granular selector from above
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
 
@@ -1988,11 +2071,11 @@ export default function ChatView() {
   }, [pendingPromptText, input, setPendingPromptText]);
 
   useEffect(() => {
-    if (!isModelSendMenuOpen) {return;}
+    if (!isModelSendMenuOpen) { return; }
 
     function handleClick(event: MouseEvent) {
       const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-send-model-menu]")) {return;}
+      if (target?.closest("[data-send-model-menu]")) { return; }
       setIsModelSendMenuOpen(false);
     }
 
@@ -2011,11 +2094,11 @@ export default function ChatView() {
   }, [isModelSendMenuOpen]);
 
   useEffect(() => {
-    if (!isModelPickerOpen) {return;}
+    if (!isModelPickerOpen) { return; }
 
     function handleClick(event: MouseEvent) {
       const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-active-model-menu]")) {return;}
+      if (target?.closest("[data-active-model-menu]")) { return; }
       setIsModelPickerOpen(false);
     }
 
@@ -2045,7 +2128,7 @@ export default function ChatView() {
       // Allow searching to trigger queries for the current workspace
       const timeoutId = window.setTimeout(() => {
         api.chat.searchSessions(effectiveWorkspaceId, trimmedQuery, null)
-          .then(setSidebarSessions).catch(() => {});
+          .then(setSidebarSessions).catch(() => { });
       }, 150);
       return () => window.clearTimeout(timeoutId);
     } else {
@@ -2053,7 +2136,7 @@ export default function ChatView() {
       // Other updates (move, create, delete, rename) should handle UI updates via optimistic
       // changes or explicit refresh events.
       api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0 })
-        .then(setSidebarSessions).catch(() => {});
+        .then(setSidebarSessions).catch(() => { });
     }
   }, [effectiveWorkspaceId, sessionQuery]);
 
@@ -2070,7 +2153,11 @@ export default function ChatView() {
   }
 
   async function bulkDeleteSessions(sessionIds: string[], projectIds: string[] = []) {
-    if (!effectiveWorkspaceId || (sessionIds.length === 0 && projectIds.length === 0)) {return;}
+    if (isDemoMode) {
+      await message("Session deletion is not available in Demo Mode.", { title: "Demo Mode" });
+      return;
+    }
+    if (!effectiveWorkspaceId || (sessionIds.length === 0 && projectIds.length === 0)) { return; }
     const settings = useSettingsStore.getState();
     const isImmediate = settings.immediateDelete;
     const skipConfirm = !isImmediate && !settings.confirmMoveToTrash;
@@ -2086,7 +2173,7 @@ export default function ChatView() {
         description: confirmMsg,
         confirmLabel: isImmediate ? "Delete" : "Move to Recycle Bin",
         tone: "danger",
-      })) {return;}
+      })) { return; }
     }
 
     await Promise.all(sessionIds.map((id) => api.chat.deleteSession(effectiveWorkspaceId, id)));
@@ -2138,12 +2225,12 @@ export default function ChatView() {
 
     api.chat.listSessions(effectiveWorkspaceId, effectiveProjectId, { limit: 200, offset: 0 })
       .then((nextSessions) => {
-        if (cancelled) {return;}
+        if (cancelled) { return; }
         setSessions(nextSessions);
         setLoadedSessionScopeKey(scopeKey);
       })
       .catch(() => {
-        if (cancelled) {return;}
+        if (cancelled) { return; }
         setLoadedSessionScopeKey(scopeKey);
       });
 
@@ -2153,8 +2240,8 @@ export default function ChatView() {
   }, [effectiveWorkspaceId, effectiveProjectId, setSessions]);
 
   useEffect(() => {
-    if (!effectiveWorkspaceId || !currentSessionId) {return;}
-    if (loadedSessionScopeKey !== sessionScopeKey) {return;}
+    if (!effectiveWorkspaceId || !currentSessionId) { return; }
+    if (loadedSessionScopeKey !== sessionScopeKey) { return; }
 
     const sessionStillVisible = sessions.some(
       (session) => session.id === currentSessionId && session.workspace_id === effectiveWorkspaceId
@@ -2162,7 +2249,7 @@ export default function ChatView() {
     const sessionStillVisibleInSidebar = sidebarSessions.some(
       (session) => session.id === currentSessionId && session.workspace_id === effectiveWorkspaceId
     );
-    if (sessionStillVisible || sessionStillVisibleInSidebar) {return;}
+    if (sessionStillVisible || sessionStillVisibleInSidebar) { return; }
 
     if (activeChatId === currentSessionId) {
       setActiveChatId(null);
@@ -2196,26 +2283,26 @@ export default function ChatView() {
 
       api.topicSignature.get(effectiveWorkspaceId)
         .then(sig => setWorkspaceTopicSignature(effectiveWorkspaceId, sig))
-        .catch(() => {});
+        .catch(() => { });
     } else {
       setActiveTopicSignature(null);
     }
   }, [effectiveWorkspaceId, setActiveTopicSignature, setWorkspaceTopicSignature, workspaces]);
 
   useEffect(() => {
-    if (!effectiveWorkspaceId) {return;}
+    if (!effectiveWorkspaceId) { return; }
 
     let cancelled = false;
 
     const refreshSignature = () => {
-      if (document.visibilityState === "hidden") {return;}
+      if (document.visibilityState === "hidden") { return; }
       api.topicSignature.get(effectiveWorkspaceId)
         .then((sig) => {
           if (!cancelled) {
             setWorkspaceTopicSignature(effectiveWorkspaceId, sig);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     };
 
     const intervalId = window.setInterval(refreshSignature, 60_000);
@@ -2234,7 +2321,7 @@ export default function ChatView() {
   useEffect(() => {
     if (routeSessionId) {
       setActiveChatId(routeSessionId);
-      api.chat.touchSessionAccessed(routeSessionId).catch(() => {});
+      api.chat.touchSessionAccessed(routeSessionId).catch(() => { });
     }
   }, [routeSessionId, setActiveChatId]);
 
@@ -2245,7 +2332,7 @@ export default function ChatView() {
   }, [sessions]);
 
   const cleanupIncognitoSession = useCallback(async (sessionToDelete: string) => {
-    if (!effectiveWorkspaceId) {return;}
+    if (!effectiveWorkspaceId) { return; }
     try {
       await api.chat.deleteSession(effectiveWorkspaceId, sessionToDelete);
     } catch {
@@ -2260,7 +2347,7 @@ export default function ChatView() {
   useEffect(() => {
     const previousSessionId = activeChatId;
     return () => {
-      if (!previousSessionId || !incognitoSessionIdsRef.current.has(previousSessionId)) {return;}
+      if (!previousSessionId || !incognitoSessionIdsRef.current.has(previousSessionId)) { return; }
       void cleanupIncognitoSession(previousSessionId);
     };
   }, [activeChatId, cleanupIncognitoSession]);
@@ -2274,7 +2361,7 @@ export default function ChatView() {
 
   // Load messages when session changes
   useEffect(() => {
-    if (!activeChatId || messages[activeChatId] || !activeSessionWorkspaceId) {return;}
+    if (!activeChatId || hasLoadedActiveMessages || !activeSessionWorkspaceId) { return; }
     api.chat.getMessages(activeSessionWorkspaceId, activeChatId)
       .then((msgs) => setMessages(activeChatId, msgs))
       .catch((error) => {
@@ -2284,7 +2371,7 @@ export default function ChatView() {
           error,
         });
       });
-  }, [activeChatId, activeSessionWorkspaceId, messages, setMessages]);
+  }, [activeChatId, activeSessionWorkspaceId, hasLoadedActiveMessages, setMessages]);
 
   // Load AI model priority list + fallback to raw Ollama models
   useEffect(() => {
@@ -2298,20 +2385,13 @@ export default function ChatView() {
 
     Promise.allSettled([
       api.aiModel.list(),
-      api.aiModel.listSpeedStats(),
       api.ollama.listModelsFresh(ollamaUrl),
-    ]).then(([aiModelsResult, speedStatsResult, ollamaModelsResult]) => {
+    ]).then(([aiModelsResult, ollamaModelsResult]) => {
       const aiModels = aiModelsResult.status === "fulfilled" ? aiModelsResult.value : [];
-      const speedStats = speedStatsResult.status === "fulfilled"
-        ? speedStatsResult.value.reduce<Record<string, ModelSpeedStat>>((acc, stat) => {
-            acc[stat.model_name] = stat;
-            return acc;
-          }, {})
-        : {};
       const installedOllamaModels = ollamaModelsResult.status === "fulfilled"
         ? ollamaModelsResult.value
-            .filter((model) => !model.name.toLowerCase().includes("embed"))
-            .map((model) => model.name)
+          .filter((model) => !model.name.toLowerCase().includes("embed"))
+          .map((model) => model.name)
         : [];
 
       if (ollamaModelsResult.status === "fulfilled") {
@@ -2321,7 +2401,6 @@ export default function ChatView() {
       }
 
       setAiModelList(aiModels);
-      setModelSpeedStats(speedStats);
 
       const enabledModels = aiModels
         .filter((model) => model.enabled)
@@ -2352,15 +2431,14 @@ export default function ChatView() {
 
       setAvailableModels(withSessionModel);
       setSelectedModel((current) => {
-        if (canAdoptSessionModel) {return sessionModel;}
-        if (withSessionModel.includes(current)) {return current;}
-        if (preferredModel && withSessionModel.includes(preferredModel)) {return preferredModel;}
+        if (canAdoptSessionModel) { return sessionModel; }
+        if (withSessionModel.includes(current)) { return current; }
+        if (preferredModel && withSessionModel.includes(preferredModel)) { return preferredModel; }
         return withSessionModel[0] ?? "";
       });
       syncedSessionModelRef.current = { sessionId: activeChatId, modelName: sessionModel };
     }).catch(() => {
       setOllamaModelStatus("unreachable");
-      setModelSpeedStats({});
       setAvailableModels(sessionModel ? [sessionModel] : []);
       setSelectedModel((current) => shouldAdoptSessionModel ? sessionModel : current);
       syncedSessionModelRef.current = { sessionId: activeChatId, modelName: sessionModel };
@@ -2397,10 +2475,10 @@ export default function ChatView() {
   // no manual interval needed.
 
   useEffect(() => {
-    if (!activeChatId || !hasLoadedActiveMessages || activeMessages.length > 0 || isStreaming) {return;}
+    if (!activeChatId || !hasLoadedActiveMessages || activeMessages.length > 0 || isStreaming) { return; }
 
     requestAnimationFrame(() => {
-      if (!inputRef.current || document.activeElement === inputRef.current) {return;}
+      if (!inputRef.current || document.activeElement === inputRef.current) { return; }
       inputRef.current.focus();
       const cursorPosition = inputRef.current.value.length;
       inputRef.current.setSelectionRange(cursorPosition, cursorPosition);
@@ -2413,7 +2491,7 @@ export default function ChatView() {
     if (!isSplitPane && routeSessionId !== session.id) {
       navigate(`/chat/${session.id}`);
     }
-    api.chat.touchSessionAccessed(session.id).catch(() => {});
+    api.chat.touchSessionAccessed(session.id).catch(() => { });
 
     const store = useChatStore.getState();
     if (!store.sessions.some((existingSession) => existingSession.id === session.id)) {
@@ -2431,13 +2509,10 @@ export default function ChatView() {
       next[existingIndex] = session;
       return next;
     });
-    if (store.messages[session.id] === undefined) {
-      setMessages(session.id, []);
-    }
   }
 
   async function findOrCreateEmptySession(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
-    if (!effectiveWorkspaceId) {return null;}
+    if (!effectiveWorkspaceId) { return null; }
 
     const privacy = {
       isIncognito: options?.isIncognito ?? false,
@@ -2471,7 +2546,7 @@ export default function ChatView() {
   }
 
   async function createNewSession(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
-    if (!effectiveWorkspaceId) {return;}
+    if (!effectiveWorkspaceId) { return; }
 
     if (pendingNewSessionRef.current) {
       const pendingSession = await pendingNewSessionRef.current;
@@ -2495,7 +2570,7 @@ export default function ChatView() {
   }
 
   async function ensureSessionForChat(modelId: string, options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
-    if (!effectiveWorkspaceId) {return null;}
+    if (!effectiveWorkspaceId) { return null; }
 
     let sessionId = activeChatId;
     let session = sessionId
@@ -2504,7 +2579,7 @@ export default function ChatView() {
 
     if (!sessionId) {
       const nextSession = await findOrCreateEmptySession(options);
-      if (!nextSession) {return null;}
+      if (!nextSession) { return null; }
       activateSession(nextSession);
       sessionId = nextSession.id;
       session = nextSession;
@@ -2525,10 +2600,10 @@ export default function ChatView() {
   }
   async function generateSessionTitleIfNeeded(sessionId: string, model: string, firstMessage: string) {
     const settings = await api.settings.get().catch(() => null);
-    if (!settings || settings.chat_title_auto_refresh === "disabled") {return;}
+    if (!settings || settings.chat_title_auto_refresh === "disabled") { return; }
 
     const session = useChatStore.getState().sessions.find(s => s.id === sessionId);
-    if (!session) {return;}
+    if (!session) { return; }
 
     const sessionMessages = useChatStore.getState().messages[sessionId] ?? [];
     const userMessageCount = sessionMessages.filter(m => m.role === "user").length;
@@ -2584,10 +2659,10 @@ export default function ChatView() {
   function triggerFollowUps(sessionId: string) {
     const history = (useChatStore.getState().messages[sessionId] ?? []).map(m => ({ role: m.role, content: m.content }));
     const model = selectedModel || useChatStore.getState().sessions.find(s => s.id === sessionId)?.model_name || "";
-    if (!model) {return;}
+    if (!model) { return; }
     api.ollama.generateFollowUps(model, history, ollamaUrl)
       .then(suggestions => setFollowUps(suggestions))
-      .catch(() => {});
+      .catch(() => { });
   }
 
   async function sendMessage() {
@@ -2596,14 +2671,14 @@ export default function ChatView() {
 
   function maybeExtractFlashcards(responseText: string, sessionId: string, modelId: string) {
     const { autoGenerateFlashcards } = useSettingsStore.getState();
-    if (!autoGenerateFlashcards || !effectiveWorkspaceId || responseText.length < 100) {return;}
+    if (!autoGenerateFlashcards || !effectiveWorkspaceId || responseText.length < 100) { return; }
     api.flashcard.extractFromContent(effectiveWorkspaceId, responseText, "chat", modelId, sessionId, ollamaUrl || undefined)
-      .catch(() => {});
+      .catch(() => { });
   }
 
   async function sendMessageWithModel(modelId: string, contentOverride?: string) {
     const userContent = (contentOverride ?? input).trim();
-    if (!userContent || isStreaming || !modelId || !effectiveWorkspaceId) {return;}
+    if (!userContent || isStreaming || !modelId || !effectiveWorkspaceId) { return; }
 
     const modelMeta = aiModelList.find((m) => m.model_id === modelId);
     const isOneOffWebProvider = modelMeta?.provider.startsWith("web_") ?? false;
@@ -2613,7 +2688,7 @@ export default function ChatView() {
     const oneOffWebProviderKey = isOneOffWebProvider ? modelMeta!.provider.replace("web_", "") : "";
 
     const ensuredSession = await ensureSessionForChat(modelId);
-    if (!ensuredSession) {return;}
+    if (!ensuredSession) { return; }
     const sid = ensuredSession.sessionId;
 
     if (contentOverride === undefined) {
@@ -2625,8 +2700,8 @@ export default function ChatView() {
 
     if (effectiveWorkspaceId) {
       api.topicSignature.checkMatch(effectiveWorkspaceId, userContent)
-        .then(result => { if (!result.is_match && result.suggestion) {setMigrationSuggestion(result);} })
-        .catch(() => {});
+        .then(result => { if (!result.is_match && result.suggestion) { setMigrationSuggestion(result); } })
+        .catch(() => { });
     }
 
     const optimisticUserMsg: Message = {
@@ -2642,7 +2717,7 @@ export default function ChatView() {
     const userMsg = await api.chat.addMessage(effectiveWorkspaceId, sid, "user", userContent);
     updateMessage(sid, persistedUserMessageWithFallback(optimisticUserMsg, userMsg));
 
-    const history = (messages[sid] ?? []).map((m) => ({
+    const history = (useChatStore.getState().messages[sid] ?? []).map((m) => ({
       role: m.role,
       content: m.content,
     }));
@@ -2669,7 +2744,7 @@ export default function ChatView() {
     if (optimisticUserMsg.id !== userMsg.id) {
       setMessageSources((prev) => {
         const pending = prev[optimisticUserMsg.id];
-        if (!pending) {return prev;}
+        if (!pending) { return prev; }
         const next = { ...prev, [userMsg.id]: pending };
         delete next[optimisticUserMsg.id];
         return next;
@@ -2690,9 +2765,9 @@ export default function ChatView() {
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
-              .catch(() => {});
+              .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(modelId, `web_${oneOffWebProviderKey}`, tokensUsed).catch(() => {});
+              api.aiModel.recordTokenUsage(modelId, `web_${oneOffWebProviderKey}`, tokensUsed).catch(() => { });
             }
             maybeExtractFlashcards(assembled, sid!, modelId);
           } else {
@@ -2719,9 +2794,9 @@ export default function ChatView() {
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
-              .catch(() => {});
+              .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(modelId, "llamacpp", tokensUsed).catch(() => {});
+              api.aiModel.recordTokenUsage(modelId, "llamacpp", tokensUsed).catch(() => { });
             }
             maybeExtractFlashcards(assembled, sid!, modelId);
           } else {
@@ -2748,9 +2823,9 @@ export default function ChatView() {
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
-              .catch(() => {});
+              .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(modelId, "mlx", tokensUsed).catch(() => {});
+              api.aiModel.recordTokenUsage(modelId, "mlx", tokensUsed).catch(() => { });
             }
             maybeExtractFlashcards(assembled, sid!, modelId);
           } else {
@@ -2777,9 +2852,9 @@ export default function ChatView() {
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
               .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
-              .catch(() => {});
+              .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(modelId, "ollama", tokensUsed).catch(() => {});
+              api.aiModel.recordTokenUsage(modelId, "ollama", tokensUsed).catch(() => { });
             }
             maybeExtractFlashcards(assembled, sid!, modelId);
           } else {
@@ -2820,13 +2895,13 @@ export default function ChatView() {
   }
 
   async function deleteSession(id: string) {
-    if (!effectiveWorkspaceId) {return;}
+    if (!effectiveWorkspaceId) { return; }
     const settings = useSettingsStore.getState();
     const isImmediate = settings.immediateDelete;
     const skipConfirm = !isImmediate && !settings.confirmMoveToTrash;
 
     if (!skipConfirm) {
-      const confirmMsg = isImmediate 
+      const confirmMsg = isImmediate
         ? "Permanently delete this chat session and all its messages? This cannot be undone."
         : "Move this chat to the recycle bin?";
 
@@ -2835,17 +2910,17 @@ export default function ChatView() {
         description: confirmMsg,
         confirmLabel: isImmediate ? "Delete" : "Move to Recycle Bin",
         tone: "danger",
-      })) {return;}
+      })) { return; }
     }
 
     await api.chat.deleteSession(effectiveWorkspaceId, id);
     useChatStore.getState().removeSession(id);
     setSidebarSessions((prev) => prev.filter((session) => session.id !== id));
-    if (activeChatId === id) {setActiveChatId(null);}
+    if (activeChatId === id) { setActiveChatId(null); }
   }
 
   async function togglePin(session: ChatSession) {
-    if (!effectiveWorkspaceId) {return;}
+    if (!effectiveWorkspaceId) { return; }
     await api.chat.updateSession(effectiveWorkspaceId, session.id, { is_pinned: !session.is_pinned });
     setSessions(
       sessions.map((s) =>
@@ -2864,23 +2939,23 @@ export default function ChatView() {
   }
 
   async function refreshSessionTitle(session: ChatSession) {
-    if (!effectiveWorkspaceId) {return;}
+    if (!effectiveWorkspaceId) { return; }
 
-    const sessionMessages = (useChatStore.getState().messages[session.id] ?? messages[session.id] ?? [])
+    const sessionMessages = (useChatStore.getState().messages[session.id] ?? [])
       .filter((message) => message.role === "user" || message.role === "assistant");
     const firstUserMessage = sessionMessages.find((message) => message.role === "user")?.content?.trim() ?? "";
-    if (!firstUserMessage) {return;}
+    if (!firstUserMessage) { return; }
 
     const model = session.model_name || selectedModel;
-    if (!model) {return;}
+    if (!model) { return; }
 
     try {
       const aiTitle = sessionMessages.filter((message) => message.role === "user").length > 1
         ? await api.ollama.generateTitleFromConversation(
-            model,
-            sessionMessages.map((message) => ({ role: message.role, content: message.content })),
-            ollamaUrl,
-          ).catch(() => null)
+          model,
+          sessionMessages.map((message) => ({ role: message.role, content: message.content })),
+          ollamaUrl,
+        ).catch(() => null)
         : await api.ollama.generateTitle(model, firstUserMessage, ollamaUrl).catch(() => null);
 
       const title = resolveChatTitle({ aiTitle, firstMessage: firstUserMessage });
@@ -2898,7 +2973,7 @@ export default function ChatView() {
   }
 
   async function moveSessionsToTarget(sessionIds: string[], workspaceId: string, projectId: string | null) {
-    if (sessionIds.length === 0) {return;}
+    if (sessionIds.length === 0) { return; }
     const sessionIdSet = new Set(sessionIds);
     const isCrossWorkspaceMove = workspaceId !== effectiveWorkspaceId;
     const shouldPreserveProjectStructure = isCrossWorkspaceMove && projectId === null;
@@ -2912,37 +2987,37 @@ export default function ChatView() {
     if (isCrossWorkspaceMove && shouldPreserveProjectStructure) {
       // Use batch move: single IPC call handles project lookup/create + all moves
       const result = await api.chat.batchMoveSessions(sessionIds, workspaceId, true);
-      
+
       // Determine which project to navigate to
       const mappedProjectIds = Object.values(result.project_mapping);
       const destinationProjectIdForView = mappedProjectIds.length === 1 ? mappedProjectIds[0] : null;
-      
+
       setScopedWorkspaceId(workspaceId);
       setScopedProjectId(destinationProjectIdForView);
-      
+
       // Refresh only the destination workspace tree (source already updated optimistically)
       await refreshProjectTree(workspaceId);
-      
+
       if (activeChatId && sessionIds.includes(activeChatId)) {
         setActiveChatId(sessionIds.length === 1 ? activeChatId : null);
       }
     } else if (isCrossWorkspaceMove) {
       // Cross-workspace move to specific project or root
       await api.chat.moveSessions(sessionIds, workspaceId, projectId ?? undefined);
-      
+
       setScopedWorkspaceId(workspaceId);
       setScopedProjectId(projectId);
-      
+
       // Refresh only the destination workspace tree
       await refreshProjectTree(workspaceId);
-      
+
       if (activeChatId && sessionIds.includes(activeChatId)) {
         setActiveChatId(sessionIds.length === 1 ? activeChatId : null);
       }
     } else {
       // Same-workspace move
       await api.chat.moveSessions(sessionIds, workspaceId, projectId ?? undefined);
-      
+
       // Optimistic local update for same-workspace
       setScopedProjectId(projectId);
       setSidebarSessions((prev) => prev.map((session) => (
@@ -2955,7 +3030,7 @@ export default function ChatView() {
           ? { ...session, workspace_id: workspaceId, project_id: projectId ?? "" }
           : session
       )));
-      
+
       // Light refresh for project counts (sessions already updated optimistically)
       if (effectiveWorkspaceId) {
         const refreshedProjects = await api.project.list(effectiveWorkspaceId);
@@ -2965,13 +3040,13 @@ export default function ChatView() {
   }
 
   async function renameProject(projectId: string, name: string) {
-    if (!effectiveWorkspaceId || !name.trim()) {return;}
+    if (!effectiveWorkspaceId || !name.trim()) { return; }
     await api.project.update(projectId, { name: name.trim() });
     await refreshProjectTree(effectiveWorkspaceId);
   }
 
   async function moveProjectToWorkspace(project: Project, targetWorkspaceId: string) {
-    if (project.workspace_id === targetWorkspaceId) {return;}
+    if (project.workspace_id === targetWorkspaceId) { return; }
 
     const projectSessionIds = sidebarSessions
       .filter((session) => session.project_id === project.id)
@@ -3026,7 +3101,7 @@ export default function ChatView() {
   }
 
   async function deleteProject(projectId: string) {
-    if (!effectiveWorkspaceId) {return;}
+    if (!effectiveWorkspaceId) { return; }
     const projectSessions = sidebarSessions.filter((session) => session.project_id === projectId).map((session) => session.id);
     const confirmMsg = projectSessions.length > 0
       ? `Delete this folder? ${projectSessions.length} chat${projectSessions.length === 1 ? "" : "s"} will be moved to the workspace root.`
@@ -3037,7 +3112,7 @@ export default function ChatView() {
       description: confirmMsg,
       confirmLabel: "Delete Folder",
       tone: "danger",
-    })) {return;}
+    })) { return; }
 
     if (projectSessions.length > 0) {
       await api.chat.moveSessions(projectSessions, effectiveWorkspaceId, undefined);
@@ -3069,7 +3144,7 @@ export default function ChatView() {
         defaultPath: chatExportFilename(session.title || "chat"),
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
-      if (!destPath) {return;}
+      if (!destPath) { return; }
       await api.chatFile.exportAsJson(session.id, destPath);
     } catch (err) {
       const description = err instanceof Error
@@ -3094,10 +3169,10 @@ export default function ChatView() {
   }
 
   async function submitEdit(msgId: string) {
-    if (!activeChatId || !editContent.trim() || !effectiveWorkspaceId) {return;}
+    if (!activeChatId || !editContent.trim() || !effectiveWorkspaceId) { return; }
     setEditingMessageId(null);
     const idx = activeMessages.findIndex((m) => m.id === msgId);
-    if (idx < 0) {return;}
+    if (idx < 0) { return; }
     const trimmedMessages = activeMessages.slice(0, idx);
     setMessages(activeChatId, trimmedMessages);
     setInput("");
@@ -3130,9 +3205,9 @@ export default function ChatView() {
           const assembled = useChatStore.getState().streamingContent;
           api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
             .then((persisted) => updateMessage(sid, persisted))
-            .catch(() => {});
+            .catch(() => { });
           if (tokensUsed && tokensUsed > 0) {
-            api.aiModel.recordTokenUsage(selectedModel, "ollama", tokensUsed).catch(() => {});
+            api.aiModel.recordTokenUsage(selectedModel, "ollama", tokensUsed).catch(() => { });
           }
         } else {
           appendStreamChunk(sid, chunk);
@@ -3150,9 +3225,9 @@ export default function ChatView() {
   }
 
   async function redoMessage(msgId: string) {
-    if (!activeChatId || isStreaming || !effectiveWorkspaceId) {return;}
+    if (!activeChatId || isStreaming || !effectiveWorkspaceId) { return; }
     const idx = activeMessages.findIndex((m) => m.id === msgId);
-    if (idx < 0) {return;}
+    if (idx < 0) { return; }
     const trimmedMessages = activeMessages.slice(0, idx);
     setMessages(activeChatId, trimmedMessages);
 
@@ -3170,9 +3245,9 @@ export default function ChatView() {
           const assembled = useChatStore.getState().streamingContent;
           api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
             .then((persisted) => updateMessage(sid, persisted))
-            .catch(() => {});
+            .catch(() => { });
           if (tokensUsed && tokensUsed > 0) {
-            api.aiModel.recordTokenUsage(selectedModel, "ollama", tokensUsed).catch(() => {});
+            api.aiModel.recordTokenUsage(selectedModel, "ollama", tokensUsed).catch(() => { });
           }
         } else {
           appendStreamChunk(sid, chunk);
@@ -3191,7 +3266,7 @@ export default function ChatView() {
 
   // Load models for comparison mode
   useEffect(() => {
-    if (activeSubView !== "compare") {return;}
+    if (activeSubView !== "compare") { return; }
     api.ollama.listModels(ollamaUrl || undefined).then((list) => {
       const filtered = list.filter((m) => !m.name.toLowerCase().includes("embed"));
       setCompareModels(filtered);
@@ -3203,11 +3278,11 @@ export default function ChatView() {
       } else if (filtered.length === 1) {
         setCompareModelB((current) => current || filtered[0].name);
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }, [activeSubView, ollamaUrl]);
 
   async function runComparison() {
-    if (!comparePrompt.trim() || compareLoading) {return;}
+    if (!comparePrompt.trim() || compareLoading) { return; }
     const p = comparePrompt.trim();
     setComparePrompt("");
     setCompareResponseA("");
@@ -3222,7 +3297,7 @@ export default function ChatView() {
       ]);
       setCompareResponseA(resA);
       setCompareResponseB(resB);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setCompareError(err?.message ?? String(err));
     } finally {
@@ -3264,14 +3339,13 @@ export default function ChatView() {
 
   // Map model_id to display name from global labels or priority list
   const modelDisplayName = (modelId: string) => {
-    if (modelLabels[modelId]) {return modelLabels[modelId];}
+    if (modelLabels[modelId]) { return modelLabels[modelId]; }
     const found = aiModelList.find((m) => m.model_id === modelId);
     return found ? found.name : modelId;
   };
 
   const modelPickerLabel = (modelId: string) => {
-    const speed = formatModelSpeed(modelSpeedStats[modelId]);
-    return speed ? `${modelDisplayName(modelId)} • ${speed.compact}` : modelDisplayName(modelId);
+    return modelDisplayName(modelId);
   };
 
   const persistedUserMessageWithFallback = (optimistic: Message, persisted: Message): Message => ({
@@ -3281,7 +3355,7 @@ export default function ChatView() {
   });
 
   const canRefreshActiveSessionTitle = activeSession
-    ? canRefreshSessionTitle(activeSession, messages)
+    ? canRefreshSessionTitle(activeSession, useChatStore.getState().messages)
     : false;
   const isComparePanelOpen = activeSubView === "compare";
   const chatWorkspaceClassName = "flex flex-1 min-w-0 min-h-0 overflow-hidden";
@@ -3325,6 +3399,8 @@ export default function ChatView() {
         saveSession={saveSession}
         deleteSession={deleteSession}
         showAlertDialog={openAlertDialog}
+        sidebarWidth={sidebarWidth}
+        openSession={activateSession}
       />
 
       <div
@@ -3343,527 +3419,502 @@ export default function ChatView() {
       <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
         <div className={chatWorkspaceClassName}>
           {!isComparePanelOpen ? (
-          <div className="flex-1 min-w-0 flex min-h-0 flex-col overflow-hidden">
-          {!activeChatId ? (
-          <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center">
-            <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
-            <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
-            <div className="flex flex-wrap justify-center gap-2">
-              <button
-                onClick={() => createNewSession({
-                  isIncognito: emptyStatePrivacyMode === "incognito",
-                  excludeFromAnalytics: emptyStatePrivacyMode === "exclude",
-                })}
-                className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
-              >
-                Start a new chat
-              </button>
-            </div>
-            <div className="w-full max-w-xs rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3 text-left">
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                  <input
-                    type="radio"
-                    name="empty-state-privacy"
-                    checked={emptyStatePrivacyMode === "incognito"}
-                    onChange={() => setEmptyStatePrivacyMode("incognito")}
-                    className="accent-[var(--accent-color)]"
-                  />
-                  <Ghost size={14} className="text-purple-400" />
-                  Incognito
-                </label>
-                <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                  <input
-                    type="radio"
-                    name="empty-state-privacy"
-                    checked={emptyStatePrivacyMode === "exclude"}
-                    onChange={() => setEmptyStatePrivacyMode("exclude")}
-                    className="accent-[var(--accent-color)]"
-                  />
-                  <Shield size={14} className="text-sky-400" />
-                  Exclude from analytics
-                </label>
-                <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                  <input
-                    type="radio"
-                    name="empty-state-privacy"
-                    checked={emptyStatePrivacyMode === "standard"}
-                    onChange={() => setEmptyStatePrivacyMode("standard")}
-                    className="accent-[var(--accent-color)]"
-                  />
-                  <MessageSquare size={14} className="text-[var(--text-muted)]" />
-                  Standard
-                </label>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-            {/* Slim title bar */}
-            <div className="flex min-w-0 items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
-                  <span className="truncate">{activeWorkspaceName}</span>
-                  {effectiveProjectName && (
-                    <>
-                      <span>/</span>
-                      <span className="truncate">{effectiveProjectName}</span>
-                    </>
-                  )}
+            <div className="flex-1 min-w-0 flex min-h-0 flex-col overflow-hidden">
+              {!activeChatId ? (
+                <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center">
+                  <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
+                  <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <button
+                      onClick={() => createNewSession({
+                        isIncognito: emptyStatePrivacyMode === "incognito",
+                        excludeFromAnalytics: emptyStatePrivacyMode === "exclude",
+                      })}
+                      className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
+                    >
+                      Start a new chat
+                    </button>
+                  </div>
+                  <div className="w-full max-w-xs rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3 text-left">
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                        <input
+                          type="radio"
+                          name="empty-state-privacy"
+                          checked={emptyStatePrivacyMode === "incognito"}
+                          onChange={() => setEmptyStatePrivacyMode("incognito")}
+                          className="accent-[var(--accent-color)]"
+                        />
+                        <Ghost size={14} className="text-purple-400" />
+                        Incognito
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                        <input
+                          type="radio"
+                          name="empty-state-privacy"
+                          checked={emptyStatePrivacyMode === "exclude"}
+                          onChange={() => setEmptyStatePrivacyMode("exclude")}
+                          className="accent-[var(--accent-color)]"
+                        />
+                        <Shield size={14} className="text-sky-400" />
+                        Exclude from analytics
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                        <input
+                          type="radio"
+                          name="empty-state-privacy"
+                          checked={emptyStatePrivacyMode === "standard"}
+                          onChange={() => setEmptyStatePrivacyMode("standard")}
+                          className="accent-[var(--accent-color)]"
+                        />
+                        <MessageSquare size={14} className="text-[var(--text-muted)]" />
+                        Standard
+                      </label>
+                    </div>
+                  </div>
                 </div>
-                <span className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-sm font-medium text-[var(--text-primary)]">
-                  <span className="truncate">{activeSession?.title || "New Chat"}</span>
-                  {activeSession?.is_incognito && (
-                    <span title="Incognito thread"><Ghost size={14} className="text-purple-400" /></span>
-                  )}
-                  {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
-                    <span title="Excluded from analytics"><Shield size={14} className="text-sky-400" /></span>
-                  )}
-                </span>
-              </div>
-              {activeSession && (
-                <button
-                  onClick={() => { if (canRefreshActiveSessionTitle) {refreshSessionTitle(activeSession);} }}
-                  disabled={!canRefreshActiveSessionTitle}
-                  className={`p-1.5 rounded-lg text-[var(--text-muted)] transition-colors ${
-                    canRefreshActiveSessionTitle
-                      ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
-                      : "cursor-not-allowed opacity-40"
-                  }`}
-                  title={canRefreshActiveSessionTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"}
-                >
-                  <RefreshCw size={14} />
-                </button>
-              )}
-              {availableModels.length === 0 && ollamaModelStatus === "unreachable" && (
-                <span className="text-xs text-red-400">Ollama unavailable</span>
-              )}
-              {availableModels.length === 0 && ollamaModelStatus !== "unreachable" && (
-                <span className="text-xs text-amber-400">No Ollama models installed</span>
-              )}
-            </div>
-
-            {activeSession?.is_incognito && (
-              <div className="mx-4 mt-2 px-3 py-2 rounded bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-300 flex items-start gap-2">
-                <Ghost size={12} className="mt-0.5 flex-shrink-0" />
-                <span>This incognito chat is excluded from analytics, memory, and topic discovery. Leaving this chat deletes it.</span>
-              </div>
-            )}
-
-            {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
-              <div className="mx-4 mt-2 px-3 py-2 rounded bg-sky-500/10 border border-sky-500/20 text-[11px] text-sky-300 flex items-start gap-2">
-                <Shield size={12} className="mt-0.5 flex-shrink-0" />
-                <span>This chat stays saved, but it is excluded from analytics, memory extraction, and topic discovery.</span>
-              </div>
-            )}
-
-            {/* Browser automation notice */}
-            {isWebProvider && webProviderKey && (
-              <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-400 flex items-center gap-1.5">
-                <Globe size={12} />
-                A browser window will open for your configured browser target, and your query will be submitted automatically after sign-in.
-                {!preserveWebSession && (
-                  <span className="ml-auto text-[10px] opacity-60">Session cleared after query</span>
-                )}
-              </div>
-            )}
-
-            {/* Grounded mode warning if no processed docs */}
-            {groundedEnabled && processedDocCount === 0 && effectiveProjectId && (
-              <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-500 flex items-center gap-1.5">
-                <FileText size={12} />
-                No processed documents. Upload and process docs in the Document Browser.
-              </div>
-            )}
-
-            {/* Messages */}
-            <div className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
-              <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
-                <Virtuoso
-                  ref={virtuosoRef}
-                  data={activeMessages}
-                  initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
-                  followOutput={isCurrentlyStreaming ? "auto" : "smooth"}
-                  alignToBottom={true}
-                  className="w-full min-w-0 overflow-x-hidden py-4"
-                  computeItemKey={(_, msg) => msg.id}
-                  itemContent={(i, msg) => (
-                    <div className="pb-4 px-4">
-                      <ChatMessageBubble
-                        key={msg.id}
-                        msg={msg}
-                        isLastMessage={i === activeMessages.length - 1}
-                        isStreaming={isStreaming}
-                        chatMessageStyle={chatMessageStyle}
-                        expandChatToWindowWidth={expandChatToWindowWidth}
-                        showGenInfo={showGenInfo}
-                        editingMessageId={editingMessageId}
-                        editContent={editContent}
-                        copiedMessageId={copiedMessageId}
-                        expandedThoughtIds={expandedThoughtIds}
-                        messageSources={messageSources}
-                        expandedSources={expandedSources}
-                        contextSources={i === activeMessages.length - 1 && currentSessionId ? activeContextSources[currentSessionId] ?? null : null}
-                        markdownComponents={markdownComponents}
-                        onCopy={handleCopyMessage}
-                        onStartEdit={handleStartEditing}
-                        onSubmitEdit={submitEdit}
-                        onSetEditContent={setEditContent}
-                        onCancelEdit={handleCancelEdit}
-                        onRedo={redoMessage}
-                        onToggleThought={handleToggleThought}
-                        onToggleSources={handleToggleSources}
-                      />
-                    </div>
-                  )}
-                  components={virtuosoComponents}
-                />
-              </div>
-            </div>
-
-            {toolbarState && (
-              <SelectionToolbar
-                x={toolbarState.x}
-                y={toolbarState.y}
-                text={toolbarState.text}
-                onDismiss={dismissToolbar}
-                innerRef={toolbarRef}
-              />
-            )}
-
-            {/* Input / composer area */}
-            <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-5"}`}>
-              <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[rgba(var(--accent-color-rgb),0.12)] bg-[rgba(11,14,19,0.94)] ${showComposerHeader ? "p-3" : "p-1.5"} shadow-[0_30px_90px_-46px_rgba(0,0,0,0.95)] backdrop-blur-xl`}>
-                <div className="flex flex-col gap-3.5 min-w-0">
-                  {showComposerHeader && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
-                    <div className="px-1 pt-1">
-                      <div className="px-1.5 pb-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
-                        General
+              ) : (
+                <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+                  {/* Slim title bar */}
+                  <div className="flex min-w-0 items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                        <span className="truncate">{activeWorkspaceName}</span>
+                        {effectiveProjectName && (
+                          <>
+                            <span>/</span>
+                            <span className="truncate">{effectiveProjectName}</span>
+                          </>
+                        )}
                       </div>
-                      <TopicChips
-                        tags={activeTopicSignature.domain_tags}
-                        onChipClick={(tag) => setInput(prev => `[${tag}] ${prev}`)}
-                      />
+                      <span className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-sm font-medium text-[var(--text-primary)]">
+                        <span className="truncate">{activeSession?.title || "New Chat"}</span>
+                        {activeSession?.is_incognito && (
+                          <span title="Incognito thread"><Ghost size={14} className="text-purple-400" /></span>
+                        )}
+                        {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
+                          <span title="Excluded from analytics"><Shield size={14} className="text-sky-400" /></span>
+                        )}
+                      </span>
+                    </div>
+                    {activeSession && (
+                      <button
+                        onClick={() => { if (canRefreshActiveSessionTitle) { refreshSessionTitle(activeSession); } }}
+                        disabled={!canRefreshActiveSessionTitle}
+                        className={`p-1.5 rounded-lg text-[var(--text-muted)] transition-colors ${canRefreshActiveSessionTitle
+                            ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
+                            : "cursor-not-allowed opacity-40"
+                          }`}
+                        title={canRefreshActiveSessionTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"}
+                      >
+                        <RefreshCw size={14} />
+                      </button>
+                    )}
+                    {availableModels.length === 0 && ollamaModelStatus === "unreachable" && (
+                      <span className="text-xs text-red-400">Ollama unavailable</span>
+                    )}
+                    {availableModels.length === 0 && ollamaModelStatus !== "unreachable" && (
+                      <span className="text-xs text-amber-400">No Ollama models installed</span>
+                    )}
+                  </div>
+
+                  {activeSession?.is_incognito && (
+                    <div className="mx-4 mt-2 px-3 py-2 rounded bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-300 flex items-start gap-2">
+                      <Ghost size={12} className="mt-0.5 flex-shrink-0" />
+                      <span>This incognito chat is excluded from analytics, memory, and topic discovery. Leaving this chat deletes it.</span>
                     </div>
                   )}
 
-                  {showComposerHeader && (
-                    <ComposerSuggestionRows
-                      rows={composerSuggestionRows}
-                      disabled={isStreaming}
-                      disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
-                      onSuggestionClick={handleComposerSuggestion}
+                  {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
+                    <div className="mx-4 mt-2 px-3 py-2 rounded bg-sky-500/10 border border-sky-500/20 text-[11px] text-sky-300 flex items-start gap-2">
+                      <Shield size={12} className="mt-0.5 flex-shrink-0" />
+                      <span>This chat stays saved, but it is excluded from analytics, memory extraction, and topic discovery.</span>
+                    </div>
+                  )}
+
+                  {/* Browser automation notice */}
+                  {isWebProvider && webProviderKey && (
+                    <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-400 flex items-center gap-1.5">
+                      <Globe size={12} />
+                      A browser window will open for your configured browser target, and your query will be submitted automatically after sign-in.
+                      {!preserveWebSession && (
+                        <span className="ml-auto text-[10px] opacity-60">Session cleared after query</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Grounded mode warning if no processed docs */}
+                  {groundedEnabled && processedDocCount === 0 && effectiveProjectId && (
+                    <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-500 flex items-center gap-1.5">
+                      <FileText size={12} />
+                      No processed documents. Upload and process docs in the Document Browser.
+                    </div>
+                  )}
+
+                  {/* Messages */}
+                  <div className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
+                    <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
+                      <Virtuoso
+                        ref={virtuosoRef}
+                        data={activeMessages}
+                        initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
+                        followOutput={isCurrentlyStreaming ? "auto" : "smooth"}
+                        alignToBottom={true}
+                        className="w-full min-w-0 overflow-x-hidden py-4"
+                        computeItemKey={(_, msg) => msg.id}
+                        itemContent={(i, msg) => (
+                          <div className="pb-4 px-4">
+                            <ChatMessageBubble
+                              key={msg.id}
+                              msg={msg}
+                              isLastMessage={i === activeMessages.length - 1}
+                              isStreaming={isStreaming}
+                              chatMessageStyle={chatMessageStyle}
+                              expandChatToWindowWidth={expandChatToWindowWidth}
+                              showGenInfo={showGenInfo}
+                              editingMessageId={editingMessageId}
+                              editContent={editContent}
+                              copiedMessageId={copiedMessageId}
+                              expandedThoughtIds={expandedThoughtIds}
+                              messageSources={messageSources}
+                              expandedSources={expandedSources}
+                              contextSources={i === activeMessages.length - 1 && currentSessionId ? activeContextSources[currentSessionId] ?? null : null}
+                              markdownComponents={markdownComponents}
+                              onCopy={handleCopyMessage}
+                              onStartEdit={handleStartEditing}
+                              onSubmitEdit={submitEdit}
+                              onSetEditContent={setEditContent}
+                              onCancelEdit={handleCancelEdit}
+                              onRedo={redoMessage}
+                              onToggleThought={handleToggleThought}
+                              onToggleSources={handleToggleSources}
+                            />
+                          </div>
+                        )}
+                        components={virtuosoComponents}
+                      />
+                    </div>
+                  </div>
+
+                  {toolbarState && (
+                    <SelectionToolbar
+                      x={toolbarState.x}
+                      y={toolbarState.y}
+                      text={toolbarState.text}
+                      onDismiss={dismissToolbar}
+                      innerRef={toolbarRef}
                     />
                   )}
 
-                  {hasComposerHeader && (
-                    <div className={`flex justify-end ${showComposerHeader ? "-mt-1 px-1 pb-0.5" : "px-1"}`}>
-                      <button
-                        type="button"
-                        onClick={() => setIsComposerHeaderCollapsed((collapsed) => !collapsed)}
-                        className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(var(--accent-color-rgb),0.14)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.46)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:text-white"
-                        aria-label={showComposerHeader ? "Hide suggestions" : "Show suggestions"}
-                        aria-expanded={showComposerHeader}
-                        title={showComposerHeader ? "Hide suggestions" : "Show suggestions"}
-                      >
-                        {showComposerHeader ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
-                    </div>
-                  )}
+                  {/* Input / composer area */}
+                  <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-5"}`}>
+                    <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[rgba(255,255,255,0.04)] bg-[rgba(14,16,20,0.58)] ${showComposerHeader ? "p-3" : "p-1.5"} shadow-[0_30px_90px_-46px_rgba(0,0,0,0.95)] backdrop-blur-[24px]`}>
+                      <div className="flex flex-col gap-3.5 min-w-0">
+                        {showComposerHeader && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
+                          <div className="px-1 pt-1">
+                            <div className="px-1.5 pb-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
+                              General
+                            </div>
+                            <TopicChips
+                              tags={activeTopicSignature.domain_tags}
+                              onChipClick={(tag) => setInput(prev => `[${tag}] ${prev}`)}
+                            />
+                          </div>
+                        )}
 
-                  <div className={`${showComposerHeader ? "rounded-[24px] border border-[rgba(255,255,255,0.09)] bg-[rgba(9,12,16,0.96)] p-2.5 shadow-[0_22px_52px_-34px_rgba(0,0,0,0.95)]" : "rounded-[24px] border border-transparent bg-transparent p-1 shadow-none"} transition-all focus-within:border-[rgba(var(--accent-color-rgb),0.3)] focus-within:shadow-[0_0_0_2px_rgba(var(--accent-color-rgb),0.07),0_22px_52px_-34px_rgba(0,0,0,0.95)]`}>
-                    {/* Textarea + send button */}
-                    <div className="flex items-end gap-2.5">
-                      <textarea
-                        ref={inputRef}
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        disabled={isStreaming}
-                        placeholder={
-                          isStreaming
-                            ? "Waiting for response…"
-                            : !selectedModel
-                              ? ollamaModelStatus === "unreachable"
-                                ? "Ollama is unavailable — start it or enable auto-start in Preferences > AI"
-                                : "No models available — install one via ollama pull"
-                              : activeMessages.length > 0
-                                ? "Message this thread…"
-                                : "Start a new thread…"
-                        }
-                        rows={1}
-                        className="flex-1 resize-none bg-transparent px-4 py-3 text-[15px] font-medium leading-6 tracking-[0.01em] text-[rgba(255,255,255,0.94)] placeholder:text-[rgba(255,255,255,0.34)] outline-none transition-colors max-h-40 overflow-y-auto"
-                        style={{ minHeight: 56 }}
-                        onInput={(e) => {
-                          const el = e.currentTarget;
-                          el.style.height = "auto";
-                          el.style.height = Math.min(el.scrollHeight, 160) + "px";
-                        }}
-                      />
-                      {isStreaming ? (
-                        <button
-                          onClick={() => {
-                            if (activeChatId) {
-                              api.ollama.stopStream(activeChatId).catch(() => {});
-                              api.llamacpp.stopStream(activeChatId).catch(() => {});
-                              api.webAI.stopStream(activeChatId).catch(() => {});
-                            }
-                          }}
-                          className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-red-500 text-white shadow-[0_12px_30px_-18px_rgba(239,68,68,0.65)] transition-opacity hover:opacity-90"
-                          title="Stop generation"
-                        >
-                          <X size={16} />
-                        </button>
-                      ) : (
-                        <div className="mb-1 mr-0.5 flex items-center gap-2">
-                          <div className="relative flex flex-shrink-0 items-center" data-send-model-menu>
+                        {showComposerHeader && (
+                          <ComposerSuggestionRows
+                            rows={composerSuggestionRows}
+                            disabled={isStreaming}
+                            disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
+                            onSuggestionClick={handleComposerSuggestion}
+                          />
+                        )}
+
+                        {hasComposerHeader && (
+                          <div className={`flex justify-end ${showComposerHeader ? "-mt-1 px-1 pb-0.5" : "px-1"}`}>
                             <button
-                              onClick={async () => {
-                                setIsModelSendMenuOpen(false);
-                                await sendMessage();
-                              }}
-                              disabled={!input.trim() || !selectedModel}
-                              className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.28)] bg-[rgba(var(--accent-color-rgb),0.14)] text-white shadow-[0_14px_32px_-20px_rgba(var(--accent-color-rgb),0.45)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.42)] hover:bg-[rgba(var(--accent-color-rgb),0.18)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${
-                                pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
-                              }`}
-                              title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
+                              type="button"
+                              onClick={() => setIsComposerHeaderCollapsed((collapsed) => !collapsed)}
+                              className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.42)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white"
+                              aria-label={showComposerHeader ? "Hide suggestions" : "Show suggestions"}
+                              aria-expanded={showComposerHeader}
+                              title={showComposerHeader ? "Hide suggestions" : "Show suggestions"}
                             >
-                              <ArrowUpCircle size={19} strokeWidth={2.2} />
+                              {showComposerHeader ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                             </button>
-                            {pinnedQuickSendModels.length > 0 && (
-                              <>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setIsModelPickerOpen(false);
-                                  setIsModelSendMenuOpen((open) => !open);
-                                }}
-                                disabled={!input.trim() || isStreaming}
-                                className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.28)] border-l-white/20 bg-[rgba(var(--accent-color-rgb),0.14)] text-white shadow-[0_14px_32px_-20px_rgba(var(--accent-color-rgb),0.45)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.42)] hover:bg-[rgba(var(--accent-color-rgb),0.18)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
-                                title="Send with another pinned model"
-                                  aria-label="Send with another pinned model"
+                          </div>
+                        )}
+
+                        <div className={`${showComposerHeader ? "rounded-[24px] border border-[rgba(255,255,255,0.06)] bg-[rgba(7,9,12,0.72)] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_22px_52px_-34px_rgba(0,0,0,0.95)]" : "rounded-[24px] border border-transparent bg-transparent p-1 shadow-none"} transition-all focus-within:border-[rgba(255,255,255,0.1)] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_22px_52px_-34px_rgba(0,0,0,0.95)]`}>
+                          <div className="flex flex-col gap-3 min-w-0">
+                            {/* Tool buttons row (icon-only) - moved above input */}
+                            <div className="flex items-center gap-1.5 px-1">
+                              {/* Gemma3 model picker icon-only */}
+                              <div className="relative" data-active-model-menu>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (modelPickerOptions.length === 0) { return; }
+                                    setIsModelSendMenuOpen(false);
+                                    setIsModelPickerOpen((open) => !open);
+                                  }}
+                                  disabled={modelPickerOptions.length === 0}
+                                  className={`${composerIconOnlyButtonClass}`}
+                                  title="Active model"
                                   aria-haspopup="menu"
-                                  aria-expanded={isModelSendMenuOpen}
+                                  aria-expanded={isModelPickerOpen}
                                 >
                                   <ChevronDown size={14} strokeWidth={2.2} />
                                 </button>
-                                {isModelSendMenuOpen && (
-                                  <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
-                                    <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                                      Send With
+                                {isModelPickerOpen && modelPickerOptions.length > 0 && (
+                                  <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                                    <div className="max-h-72 overflow-y-auto">
+                                      {modelPickerOptions.map((modelId) => {
+                                        const isSelected = modelId === selectedModel;
+                                        return (
+                                          <button
+                                            key={modelId}
+                                            type="button"
+                                            onClick={async () => {
+                                              setSelectedModel(modelId);
+                                              setIsModelPickerOpen(false);
+                                              await persistModelChoice(modelId);
+                                            }}
+                                            className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${isSelected
+                                                ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
+                                                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                              }`}
+                                            title={modelPickerLabel(modelId)}
+                                          >
+                                            <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
+                                            {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
+                                          </button>
+                                        );
+                                      })}
                                     </div>
-                                    {pinnedQuickSendModels.map((modelId) => (
-                                      <button
-                                        key={modelId}
-                                        type="button"
-                                        onClick={async () => {
-                                          setIsModelSendMenuOpen(false);
-                                          await sendMessageWithModel(modelId);
-                                        }}
-                                        disabled={!input.trim() || isStreaming}
-                                        title={`Send with ${modelPickerLabel(modelId)}`}
-                                        className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-                                      >
-                                        <div className="min-w-0">
-                                          <div className="truncate">{modelDisplayName(modelId)}</div>
-                                          {modelSpeedStats[modelId] && (
-                                            <div className="truncate text-[10px] text-[var(--text-muted)] tabular-nums">
-                                              {formatModelSpeed(modelSpeedStats[modelId])?.compact}
-                                            </div>
-                                          )}
-                                        </div>
-                                        <Globe size={14} className="shrink-0 text-[var(--text-muted)]" />
-                                      </button>
-                                    ))}
                                   </div>
                                 )}
-                              </>
-                            )}
-                          </div>
-                          <button
-                            onClick={async () => {
-                              if (!input.trim() || !effectiveWorkspaceId || !selectedModel) {return;}
-                              const ensuredSession = await ensureSessionForChat(selectedModel);
-                              if (!ensuredSession) {return;}
-                              await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
-                                modelName: selectedModel,
-                                sessionId: ensuredSession.sessionId,
-                                processAt: new Date(Date.now() + 60_000).toISOString(),
-                              });
-                              setInput("");
-                            }}
-                            disabled={!input.trim() || !selectedModel}
-                            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.56)] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
-                            title="Schedule for background processing"
-                          >
-                            <Clock size={14} strokeWidth={2.2} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                              </div>
 
-                {/* ── Composer tool row ─────────────────────────────────────── */}
-                <div className="flex items-center gap-2.5 border-t border-[rgba(var(--accent-color-rgb),0.1)] px-1 pt-2 flex-wrap">
-                  {/* Model picker */}
-                  <div className="relative max-w-[220px]" data-active-model-menu>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (modelPickerOptions.length === 0) {return;}
-                        setIsModelSendMenuOpen(false);
-                        setIsModelPickerOpen((open) => !open);
-                      }}
-                      disabled={modelPickerOptions.length === 0}
-                      className={`${composerSelectClassName} flex max-w-[220px] items-center justify-between gap-2 bg-[var(--bg-primary)] text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60`}
-                      title="Active model"
-                      aria-haspopup="menu"
-                      aria-expanded={isModelPickerOpen}
-                    >
-                      <span className="truncate text-left">
-                        {selectedModel ? modelPickerLabel(selectedModel) : "No models available"}
-                      </span>
-                      <ChevronDown size={14} strokeWidth={2.2} className={`shrink-0 text-[rgba(255,255,255,0.46)] transition-transform ${isModelPickerOpen ? "rotate-180" : ""}`} />
-                    </button>
-                    {isModelPickerOpen && modelPickerOptions.length > 0 && (
-                      <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
-                        <div className="max-h-72 overflow-y-auto">
-                          {modelPickerOptions.map((modelId) => {
-                            const isSelected = modelId === selectedModel;
-                            return (
+                              {/* Compare button icon-only */}
                               <button
-                                key={modelId}
-                                type="button"
-                                onClick={async () => {
-                                  setSelectedModel(modelId);
-                                  setIsModelPickerOpen(false);
-                                  await persistModelChoice(modelId);
-                                }}
-                                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
-                                  isSelected
-                                    ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                                }`}
-                                title={modelPickerLabel(modelId)}
+                                onClick={() => setActiveSubView(isComparePanelOpen ? "chat" : "compare")}
+                                title={isComparePanelOpen ? "Close model comparison" : "Compare two models side by side"}
+                                className={`${composerIconOnlyButtonClass} ${isComparePanelOpen ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
                               >
-                                <div className="min-w-0">
-                                  <div className="truncate">{modelDisplayName(modelId)}</div>
-                                  {modelSpeedStats[modelId] && (
-                                    <div className="truncate text-[10px] text-[var(--text-muted)] tabular-nums">
-                                      {formatModelSpeed(modelSpeedStats[modelId])?.compact}
-                                    </div>
+                                <SplitSquareHorizontal size={13} />
+                              </button>
+
+                              {/* Docs button icon-only */}
+                              <button
+                                onClick={() => setGroundedEnabled((v) => !v)}
+                                title={groundedEnabled ? `Grounded ON (${processedDocCount} docs)` : "Grounded mode — use your documents as context (RAG)"}
+                                className={`relative ${composerIconOnlyButtonClass} ${groundedEnabled ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
+                              >
+                                <BookOpen size={13} />
+                                {groundedEnabled && processedDocCount > 0 && (
+                                  <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                                    {processedDocCount > 9 ? "9+" : processedDocCount}
+                                  </span>
+                                )}
+                              </button>
+
+                              {/* Queue button icon-only */}
+                              <button
+                                onClick={() => setThoughtPanelOpen((v) => !v)}
+                                title="Thought Queue — schedule follow-up questions to process in background"
+                                className={`relative ${composerIconOnlyButtonClass} ${thoughtPanelOpen ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
+                              >
+                                <Inbox size={13} />
+                                {(() => {
+                                  const pending = thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length;
+                                  return pending > 0 ? (
+                                    <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                                      {pending > 9 ? "9+" : pending}
+                                    </span>
+                                  ) : null;
+                                })()}
+                              </button>
+                            </div>
+
+                            {/* Textarea with gradient border wrapper */}
+                            <div className="rounded-[20px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.035)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors focus-within:border-[rgba(var(--accent-color-rgb),0.18)] focus-within:bg-[rgba(255,255,255,0.05)]">
+                              <div className="flex items-end gap-2.5">
+                                <textarea
+                                  ref={inputRef}
+                                  value={input}
+                                  onChange={(e) => setInput(e.target.value)}
+                                  onKeyDown={handleKeyDown}
+                                  disabled={isStreaming}
+                                  placeholder={
+                                isStreaming
+                                  ? "Waiting for response…"
+                                  : !selectedModel
+                                    ? ollamaModelStatus === "unreachable"
+                                      ? "Ollama is unavailable — start it or enable auto-start in Preferences > AI"
+                                      : "No models available — install one via ollama pull"
+                                    : activeMessages.length > 0
+                                      ? "Message this thread…"
+                                      : "Start a new thread…"
+                              }
+                                  rows={1}
+                                  className="flex-1 appearance-none resize-none border-0 bg-transparent px-5 py-3 text-[15px] font-medium leading-6 tracking-[0.01em] text-[rgba(255,255,255,0.94)] placeholder:text-[rgba(255,255,255,0.26)] shadow-none outline-none ring-0 transition-colors max-h-40 overflow-y-auto focus:border-0 focus:shadow-none focus:ring-0"
+                                  style={{ minHeight: 56 }}
+                                  onInput={(e) => {
+                                    const el = e.currentTarget;
+                                    el.style.height = "auto";
+                                    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+                                  }}
+                                />
+                                {isStreaming ? (
+                                  <button
+                                    onClick={() => {
+                                      if (activeChatId) {
+                                        api.ollama.stopStream(activeChatId).catch(() => { });
+                                        api.llamacpp.stopStream(activeChatId).catch(() => { });
+                                        api.webAI.stopStream(activeChatId).catch(() => { });
+                                      }
+                                    }}
+                                    className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-red-500 text-white shadow-[0_12px_30px_-18px_rgba(239,68,68,0.65)] transition-opacity hover:opacity-90"
+                                    title="Stop generation"
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                ) : (
+                                  <div className="mb-1 mr-0.5 flex items-center gap-2">
+                                    <div className="relative flex flex-shrink-0 items-center" data-send-model-menu>
+                                      <button
+                                        onClick={async () => {
+                                          setIsModelSendMenuOpen(false);
+                                          await sendMessage();
+                                        }}
+                                        disabled={!input.trim() || !selectedModel}
+                                        className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.18)] bg-[rgba(var(--accent-color-rgb),0.1)] text-[rgba(255,255,255,0.72)] shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
+                                        }`}
+                                    title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
+                                  >
+                                    <ArrowUpCircle size={19} strokeWidth={2.2} />
+                                  </button>
+                                  {pinnedQuickSendModels.length > 0 && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setIsModelPickerOpen(false);
+                                          setIsModelSendMenuOpen((open) => !open);
+                                        }}
+                                        disabled={!input.trim() || isStreaming}
+                                        className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.18)] border-l-white/10 bg-[rgba(var(--accent-color-rgb),0.1)] text-white shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                        title="Send with another pinned model"
+                                        aria-label="Send with another pinned model"
+                                        aria-haspopup="menu"
+                                        aria-expanded={isModelSendMenuOpen}
+                                      >
+                                        <ChevronDown size={14} strokeWidth={2.2} />
+                                      </button>
+                                      {isModelSendMenuOpen && (
+                                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                                          <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                                            Send With
+                                          </div>
+                                          {pinnedQuickSendModels.map((modelId) => (
+                                            <button
+                                              key={modelId}
+                                              type="button"
+                                              onClick={async () => {
+                                                setIsModelSendMenuOpen(false);
+                                                await sendMessageWithModel(modelId);
+                                              }}
+                                              disabled={!input.trim() || isStreaming}
+                                              title={`Send with ${modelPickerLabel(modelId)}`}
+                                              className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                                            >
+                                              <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
+                                              <Globe size={14} className="shrink-0 text-[var(--text-muted)]" />
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </>
                                   )}
                                 </div>
-                                {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
-                              </button>
-                            );
-                          })}
+                                <button
+                                  onClick={async () => {
+                                    if (!input.trim() || !effectiveWorkspaceId || !selectedModel) { return; }
+                                    const ensuredSession = await ensureSessionForChat(selectedModel);
+                                    if (!ensuredSession) { return; }
+                                    await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
+                                      modelName: selectedModel,
+                                      sessionId: ensuredSession.sessionId,
+                                      processAt: new Date(Date.now() + 60_000).toISOString(),
+                                    });
+                                    setInput("");
+                                  }}
+                                  disabled={!input.trim() || !selectedModel}
+                                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.58)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                    title="Schedule for background processing"
+                                  >
+                                    <Clock size={14} strokeWidth={2.2} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    )}
-                  </div>
 
-                    {/* Try better model */}
-                    {nextModel && !isStreaming && activeMessages.length > 0 && (
-                      <button
-                        onClick={() => {
-                          setSelectedModel(nextModel.model_id);
-                          persistModelChoice(nextModel.model_id);
-                          if (lastUserMessage) {setInput(lastUserMessage);}
-                        }}
-                        title={`Try ${modelDisplayName(nextModel.model_id)}`}
-                        className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
-                      >
-                        <ArrowUpCircle size={13} />
-                        <span>Try better</span>
-                      </button>
-                    )}
+                        {/* ── Composer tool row ─────────────────────────────────────── */}
+                        <div className="flex items-center gap-2.5 border-t border-[rgba(255,255,255,0.06)] px-1 pt-2.5 flex-wrap">
+                          {/* Try better model button */}
+                          {nextModel && !isStreaming && activeMessages.length > 0 && (
+                            <button
+                              onClick={() => {
+                                setSelectedModel(nextModel.model_id);
+                                persistModelChoice(nextModel.model_id);
+                                if (lastUserMessage) { setInput(lastUserMessage); }
+                              }}
+                              title={`Try ${modelDisplayName(nextModel.model_id)}`}
+                              className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
+                            >
+                              <ArrowUpCircle size={13} />
+                              <span>Try better</span>
+                            </button>
+                          )}
 
-                    <button
-                      onClick={() => setActiveSubView(isComparePanelOpen ? "chat" : "compare")}
-                      title={isComparePanelOpen ? "Close model comparison" : "Compare two models side by side"}
-                      className={`${composerToggleBaseClass} ${
-                        isComparePanelOpen ? composerToggleActiveClass : composerToggleInactiveClass
-                      }`}
-                    >
-                      <SplitSquareHorizontal size={13} />
-                      <span>Compare</span>
-                    </button>
+                          {/* Top-K picker (only when grounded is on) */}
+                          {groundedEnabled && (
+                            <div className="relative">
+                              <select
+                                value={groundedTopK}
+                                onChange={(e) => setGroundedTopK(Number(e.target.value))}
+                                className={composerUtilitySelectClassName}
+                                title="Document chunks to retrieve"
+                              >
+                                {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
+                              </select>
+                              <ChevronDown size={14} strokeWidth={2.2} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.46)]" />
+                            </div>
+                          )}
 
-                    {/* Grounded (RAG) toggle */}
-                    <button
-                      onClick={() => setGroundedEnabled((v) => !v)}
-                      title={groundedEnabled ? `Grounded ON (${processedDocCount} docs)` : "Grounded mode — use your documents as context (RAG)"}
-                      className={`relative ${composerToggleBaseClass} ${
-                        groundedEnabled
-                          ? composerToggleActiveClass
-                          : composerToggleInactiveClass
-                      }`}
-                    >
-                      <BookOpen size={13} />
-                      <span>Docs</span>
-                      {groundedEnabled && processedDocCount > 0 && (
-                        <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
-                          {processedDocCount > 9 ? "9+" : processedDocCount}
-                        </span>
-                      )}
-                    </button>
-
-                    {/* Top-K picker (only when grounded is on) */}
-                    {groundedEnabled && (
-                      <div className="relative">
-                        <select
-                          value={groundedTopK}
-                          onChange={(e) => setGroundedTopK(Number(e.target.value))}
-                          className={composerUtilitySelectClassName}
-                          title="Document chunks to retrieve"
-                        >
-                          {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
-                        </select>
-                        <ChevronDown size={14} strokeWidth={2.2} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.46)]" />
+                          {sessionTokensUsed > 0 && (
+                            <div className="ml-auto flex h-10 items-center gap-2 rounded-full border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.74)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)]">
+                              <span className="text-[rgba(255,255,255,0.42)]">Tokens</span>
+                              <span className="font-mono text-[rgba(255,255,255,0.95)]">
+                                {sessionTokensUsed >= 1000 ? `${(sessionTokensUsed / 1000).toFixed(1)}k` : sessionTokensUsed}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-
-                    {/* Thought queue toggle */}
-                    <button
-                      onClick={() => setThoughtPanelOpen((v) => !v)}
-                      title="Thought Queue — schedule follow-up questions to process in background"
-                      className={`relative ${composerToggleBaseClass} ${
-                        thoughtPanelOpen
-                          ? composerToggleActiveClass
-                          : composerToggleInactiveClass
-                      }`}
-                    >
-                      <Inbox size={13} />
-                      <span>Queue</span>
-                      {(() => {
-                        const pending = thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length;
-                        return pending > 0 ? (
-                          <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
-                            {pending > 9 ? "9+" : pending}
-                          </span>
-                        ) : null;
-                      })()}
-                    </button>
-
-                    {sessionTokensUsed > 0 && (
-                      <div className="ml-auto flex h-10 items-center gap-2 rounded-full border border-[rgba(var(--accent-color-rgb),0.14)] bg-[rgba(255,255,255,0.02)] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.78)] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)]">
-                        <span className="text-[rgba(255,255,255,0.42)]">Tokens</span>
-                        <span className="font-mono text-[rgba(255,255,255,0.95)]">
-                          {sessionTokensUsed >= 1000 ? `${(sessionTokensUsed / 1000).toFixed(1)}k` : sessionTokensUsed}
-                        </span>
-                      </div>
-                    )}
+                    </div>
+                    <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 mt-3`}>
+                      <WorkspaceMigrationBanner />
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 mt-3`}>
-                <WorkspaceMigrationBanner />
-              </div>
+              )}
             </div>
-          </div>
-        )}
-          </div>
           ) : (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-primary)]">
               <div className="grid min-h-0 min-w-0 flex-1 grid-cols-2 overflow-hidden">
@@ -3988,11 +4039,11 @@ export default function ChatView() {
                                 api.aiModel.list()
                               ]);
                               const disabledManagedIds = managedModels.filter(m => !m.enabled).map(m => m.model_id);
-                              
+
                               const filtered = ollamaList
                                 .filter((m) => !m.name.toLowerCase().includes("embed"))
                                 .filter((m) => !disabledManagedIds.includes(m.name));
-                                
+
                               setCompareModels(filtered);
                             } catch (e) {
                               console.error("Failed to refresh models in comparison view:", e);
@@ -4013,103 +4064,102 @@ export default function ChatView() {
           )}
         </div>
 
-      {/* ── Thought Queue overlay panel ───────────────────────────────────── */}
-      {thoughtPanelOpen && (
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-30 flex w-72 max-w-[min(24rem,100%)] justify-end">
-          <div className="pointer-events-auto flex h-full w-full flex-col overflow-hidden border-l border-[var(--border-color)] bg-[var(--bg-sidebar)] shadow-[-20px_0_50px_-30px_rgba(0,0,0,0.8)]">
-          {/* header */}
-          <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)] shrink-0">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
-              <Inbox size={13} /> Thought Queue
-            </div>
-            <button onClick={() => setThoughtPanelOpen(false)} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
-              <X size={13} />
-            </button>
-          </div>
-
-          {/* quick-add */}
-          <div className="p-3 border-b border-[var(--border-color)] shrink-0 space-y-2">
-            <textarea
-              value={thoughtDraft}
-              onChange={(e) => setThoughtDraft(e.target.value)}
-              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {submitThought();} }}
-              placeholder="Dump a thought… (⌘↵ to add)"
-              rows={3}
-              className="w-full text-xs px-2.5 py-1.5 rounded-md bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none resize-none focus:border-[var(--accent-color)]"
-            />
-            <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] cursor-pointer select-none">
-              <input type="checkbox" checked={thoughtScheduleEnabled} onChange={(e) => setThoughtScheduleEnabled(e.target.checked)} className="rounded" />
-              <Clock size={11} /> Schedule
-            </label>
-            {thoughtScheduleEnabled && (
-              <input
-                type="datetime-local"
-                value={thoughtSchedule}
-                onChange={(e) => setThoughtSchedule(e.target.value)}
-                className="w-full text-[11px] px-2 py-1 rounded-md bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-              />
-            )}
-            <button
-              onClick={submitThought}
-              disabled={thoughtSubmitting || !thoughtDraft.trim()}
-              className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-[var(--accent-color)] text-white text-xs font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
-            >
-              {thoughtSubmitting ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-              {thoughtScheduleEnabled ? "Schedule" : "Add"}
-            </button>
-          </div>
-
-          {/* list */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-2">
-            {thoughts.length === 0 ? (
-              <p className="text-[11px] text-[var(--text-muted)] text-center pt-6">No thoughts yet.</p>
-            ) : (
-              [...thoughts.filter((t) => t.status === "processing"), ...thoughts.filter((t) => t.status === "scheduled"), ...thoughts.filter((t) => t.status === "pending"), ...thoughts.filter((t) => t.status === "done")].map((t) => (
-                <div
-                  key={t.id}
-                  className={`rounded-lg border text-[11px] ${
-                    t.status === "processing" ? "border-yellow-500/30 bg-yellow-500/5" :
-                    t.status === "done" ? "border-green-500/20 bg-[var(--bg-primary)]" :
-                    "border-[var(--border-color)] bg-[var(--bg-primary)]"
-                  }`}
-                >
-                  <div className="p-2">
-                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                      {t.status === "pending" && <span className="text-[var(--text-muted)]">pending</span>}
-                      {t.status === "scheduled" && <span className="flex items-center gap-0.5 text-blue-400"><Clock size={9} /> scheduled</span>}
-                      {t.status === "processing" && <span className="flex items-center gap-0.5 text-yellow-400"><Loader2 size={9} className="animate-spin" /> running</span>}
-                      {t.status === "done" && <span className="flex items-center gap-0.5 text-green-400"><CheckCircle2 size={9} /> done</span>}
-                      <span className="ml-auto text-[var(--text-muted)] opacity-60">{new Date(t.created_at).toLocaleDateString()}</span>
-                    </div>
-                    <p className="text-[var(--text-primary)] leading-snug line-clamp-3 whitespace-pre-wrap">{t.content}</p>
-                    <div className="flex items-center gap-1 mt-1.5">
-                      {(t.status === "pending" || t.status === "scheduled") && (
-                        <button onClick={() => processDueThought({ ...t, status: "scheduled" })} title="Process now" className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors">
-                          <Zap size={11} />
-                        </button>
-                      )}
-                      {t.result && (
-                        <button onClick={() => setThoughtExpandedId(thoughtExpandedId === t.id ? null : t.id)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
-                          {thoughtExpandedId === t.id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                        </button>
-                      )}
-                      <button onClick={async () => { await api.thoughtQueue.delete(t.id).catch(() => {}); setThoughts((prev) => prev.filter((x) => x.id !== t.id)); }} className="ml-auto text-[var(--text-muted)] hover:text-red-400 transition-colors">
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
-                  </div>
-                  {thoughtExpandedId === t.id && t.result && (
-                    <div className="border-t border-[var(--border-color)] px-2 py-2">
-                      <p className="text-[var(--text-primary)] whitespace-pre-wrap leading-snug">{t.result}</p>
-                    </div>
-                  )}
+        {/* ── Thought Queue overlay panel ───────────────────────────────────── */}
+        {thoughtPanelOpen && (
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-30 flex w-72 max-w-[min(24rem,100%)] justify-end">
+            <div className="pointer-events-auto flex h-full w-full flex-col overflow-hidden border-l border-[var(--border-color)] bg-[var(--bg-sidebar)] shadow-[-20px_0_50px_-30px_rgba(0,0,0,0.8)]">
+              {/* header */}
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)] shrink-0">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
+                  <Inbox size={13} /> Thought Queue
                 </div>
-              ))
-            )}
+                <button onClick={() => setThoughtPanelOpen(false)} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                  <X size={13} />
+                </button>
+              </div>
+
+              {/* quick-add */}
+              <div className="p-3 border-b border-[var(--border-color)] shrink-0 space-y-2">
+                <textarea
+                  value={thoughtDraft}
+                  onChange={(e) => setThoughtDraft(e.target.value)}
+                  onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { submitThought(); } }}
+                  placeholder="Dump a thought… (⌘↵ to add)"
+                  rows={3}
+                  className="w-full text-xs px-2.5 py-1.5 rounded-md bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none resize-none focus:border-[var(--accent-color)]"
+                />
+                <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] cursor-pointer select-none">
+                  <input type="checkbox" checked={thoughtScheduleEnabled} onChange={(e) => setThoughtScheduleEnabled(e.target.checked)} className="rounded" />
+                  <Clock size={11} /> Schedule
+                </label>
+                {thoughtScheduleEnabled && (
+                  <input
+                    type="datetime-local"
+                    value={thoughtSchedule}
+                    onChange={(e) => setThoughtSchedule(e.target.value)}
+                    className="w-full text-[11px] px-2 py-1 rounded-md bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                  />
+                )}
+                <button
+                  onClick={submitThought}
+                  disabled={thoughtSubmitting || !thoughtDraft.trim()}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-[var(--accent-color)] text-white text-xs font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
+                >
+                  {thoughtSubmitting ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                  {thoughtScheduleEnabled ? "Schedule" : "Add"}
+                </button>
+              </div>
+
+              {/* list */}
+              <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                {thoughts.length === 0 ? (
+                  <p className="text-[11px] text-[var(--text-muted)] text-center pt-6">No thoughts yet.</p>
+                ) : (
+                  [...thoughts.filter((t) => t.status === "processing"), ...thoughts.filter((t) => t.status === "scheduled"), ...thoughts.filter((t) => t.status === "pending"), ...thoughts.filter((t) => t.status === "done")].map((t) => (
+                    <div
+                      key={t.id}
+                      className={`rounded-lg border text-[11px] ${t.status === "processing" ? "border-yellow-500/30 bg-yellow-500/5" :
+                          t.status === "done" ? "border-green-500/20 bg-[var(--bg-primary)]" :
+                            "border-[var(--border-color)] bg-[var(--bg-primary)]"
+                        }`}
+                    >
+                      <div className="p-2">
+                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                          {t.status === "pending" && <span className="text-[var(--text-muted)]">pending</span>}
+                          {t.status === "scheduled" && <span className="flex items-center gap-0.5 text-blue-400"><Clock size={9} /> scheduled</span>}
+                          {t.status === "processing" && <span className="flex items-center gap-0.5 text-yellow-400"><Loader2 size={9} className="animate-spin" /> running</span>}
+                          {t.status === "done" && <span className="flex items-center gap-0.5 text-green-400"><CheckCircle2 size={9} /> done</span>}
+                          <span className="ml-auto text-[var(--text-muted)] opacity-60">{new Date(t.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <p className="text-[var(--text-primary)] leading-snug line-clamp-3 whitespace-pre-wrap">{t.content}</p>
+                        <div className="flex items-center gap-1 mt-1.5">
+                          {(t.status === "pending" || t.status === "scheduled") && (
+                            <button onClick={() => processDueThought({ ...t, status: "scheduled" })} title="Process now" className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors">
+                              <Zap size={11} />
+                            </button>
+                          )}
+                          {t.result && (
+                            <button onClick={() => setThoughtExpandedId(thoughtExpandedId === t.id ? null : t.id)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                              {thoughtExpandedId === t.id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                            </button>
+                          )}
+                          <button onClick={async () => { await api.thoughtQueue.delete(t.id).catch(() => { }); setThoughts((prev) => prev.filter((x) => x.id !== t.id)); }} className="ml-auto text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </div>
+                      {thoughtExpandedId === t.id && t.result && (
+                        <div className="border-t border-[var(--border-color)] px-2 py-2">
+                          <p className="text-[var(--text-primary)] whitespace-pre-wrap leading-snug">{t.result}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-        </div>
-      )}
+        )}
       </div>
       {confirmDialog && (
         <div
@@ -4121,11 +4171,10 @@ export default function ChatView() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start gap-3">
-              <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
-                confirmDialog.tone === "danger"
+              <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${confirmDialog.tone === "danger"
                   ? "bg-red-500/12 text-red-400"
                   : "bg-[var(--accent-color)]/12 text-[var(--accent-color)]"
-              }`}>
+                }`}>
                 {confirmDialog.tone === "danger" ? <Trash2 size={18} /> : <MessageSquare size={18} />}
               </div>
               <div className="flex flex-1 flex-col gap-1">
@@ -4144,9 +4193,8 @@ export default function ChatView() {
               )}
               <button
                 onClick={() => closeConfirmDialog(true)}
-                className={`rounded-xl px-4 py-2 text-sm text-white hover:opacity-90 ${
-                  confirmDialog.tone === "danger" ? "bg-red-500" : "bg-[var(--accent-color)]"
-                }`}
+                className={`rounded-xl px-4 py-2 text-sm text-white hover:opacity-90 ${confirmDialog.tone === "danger" ? "bg-red-500" : "bg-[var(--accent-color)]"
+                  }`}
               >
                 {confirmDialog.confirmLabel}
               </button>

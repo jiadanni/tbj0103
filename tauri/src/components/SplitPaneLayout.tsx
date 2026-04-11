@@ -20,13 +20,8 @@ const PANE_NAV_ITEMS: { view: PaneView; icon: LucideIcon; label: string }[] = [
 ];
 
 function resolveSplitSectionNavigation(
-  splitSectionNavigation: ReturnType<typeof useWorkspaceStore.getState>["splitSectionNavigation"],
   sectionNavigation: ReturnType<typeof useWorkspaceStore.getState>["sectionNavigation"]
 ) {
-  if (splitSectionNavigation === "tabs" || splitSectionNavigation === "dropdown") {
-    return splitSectionNavigation;
-  }
-
   return sectionNavigation === "top-dropdown" ? "dropdown" : "tabs";
 }
 
@@ -54,29 +49,6 @@ function PaneViewRenderer({ view }: { view: PaneView }) {
   return <Suspense fallback={<div className="flex h-full items-center justify-center text-[var(--text-muted)] text-sm">Loading…</div>}>{Content}</Suspense>;
 }
 
-function SplitWorkspaceSelector({ paneId }: { paneId: PaneId }) {
-  const { workspaces, panes, setPaneWorkspace } = useWorkspaceStore();
-  const activeWorkspaceId = panes[paneId].workspaceId ?? "";
-
-  return (
-    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
-      {workspaces.map((workspace) => (
-        <button
-          key={`${paneId}-${workspace.id}`}
-          onClick={() => setPaneWorkspace(paneId, workspace.id)}
-          className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-[13px] font-medium whitespace-nowrap transition-colors ${
-            activeWorkspaceId === workspace.id
-              ? "bg-[var(--accent-color)] text-white"
-              : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          {workspace.name}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function SplitSectionDropdown({ paneId }: { paneId: PaneId }) {
   const { setPaneView } = useWorkspaceStore();
   const { activeView } = useScopedWorkspace();
@@ -102,9 +74,13 @@ function SplitSectionDropdown({ paneId }: { paneId: PaneId }) {
 }
 
 function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
-  const { sectionNavigation, splitSectionNavigation, setPaneView, setActivePaneId } = useWorkspaceStore();
+  const {
+    sectionNavigation,
+    setPaneView,
+    setActivePaneId,
+  } = useWorkspaceStore();
   const { activeView } = useScopedWorkspace();
-  const resolvedSplitSectionNavigation = resolveSplitSectionNavigation(splitSectionNavigation, sectionNavigation);
+  const resolvedSplitSectionNavigation = resolveSplitSectionNavigation(sectionNavigation);
 
   return (
     <div
@@ -112,10 +88,7 @@ function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
       onClick={() => setActivePaneId(paneId)}
       onFocusCapture={() => setActivePaneId(paneId)}
     >
-      <div className="flex flex-col shrink-0 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]">
-        <div className="flex items-center min-w-0 px-2 h-10 gap-2 border-b border-[var(--border-color)]">
-          <SplitWorkspaceSelector paneId={paneId} />
-        </div>
+      <div className="flex flex-col shrink-0 bg-[var(--bg-sidebar)]">
         {resolvedSplitSectionNavigation === "dropdown" ? (
           <SplitSectionDropdown paneId={paneId} />
         ) : (
@@ -165,7 +138,7 @@ export default function SplitPaneLayout() {
         </WorkspacePaneProvider>
       </Panel>
       <PanelResizeHandle className="w-[1px] bg-[var(--border-color)] hover:bg-[var(--accent-color)] transition-colors cursor-col-resize" />
-      <Panel id="split-secondary" order={1} defaultSize={splitSizes[1]} minSize={30} className="overflow-hidden min-w-0 border-l border-[var(--border-color)]">
+      <Panel id="split-secondary" order={1} defaultSize={splitSizes[1]} minSize={30} className="overflow-hidden min-w-0">
         <WorkspacePaneProvider paneId="secondary">
           <WorkspacePaneChrome paneId="secondary" />
         </WorkspacePaneProvider>
