@@ -221,12 +221,12 @@ function SplitTitlebarWorkspaceNavigation() {
   const { splitSizes, workspaceNavigation } = useWorkspaceStore();
   const resolvedSplitWorkspaceNavigation = resolveSplitWorkspaceNavigation(workspaceNavigation);
   const primaryPanePaddingClass = (isLinux ? "pl-[52px]" : isMac ? "pl-[80px]" : "pl-2") + " pr-2";
-  const secondaryPaneClass = "min-w-0 px-2";
-  const trailingInsetClass = isLinux ? "right-[192px]" : "right-24";
+  const secondaryPaneTrailingInset = isLinux ? "pr-[192px]" : "pr-24";
+  const secondaryPaneClass = "min-w-0 pl-2 " + secondaryPaneTrailingInset;
 
   return (
     <div
-      className={`absolute inset-y-0 left-0 ${trailingInsetClass} z-0 flex items-center`}
+      className="absolute inset-y-0 left-0 right-0 z-0 flex items-center"
       data-split-titlebar-workspace-nav
     >
       <div className="min-w-0" style={{ flexBasis: 0, flexGrow: splitSizes[0] }}>
@@ -280,16 +280,41 @@ function formatHistoryTimestamp(value: string) {
   });
 }
 
+const HISTORY_MENU_WORKSPACE_TIMEOUT_MS = 1500;
+
+async function getRecentSessionsForWorkspace(workspaceId: string, limit: number) {
+  const timeoutPromise = new Promise<ChatSession[]>((resolve) => {
+    window.setTimeout(() => resolve([]), HISTORY_MENU_WORKSPACE_TIMEOUT_MS);
+  });
+
+  return Promise.race([
+    api.chat.getRecentSessions(workspaceId, limit).catch(() => [] as ChatSession[]),
+    timeoutPromise,
+  ]);
+}
+
+function mergeRecentSessions(sessions: ChatSession[]) {
+  return Array.from(new Map(
+    sessions
+      .filter((session) => !session.is_deleted)
+      .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+      .map((session) => [session.id, session])
+  ).values()).slice(0, 8);
+}
+
 function TitlebarHistoryMenu() {
   const navigate = useNavigate();
   const location = useLocation();
-  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
+  const workspaces = useWorkspaceStore((state) => state.workspaces);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const isHistoryRoute = location.pathname.startsWith("/history");
-  const displaySessions = activeWorkspaceId ? sessions : [];
+  const workspaceNames = React.useMemo(
+    () => new Map(workspaces.map((workspace) => [workspace.id, workspace.name])),
+    [workspaces]
+  );
 
   useEffect(() => {
     if (!open) {
@@ -319,35 +344,46 @@ function TitlebarHistoryMenu() {
   }, [open]);
 
   useEffect(() => {
-    if (!open || !activeWorkspaceId) {
+    if (!open || workspaces.length === 0) {
       return;
     }
 
     let cancelled = false;
+    let completed = 0;
+    let aggregatedSessions: ChatSession[] = [];
+    const stopLoadingTimer = window.setTimeout(() => {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    }, HISTORY_MENU_WORKSPACE_TIMEOUT_MS + 200);
 
-    void api.chat.getRecentSessions(activeWorkspaceId, 8)
-      .then((recentSessions) => {
-        if (cancelled) {
-          return;
-        }
-        setSessions(recentSessions.filter((session) => !session.is_deleted));
-      })
-      .catch(() => {
-        if (cancelled) {
-          return;
-        }
-        setSessions([]);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
+    workspaces.forEach((workspace) => {
+      void getRecentSessionsForWorkspace(workspace.id, 8)
+        .then((recentSessions) => {
+          if (cancelled) {
+            return;
+          }
+
+          aggregatedSessions = mergeRecentSessions([
+            ...aggregatedSessions,
+            ...recentSessions,
+          ]);
+          setSessions(aggregatedSessions);
+        })
+        .finally(() => {
+          completed += 1;
+          if (!cancelled && completed >= workspaces.length) {
+            window.clearTimeout(stopLoadingTimer);
+            setLoading(false);
+          }
+        });
+    });
 
     return () => {
       cancelled = true;
+      window.clearTimeout(stopLoadingTimer);
     };
-  }, [open, activeWorkspaceId]);
+  }, [open, workspaces]);
 
   function openSession(sessionId: string) {
     navigate(`/chat/${sessionId}`);
@@ -360,13 +396,16 @@ function TitlebarHistoryMenu() {
   }
 
   function toggleMenu() {
-    setOpen((current) => {
-      const next = !current;
-      if (next) {
-        setLoading(Boolean(activeWorkspaceId));
+    const nextOpen = !open;
+    if (nextOpen) {
+      setLoading(workspaces.length > 0);
+      if (workspaces.length === 0) {
+        setSessions([]);
       }
-      return next;
-    });
+    } else {
+      setLoading(false);
+    }
+    setOpen(nextOpen);
   }
 
   return (
@@ -393,19 +432,22 @@ function TitlebarHistoryMenu() {
           className="absolute right-0 top-10 z-50 w-80 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl backdrop-blur-xl"
         >
           <div className="border-b border-[var(--border-color)] px-4 py-3">
-            <div className="text-sm font-semibold text-[var(--text-primary)]">Recent history</div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-[var(--text-primary)]">Recent history</div>
+              {loading ? <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">Refreshing</div> : null}
+            </div>
             <div className="text-xs text-[var(--text-muted)]">
-              {activeWorkspaceId ? "Recent chats from this workspace" : "Open a workspace to see recent chats"}
+              {workspaces.length > 0 ? "Recent chats across all workspaces" : "Open a workspace to see recent chats"}
             </div>
           </div>
 
           <div className="max-h-96 overflow-y-auto p-2">
-            {loading ? (
-              <div className="px-2 py-6 text-center text-sm text-[var(--text-muted)]">Loading…</div>
-            ) : displaySessions.length === 0 ? (
-              <div className="px-2 py-6 text-center text-sm text-[var(--text-muted)]">No recent chats yet.</div>
+            {sessions.length === 0 ? (
+              <div className="px-2 py-6 text-center text-sm text-[var(--text-muted)]">
+                {loading ? "Loading recent chats…" : "No recent chats yet."}
+              </div>
             ) : (
-              displaySessions.map((session) => (
+              sessions.map((session) => (
                 <button
                   key={session.id}
                   type="button"
@@ -419,6 +461,7 @@ function TitlebarHistoryMenu() {
                       {session.title || "Untitled"}
                     </div>
                     <div className="mt-0.5 flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                      <span className="truncate">{workspaceNames.get(session.workspace_id) ?? "Workspace"}</span>
                       <span>{formatHistoryTimestamp(session.updated_at)}</span>
                       {session.model_name ? <span className="truncate opacity-70">{session.model_name}</span> : null}
                     </div>
