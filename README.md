@@ -33,7 +33,10 @@ The Tauri port is the primary development target and receives all new features.
 - **Source-grounded responses** with automatic citations (RAG)
 - **Artifacts**: Side-by-side rendering of generated code, diagrams, and markdown documents
 - **Dual-model comparison**: Benchmark different models against the same prompt
+- **Chat-to-Note / Chat-to-Document conversion**: One-click export of a session to a summarized note or document, with LLM-based concept extraction that auto-populates the knowledge graph via `[[wiki-links]]`
 - Chat session history with rename / soft-delete; Recycle Bin for restoration
+- **History view**: Dedicated browser for all past sessions, grouped by date (Today / Yesterday / Last 7 days / Older) with instant search
+- **Generation metrics**: Per-session model speed averages and timestamped inference logs visible in the chat toolbar
 
 ### Intelligent Memory
 - **Fact Extraction**: Automatically identifies and saves user facts and preferences from conversations
@@ -43,8 +46,10 @@ The Tauri port is the primary development target and receives all new features.
 ### Knowledge Graph
 - **Bidirectional linking**: Obsidian-style `[[concept]]` syntax across all notes and chats
 - Interactive graph visualization with force-directed layout
+- **Textbook hierarchy**: Graduated taxonomy (Part → Chapter → Section → Concept) for structured knowledge organization
 - Multiple concept and link types (Topic, Person, Technology, Related, Prerequisite, etc.)
 - Backlinks panel showing where concepts are referenced
+- Concepts auto-populated from chat-to-note and document upload conversions
 
 ### Data Synchronization & Resilience
 - **Git-based Sync**: Automatic background synchronization to private Git repositories via SSH
@@ -120,12 +125,12 @@ open Package.swift   # opens in Xcode
 ### Navigation
 - `Cmd+1` - Dashboard
 - `Cmd+2` - Chat
-- `Cmd+3` - Daily Notes
-- `Cmd+4` - Documents
-- `Cmd+5` - Knowledge Graph
-- `Cmd+6` - Flashcard Review
-- `Cmd+7` - Learning Paths
-- `Cmd+8` - Plugins
+- `Cmd+3` - History
+- `Cmd+4` - Daily Notes
+- `Cmd+5` - Documents
+- `Cmd+6` - Knowledge Graph
+- `Cmd+7` - Flashcard Review
+- `Cmd+8` - Learning Paths
 - `Cmd+9` - Recycle Bin
 
 ## Architecture (Tauri Target)

@@ -19,17 +19,19 @@ const MAX_FONT_SIZE = 22;
 interface SidebarProps {
   onOpenCommandPalette: () => void;
   showPreferencesButton?: boolean;
+  presentation?: "sidebar" | "icon-bar";
 }
 
 export default function Sidebar({
   onOpenCommandPalette,
   showPreferencesButton = false,
+  presentation = "sidebar",
 }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const activeSegment = "/" + location.pathname.split("/")[1];
   const fontSize = useSettingsStore((s) => s.fontSize);
-  const [labelsVisible, setLabelsVisible] = useState(true);
+  const [labelsVisible, setLabelsVisible] = useState(presentation !== "icon-bar");
   const [contextMenu, setContextMenu] = useState<{ item: NavigationItem; x: number; y: number } | null>(null);
   const [tooltip, setTooltip] = useState<{ label: string; top: number; left: number; path: string } | null>(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -46,6 +48,10 @@ export default function Sidebar({
   function hideTooltip() {
     setTooltip(null);
   }
+
+  useEffect(() => {
+    setLabelsVisible(presentation !== "icon-bar");
+  }, [presentation]);
 
   useEffect(() => {
     if (!contextMenu) {return;}
@@ -138,10 +144,10 @@ export default function Sidebar({
   const visibleTooltip = tooltip && tooltip.path === location.pathname ? tooltip : null;
 
   return (
-    <div className={`flex h-full flex-col bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] shrink-0 transition-[width] duration-200 overflow-hidden ${labelsVisible ? "w-48" : "w-14 items-center"}`}>
+    <div className={`flex h-full flex-col bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] shrink-0 transition-[width] duration-200 overflow-hidden ${labelsVisible ? "w-44" : "w-14 items-center"}`}>
       {/* Scrollable nav section */}
       <div className="flex-1 overflow-y-auto py-4 w-full">
-        <nav className={labelsVisible ? "px-3 space-y-1" : "flex flex-col items-center gap-1 px-1.5"}>
+        <nav className={labelsVisible ? "px-2.5 space-y-1" : "flex flex-col items-center gap-1 px-1.5"}>
           {PRIMARY_NAV_ITEMS.map((item) => {
             const isActive = activeSegment === item.path;
             const Icon = item.icon;
@@ -171,7 +177,7 @@ export default function Sidebar({
                           ? "bg-[var(--accent-color)] text-white shadow-sm"
                           : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                       }`
-                    : `w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors select-none ${
+                    : `w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-sm transition-colors select-none ${
                         isActive
                           ? "bg-[var(--accent-color)] text-white shadow-sm"
                           : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
@@ -189,20 +195,22 @@ export default function Sidebar({
       {/* Fixed bottom controls */}
       <div className={`relative border-t border-[var(--border-color)] ${!labelsVisible ? "p-2 flex flex-col items-center" : "p-3"}`}>
         {/* Collapse / expand toggle */}
-        <button
-          onClick={() => { setTooltip(null); setLabelsVisible((v) => !v); }}
-          onMouseEnter={(event) => showTooltip(labelsVisible ? "Collapse" : "Expand", event.currentTarget)}
-          onMouseLeave={hideTooltip}
-          aria-label={labelsVisible ? "Collapse sidebar" : "Expand sidebar"}
-          className={
-            !labelsVisible
-              ? "mb-2 flex h-10 w-10 items-center justify-center rounded-xl text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-              : "mb-2 flex w-full items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          }
-        >
-          {labelsVisible ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-          {labelsVisible && <span className="flex-1 text-left">Collapse</span>}
-        </button>
+        {presentation === "sidebar" && (
+          <button
+            onClick={() => { setTooltip(null); setLabelsVisible((v) => !v); }}
+            onMouseEnter={(event) => showTooltip(labelsVisible ? "Collapse" : "Expand", event.currentTarget)}
+            onMouseLeave={hideTooltip}
+            aria-label={labelsVisible ? "Collapse sidebar" : "Expand sidebar"}
+            className={
+              !labelsVisible
+                ? "mb-2 flex h-10 w-10 items-center justify-center rounded-xl text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                : "mb-2 flex w-full items-center gap-2 px-2.5 py-2 rounded-xl text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            }
+          >
+            {labelsVisible ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            {labelsVisible && <span className="flex-1 text-left">Collapse</span>}
+          </button>
+        )}
 
         {showPreferencesButton && (
           <button
@@ -219,7 +227,7 @@ export default function Sidebar({
             className={
               !labelsVisible
                 ? "mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-                : "mb-3 flex w-full items-center gap-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+                : "mb-3 flex w-full items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
             }
           >
             <SettingsIcon size={16} />
@@ -243,7 +251,7 @@ export default function Sidebar({
                     ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
                     : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                 }`
-              : `w-full min-w-0 flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors ${
+              : `w-full min-w-0 flex items-center gap-2 px-2.5 py-2 rounded-xl text-sm transition-colors ${
                   popoverOpen
                     ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
                     : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"

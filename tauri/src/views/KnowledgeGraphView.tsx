@@ -38,6 +38,12 @@ import {
 } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace } from "../lib/workspacePane";
+import {
+  buildTreeFromLinks,
+  computeRadialTreeLayout,
+  selectRootNode,
+  estimateOptimalRadius,
+} from "../lib/treeLayout";
 
 
 const TYPE_COLORS: Record<string, string> = {
@@ -183,6 +189,11 @@ export default function KnowledgeGraphView() {
   const fgRef = useRef<any>(null);
   const [graphSearch, setGraphSearch] = useState("");
 
+  // Tree layout mode
+  const [layoutMode, setLayoutMode] = useState<"force" | "tree">("force");
+  const [selectedRootId, setSelectedRootId] = useState<string | null>(null);
+  const [treePositions, setTreePositions] = useState<Map<string, { x: number; y: number; fx: number; fy: number }>>(new Map());
+
   useEffect(() => {
     api.aiModel.list()
       .then((models) => {
@@ -262,6 +273,39 @@ export default function KnowledgeGraphView() {
     api.flashcard.listByConcept(selectedConcept.id).then(setConceptCards).catch(() => setConceptCards([]));
   }, [selectedConcept]);
 
+  // Compute tree layout positions when in tree mode
+  useEffect(() => {
+    if (layoutMode !== "tree" || nodes.length === 0) {
+      setTreePositions(new Map());
+      return;
+    }
+
+    const rootId = selectedRootId || selectRootNode(nodes, links);
+    if (!rootId) {
+      setTreePositions(new Map());
+      return;
+    }
+
+    try {
+      // Build tree structure
+      const treeRoot = buildTreeFromLinks(nodes, links, rootId);
+      
+      // Estimate optimal radius based on tree depth
+      const optimalRadius = estimateOptimalRadius(treeRoot);
+      
+      // Compute radial positions
+      const positions = computeRadialTreeLayout(treeRoot, {
+        radius: optimalRadius,
+        angleStartOffset: -Math.PI / 2,
+      });
+      
+      setTreePositions(positions);
+    } catch (error) {
+      console.warn("Failed to compute tree layout:", error);
+      setTreePositions(new Map());
+    }
+  }, [layoutMode, nodes, links, selectedRootId]);
+
   const _filteredConcepts = useMemo(
     () => nodes.filter((node) => !conceptSearch || node.name.toLowerCase().includes(conceptSearch.toLowerCase())),
     [conceptSearch, nodes],
@@ -275,15 +319,27 @@ export default function KnowledgeGraphView() {
   const graphData = useMemo(() => {
     const visibleIds = new Set(filteredNodes.map((node) => node.id));
     return {
-      nodes: filteredNodes.map((node) => ({
-        ...node,
-        val: node.hierarchy_level === 'chapter' ? 20 : node.hierarchy_level === 'section' ? 8 : 2,
-      })),
+      nodes: filteredNodes.map((node) => {
+        const baseNode = {
+          ...node,
+          val: node.hierarchy_level === 'chapter' ? 20 : node.hierarchy_level === 'section' ? 8 : 2,
+        };
+        
+        // Apply tree positions if in tree mode
+        if (layoutMode === "tree") {
+          const pos = treePositions.get(node.id);
+          if (pos) {
+            return { ...baseNode, ...pos };
+          }
+        }
+        
+        return baseNode;
+      }),
       links: links
         .filter((link) => visibleIds.has(link.source_id) && visibleIds.has(link.target_id))
         .map((link) => ({ ...link, source: link.source_id, target: link.target_id })),
     };
-  }, [filteredNodes, links]);
+  }, [filteredNodes, links, layoutMode, treePositions]);
 
   const hierarchyTree = useMemo(() => {
     const parentOf = new Map(
@@ -308,15 +364,23 @@ export default function KnowledgeGraphView() {
 
   useEffect(() => {
     if (!fgRef.current) { return; }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    fgRef.current.d3Force('charge')?.strength((n: any) =>
-      n.hierarchy_level === 'chapter' ? -300 : n.hierarchy_level === 'section' ? -150 : -60
-    );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    fgRef.current.d3Force('link')?.strength((l: any) =>
-      l.link_type === 'part_of' ? 0.8 : 0.3
-    );
-  }, [graphData]);
+    
+    if (layoutMode === "tree") {
+      // In tree mode, disable forces to respect fixed positions
+      fgRef.current.d3Force('charge')?.strength(0);
+      fgRef.current.d3Force('link')?.strength(0);
+    } else {
+      // In force-directed mode, use normal forces
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fgRef.current.d3Force('charge')?.strength((n: any) =>
+        n.hierarchy_level === 'chapter' ? -300 : n.hierarchy_level === 'section' ? -150 : -60
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fgRef.current.d3Force('link')?.strength((l: any) =>
+        l.link_type === 'part_of' ? 0.8 : 0.3
+      );
+    }
+  }, [graphData, layoutMode]);
 
   async function handleAnalyze() {
     if (!activeWorkspaceId || !selectedModel || isAnalyzing) { return; }
@@ -839,7 +903,56 @@ export default function KnowledgeGraphView() {
                 <p className="max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
                   Explore concepts and how they connect. Use the filters and sidebar to focus the map without switching to a separate mode.
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {nodes.length > 0 && (
+                    <>
+                      {/* Layout mode toggle */}
+                      <div className="flex rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
+                        <button
+                          onClick={() => setLayoutMode("force")}
+                          className={`px-2 py-1.5 text-xs font-medium transition-colors ${
+                            layoutMode === "force"
+                              ? "bg-[var(--accent-color)] text-white"
+                              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                          }`}
+                          title="Force-directed layout"
+                        >
+                          Force
+                        </button>
+                        <button
+                          onClick={() => setLayoutMode("tree")}
+                          className={`px-2 py-1.5 text-xs font-medium transition-colors border-l border-[var(--border-color)] ${
+                            layoutMode === "tree"
+                              ? "bg-[var(--accent-color)] text-white"
+                              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                          }`}
+                          title="Radial tree layout"
+                        >
+                          Tree
+                        </button>
+                      </div>
+
+                      {/* Root node selector (only in tree mode) */}
+                      {layoutMode === "tree" && (
+                        <select
+                          value={selectedRootId || ""}
+                          onChange={(e) => setSelectedRootId(e.target.value || null)}
+                          className="appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2 py-1.5 pr-6 text-xs text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
+                          title="Select tree root"
+                        >
+                          <option value="">Auto-select root</option>
+                          {nodes
+                            .filter((n) => n.hierarchy_level === "chapter")
+                            .map((n) => (
+                              <option key={n.id} value={n.id}>
+                                Root: {n.name}
+                              </option>
+                            ))}
+                        </select>
+                      )}
+                    </>
+                  )}
+
                   <div className="relative min-w-0 w-full lg:w-[320px]">
                     <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                     <input
@@ -893,22 +1006,36 @@ export default function KnowledgeGraphView() {
                   </div>
                 )}
 
-                {containerRef.current && (
                   <ForceGraph2D
                     ref={fgRef}
-                    width={containerRef.current.clientWidth}
-                    height={containerRef.current.clientHeight}
+                    width={containerRef.current?.clientWidth ?? 0}
+                    height={containerRef.current?.clientHeight ?? 0}
                     graphData={graphData}
                     nodeRelSize={6}
+                    // In tree mode, use moderate curvature for smooth connections; force mode is straight
+                    linkCurvature={layoutMode === "tree" ? 0.3 : 0}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    nodeColor={(node: any) => colorFor(node.concept_type)}
+                    nodeColor={(node: any) => {
+                      // Highlight root node in tree mode
+                      if (layoutMode === "tree") {
+                        const rootId = selectedRootId || selectRootNode(nodes, links);
+                        if (node.id === rootId) {
+                          return "#fbbf24"; // Amber highlight for root
+                        }
+                      }
+                      return colorFor(node.concept_type);
+                    }}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    linkColor={(link: any) =>
-                      link.link_type === 'part_of' ? 'rgba(100,116,139,0.2)' :
+                    linkColor={(link: any) => {
+                      // Soften tree hierarchy edges in tree mode
+                      if (layoutMode === "tree" && link.link_type === 'part_of') {
+                        return 'rgba(100,116,139,0.3)'; // Slightly more visible than force mode
+                      }
+                      return link.link_type === 'part_of' ? 'rgba(100,116,139,0.2)' :
                       link.link_type === 'prerequisite' ? '#f59e0b' :
                       link.link_type === 'supports' ? '#34d399' :
-                      link.link_type === 'contradicts' ? '#f87171' : '#475569'
-                    }
+                      link.link_type === 'contradicts' ? '#f87171' : '#475569';
+                    }}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     linkWidth={(link: any) => link.link_type === 'part_of' ? 0.5 : Math.max(1, link.strength * 2)}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -924,6 +1051,22 @@ export default function KnowledgeGraphView() {
                       const maxLen = level === 'chapter' ? 24 : level === 'section' ? 20 : 16;
                       const label = node.name.slice(0, maxLen) + (node.name.length > maxLen ? "..." : "");
                       const fontSize = baseSize / globalScale;
+                      
+                      // In tree mode, draw a subtle background for root node
+                      if (layoutMode === "tree") {
+                        const rootId = selectedRootId || selectRootNode(nodes, links);
+                        if (node.id === rootId && fontSize > 0) {
+                          // Subtle glow/highlight for root node
+                          ctx.fillStyle = "rgba(251, 191, 36, 0.2)";
+                          ctx.globalAlpha = 0.8;
+                          const padding = 5;
+                          const textWidth = ctx.measureText(label).width;
+                          // Use fillRect for better compatibility
+                          ctx.fillRect(node.x - textWidth / 2 - padding, node.y - fontSize / 2 - 1.5, textWidth + padding * 2, fontSize + 3);
+                          ctx.globalAlpha = 1.0;
+                        }
+                      }
+                      
                       ctx.font = `${bold ? 'bold ' : ''}${fontSize}px Sans-Serif`;
                       ctx.fillStyle = "#94a3b8";
                       ctx.textAlign = "center";
@@ -934,7 +1077,6 @@ export default function KnowledgeGraphView() {
                     onNodeClick={(node: any) => setSelectedConcept(nodes.find((item) => item.id === node.id) ?? null)}
                     backgroundColor="transparent"
                   />
-                )}
               </div>
             </div>
           </Section>

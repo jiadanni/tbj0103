@@ -53,8 +53,9 @@ export default function FlashcardReviewView() {
         if (!ids.includes(selectedModel)) {setSelectedModel(ids[0]);}
         return;
       }
+      const disabledManagedIds = models.filter((m) => !m.enabled).map((m) => m.model_id);
       api.ollama.listModels(ollamaUrl).then((m) => {
-        const names = m.map((x) => x.name);
+        const names = m.map((x) => x.name).filter((name) => !disabledManagedIds.includes(name));
         setAvailableModels(names);
         if (!names.includes(selectedModel)) {setSelectedModel(names[0] || "");}
       }).catch(() => {});

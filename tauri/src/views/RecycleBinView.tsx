@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { confirm } from "@tauri-apps/plugin-dialog";
+import { message } from "@tauri-apps/plugin-dialog";
 import { MessageSquare, Trash2, RefreshCcw, Trash, Search, ChevronLeft } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore, type ChatSession } from "../stores/chatStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useScopedWorkspace } from "../lib/workspacePane";
 
 export default function RecycleBinView() {
@@ -12,6 +14,7 @@ export default function RecycleBinView() {
   const { activeWorkspaceId, isSplitPane } = useScopedWorkspace();
   const { setSessions } = useChatStore();
   const { modelLabels } = useSettingsStore();
+  const isDemoMode = useWorkspaceStore((s) => s.isDemoMode);
   const [deletedSessions, setDeletedSessions] = useState<ChatSession[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -46,6 +49,10 @@ export default function RecycleBinView() {
   }
 
   async function hardDeleteSession(id: string) {
+    if (isDemoMode) {
+      await message("Permanent deletion is not available in Demo Mode.", { title: "Demo Mode" });
+      return;
+    }
     if (!activeWorkspaceId || !await confirm("Permanently delete this chat? This cannot be undone.", {
       title: "Delete chat permanently?",
       kind: "warning",

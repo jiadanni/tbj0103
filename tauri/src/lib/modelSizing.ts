@@ -106,19 +106,19 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
   }
 
   const gpuBasis = system.gpu_name
-    ? `Estimated from detected GPU memory${system.gpu_detection_source ? ` via ${system.gpu_detection_source}` : ""}${system.gpu_memory_bytes ? ` (${formatBytes(system.gpu_memory_bytes)} VRAM on ${system.gpu_name})` : ` on ${system.gpu_name}`}.`
-    : "Estimated conservatively from system RAM and CPU cores, not VRAM.";
+    ? `${system.gpu_memory_bytes ? `${formatBytes(system.gpu_memory_bytes)} VRAM` : "Detected GPU memory"}${system.gpu_name ? ` on ${system.gpu_name}` : ""}${system.gpu_detection_source ? ` via ${system.gpu_detection_source}` : ""}.`
+    : "Estimated from system RAM and CPU cores.";
 
   if (recommendedMaxParamsB <= 3) {
     return {
       recommendedMaxParamsB,
-      headline: "Best with 3B-class local models",
+      headline: "Recommended range: up to 3B",
       summary: appleSiliconMac
-        ? "This machine is better suited to compact models for responsive local chat and background tasks."
-        : "Without unified memory or confirmed VRAM headroom, compact local models are the safest recommendation.",
+        ? "Compact models are the best match here."
+        : "Compact models are the safest default here.",
       caution: appleSiliconMac
-        ? "7B+ models may run, but they are more likely to feel slow or memory-constrained."
-        : "7B+ models may still run, but this guidance intentionally avoids assuming discrete GPU VRAM is available.",
+        ? "7B+ models may run, but will usually feel heavier."
+        : "7B+ models may still run, but performance is less predictable.",
       basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
     };
   }
@@ -126,13 +126,13 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
   if (recommendedMaxParamsB <= 8) {
     return {
       recommendedMaxParamsB,
-      headline: "Comfortable with 7B to 8B local models",
+      headline: "Recommended range: 7B to 8B",
       summary: appleSiliconMac
-        ? "This is a solid range for general local chat, categorisation, and lightweight reasoning."
-        : "This is a safe default range for CPU-backed or unknown-GPU local inference on most systems.",
+        ? "A solid range for everyday local use."
+        : "A practical default range for most systems.",
       caution: appleSiliconMac
-        ? "14B-class models are possible on some systems, but they will usually feel heavier."
-        : "14B-class models may fit on paper, but can still be slow without enough usable VRAM.",
+        ? "14B-class models may work, but usually feel heavier."
+        : "14B-class models may fit, but can still run slowly.",
       basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
     };
   }
@@ -140,13 +140,13 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
   if (recommendedMaxParamsB <= 14) {
     return {
       recommendedMaxParamsB,
-      headline: "Comfortable with 13B to 14B local models",
+      headline: "Recommended range: 13B to 14B",
       summary: appleSiliconMac
-        ? "You should have room for stronger local models while keeping everyday responsiveness reasonable."
-        : "This machine likely has enough system memory for larger quantized models, but GPU availability still matters.",
+        ? "There is room for stronger local models here."
+        : "Larger quantized models look realistic here.",
       caution: appleSiliconMac
-        ? "30B+ models may fit only with aggressive quantization and plenty of free memory."
-        : "30B+ models are treated as a stretch unless the runtime has confirmed GPU memory headroom.",
+        ? "30B+ models may work only with aggressive quantization."
+        : "30B+ models are still more situational.",
       basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
     };
   }
@@ -155,23 +155,23 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
     return {
       recommendedMaxParamsB,
       headline: appleSiliconMac
-        ? "Comfortable up to roughly 32B-class local models"
-        : "Large local models may be realistic here",
+        ? "Recommended range: up to 32B"
+        : "Large local models look realistic here",
       summary: appleSiliconMac
-        ? "This hardware has enough memory headroom for larger quantized models than most laptops."
-        : "There is strong memory headroom here, but this estimate still avoids equating system RAM with usable inference VRAM.",
+        ? "This hardware has strong memory headroom."
+        : "There is strong memory headroom here.",
       caution: appleSiliconMac
-        ? "Very large models can still be slow without a strong GPU, so treat 70B as an experiment."
-        : "Treat 30B+ models as runtime-dependent until the app can detect GPU memory directly.",
+        ? "Very large models can still be slow."
+        : "30B+ models are still runtime-dependent.",
       basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
     };
   }
 
   return {
     recommendedMaxParamsB,
-    headline: "Large local models are realistic here",
-    summary: "This system has unusually strong unified-memory headroom for local inference compared with typical desktops and laptops.",
-    caution: "Even when they fit, 70B-class models still need significant compute and will not always feel fast.",
+    headline: "Large local models look realistic here",
+    summary: "This system has unusually strong memory headroom for local inference.",
+    caution: "Even when they fit, 70B-class models can still be slow.",
     basis: "Estimated from unified memory and CPU cores.",
   };
 }

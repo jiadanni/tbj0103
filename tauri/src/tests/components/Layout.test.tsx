@@ -160,6 +160,18 @@ describe("Layout", () => {
     expect(screen.getByText("Sidebar")).toBeInTheDocument();
   });
 
+  it("does not render the left sidebar when top-tab section navigation is active", () => {
+    useWorkspaceStore.setState({ sectionNavigation: "top-tabs" });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByText("Sidebar")).not.toBeInTheDocument();
+  });
+
   it("does not render the floating Preferences dock button when the standard sidebar shell is shown", () => {
     render(
       <MemoryRouter initialEntries={["/preferences"]}>
@@ -204,7 +216,32 @@ describe("Layout", () => {
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
   });
 
-  it("hides the global workspace tab strip in split view while keeping titlebar actions", () => {
+  it("renders a workspace selector in single-pane top-dropdown mode", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+      workspaceNavigation: "top-dropdown",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("button", { name: "Workspace: Agentic" })).toBeInTheDocument();
+    expect(document.querySelector("[data-workspace-tab-strip]")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Workspace: Agentic" }));
+    fireEvent.click(screen.getByRole("option", { name: "Rust" }));
+
+    expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
+  });
+
+  it("renders split workspace navigation in the shared titlebar while keeping titlebar actions", () => {
     useWorkspaceStore.setState({
       workspaces: [
         { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
@@ -224,9 +261,166 @@ describe("Layout", () => {
       </MemoryRouter>
     );
 
-    expect(document.querySelector("[data-workspace-tab-strip]")).toBeNull();
+    expect(document.querySelector("[data-split-titlebar-workspace-nav]")).not.toBeNull();
     expect(document.querySelector("[data-workspace-titlebar-actions]")).not.toBeNull();
-    expect(screen.getByText("Split View")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /More workspaces for primary/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /More workspaces for secondary/i })).toBeInTheDocument();
+    expect(screen.queryByText("Split View")).not.toBeInTheDocument();
+  });
+
+  it("uses the same workspace tab styling in split view as single-pane mode", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+      splitMode: true,
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const splitAgenticTabs = screen.getAllByRole("button", { name: "Agentic" });
+    const splitRustTabs = screen.getAllByRole("button", { name: "Rust" });
+
+    expect(splitAgenticTabs.some((button) => button.className.includes("rounded-t-xl"))).toBe(true);
+    expect(splitAgenticTabs.some((button) => button.className.includes("h-[34px]"))).toBe(true);
+    expect(splitAgenticTabs.some((button) => button.className.includes("bg-[var(--bg-primary)]"))).toBe(true);
+    expect(splitRustTabs.some((button) => button.className.includes("rounded-t-xl"))).toBe(true);
+    expect(splitRustTabs.some((button) => button.className.includes("border-transparent"))).toBe(true);
+  });
+
+  it("keeps duplicated split workspace tab strips in the shared titlebar", () => {
+    useWorkspaceStore.setState({
+      workspaces: Array.from({ length: 8 }, (_, index) => ({
+        id: `ws-${index + 1}`,
+        name: `Workspace ${index + 1}`,
+        description: "",
+        prompt_instructions: "",
+        topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false },
+        signature_updated_at: null,
+        is_hidden: false,
+        created_at: "",
+        updated_at: "",
+      })),
+      activeWorkspaceId: "ws-1",
+      splitMode: true,
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(document.querySelector("[data-split-titlebar-workspace-nav]")).not.toBeNull();
+    expect(screen.getAllByText("Workspace 1").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /More workspaces for primary/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /More workspaces for secondary/i })).toBeInTheDocument();
+  });
+
+  it("can still render dropdown workspace navigation for both split panes", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Linux", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+      workspaceNavigation: "top-dropdown",
+      splitMode: true,
+      splitWorkspaceNavigation: "dropdown",
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("button", { name: "Workspace primary: Security" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Workspace secondary: Linux" })).toBeInTheDocument();
+  });
+
+  it("reserves trailing titlebar space in split mode and renders an icon-only split toggle", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Linux", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+      workspaceNavigation: "top-dropdown",
+      splitMode: true,
+      splitWorkspaceNavigation: "dropdown",
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const splitNav = document.querySelector("[data-split-titlebar-workspace-nav]");
+    const splitToggle = screen.getByRole("button", { name: "Toggle Split View" });
+
+    expect(splitNav).not.toBeNull();
+    expect(splitNav?.className).toContain("right-14");
+    expect(splitToggle).toHaveTextContent(/^$/);
+  });
+
+  it("hides the split toggle on single-pane routes like preferences", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/preferences"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByTitle("Toggle Split View")).not.toBeInTheDocument();
+  });
+
+  it("shows the split toggle on split-capable routes", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTitle("Toggle Split View")).toBeInTheDocument();
   });
 
   it("opens chats when switching workspaces if the preference is enabled", async () => {
@@ -307,7 +501,7 @@ describe("Layout", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByTestId("panel-main")).toHaveClass("min-h-0");
+    expect(container.querySelector("div.flex.h-full.overflow-hidden.min-h-0")).not.toBeNull();
   });
 
   it("renders a styled top dropdown for section navigation and navigates from it", async () => {

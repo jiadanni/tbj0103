@@ -166,6 +166,32 @@ function findFallbackWorkspaceId(
     ?? null;
 }
 
+function hasProjectId(projects: Project[], projectId: string | null) {
+  return !!projectId && projects.some((project) => project.id === projectId);
+}
+
+function reconcilePaneProjectsForWorkspace(
+  panes: Record<PaneId, WorkspacePaneState>,
+  workspaceId: string,
+  projects: Project[],
+): Record<PaneId, WorkspacePaneState> {
+  const nextPanes = { ...panes };
+
+  (["primary", "secondary"] as PaneId[]).forEach((paneId) => {
+    const pane = panes[paneId];
+    if (pane.workspaceId !== workspaceId || !pane.projectId || hasProjectId(projects, pane.projectId)) {
+      return;
+    }
+
+    nextPanes[paneId] = {
+      ...pane,
+      projectId: null,
+    };
+  });
+
+  return nextPanes;
+}
+
 interface WorkspaceStore {
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
@@ -350,15 +376,39 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       const projectsByWorkspace = workspaceId
         ? { ...state.projectsByWorkspace, [workspaceId]: projects }
         : state.projectsByWorkspace;
-      return { projects, projectsByWorkspace };
+      const activeProjectId = workspaceId === state.activeWorkspaceId && !hasProjectId(projects, state.activeProjectId)
+        ? null
+        : state.activeProjectId;
+      const panes = workspaceId
+        ? reconcilePaneProjectsForWorkspace(state.panes, workspaceId, projects)
+        : state.panes;
+
+      if (panes !== state.panes) {
+        persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
+      }
+
+      return { projects, projectsByWorkspace, activeProjectId, panes };
     }),
-    setProjectsForWorkspace: (workspaceId, projects) => set((state) => ({
-      projects: workspaceId === state.activeWorkspaceId ? projects : state.projects,
-      projectsByWorkspace: {
-        ...state.projectsByWorkspace,
-        [workspaceId]: projects,
-      },
-    })),
+    setProjectsForWorkspace: (workspaceId, projects) => set((state) => {
+      const activeProjectId = workspaceId === state.activeWorkspaceId && !hasProjectId(projects, state.activeProjectId)
+        ? null
+        : state.activeProjectId;
+      const panes = reconcilePaneProjectsForWorkspace(state.panes, workspaceId, projects);
+
+      if (panes !== state.panes) {
+        persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
+      }
+
+      return {
+        projects: workspaceId === state.activeWorkspaceId ? projects : state.projects,
+        activeProjectId,
+        projectsByWorkspace: {
+          ...state.projectsByWorkspace,
+          [workspaceId]: projects,
+        },
+        panes,
+      };
+    }),
     setDemo: (isDemoMode, workspaceId) => set((state) => {
       const nextWorkspaceId = workspaceId ?? null;
       const panes = {
@@ -464,6 +514,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     exitSplitMode: () => set((state) => {
       const activeWorkspaceId = state.panes.primary.workspaceId ?? state.activeWorkspaceId;
       const activeProjectId = state.panes.primary.projectId ?? state.activeProjectId;
+      useChatStore.getState().setActiveChatId(state.panes.primary.chatSessionId ?? null);
       persistSplitLayout({ splitMode: false, splitSizes: state.splitSizes, activePaneId: "primary", panes: state.panes });
       return { splitMode: false, activePaneId: "primary", activeWorkspaceId, activeProjectId };
     }),

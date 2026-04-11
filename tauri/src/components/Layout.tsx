@@ -22,6 +22,7 @@ import SplitPaneLayout from "./SplitPaneLayout";
 import ChatView from "../views/ChatView";
 import MemoryView from "../views/MemoryView";
 import { useArtifactStore } from "../stores/artifactStore";
+import { useChatStore } from "../stores/chatStore";
 import CompactMenuSelect from "./CompactMenuSelect";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
@@ -50,6 +51,22 @@ function resolveSplitWorkspaceNavigation(
   workspaceNavigation: ReturnType<typeof useWorkspaceStore.getState>["workspaceNavigation"]
 ) {
   return workspaceNavigation === "top-dropdown" ? "dropdown" : "tabs";
+}
+
+function workspaceTabClassName({
+  isActive,
+  isDragTarget = false,
+}: {
+  isActive: boolean;
+  isDragTarget?: boolean;
+}) {
+  return `relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
+    isDragTarget
+      ? "border-[rgba(var(--accent-color-rgb),0.45)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] shadow-sm"
+      : isActive
+      ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
+      : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+  }`;
 }
 
 function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
@@ -95,12 +112,11 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
           <button
             key={`${paneId}-${workspace.id}`}
             onClick={() => selectWorkspace(workspace.id)}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-[13px] font-medium whitespace-nowrap transition-colors ${
-              activeWorkspaceId === workspace.id
-                ? "bg-[var(--accent-color)] text-white"
-                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-            }`}
+            className={workspaceTabClassName({ isActive: activeWorkspaceId === workspace.id })}
           >
+            {activeWorkspaceId === workspace.id && (
+              <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+            )}
             {workspace.name}
           </button>
         ))}
@@ -175,16 +191,41 @@ function SplitTitlebarWorkspaceDropdown({ paneId }: { paneId: PaneId }) {
   );
 }
 
+function SingleTitlebarWorkspaceDropdown({
+  activeWorkspaceId,
+  onChange,
+}: {
+  activeWorkspaceId: string | null;
+  onChange: (workspaceId: string) => void;
+}) {
+  const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const workspaceOptions = workspaces.map((workspace) => ({ value: workspace.id, label: workspace.name }));
+  const selectedWorkspaceId = workspaceOptions.some((workspace) => workspace.value === activeWorkspaceId)
+    ? activeWorkspaceId ?? workspaceOptions[0]?.value ?? ""
+    : workspaceOptions[0]?.value ?? "";
+
+  return (
+    <CompactMenuSelect
+      label="Workspace"
+      value={selectedWorkspaceId}
+      options={workspaceOptions}
+      onChange={onChange}
+      widthClassName="min-w-0 w-full max-w-[280px] sm:w-[240px]"
+      buttonClassName="h-8 bg-[var(--bg-primary)]/80"
+    />
+  );
+}
+
 function SplitTitlebarWorkspaceNavigation() {
   const { splitSizes, workspaceNavigation } = useWorkspaceStore();
   const resolvedSplitWorkspaceNavigation = resolveSplitWorkspaceNavigation(workspaceNavigation);
   const primaryPanePaddingClass = (isLinux ? "pl-[52px]" : isMac ? "pl-[80px]" : "pl-2") + " pr-2";
-  const secondaryPaneClass = "pl-2";
-  const secondaryPaneStyle = { maxWidth: isLinux ? "calc(100% - 160px)" : "calc(100% - 140px)" };
+  const secondaryPaneClass = "min-w-0 px-2";
+  const trailingInsetClass = isLinux ? "right-[152px]" : "right-14";
 
   return (
     <div
-      className="absolute inset-0 z-0 flex items-center"
+      className={`absolute inset-y-0 left-0 ${trailingInsetClass} z-0 flex items-center`}
       data-split-titlebar-workspace-nav
     >
       <div className="min-w-0" style={{ flexBasis: 0, flexGrow: splitSizes[0] }}>
@@ -198,7 +239,7 @@ function SplitTitlebarWorkspaceNavigation() {
       </div>
       <div className="relative z-20 h-10 w-px shrink-0 bg-[var(--border-color)]" aria-hidden="true" />
       <div className="min-w-0" style={{ flexBasis: 0, flexGrow: splitSizes[1] }}>
-        <div className={secondaryPaneClass} style={secondaryPaneStyle}>
+        <div className={secondaryPaneClass}>
           {resolvedSplitWorkspaceNavigation === "dropdown" ? (
             <SplitTitlebarWorkspaceDropdown paneId="secondary" />
           ) : (
@@ -217,6 +258,7 @@ function PreferencesDockButton() {
     <button
       onClick={() => navigate("/preferences")}
       aria-label="Preferences"
+      title="Preferences"
       className="absolute bottom-3 left-3 z-30 inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 px-3 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
     >
       <SettingsIcon size={16} />
@@ -236,6 +278,7 @@ function WorkspaceTabBar({
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
   const splitMode = useWorkspaceStore((state) => state.splitMode);
+  const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
   const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
@@ -254,6 +297,7 @@ function WorkspaceTabBar({
   const navigate = useNavigate();
   const splitUnsupportedRoute = ["/preferences", "/memory", "/webcapture"].some((path) => location.pathname.startsWith(path));
   const showSplitTitlebarWorkspaceNavigation = splitMode && !splitUnsupportedRoute;
+  const showSinglePaneWorkspaceDropdown = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "top-dropdown";
   function resetCreateWorkspaceForm() {
     setNewName("");
     setNewDescription("");
@@ -369,11 +413,25 @@ function WorkspaceTabBar({
         <div
           data-no-drag
           onWheel={handleHorizontalWheel}
-          className={showSplitTitlebarWorkspaceNavigation ? "relative z-0 min-w-0 flex-1 overflow-hidden" : "min-w-0 flex-1 overflow-x-auto scrollbar-none"}
-          {...(showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation ? { "data-workspace-tab-strip": "" } : {})}
+          className={
+            showSplitTitlebarWorkspaceNavigation
+              ? "relative z-0 min-w-0 flex-1 overflow-hidden"
+              : showSinglePaneWorkspaceDropdown
+              ? "min-w-0 flex-1"
+              : "min-w-0 flex-1 overflow-x-auto scrollbar-none"
+          }
+          {...(showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceDropdown ? { "data-workspace-tab-strip": "" } : {})}
         >
-          <div className={`${showSplitTitlebarWorkspaceNavigation ? "hidden" : "flex min-w-max items-center"}`}>
-            {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs ? (
+          {showSinglePaneWorkspaceDropdown ? (
+            <div className="flex h-10 items-center">
+              <SingleTitlebarWorkspaceDropdown
+                activeWorkspaceId={activeWorkspaceId}
+                onChange={activateWorkspace}
+              />
+            </div>
+          ) : (
+            <div className={`${showSplitTitlebarWorkspaceNavigation ? "hidden" : "flex min-w-max items-center"}`}>
+              {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs ? (
               workspaces.map((ws) => (
                 <button
                   key={ws.id}
@@ -430,13 +488,10 @@ function WorkspaceTabBar({
                       }
                     } catch { /* ignore malformed data */ }
                   }}
-                  className={`relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
-                    dragOverWorkspaceId === ws.id
-                      ? "border-[rgba(var(--accent-color-rgb),0.45)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] shadow-sm"
-                      : activeWorkspaceId === ws.id
-                      ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
-                      : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
-                  }`}
+                  className={workspaceTabClassName({
+                    isActive: activeWorkspaceId === ws.id,
+                    isDragTarget: dragOverWorkspaceId === ws.id,
+                  })}
                 >
                   {(dragOverWorkspaceId === ws.id || activeWorkspaceId === ws.id) && (
                     <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
@@ -454,7 +509,8 @@ function WorkspaceTabBar({
                 <Plus size={20} />
               </button>
             ) : null}
-          </div>
+            </div>
+          )}
         </div>
         <div
           data-window-drag-handle
@@ -466,15 +522,15 @@ function WorkspaceTabBar({
             <button
               onClick={onToggleSplit}
               disabled={workspaces.length < 2}
+              aria-label="Toggle Split View"
               title="Toggle Split View"
-              className={`flex h-8 items-center gap-1 rounded-lg border px-2 text-sm font-medium transition-colors ${
+              className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
                 splitMode
                   ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
                   : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
               } disabled:opacity-40 disabled:hover:border-[var(--border-color)] disabled:hover:text-[var(--text-secondary)]`}
             >
               <Columns2 size={15} />
-              <span className="hidden lg:inline">Split</span>
             </button>
           )}
         </div>
@@ -784,6 +840,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
+  const activeChatId = useChatStore((state) => state.activeChatId);
   const splitMode = useWorkspaceStore((state) => state.splitMode);
   const { enterSplitMode, exitSplitMode, setPaneView, setPaneChatSession, workspaces } = useWorkspaceStore();
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
@@ -823,9 +880,9 @@ export default function Layout() {
     }
     setPaneView("primary", pathToPaneView(location.pathname));
     const routeSessionId = location.pathname.startsWith("/chat/") ? location.pathname.split("/")[2] ?? null : null;
-    setPaneChatSession("primary", routeSessionId);
+    setPaneChatSession("primary", routeSessionId ?? activeChatId);
     enterSplitMode();
-  }, [splitMode, location.pathname, workspaces.length, exitSplitMode, enterSplitMode, setPaneView, setPaneChatSession]);
+  }, [activeChatId, splitMode, location.pathname, workspaces.length, exitSplitMode, enterSplitMode, setPaneView, setPaneChatSession]);
 
   // Global Cmd+K shortcut
   useEffect(() => {
@@ -925,8 +982,8 @@ function AppRoutes() {
       <Route path="/preferences" element={<PreferencesView />} />
       
       {/* Legacy redirects */}
-      <Route path="/grounded" element={<Navigate to="/chat" state={{ subView: "grounded" }} replace />} />
-      <Route path="/chat-sessions" element={<Navigate to="/chat" state={{ subView: "sessions" }} replace />} />
+      <Route path="/grounded" element={<Navigate to="/chat" replace />} />
+      <Route path="/chat-sessions" element={<Navigate to="/chat" replace />} />
       <Route path="/daily" element={<Navigate to="/notes" state={{ subView: "daily" }} replace />} />
       <Route path="/flashcards" element={<Navigate to="/graph" replace />} />
       <Route path="/learning" element={<Navigate to="/graph" replace />} />

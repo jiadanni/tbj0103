@@ -49,56 +49,48 @@ pub fn assemble_context(
     // 1. System Prompt (order: global → workspace → project → session)
     let mut system_parts = vec![];
 
-    // Global prompt instructions from settings
-    {
-        let mut stmt = conn
-            .prepare("SELECT value FROM settings WHERE key = 'prompt_instructions'")
-            .map_err(|e| e.to_string())?;
-        if let Ok(val) = stmt.query_row([], |row| row.get::<_, String>(0)) {
-            let text: String = serde_json::from_str(&val).unwrap_or_default();
-            if !text.is_empty() {
-                system_parts.push(text);
-            }
-        }
-    }
-
-    // Workspace-level prompt instructions
-    {
-        let mut stmt = conn
-            .prepare("SELECT prompt_instructions FROM workspaces WHERE id = ?1")
-            .map_err(|e| e.to_string())?;
-        if let Ok(instr) = stmt.query_row(rusqlite::params![workspace_id], |row| {
-            row.get::<_, String>(0)
-        }) {
-            if !instr.is_empty() {
-                system_parts.push(instr);
-            }
-        }
-    }
-
-    // Load project custom instructions if session is linked to a project
+    // Consolidated system instructions query (Global, Workspace, Project, Session)
     let mut stmt = conn
-        .prepare("SELECT p.custom_instructions FROM projects p JOIN chat_sessions cs ON p.id = cs.project_id WHERE cs.id = ?1")
+        .prepare(
+            "SELECT 
+                (SELECT value FROM settings WHERE key = 'prompt_instructions'),
+                w.prompt_instructions,
+                p.custom_instructions,
+                cs.system_prompt
+             FROM chat_sessions cs
+             LEFT JOIN workspaces w ON w.id = cs.workspace_id
+             LEFT JOIN projects p ON p.id = cs.project_id
+             WHERE cs.id = ?1",
+        )
         .map_err(|e| e.to_string())?;
-    if let Ok(Some(instr)) = stmt.query_row(rusqlite::params![session_id], |row| {
-        let text: Option<String> = row.get(0)?;
-        Ok(text)
-    }) {
-        if !instr.is_empty() {
-            system_parts.push(instr);
-        }
-    }
 
-    // Check if session has a custom system prompt
-    let mut stmt = conn
-        .prepare("SELECT system_prompt FROM chat_sessions WHERE id = ?1")
-        .map_err(|e| e.to_string())?;
-    if let Ok(Some(sp)) = stmt.query_row(rusqlite::params![session_id], |row| {
-        let text: Option<String> = row.get(0)?;
-        Ok(text)
-    }) {
-        if !sp.is_empty() {
-            system_parts.push(sp);
+    if let Ok((global_json, ws_prompt, proj_prompt, sess_prompt)) = stmt.query_row(
+        rusqlite::params![session_id],
+        |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        },
+    ) {
+        // Global
+        if let Some(json) = global_json {
+            let text: String = serde_json::from_str(&json).unwrap_or_default();
+            if !text.is_empty() { system_parts.push(text); }
+        }
+        // Workspace
+        if let Some(text) = ws_prompt {
+            if !text.is_empty() { system_parts.push(text); }
+        }
+        // Project
+        if let Some(text) = proj_prompt {
+            if !text.is_empty() { system_parts.push(text); }
+        }
+        // Session
+        if let Some(text) = sess_prompt {
+            if !text.is_empty() { system_parts.push(text); }
         }
     }
 
@@ -127,46 +119,16 @@ pub fn assemble_context(
         true
     };
 
-    // Tier 1: Pinned memories (always included, no budget cap)
+    // Tier 1: Pinned memories or non-pinned without embeddings (legacy/manual)
     {
-        let pinned: Vec<(String, String, String)> = conn
+        let memories: Vec<(String, String, String, i32)> = conn
             .prepare(
-                "SELECT id, content, scope FROM memories \
-                 WHERE is_active = 1 AND is_pinned = 1 \
-                 AND ((workspace_id = ?1 AND scope = 'workspace') OR scope = 'global') \
-                 ORDER BY scope ASC, updated_at DESC",
-            )
-            .map_err(|e| e.to_string())?
-            .query_map(rusqlite::params![workspace_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            })
-            .map_err(|e| e.to_string())?
-            .flatten()
-            .collect();
-
-        for (id, content, scope) in pinned {
-            let prefix = if scope == "global" { "[global] " } else { "" };
-            let line = format!("- {}{}\n", prefix, content);
-            memory_tokens += estimate_tokens(&line);
-            memories_text.push_str(&line);
-            sources.memories_used.push(id);
-        }
-    }
-
-    // Tier 1.5: Non-pinned memories WITHOUT embeddings (legacy/manual — include unconditionally)
-    {
-        let unembedded: Vec<(String, String, String)> = conn
-            .prepare(
-                "SELECT m.id, m.content, m.scope FROM memories m \
+                "SELECT m.id, m.content, m.scope, m.is_pinned FROM memories m \
                  LEFT JOIN memory_embeddings me ON m.id = me.memory_id \
-                 WHERE m.is_active = 1 AND m.is_pinned = 0 \
+                 WHERE m.is_active = 1 \
                  AND ((m.workspace_id = ?1 AND m.scope = 'workspace') OR m.scope = 'global') \
-                 AND me.memory_id IS NULL \
-                 ORDER BY m.updated_at DESC",
+                 AND (m.is_pinned = 1 OR me.memory_id IS NULL) \
+                 ORDER BY m.is_pinned DESC, m.scope ASC, m.updated_at DESC",
             )
             .map_err(|e| e.to_string())?
             .query_map(rusqlite::params![workspace_id], |row| {
@@ -174,23 +136,34 @@ pub fn assemble_context(
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
+                    row.get::<_, i32>(3)?,
                 ))
             })
             .map_err(|e| e.to_string())?
             .flatten()
             .collect();
 
-        for (id, content, scope) in unembedded {
-            if !append_memory(
-                id,
-                &content,
-                &scope,
-                &mut memory_tokens,
-                &mut memories_text,
-                &mut sources.memories_used,
-                budget.memories,
-            ) {
-                break;
+        for (id, content, scope, is_pinned) in memories {
+            if is_pinned == 1 {
+                // Pinned memories are always included
+                let prefix = if scope == "global" { "[global] " } else { "" };
+                let line = format!("- {}{}\n", prefix, content);
+                memory_tokens += estimate_tokens(&line);
+                memories_text.push_str(&line);
+                sources.memories_used.push(id);
+            } else {
+                // Non-pinned unembedded memories respect the budget
+                if !append_memory(
+                    id,
+                    &content,
+                    &scope,
+                    &mut memory_tokens,
+                    &mut memories_text,
+                    &mut sources.memories_used,
+                    budget.memories,
+                ) {
+                    break;
+                }
             }
         }
     }

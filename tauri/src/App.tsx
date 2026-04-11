@@ -28,9 +28,7 @@ function MenuEventHandler() {
     const unlistenAction = listen<string>("menu-action", (event) => {
       switch (event.payload) {
         case "new-chat":
-          navigateRef.current("/chat");
-          // Dispatch a custom DOM event so ChatView can open a new session
-          window.dispatchEvent(new CustomEvent("aetherium:new-chat"));
+          navigateRef.current("/chat", { state: { createNewChat: true } });
           break;
         case "new-note":
           navigateRef.current("/notes");
@@ -102,7 +100,7 @@ export default function App() {
   const accentColor = useSettingsStore((state) => state.accentColor);
   const fontSize = useSettingsStore((state) => state.fontSize);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
-  const setProjects = useWorkspaceStore((state) => state.setProjects);
+  const setProjectsForWorkspace = useWorkspaceStore((state) => state.setProjectsForWorkspace);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
@@ -145,7 +143,18 @@ export default function App() {
         ]);
         if (cancelled) {return;}
 
-        setWorkspaces(workspaces);
+        // Auto-activate demo on first start (no workspaces + not previously dismissed)
+        let finalWorkspaces = workspaces;
+        if (workspaces.length === 0 && !settings.demo_dismissed) {
+          setLoadingMessage("Preparing demo workspace…");
+          const demoWorkspaceId = await api.demo.activate();
+          useWorkspaceStore.getState().setDemo(true, demoWorkspaceId);
+          // Re-fetch workspaces to include the newly created demo workspace
+          finalWorkspaces = await api.workspace.list();
+          if (cancelled) {return;}
+        }
+
+        setWorkspaces(finalWorkspaces);
 
         if (settings.auto_start_ollama) {
           setLoadingMessage("Starting local Ollama…");
@@ -172,12 +181,42 @@ export default function App() {
     };
   }, [setWorkspaces]);
 
-  // Reload projects whenever active workspace changes
+  // Reload projects for all visible workspaces so split panes don't retain stale folder filters.
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const splitMode = useWorkspaceStore((s) => s.splitMode);
+  const primaryWorkspaceId = useWorkspaceStore((s) => s.panes.primary.workspaceId);
+  const secondaryWorkspaceId = useWorkspaceStore((s) => s.panes.secondary.workspaceId);
   useEffect(() => {
-    if (!activeWorkspaceId) {return;}
-    api.project.list(activeWorkspaceId).then(setProjects).catch(() => {});
-  }, [activeWorkspaceId, setProjects]);
+    const workspaceIds = new Set<string>();
+    if (activeWorkspaceId) {
+      workspaceIds.add(activeWorkspaceId);
+    }
+    if (splitMode) {
+      if (primaryWorkspaceId) {
+        workspaceIds.add(primaryWorkspaceId);
+      }
+      if (secondaryWorkspaceId) {
+        workspaceIds.add(secondaryWorkspaceId);
+      }
+    }
+    if (workspaceIds.size === 0) {return;}
+
+    let cancelled = false;
+    Promise.all(
+      [...workspaceIds].map(async (workspaceId) => [workspaceId, await api.project.list(workspaceId)] as const)
+    )
+      .then((entries) => {
+        if (cancelled) {return;}
+        entries.forEach(([workspaceId, projects]) => {
+          setProjectsForWorkspace(workspaceId, projects);
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWorkspaceId, primaryWorkspaceId, secondaryWorkspaceId, setProjectsForWorkspace, splitMode]);
 
   if (isLoading) {
     return (
