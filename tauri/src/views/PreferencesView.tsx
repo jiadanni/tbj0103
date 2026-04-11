@@ -6,7 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, Info } from "lucide-react";
-import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs } from "../lib/api";
+import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
 import { classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB } from "../lib/modelSizing";
 import { ACCENT_COLORS, THEMES, normalizeTheme } from "../lib/theme";
@@ -102,6 +102,23 @@ function ollamaModelDetails(model: OllamaModel, systemSpecs: SystemSpecs | null)
   return details.join(" - ");
 }
 
+function formatModelSpeed(stat: ModelSpeedStat | undefined): { chatAverage: string; weighted: string } | null {
+  if (
+    !stat ||
+    !Number.isFinite(stat.avg_chat_tokens_per_second) ||
+    stat.avg_chat_tokens_per_second <= 0 ||
+    !Number.isFinite(stat.weighted_tokens_per_second) ||
+    stat.weighted_tokens_per_second <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    chatAverage: `${stat.avg_chat_tokens_per_second.toFixed(1)} tok/s chat avg`,
+    weighted: `${stat.weighted_tokens_per_second.toFixed(1)} tok/s weighted`,
+  };
+}
+
 export default function PreferencesView() {
   const pillSelectClassName = "h-10 w-full appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-9 text-sm text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
   const settingsNavLayout = useSettingsStore((state) => state.settingsNavLayout);
@@ -173,6 +190,7 @@ export default function PreferencesView() {
   const ollamaModelsRequestRef = useRef(0);
 
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
+  const [modelSpeedStats, setModelSpeedStats] = useState<Record<string, ModelSpeedStat>>({});
   const [securityStatus, setSecurityStatus] = useState<SecurityStatus | null>(null);
   const [showAddModel, setShowAddModel] = useState(false);
   const [newModelId, setNewModelId] = useState("");
@@ -315,6 +333,14 @@ export default function PreferencesView() {
           useSettingsStore.getState().setModelLabel(m.model_id, m.name);
         }
       });
+    }).catch(() => {});
+    api.aiModel.listSpeedStats().then((stats) => {
+      setModelSpeedStats(
+        stats.reduce<Record<string, ModelSpeedStat>>((acc, stat) => {
+          acc[stat.model_name] = stat;
+          return acc;
+        }, {})
+      );
     }).catch(() => {});
   }
 
@@ -1537,6 +1563,8 @@ export default function PreferencesView() {
                   <div className="space-y-1">
                     {aiModels.map((m, idx) => {
                       const ollamaMeta = ollamaModels.find((model) => model.name === m.model_id);
+                      const speedStat = modelSpeedStats[m.model_id];
+                      const speedLabels = formatModelSpeed(speedStat);
                       const modelParams = parseModelParamsB(m.model_id) ?? parseModelParamsB(m.name);
                       const formattedParams = formatParams(modelParams);
                       const formattedStorage = typeof ollamaMeta?.size === "number" ? formatBytes(ollamaMeta.size) : null;
@@ -1642,6 +1670,22 @@ export default function PreferencesView() {
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--text-muted)]">{m.provider}</span>
                               {m.is_paid && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">PAID</span>
+                              )}
+                              {speedLabels && (
+                                <>
+                                  <span
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--text-secondary)] tabular-nums whitespace-nowrap"
+                                    title={`Average generation speed across ${speedStat.chat_count} chats`}
+                                  >
+                                    {speedLabels.chatAverage}
+                                  </span>
+                                  <span
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--text-secondary)] tabular-nums whitespace-nowrap"
+                                    title="Weighted overall generation speed across all recorded assistant messages"
+                                  >
+                                    {speedLabels.weighted}
+                                  </span>
+                                </>
                               )}
                               <span className="text-[10px] text-[var(--text-muted)] tabular-nums whitespace-nowrap">{m.tokens_used_total.toLocaleString()} tok</span>
                             </div>

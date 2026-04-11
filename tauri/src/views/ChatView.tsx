@@ -4,7 +4,7 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
-import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
+import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings, type ModelSpeedStat } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Project, type Workspace } from "../stores/workspaceStore";
@@ -53,6 +53,24 @@ function canRefreshSessionTitle(
   }
 
   return (session.message_count_at_title_gen ?? 0) > 0;
+}
+
+function formatModelSpeed(stat: ModelSpeedStat | undefined): { chatAverage: string; weighted: string; compact: string } | null {
+  if (
+    !stat ||
+    !Number.isFinite(stat.avg_chat_tokens_per_second) ||
+    stat.avg_chat_tokens_per_second <= 0 ||
+    !Number.isFinite(stat.weighted_tokens_per_second) ||
+    stat.weighted_tokens_per_second <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    chatAverage: `${stat.avg_chat_tokens_per_second.toFixed(1)} tok/s chat avg`,
+    weighted: `${stat.weighted_tokens_per_second.toFixed(1)} tok/s weighted`,
+    compact: `${stat.avg_chat_tokens_per_second.toFixed(1)} / ${stat.weighted_tokens_per_second.toFixed(1)} tok/s`,
+  };
 }
 
 // ── Session sidebar types ─────────────────────────────────────────────────────
@@ -1397,6 +1415,7 @@ export default function ChatView() {
   const navigate = useNavigate();
   const location = useLocation();
   const { sessionId: routeSessionId } = useParams();
+  const isSplitPane = useWorkspacePane() !== null;
 
   const sessions = useChatStore((s) => s.sessions);
   const messages = useChatStore((s) => s.messages);
@@ -1456,6 +1475,7 @@ export default function ChatView() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [ollamaModelStatus, setOllamaModelStatus] = useState<"idle" | "available" | "empty" | "unreachable">("idle");
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
+  const [modelSpeedStats, setModelSpeedStats] = useState<Record<string, ModelSpeedStat>>({});
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [isModelSendMenuOpen, setIsModelSendMenuOpen] = useState(false);
   type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
@@ -2278,9 +2298,16 @@ export default function ChatView() {
 
     Promise.allSettled([
       api.aiModel.list(),
+      api.aiModel.listSpeedStats(),
       api.ollama.listModelsFresh(ollamaUrl),
-    ]).then(([aiModelsResult, ollamaModelsResult]) => {
+    ]).then(([aiModelsResult, speedStatsResult, ollamaModelsResult]) => {
       const aiModels = aiModelsResult.status === "fulfilled" ? aiModelsResult.value : [];
+      const speedStats = speedStatsResult.status === "fulfilled"
+        ? speedStatsResult.value.reduce<Record<string, ModelSpeedStat>>((acc, stat) => {
+            acc[stat.model_name] = stat;
+            return acc;
+          }, {})
+        : {};
       const installedOllamaModels = ollamaModelsResult.status === "fulfilled"
         ? ollamaModelsResult.value
             .filter((model) => !model.name.toLowerCase().includes("embed"))
@@ -2294,6 +2321,7 @@ export default function ChatView() {
       }
 
       setAiModelList(aiModels);
+      setModelSpeedStats(speedStats);
 
       const enabledModels = aiModels
         .filter((model) => model.enabled)
@@ -2332,6 +2360,7 @@ export default function ChatView() {
       syncedSessionModelRef.current = { sessionId: activeChatId, modelName: sessionModel };
     }).catch(() => {
       setOllamaModelStatus("unreachable");
+      setModelSpeedStats({});
       setAvailableModels(sessionModel ? [sessionModel] : []);
       setSelectedModel((current) => shouldAdoptSessionModel ? sessionModel : current);
       syncedSessionModelRef.current = { sessionId: activeChatId, modelName: sessionModel };
@@ -2379,13 +2408,29 @@ export default function ChatView() {
   }, [activeChatId, hasLoadedActiveMessages, activeMessages.length, isStreaming]);
 
   function activateSession(session: ChatSession) {
+    setScopedProjectId(session.project_id || null);
     setActiveChatId(session.id);
+    if (!isSplitPane && routeSessionId !== session.id) {
+      navigate(`/chat/${session.id}`);
+    }
     api.chat.touchSessionAccessed(session.id).catch(() => {});
 
     const store = useChatStore.getState();
     if (!store.sessions.some((existingSession) => existingSession.id === session.id)) {
       store.addSession(session);
+    } else {
+      store.updateSession(session);
     }
+    setSidebarSessions((prev) => {
+      const existingIndex = prev.findIndex((existingSession) => existingSession.id === session.id);
+      if (existingIndex === -1) {
+        return [session, ...prev];
+      }
+
+      const next = [...prev];
+      next[existingIndex] = session;
+      return next;
+    });
     if (store.messages[session.id] === undefined) {
       setMessages(session.id, []);
     }
@@ -3224,6 +3269,11 @@ export default function ChatView() {
     return found ? found.name : modelId;
   };
 
+  const modelPickerLabel = (modelId: string) => {
+    const speed = formatModelSpeed(modelSpeedStats[modelId]);
+    return speed ? `${modelDisplayName(modelId)} • ${speed.compact}` : modelDisplayName(modelId);
+  };
+
   const persistedUserMessageWithFallback = (optimistic: Message, persisted: Message): Message => ({
     ...optimistic,
     ...persisted,
@@ -3576,7 +3626,7 @@ export default function ChatView() {
                               className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.28)] bg-[rgba(var(--accent-color-rgb),0.14)] text-white shadow-[0_14px_32px_-20px_rgba(var(--accent-color-rgb),0.45)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.42)] hover:bg-[rgba(var(--accent-color-rgb),0.18)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${
                                 pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
                               }`}
-                              title={selectedModel ? `Send with ${modelDisplayName(selectedModel)}` : "Send"}
+                              title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
                             >
                               <ArrowUpCircle size={19} strokeWidth={2.2} />
                             </button>
@@ -3611,10 +3661,17 @@ export default function ChatView() {
                                           await sendMessageWithModel(modelId);
                                         }}
                                         disabled={!input.trim() || isStreaming}
-                                        title={`Send with ${modelDisplayName(modelId)}`}
+                                        title={`Send with ${modelPickerLabel(modelId)}`}
                                         className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
                                       >
-                                        <span className="truncate">{modelDisplayName(modelId)}</span>
+                                        <div className="min-w-0">
+                                          <div className="truncate">{modelDisplayName(modelId)}</div>
+                                          {modelSpeedStats[modelId] && (
+                                            <div className="truncate text-[10px] text-[var(--text-muted)] tabular-nums">
+                                              {formatModelSpeed(modelSpeedStats[modelId])?.compact}
+                                            </div>
+                                          )}
+                                        </div>
                                         <Globe size={14} className="shrink-0 text-[var(--text-muted)]" />
                                       </button>
                                     ))}
@@ -3664,7 +3721,7 @@ export default function ChatView() {
                       aria-expanded={isModelPickerOpen}
                     >
                       <span className="truncate text-left">
-                        {selectedModel ? modelDisplayName(selectedModel) : "No models available"}
+                        {selectedModel ? modelPickerLabel(selectedModel) : "No models available"}
                       </span>
                       <ChevronDown size={14} strokeWidth={2.2} className={`shrink-0 text-[rgba(255,255,255,0.46)] transition-transform ${isModelPickerOpen ? "rotate-180" : ""}`} />
                     </button>
@@ -3687,9 +3744,16 @@ export default function ChatView() {
                                     ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
                                     : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                                 }`}
-                                title={modelDisplayName(modelId)}
+                                title={modelPickerLabel(modelId)}
                               >
-                                <span className="truncate">{modelDisplayName(modelId)}</span>
+                                <div className="min-w-0">
+                                  <div className="truncate">{modelDisplayName(modelId)}</div>
+                                  {modelSpeedStats[modelId] && (
+                                    <div className="truncate text-[10px] text-[var(--text-muted)] tabular-nums">
+                                      {formatModelSpeed(modelSpeedStats[modelId])?.compact}
+                                    </div>
+                                  )}
+                                </div>
                                 {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
                               </button>
                             );

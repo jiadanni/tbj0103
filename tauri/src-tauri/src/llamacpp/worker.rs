@@ -122,7 +122,7 @@ pub fn spawn_inference_worker(app: AppHandle) -> LlamacppWorkerState {
             for (i, &tok) in tokens.iter().enumerate() {
                 let logits = i == tokens.len() - 1;
                 if let Err(e) = batch.add(tok, i as i32, &[0], logits) {
-                    eprintln!("Failed to add to batch: {}", e);
+                    crate::logging::stderr(format!("Failed to add to batch: {}", e));
                     break;
                 }
             }
@@ -190,11 +190,11 @@ pub fn spawn_inference_worker(app: AppHandle) -> LlamacppWorkerState {
 
                 batch.clear();
                 if let Err(e) = batch.add(next_tok, pos, &[0], true) {
-                    eprintln!("Failed to add to batch: {}", e);
+                    crate::logging::stderr(format!("Failed to add to batch: {}", e));
                     break;
                 }
                 if let Err(e) = ctx.decode(&mut batch) {
-                    eprintln!("Decode error: {}", e);
+                    crate::logging::stderr(format!("Decode error: {}", e));
                     break;
                 }
                 pos += 1;
