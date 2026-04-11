@@ -241,24 +241,51 @@ describe("Layout", () => {
     expect(screen.getByText("Preferences View")).toBeInTheDocument();
   });
 
-  it("opens a history menu with recent sessions from the active workspace", async () => {
-    vi.spyOn(api.chat, "getRecentSessions").mockResolvedValue([
-      {
-        id: "chat-1",
-        workspace_id: "ws-1",
-        project_id: "project-1",
-        title: "Rust debugging notes",
-        model_name: "llama3.2",
-        system_prompt: "",
-        is_pinned: false,
-        is_incognito: false,
-        exclude_from_analytics: false,
-        is_deleted: false,
-        created_at: "2026-04-11T10:00:00.000Z",
-        updated_at: "2026-04-11T12:30:00.000Z",
-      },
-    ]);
-    useWorkspaceStore.setState({ activeWorkspaceId: "ws-1" });
+  it("opens a history menu with recent sessions across all workspaces", async () => {
+    vi.spyOn(api.chat, "getRecentSessions").mockImplementation(async (workspaceId) => {
+      if (workspaceId === "ws-1") {
+        return [
+          {
+            id: "chat-1",
+            workspace_id: "ws-1",
+            project_id: "project-1",
+            title: "Rust debugging notes",
+            model_name: "llama3.2",
+            system_prompt: "",
+            is_pinned: false,
+            is_incognito: false,
+            exclude_from_analytics: false,
+            is_deleted: false,
+            created_at: "2026-04-11T10:00:00.000Z",
+            updated_at: "2026-04-11T12:30:00.000Z",
+          },
+        ];
+      }
+
+      return [
+        {
+          id: "chat-2",
+          workspace_id: "ws-2",
+          project_id: "project-2",
+          title: "Security checklist",
+          model_name: "qwen3",
+          system_prompt: "",
+          is_pinned: false,
+          is_incognito: false,
+          exclude_from_analytics: false,
+          is_deleted: false,
+          created_at: "2026-04-11T08:00:00.000Z",
+          updated_at: "2026-04-11T13:30:00.000Z",
+        },
+      ];
+    });
+    useWorkspaceStore.setState({
+      activeWorkspaceId: "ws-1",
+      workspaces: [
+        { id: "ws-1", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+      ],
+    });
 
     render(
       <MemoryRouter initialEntries={["/project"]}>
@@ -271,6 +298,8 @@ describe("Layout", () => {
 
     expect(await screen.findByRole("menu", { name: "History menu" })).toBeInTheDocument();
     expect(await screen.findByText("Rust debugging notes")).toBeInTheDocument();
+    expect(await screen.findByText("Security checklist")).toBeInTheDocument();
+    expect(screen.getByText("Recent chats across all workspaces")).toBeInTheDocument();
     expect(historyButton.className).toContain("border-[var(--accent-color)]");
   });
 
