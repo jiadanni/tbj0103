@@ -72,50 +72,20 @@ Each project's chat sessions should demonstrate a different capability:
 
 ---
 
-## Expand Ecosystem
 
-### 7. 🔄 More Built-in Plugins
-- [x] Markdown Exporter
-- [x] Obsidian Exporter
-- [x] YouTube Importer
-- [x] Anki Exporter
-- [ ] Kindle Highlights Importer — reads Amazon's `My Clippings.txt` and creates notes  ← **priority**
-- [ ] Pocket / Instapaper Importer — pull saved articles as searchable knowledge
-- [ ] RSS Feed Reader — subscribe to feeds and ingest articles as notes
-- [ ] Goodreads Integration — import shelves and book notes
-- [ ] Logseq / Roam Importer — parse JSON/EDN exports, preserve backlinks
-- [ ] Mind Map Visualization — radial/tree layout alternative to force-directed graph  ← **priority**
-- [ ] Timeline View — arrange notes chronologically on a horizontal timeline
-
-### 8. 🔄 Enhanced Export / Import
-- [x] Markdown export
-- [x] JSON export
-- [x] Obsidian vault export
-- [x] LM Studio chat history import
 - [x] Google Gemini Takeout import (text-only)
-- [ ] Google Gemini Takeout import — **add support for parsing and copying attached media/images** into local storage
-- [ ] Standalone interactive HTML export — self-contained `.html` with embedded graph  ← **priority**
-- [ ] LaTeX export — `.tex` with citations and sectioning for academic papers
-- [ ] Notion import/export — push/pull via Notion API
-- [ ] Roam Research JSON import — convert block structure to flat notes
-- [ ] Batch export — export all projects at once
-- [ ] Export templates — Mustache/Handlebars-style template for formatted output
 
----
 
 ## Advanced Features
 
 ### 9. ⬜ AI Enhancements
 - [ ] Auto-summarization on document upload — generate a TL;DR note alongside raw chunks on import
-- [ ] Web model support — call OpenAI / Anthropic / Gemini APIs as optional model sources
 - [ ] Browser automation rebrand follow-up — keep the current user-facing rename, then later clean up internal `web_*` identifiers, seeded labels, and provider-specific implementation names so the feature reads as manually configured browser automation throughout the codebase
 
 ### 10. 🔄 Collaboration & Sync
-- [x] Git-based sync — `git_sync` service with auto-commit/push every ~5 min, configurable remote URL
-- [ ] Conflict resolution UI — show a diff when two machines edited the same note offline
-- [ ] Shared projects with permissions — read-only or read-write collaborator access
-- [ ] iCloud sync — CloudKit or iCloud Drive for seamless Apple device sync
+- [] Git-based sync — `git_sync` service with auto-commit/push every ~5 min, configurable remote URL
 
+Bug
 • You’re right. New Search is explicitly turning search on, regardless of the normal default.
 
   That happens here in src/views/ChatView.tsx:1523: when route state comes in as subView: "grounded", the app runs setGroundedEnabled(true). The actual retrieval path

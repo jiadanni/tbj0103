@@ -58,6 +58,9 @@ tbj0103/
 - Routes and navigation are defined in `tauri/src/App.tsx`. Every view file in `src/views/` must have a corresponding route.
 - State management uses **Zustand** (`src/stores/`). Prefer store actions over local component state for anything that persists across navigation.
 - The Tauri app supports split-pane workspace contexts. Components that must work in both single-pane and split-pane layouts should use the scoped helpers in `src/lib/workspacePane.tsx` (`useScopedWorkspace`, `useScopedChat`, `useScopedProjects`) instead of reading only the global active workspace/chat state.
+- In split mode, treat chat session collections, selected project filters, and "new chat" intents as **pane-local state**. Do not let one pane's fetch or effect overwrite the other pane's visible chat list.
+- When toggling split mode, preserve chat selection explicitly. Entering split mode should seed the pane from the current route or active chat, and exiting split mode should restore the primary pane's `chatSessionId` back to the single-pane active chat state.
+- After refreshing projects for a workspace, reconcile stale global and per-pane `projectId` selections immediately. Invalid project filters can make chats appear to disappear even when the underlying sessions still exist.
 - Styling is **Tailwind CSS v3** with `@tailwindcss/typography`. No custom CSS files except `src/styles/`.
 - **Flex overflow pattern:** Any flex-column container whose children need to scroll must have `min-h-0` on every flex item in the height chain. Without it, flex items default to `min-height: auto` and `overflow-y-auto` on a child will never activate. The main content Panel in `Layout.tsx` and the active-chat container in `ChatView.tsx` both rely on this.
 - TypeScript strict mode is on. Run `npx tsc --noEmit` to verify — it must exit 0 before committing.
@@ -185,6 +188,7 @@ npm run tauri dev
 - For Tauri work, manual verification is still important, but `vitest` + `cargo check` + `tsc --noEmit` are the standard gates.
 - When fixing a bug, add or update a Swift test covering the regression if the affected code is in the Swift app.
 - When fixing a Tauri bug, add or update a focused `vitest` regression test when the behavior is practical to cover in `src/tests/`.
+- For split-pane Tauri bugs, prefer a regression test that exercises both single-pane and split-pane flows, especially split-toggle behavior, pane-scoped session loading, and stale project-filter cleanup.
 
 ---
 
