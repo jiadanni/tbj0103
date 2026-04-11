@@ -6,14 +6,14 @@ use tauri::State;
 /// All demo data uses hardcoded IDs so it can be cleanly removed on deactivate.
 
 const DEMO_WS_AI: &str = "demo-workspace-ai-ml-000000000000000";
-const DEMO_WS_SAAS: &str = "demo-workspace-saas-000000000000000";
+const DEMO_WS_JPN: &str = "demo-workspace-japanese-00000000000";
 const DEMO_WS_ROME: &str = "demo-workspace-rome-000000000000000";
 
-const DEMO_WORKSPACE_IDS: [&str; 3] = [DEMO_WS_AI, DEMO_WS_SAAS, DEMO_WS_ROME];
+const DEMO_WORKSPACE_IDS: [&str; 3] = [DEMO_WS_AI, DEMO_WS_JPN, DEMO_WS_ROME];
 
 const DEMO_PROJECT_AI: &str = "demo-project-transformers-000000000000";
-const DEMO_PROJECT_SAAS_METRICS: &str = "demo-project-saas-metrics-00000000000";
-const DEMO_PROJECT_SAAS_PRICING: &str = "demo-project-saas-pricing-00000000000";
+const DEMO_PROJECT_JPN_GRAMMAR: &str = "demo-project-jpn-grammar-00000000000";
+const DEMO_PROJECT_JPN_KANJI: &str = "demo-project-jpn-kanji-0000000000000";
 const DEMO_PROJECT_ROME: &str = "demo-project-rome-0000000000000000000";
 
 #[tauri::command]
@@ -111,61 +111,65 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
-    // ── Workspace 2: SaaS Business ──────────────────────────────────────
+    // ── Workspace 2: Japanese Language Learning ────────────────────────
     conn.execute(
-        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '📊 SaaS Business', ?2, ?3)",
-        rusqlite::params![DEMO_WS_SAAS, now, now],
+        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '🇯🇵 Japanese Language', ?2, ?3)",
+        rusqlite::params![DEMO_WS_JPN, now, now],
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Growth Metrics', 'Understanding subscription economics and growth metrics', '#34C759', 'chart.bar', ?3, ?4)",
-        rusqlite::params![DEMO_PROJECT_SAAS_METRICS, DEMO_WS_SAAS, now, now],
+        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Grammar (JLPT N4)', 'Core grammar patterns for JLPT N4 level', '#34C759', 'text.book.closed', ?3, ?4)",
+        rusqlite::params![DEMO_PROJECT_JPN_GRAMMAR, DEMO_WS_JPN, now, now],
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Pricing Strategy', 'Evaluating pricing models for SaaS products', '#AF52DE', 'tag', ?3, ?4)",
-        rusqlite::params![DEMO_PROJECT_SAAS_PRICING, DEMO_WS_SAAS, now, now],
+        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Kanji Study', 'Learning kanji readings, meanings, and stroke order', '#AF52DE', 'character', ?3, ?4)",
+        rusqlite::params![DEMO_PROJECT_JPN_KANJI, DEMO_WS_JPN, now, now],
     ).map_err(|e| e.to_string())?;
 
-    // Chat: SaaS metrics
-    let session_saas = "demo-chat-session-saas-metrics-00001";
+    // Chat: Japanese grammar
+    let session_jpn = "demo-chat-session-jpn-grammar-000001";
     conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'Key SaaS Metrics', '', ?4, ?5)",
-        rusqlite::params![session_saas, DEMO_WS_SAAS, DEMO_PROJECT_SAAS_METRICS, now, now],
+        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'て-form and its uses', '', ?4, ?5)",
+        rusqlite::params![session_jpn, DEMO_WS_JPN, DEMO_PROJECT_JPN_GRAMMAR, now, now],
     ).map_err(|e| e.to_string())?;
 
-    let saas_msgs: Vec<(&str, &str)> = vec![
-        ("user", "What are the most important SaaS metrics to track?"),
-        ("assistant", "The core SaaS metrics every founder should track:\n\n1. **MRR (Monthly Recurring Revenue)** — your predictable monthly revenue from subscriptions. See [[MRR (Monthly Recurring Revenue)]].\n2. **Churn Rate** — the percentage of customers lost per period. See [[Churn Rate]].\n3. **LTV (Lifetime Value)** — total revenue expected from a customer over their lifetime.\n4. **CAC (Customer Acquisition Cost)** — how much you spend to acquire one customer.\n5. **LTV:CAC Ratio** — should be ≥ 3:1 for a healthy business.\n\nThe relationship between these tells the full story: high MRR growth means nothing if churn is eating it away."),
+    let jpn_msgs: Vec<(&str, &str)> = vec![
+        ("user", "Can you explain the て-form (te-form) in Japanese and when to use it?"),
+        ("assistant", "The **て-form** (te-form) is one of the most versatile conjugations in Japanese. It's formed differently depending on the verb group:\n\n**Group 1 (五段/godan) rules:**\n- う・つ・る → って (買う → 買って)\n- む・ぶ・ぬ → んで (読む → 読んで)\n- く → いて (書く → 書いて)\n- ぐ → いで (泳ぐ → 泳いで)\n- す → して (話す → 話して)\n\n**Group 2 (一段/ichidan):** drop る, add て (食べる → 食べて)\n\n**Irregular:** する → して, 来る → 来て\n\nKey uses include:\n1. **Connecting actions** — 朝起きて、顔を洗って、朝ごはんを食べた (I woke up, washed my face, and ate breakfast)\n2. **Requesting** — て + ください → 見てください (Please look)\n3. **Progressive** — て + いる → 食べている (I am eating)\n4. **Permission** — て + もいい → 行ってもいいですか (May I go?)\n\nSee [[Te-form]] and [[Verb Conjugation]] for the full pattern tables."),
+        ("user", "What about the ている form specifically? I keep confusing ongoing actions with resultant states."),
+        ("assistant", "Great question — this is a common source of confusion! [[ている Form]] has two main meanings:\n\n**1. Ongoing action (progressive):**\n- 食べている → I am eating (right now)\n- 勉強している → I am studying\n\n**2. Resultant state:**\n- 結婚している → I am married (not \"I am marrying\")\n- 知っている → I know (not \"I am knowing\")\n- 住んでいる → I live in... (state, not action)\n\n**The key distinction:** verbs that describe *instantaneous* changes (死ぬ, 結婚する, 座る) tend to express a **resultant state**, while verbs describing *durative* activities (食べる, 走る, 読む) express **ongoing actions**.\n\nA helpful test: if the action can't logically be \"in progress\" (you can't be *in the process of* dying continuously), it's probably a resultant state."),
     ];
-    for (role, content) in &saas_msgs {
+    for (role, content) in &jpn_msgs {
         let mid = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![mid, session_saas, role, content, now],
+            rusqlite::params![mid, session_jpn, role, content, now],
         ).map_err(|e| e.to_string())?;
     }
 
-    // Concepts for SaaS workspace
-    let saas_concepts: Vec<(&str, &str, &str, &str)> = vec![
-        ("demo-concept-mrr-00000000000000000001", "MRR (Monthly Recurring Revenue)", "The normalized monthly revenue from subscriptions, a key SaaS health metric.", "definition"),
-        ("demo-concept-churn-0000000000000000001", "Churn Rate", "The percentage of customers who cancel their subscriptions in a given period.", "definition"),
-        ("demo-concept-ltv-00000000000000000001", "Lifetime Value", "The total revenue expected from a single customer over the duration of their subscription.", "definition"),
-        ("demo-concept-cac-00000000000000000001", "Customer Acquisition Cost", "The total sales and marketing cost to acquire one new customer.", "definition"),
+    // Concepts for Japanese workspace
+    let jpn_concepts: Vec<(&str, &str, &str, &str)> = vec![
+        ("demo-concept-teform-000000000000000001", "Te-form", "The て conjugation — the most versatile verb form in Japanese, used for connecting clauses, requests, progressive, and permission.", "grammar"),
+        ("demo-concept-teiru-0000000000000000001", "ている Form", "Te-form + いる: expresses ongoing actions (progressive) or resultant states depending on verb type.", "grammar"),
+        ("demo-concept-verbconj-00000000000000001", "Verb Conjugation", "Japanese verbs conjugate into multiple forms (dictionary, masu, te, ta, nai, etc.) based on three groups: godan, ichidan, and irregular.", "grammar"),
+        ("demo-concept-kanji-n4-0000000000000001", "JLPT N4 Kanji", "Approximately 300 kanji required for the JLPT N4 level, building on the 100 kanji from N5.", "topic"),
+        ("demo-concept-particles-00000000000000001", "Particles", "Function words (は, が, を, に, で, etc.) that mark grammatical relationships in Japanese sentences.", "grammar"),
     ];
-    for (id, name, desc, ctype) in &saas_concepts {
+    for (id, name, desc, ctype) in &jpn_concepts {
         conn.execute(
             "INSERT OR IGNORE INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, '[]', '[]', '[]', 0, 0, 0, ?6, ?7)",
-            rusqlite::params![id, DEMO_WS_SAAS, name, desc, ctype, now, now],
+            rusqlite::params![id, DEMO_WS_JPN, name, desc, ctype, now, now],
         ).map_err(|e| e.to_string())?;
     }
 
-    let saas_links: Vec<(&str, &str, &str)> = vec![
-        ("demo-concept-churn-0000000000000000001", "demo-concept-mrr-00000000000000000001", "impacts"),
-        ("demo-concept-ltv-00000000000000000001", "demo-concept-cac-00000000000000000001", "related"),
+    let jpn_links: Vec<(&str, &str, &str)> = vec![
+        ("demo-concept-teform-000000000000000001", "demo-concept-verbconj-00000000000000001", "part_of"),
+        ("demo-concept-teiru-0000000000000000001", "demo-concept-teform-000000000000000001", "extends"),
+        ("demo-concept-particles-00000000000000001", "demo-concept-verbconj-00000000000000001", "related"),
     ];
-    for (src, tgt, ltype) in &saas_links {
+    for (src, tgt, ltype) in &jpn_links {
         let lid = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT OR IGNORE INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at) VALUES (?1, ?2, ?3, ?4, 0.8, '', ?5)",
@@ -173,27 +177,29 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
-    // Flashcards for SaaS workspace
-    let saas_cards: Vec<(&str, &str)> = vec![
-        ("What is MRR?", "Monthly Recurring Revenue: the predictable monthly revenue from all active subscriptions."),
-        ("What is a healthy LTV:CAC ratio?", "≥ 3:1 — meaning the lifetime value of a customer should be at least 3× the cost to acquire them."),
+    // Flashcards for Japanese workspace
+    let jpn_cards: Vec<(&str, &str)> = vec![
+        ("What is the te-form of 読む (yomu, to read)?", "読んで (yonde) — む ending verbs change to んで."),
+        ("食べている — ongoing action or resultant state?", "Ongoing action: 'I am eating.' 食べる is a durative verb, so ている expresses an action in progress."),
+        ("結婚している means…?", "'I am married' (resultant state) — not 'I am marrying.' 結婚する is instantaneous, so ている expresses the resulting state."),
+        ("What particle marks the direct object?", "を (wo/o) — e.g. 本を読む (hon wo yomu, read a book)."),
     ];
-    for (front, back) in &saas_cards {
+    for (front, back) in &jpn_cards {
         let cid = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, ease_factor, interval, repetitions, next_review_date, created_at) VALUES (?1, ?2, ?3, ?4, 'ai_generated', 2.5, 1, 0, ?5, ?6)",
-            rusqlite::params![cid, DEMO_WS_SAAS, front, back, today, now],
+            rusqlite::params![cid, DEMO_WS_JPN, front, back, today, now],
         ).map_err(|e| e.to_string())?;
     }
 
-    // Daily notes for SaaS workspace (past 2 days)
-    for days_ago in 0..2i64 {
+    // Daily notes for Japanese workspace (past 3 days)
+    for days_ago in 0..3i64 {
         let date = (chrono::Utc::now() - chrono::Duration::days(days_ago)).format("%Y-%m-%d").to_string();
         let dnid = uuid::Uuid::new_v4().to_string();
-        let content = format!("## Daily Note — {date}\n\nResearching SaaS unit economics. Key takeaway: churn compounds — even 5% monthly churn means losing half your customers in a year.\n\n- Studied MRR vs ARR differences\n- Created flashcards on LTV:CAC ratios\n- Linked Churn Rate → MRR in knowledge graph");
+        let content = format!("## Daily Note — {date}\n\nPracticed て-form conjugation today. Getting faster at the godan verb rules but still tripping on ぐ → いで.\n\n- Drilled 20 flashcards (vocab + kanji)\n- Chat session on ている progressive vs resultant states\n- Added concept links between Te-form → Verb Conjugation");
         conn.execute(
             "INSERT OR IGNORE INTO daily_notes (id, workspace_id, date, content, mood, productivity, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 7, 8, ?5, ?6)",
-            rusqlite::params![dnid, DEMO_WS_SAAS, date, content, now, now],
+            rusqlite::params![dnid, DEMO_WS_JPN, date, content, now, now],
         ).map_err(|e| e.to_string())?;
     }
 
