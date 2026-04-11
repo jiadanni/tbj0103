@@ -9,6 +9,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { api, type ProjectNote } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useScopedWorkspace } from "../lib/workspacePane";
 import SmartTextEditor from "../components/SmartTextEditor";
 import DailyNotesView from "./DailyNotesView";
 import type { NotesSubView } from "../components/navigationItems";
@@ -25,7 +26,7 @@ export default function NoteEditorView() {
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
-  const { activeProjectId } = useWorkspaceStore();
+  const { activeProjectId } = useScopedWorkspace();
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const [notes, setNotes] = useState<ProjectNote[]>([]);
   const [selected, setSelected] = useState<ProjectNote | null>(null);

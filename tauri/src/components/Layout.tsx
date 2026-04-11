@@ -71,8 +71,11 @@ function workspaceTabClassName({
 }
 
 function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
-  const { workspaces, panes, setPaneWorkspace, setActivePaneId } = useWorkspaceStore();
-  const activeWorkspaceId = panes[paneId].workspaceId ?? "";
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
+  const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
+  const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
+  const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
+  const activeWorkspaceId = paneWorkspaceId ?? "";
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -171,10 +174,13 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
 }
 
 function SplitTitlebarWorkspaceDropdown({ paneId }: { paneId: PaneId }) {
-  const { workspaces, panes, setPaneWorkspace, setActivePaneId } = useWorkspaceStore();
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
+  const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
+  const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
+  const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
   const workspaceOptions = workspaces.map((workspace) => ({ value: workspace.id, label: workspace.name }));
-  const selectedWorkspaceId = workspaceOptions.some((workspace) => workspace.value === panes[paneId].workspaceId)
-    ? panes[paneId].workspaceId ?? workspaceOptions[0]?.value ?? ""
+  const selectedWorkspaceId = workspaceOptions.some((workspace) => workspace.value === paneWorkspaceId)
+    ? paneWorkspaceId ?? workspaceOptions[0]?.value ?? ""
     : workspaceOptions[0]?.value ?? "";
 
   return (
@@ -218,7 +224,8 @@ function SingleTitlebarWorkspaceDropdown({
 }
 
 function SplitTitlebarWorkspaceNavigation() {
-  const { splitSizes, workspaceNavigation } = useWorkspaceStore();
+  const splitSizes = useWorkspaceStore((s) => s.splitSizes);
+  const workspaceNavigation = useWorkspaceStore((s) => s.workspaceNavigation);
   const resolvedSplitWorkspaceNavigation = resolveSplitWorkspaceNavigation(workspaceNavigation);
   const primaryPanePaddingClass = (isLinux ? "pl-[52px]" : isMac ? "pl-[80px]" : "pl-2") + " pr-2";
   const secondaryPaneTrailingInset = isLinux ? "pr-[192px]" : "pr-24";
@@ -1065,7 +1072,11 @@ export default function Layout() {
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
   const activeChatId = useChatStore((state) => state.activeChatId);
   const splitMode = useWorkspaceStore((state) => state.splitMode);
-  const { enterSplitMode, exitSplitMode, setPaneView, setPaneChatSession, workspaces } = useWorkspaceStore();
+  const enterSplitMode = useWorkspaceStore((s) => s.enterSplitMode);
+  const exitSplitMode = useWorkspaceStore((s) => s.exitSplitMode);
+  const setPaneView = useWorkspaceStore((s) => s.setPaneView);
+  const setPaneChatSession = useWorkspaceStore((s) => s.setPaneChatSession);
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const setDemo = useWorkspaceStore((state) => state.setDemo);

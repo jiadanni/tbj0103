@@ -2315,7 +2315,9 @@ export default function ChatView() {
   // Load active topic signature when workspace changes
   useEffect(() => {
     if (effectiveWorkspaceId) {
-      const cachedWorkspace = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId);
+      const cachedWorkspace = useWorkspaceStore.getState().workspaces.find(
+        (workspace) => workspace.id === effectiveWorkspaceId
+      );
       if (cachedWorkspace?.topic_signature) {
         setActiveTopicSignature(cachedWorkspace.topic_signature);
       } else {
@@ -2328,7 +2330,7 @@ export default function ChatView() {
     } else {
       setActiveTopicSignature(null);
     }
-  }, [effectiveWorkspaceId, setActiveTopicSignature, setWorkspaceTopicSignature, workspaces]);
+  }, [effectiveWorkspaceId, setActiveTopicSignature, setWorkspaceTopicSignature]);
 
   useEffect(() => {
     if (!effectiveWorkspaceId) { return; }
