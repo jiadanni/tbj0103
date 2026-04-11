@@ -115,6 +115,16 @@ function persistSplitLayout(state: Pick<WorkspaceStore, "splitMode" | "splitSize
   }));
 }
 
+function normalizeNavigationPresentation(
+  value: NavigationPresentation | null | undefined,
+  fallback: NavigationPresentation,
+): NavigationPresentation {
+  if (value === "icon-bar") {
+    return "sidebar";
+  }
+  return value ?? fallback;
+}
+
 function sortWorkspaces(workspaces: Workspace[], order: WorkspaceSortOrder = "name-asc"): Workspace[] {
   return [...workspaces].sort((a, b) => {
     switch (order) {
@@ -140,6 +150,20 @@ function sortWorkspaces(workspaces: Workspace[], order: WorkspaceSortOrder = "na
           || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
     }
   });
+}
+
+function findFallbackWorkspaceId(
+  workspaces: Workspace[],
+  preferredWorkspaceId: string | null,
+  excludeWorkspaceId?: string | null,
+): string | null {
+  if (preferredWorkspaceId && workspaces.some((workspace) => workspace.id === preferredWorkspaceId)) {
+    return preferredWorkspaceId;
+  }
+
+  return workspaces.find((workspace) => workspace.id !== excludeWorkspaceId)?.id
+    ?? workspaces[0]?.id
+    ?? null;
 }
 
 interface WorkspaceStore {
@@ -194,7 +218,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
   const storedSplitLayout = readStoredSplitLayout();
   const readNavigationSetting = (key: "workspaceNavigation" | "sectionNavigation", fallback: NavigationPresentation) => {
     const raw = window.localStorage.getItem(key) as NavigationPresentation | null;
-    return raw ?? fallback;
+    return normalizeNavigationPresentation(raw, fallback);
   };
   const readSplitNavigationSetting = (
     key: "splitWorkspaceNavigation" | "splitSectionNavigation",
@@ -240,24 +264,53 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     panes: storedSplitLayout.panes,
     setWorkspaces: (workspaces) => set((state) => {
       const sortedWorkspaces = sortWorkspaces(workspaces, state.workspaceSortOrder);
-      let activeWorkspaceId = state.activeWorkspaceId;
-      if (!activeWorkspaceId && sortedWorkspaces.length > 0) {
-        activeWorkspaceId = sortedWorkspaces[0].id;
-      }
+      const activeWorkspaceId = findFallbackWorkspaceId(sortedWorkspaces, state.activeWorkspaceId);
+      const primaryWorkspaceId = findFallbackWorkspaceId(
+        sortedWorkspaces,
+        state.panes.primary.workspaceId ?? activeWorkspaceId,
+      );
+      const secondaryWorkspaceId = findFallbackWorkspaceId(
+        sortedWorkspaces,
+        state.panes.secondary.workspaceId,
+        primaryWorkspaceId,
+      );
+      const activeWorkspaceChanged = activeWorkspaceId !== state.activeWorkspaceId;
+      const primaryWorkspaceChanged = primaryWorkspaceId !== state.panes.primary.workspaceId;
+      const secondaryWorkspaceChanged = secondaryWorkspaceId !== state.panes.secondary.workspaceId;
 
       const panes = {
         primary: {
           ...state.panes.primary,
-          workspaceId: state.panes.primary.workspaceId ?? activeWorkspaceId,
+          workspaceId: primaryWorkspaceId,
+          projectId: primaryWorkspaceChanged ? null : state.panes.primary.projectId,
+          chatSessionId: primaryWorkspaceChanged ? null : state.panes.primary.chatSessionId,
+          noteSelection: primaryWorkspaceChanged ? null : state.panes.primary.noteSelection,
         },
         secondary: {
           ...state.panes.secondary,
-          workspaceId: state.panes.secondary.workspaceId ?? (sortedWorkspaces.find((ws) => ws.id !== (state.panes.primary.workspaceId ?? activeWorkspaceId))?.id ?? activeWorkspaceId),
+          workspaceId: secondaryWorkspaceId,
+          projectId: secondaryWorkspaceChanged ? null : state.panes.secondary.projectId,
+          chatSessionId: secondaryWorkspaceChanged ? null : state.panes.secondary.chatSessionId,
+          noteSelection: secondaryWorkspaceChanged ? null : state.panes.secondary.noteSelection,
         },
       };
 
+      if (activeWorkspaceChanged) {
+        useChatStore.getState().setActiveChatId(null);
+      }
+
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
-      return { workspaces: sortedWorkspaces, activeWorkspaceId, panes };
+      return {
+        workspaces: sortedWorkspaces,
+        activeWorkspaceId,
+        activeProjectId: activeWorkspaceChanged ? null : state.activeProjectId,
+        panes,
+        projectsByWorkspace: Object.fromEntries(
+          Object.entries(state.projectsByWorkspace).filter(([workspaceId]) =>
+            sortedWorkspaces.some((workspace) => workspace.id === workspaceId)
+          )
+        ),
+      };
     }),
     setActiveWorkspaceId: (activeWorkspaceId) => set((state) => {
       const workspaceChanged = activeWorkspaceId !== state.activeWorkspaceId;
@@ -336,12 +389,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       ),
     })),
     setWorkspaceNavigation: (workspaceNavigation) => {
-      window.localStorage.setItem("workspaceNavigation", workspaceNavigation);
-      set({ workspaceNavigation });
+      const normalized = normalizeNavigationPresentation(workspaceNavigation, "sidebar");
+      window.localStorage.setItem("workspaceNavigation", normalized);
+      set({ workspaceNavigation: normalized });
     },
     setSectionNavigation: (sectionNavigation) => {
-      window.localStorage.setItem("sectionNavigation", sectionNavigation);
-      set({ sectionNavigation });
+      const normalized = normalizeNavigationPresentation(sectionNavigation, "sidebar");
+      window.localStorage.setItem("sectionNavigation", normalized);
+      set({ sectionNavigation: normalized });
     },
     setSplitWorkspaceNavigation: (splitWorkspaceNavigation) => {
       window.localStorage.setItem("splitWorkspaceNavigation", splitWorkspaceNavigation);

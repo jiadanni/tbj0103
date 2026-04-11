@@ -37,8 +37,8 @@ export default function ComposerSuggestionRows({
                   onClick={() => onSuggestionClick(suggestion)}
                   className={`inline-flex items-center rounded-full border px-3.5 py-2 text-left text-[12px] font-semibold leading-none tracking-[0.01em] shadow-[0_10px_26px_-20px_rgba(0,0,0,0.9)] transition-all duration-150 hover:-translate-y-px ${
                     isImmediate
-                      ? "border-[rgba(var(--accent-color-rgb),0.32)] bg-[rgba(var(--accent-color-rgb),0.08)] text-[rgba(255,255,255,0.94)] hover:border-[rgba(var(--accent-color-rgb),0.46)] hover:bg-[rgba(var(--accent-color-rgb),0.14)]"
-                      : "border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.8)] hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.06)] hover:text-white"
+                      ? "border-[rgba(255,255,255,0.1)] bg-[rgba(var(--accent-color-rgb),0.05)] text-[rgba(255,255,255,0.94)] hover:border-[rgba(var(--accent-color-rgb),0.3)] hover:bg-[rgba(var(--accent-color-rgb),0.12)]"
+                      : "border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.8)] hover:border-[rgba(var(--accent-color-rgb),0.22)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] hover:text-white"
                   } disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0`}
                   title={isImmediate ? "Send immediately" : "Add to composer"}
                 >

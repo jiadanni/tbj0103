@@ -5,16 +5,18 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { message } from "@tauri-apps/plugin-dialog";
 import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, Info } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
 import { classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB } from "../lib/modelSizing";
 import { ACCENT_COLORS, THEMES, normalizeTheme } from "../lib/theme";
 import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore";
-import { type NavigationPresentation, type SplitNavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
+import { type NavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import ImportSettingsSection from "./ImportSettingsSection";
+import CompactMenuSelect from "../components/CompactMenuSelect";
 import { MOD_KEY, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
 
@@ -77,8 +79,12 @@ function formatSystemName(specs: SystemSpecs): string {
   return [specs.os_name, specs.os_version].filter(Boolean).join(" ");
 }
 
+function getOllamaModelParamsB(model: OllamaModel): number | null {
+  return parseModelParamsB(model.details?.parameter_size ?? model.name);
+}
+
 function ollamaModelDetails(model: OllamaModel, systemSpecs: SystemSpecs | null): string {
-  const params = parseModelParamsB(model.name);
+  const params = getOllamaModelParamsB(model);
   const details: string[] = [];
   const formattedParams = formatParams(params);
   if (formattedParams) {
@@ -91,11 +97,11 @@ function ollamaModelDetails(model: OllamaModel, systemSpecs: SystemSpecs | null)
     const guidance = inferHardwareModelGuidance(systemSpecs);
     const fit = classifyModelFit(params, guidance.recommendedMaxParamsB);
     if (fit === "good") {
-      details.push("fits this machine");
+      details.push("recommended");
     } else if (fit === "stretch") {
-      details.push("stretch");
+      details.push("usable");
     } else if (fit === "too-large") {
-      details.push("likely heavy");
+      details.push("demanding");
     }
   }
 
@@ -139,15 +145,13 @@ export default function PreferencesView() {
   const location = useLocation();
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
-  const splitWorkspaceNavigation = useWorkspaceStore((state) => state.splitWorkspaceNavigation);
-  const splitSectionNavigation = useWorkspaceStore((state) => state.splitSectionNavigation);
   const workspaceSortOrder = useWorkspaceStore((state) => state.workspaceSortOrder);
   const setWorkspaceNavigation = useWorkspaceStore((state) => state.setWorkspaceNavigation);
   const setSectionNavigation = useWorkspaceStore((state) => state.setSectionNavigation);
-  const setSplitWorkspaceNavigation = useWorkspaceStore((state) => state.setSplitWorkspaceNavigation);
   const incrementModelRefreshCounter = useSettingsStore((state) => state.incrementModelRefreshCounter);
-  const setSplitSectionNavigation = useWorkspaceStore((state) => state.setSplitSectionNavigation);
   const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
+  const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
+  const setDemo = useWorkspaceStore((state) => state.setDemo);
 
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
   const [activeTab, setActiveTab] = useState<PreferencesSection>(() => (window.localStorage.getItem("preferencesActiveTab") as PreferencesSection) || "app");
@@ -204,6 +208,23 @@ export default function PreferencesView() {
     : null;
   const ollamaModelNames = ollamaModels.map((model) => model.name);
   const nonEmbeddingOllamaModels = ollamaModels.filter((model) => !model.name.toLowerCase().includes("embed"));
+  const selectableOllamaModels = nonEmbeddingOllamaModels.filter((model) => {
+    const matchingAiModel = aiModels.find((aiModel) => aiModel.model_id === model.name);
+    return matchingAiModel?.enabled !== false;
+  });
+  const backgroundTaskModelOptions = [
+    { value: "", label: "Use preferred chat model" },
+    ...selectableOllamaModels.map((model) => {
+      const matchingAiModel = aiModels.find((aiModel) => aiModel.model_id === model.name);
+      const customLabel = modelLabels[model.name]?.trim();
+      const label = customLabel || matchingAiModel?.name || model.name;
+
+      return {
+        value: model.name,
+        label,
+      };
+    }),
+  ];
 
   async function refreshLlamacppModels(paths: string[]) {
     if (paths.length === 0) {
@@ -356,6 +377,24 @@ export default function PreferencesView() {
       ? dbSettings.quick_search_models.filter((value) => value !== modelId)
       : [...dbSettings.quick_search_models, modelId];
     set("quick_search_models", next);
+    incrementModelRefreshCounter();
+  }
+
+  async function toggleOllamaModelVisibility(model: OllamaModel) {
+    const matchingAiModel = aiModels.find((aiModel) => aiModel.model_id === model.name);
+
+    if (matchingAiModel) {
+      await api.aiModel.update(matchingAiModel.id, { enabled: !matchingAiModel.enabled });
+    } else {
+      const customLabel = modelLabels[model.name]?.trim();
+      const defaultName = customLabel || model.name.split(":")[0] || model.name;
+      await api.aiModel.add(defaultName, model.name, {
+        provider: "ollama",
+        enabled: false,
+      });
+    }
+
+    loadAiModels();
     incrementModelRefreshCounter();
   }
 
@@ -528,7 +567,7 @@ export default function PreferencesView() {
                     ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
                     : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                 }`
-              : `w-full rounded-xl px-3 py-2 text-left text-sm ${
+              : `w-full rounded-xl px-2.5 py-2 text-left text-sm ${
                   activeTab === id
                     ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
                     : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
@@ -555,6 +594,7 @@ export default function PreferencesView() {
     : saveStatus === "saved"
     ? "text-emerald-400"
     : "text-[var(--text-muted)]";
+  const contentWidthClassName = activeTab === "ai" ? "max-w-5xl" : "max-w-lg";
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -575,7 +615,7 @@ export default function PreferencesView() {
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {settingsNavLayout === "side-tabs" && (
-          <aside className="w-60 shrink-0 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] px-3 py-4 overflow-y-auto">
+          <aside className="w-52 shrink-0 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2.5 py-4 overflow-y-auto">
             {settingsTabButtons}
           </aside>
         )}
@@ -583,7 +623,7 @@ export default function PreferencesView() {
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
       {(activeTab === "app" || activeTab === "navigation" || activeTab === "appearance" || activeTab === "chat" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
-        <div className="max-w-lg space-y-5">
+        <div className={`${contentWidthClassName} space-y-5`}>
 
           {/* ── App ── */}
           {activeTab === "app" && (
@@ -641,6 +681,31 @@ export default function PreferencesView() {
                     onToggle={() => set("keep_running_in_tray", !dbSettings.keep_running_in_tray)}
                   />
                 </div>
+
+                {!isDemoMode && (
+                  <div className="flex items-center justify-between py-1">
+                    <div>
+                      <p className="text-sm text-[var(--text-secondary)]">Launch Demo Mode</p>
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                        Explore Aetherium with pre-populated examples and a fully featured workspace.
+                      </p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const demoWorkspaceId = await api.demo.activate();
+                          setDemo(true, demoWorkspaceId);
+                          window.location.reload();
+                        } catch {
+                          await message("Failed to activate demo mode.", { title: "Error", kind: "error" });
+                        }
+                      }}
+                      className="rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
+                    >
+                      Start Demo
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
@@ -696,7 +761,6 @@ export default function PreferencesView() {
                   <div className="grid gap-2 sm:grid-cols-2">
                     {[
                       { id: "sidebar", label: "Sidebar", description: "Keep workspace switching in the left rail beside the main content." },
-                      { id: "icon-bar", label: "Icon Bar", description: "Compact icon-only sidebar without text labels." },
                       { id: "top-tabs", label: "Top Tabs", description: "Show workspaces as visible tabs across the top." },
                       { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact workspace picker in the top bar." },
                     ].map((option) => (
@@ -721,7 +785,6 @@ export default function PreferencesView() {
                   <div className="grid gap-2 sm:grid-cols-2">
                     {[
                       { id: "sidebar", label: "Sidebar", description: "Keep section navigation in the left rail." },
-                      { id: "icon-bar", label: "Icon Bar", description: "Compact icon-only sidebar without text labels." },
                       { id: "top-tabs", label: "Top Tabs", description: "Show sections as visible tabs across the top." },
                       { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact section picker in the top bar." },
                     ].map((option) => (
@@ -746,56 +809,19 @@ export default function PreferencesView() {
                 <div>
                   <h3 className="text-sm font-semibold text-[var(--text-primary)]">Split view</h3>
                   <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Override how navigation is shown when a secondary pane is open.
+                    Split view now follows the main layout automatically to keep navigation predictable.
                   </p>
                 </div>
-
-                <div>
-                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Split Workspace Navigation</label>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {[
-                      { id: "match-main", label: "Same", description: "Follow the main workspace navigation style by default." },
-                      { id: "tabs", label: "Tabs", description: "Always show workspace switching as tabs in split view." },
-                      { id: "dropdown", label: "Dropdown", description: "Always show workspace switching as a dropdown in split view." },
-                    ].map((option) => (
-                      <button
-                        key={option.id}
-                        onClick={() => setSplitWorkspaceNavigation(option.id as SplitNavigationPresentation)}
-                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                          splitWorkspaceNavigation === option.id
-                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                        }`}
-                      >
-                        <div className="text-xs font-medium">{option.label}</div>
-                        <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Split Section Navigation</label>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {[
-                      { id: "match-main", label: "Same", description: "Follow the main section navigation style by default." },
-                      { id: "tabs", label: "Tabs", description: "Always show section navigation as tabs in split view." },
-                      { id: "dropdown", label: "Dropdown", description: "Always show section navigation as a dropdown in split view." },
-                    ].map((option) => (
-                      <button
-                        key={option.id}
-                        onClick={() => setSplitSectionNavigation(option.id as SplitNavigationPresentation)}
-                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                          splitSectionNavigation === option.id
-                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                        }`}
-                      >
-                        <div className="text-xs font-medium">{option.label}</div>
-                        <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
-                      </button>
-                    ))}
-                  </div>
+                <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]/55 px-3.5 py-3 text-xs text-[var(--text-secondary)]">
+                  <p>
+                    Workspace switching mirrors the main layout: <span className="font-medium text-[var(--text-primary)]">{workspaceNavigation === "top-dropdown" ? "Dropdown" : "Tabs"}</span>.
+                  </p>
+                  <p className="mt-2">
+                    Section switching mirrors the main layout: <span className="font-medium text-[var(--text-primary)]">{sectionNavigation === "top-dropdown" ? "Dropdown" : "Tabs"}</span>.
+                  </p>
+                  <p className="mt-2 text-[var(--text-muted)]">
+                    Sidebar layouts collapse to tabs in split view because each pane uses shared top chrome.
+                  </p>
                 </div>
               </div>
 
@@ -965,36 +991,143 @@ export default function PreferencesView() {
           {/* ── AI / Ollama ── */}
           {activeTab === "ai" && (
             <>
-              <div className="rounded-2xl border border-[var(--accent-color)]/25 bg-[var(--accent-color)]/8 p-4 space-y-4">
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Detected hardware guidance</p>
+                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                      Based on detected memory and available compute.
+                    </p>
+                  </div>
+                  <button
+                    onClick={loadSystemSpecs}
+                    disabled={systemSpecsLoading}
+                    className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {systemSpecsLoading ? <RefreshCw size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                    Refresh specs
+                  </button>
+                </div>
+
+                {systemSpecs ? (
+                  <>
+                    {systemGuidance && (
+                      <div className="rounded-lg border border-[var(--accent-color)]/20 bg-[var(--accent-color)]/8 px-3 py-2.5">
+                        <p className="text-[11px] font-semibold text-[var(--text-primary)]">{systemGuidance.headline}</p>
+                        <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{systemGuidance.summary}</p>
+                        <p className="mt-1 text-[10px] text-[var(--text-secondary)]">{systemGuidance.basis}</p>
+                      </div>
+                    )}
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">System</p>
+                        <p className="mt-0.5 text-xs text-[var(--text-primary)]">{formatSystemName(systemSpecs)}</p>
+                        <p className="text-[10px] text-[var(--text-secondary)]">{systemSpecs.cpu_arch}</p>
+                      </div>
+                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">CPU</p>
+                        <p className="mt-0.5 text-xs text-[var(--text-primary)]">{systemSpecs.cpu_brand}</p>
+                        <p className="text-[10px] text-[var(--text-secondary)]">
+                          {systemSpecs.physical_cores ? `${systemSpecs.physical_cores} physical` : "Physical cores unavailable"} / {systemSpecs.logical_cores} logical
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">Memory</p>
+                        <p className="mt-0.5 text-xs text-[var(--text-primary)]">{formatBytes(systemSpecs.total_memory_bytes)} total</p>
+                        <p className="text-[10px] text-[var(--text-secondary)]">{formatBytes(systemSpecs.available_memory_bytes)} available now</p>
+                      </div>
+                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">
+                          {systemSpecs.gpu_name ? "GPU" : "Swap"}
+                        </p>
+                        <p className="mt-0.5 text-xs text-[var(--text-primary)]">
+                          {systemSpecs.gpu_name
+                            ? systemSpecs.gpu_name
+                            : `${formatBytes(systemSpecs.total_swap_bytes)} configured`}
+                        </p>
+                        <p className="text-[10px] text-[var(--text-secondary)]">
+                          {systemSpecs.gpu_name
+                            ? (systemSpecs.gpu_memory_bytes
+                              ? `${formatBytes(systemSpecs.gpu_memory_bytes)} VRAM`
+                              : (systemSpecs.gpu_detection_source || "GPU memory unavailable"))
+                            : (systemSpecs.host_name ? systemSpecs.host_name : (systemSpecs.kernel_version || "Kernel version unavailable"))}
+                        </p>
+                      </div>
+                    </div>
+
+                    {systemGuidance?.caution && (
+                      <p className="text-[10px] text-[var(--text-secondary)]">{systemGuidance.caution}</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[11px] text-[var(--text-secondary)]">
+                    {systemSpecsLoading ? "Reading local system specs..." : (systemSpecsError || "System specs are not available yet.")}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-[var(--accent-color)]/25 bg-[var(--accent-color)]/8 p-3.5 space-y-3">
                 <div className="flex items-center gap-1.5">
                   <p className="text-sm font-semibold text-[var(--text-primary)]">Ollama models</p>
                   <span
                     title="Rename your installed models so they are easier to recognize throughout the app."
-                    className="inline-flex items-center text-[var(--text-muted)]"
+                    className="inline-flex items-center text-[var(--text-secondary)]"
                   >
                     <Info size={13} />
                   </span>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {ollamaModels.length === 0 ? (
-                    <p className="text-[11px] text-[var(--text-muted)]">No Ollama models found to label yet.</p>
+                    <p className="text-[11px] text-[var(--text-secondary)]">No Ollama models found to label yet.</p>
                   ) : (
-                    nonEmbeddingOllamaModels.map((model) => (
-                      <div key={model.name} className="grid gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] sm:items-center">
+                    nonEmbeddingOllamaModels.map((model) => {
+                      const matchingAiModel = aiModels.find((aiModel) => aiModel.model_id === model.name);
+                      const hiddenFromSelection = matchingAiModel?.enabled === false;
+                      const speedStat = modelSpeedStats[model.name];
+                      const speedLabels = formatModelSpeed(speedStat);
+                      const modelParams = getOllamaModelParamsB(model);
+                      const modelFit = systemGuidance
+                        ? classifyModelFit(modelParams, systemGuidance.recommendedMaxParamsB)
+                        : "unknown";
+                      const fitDotClassName = modelFit === "good"
+                        ? "bg-emerald-400"
+                        : modelFit === "stretch"
+                        ? "bg-amber-400"
+                        : modelFit === "too-large"
+                        ? "bg-red-400"
+                        : "bg-[var(--text-muted)]";
+                      const fitDotTitle = modelFit === "good"
+                        ? "Recommended for this system"
+                        : modelFit === "stretch"
+                        ? "Usable, but closer to the upper range for this system"
+                        : modelFit === "too-large"
+                        ? "Likely demanding for this system"
+                        : "Fit guidance unavailable";
+
+                      return (
+                      <div
+                        key={model.name}
+                        className="grid gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5 md:grid-cols-[minmax(0,320px)_minmax(180px,1fr)_auto] md:items-center"
+                      >
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-medium text-[var(--text-primary)]" title={model.name}>{model.name}</p>
-                          <p className="text-[10px] text-[var(--text-muted)]">{ollamaModelDetails(model, systemSpecs)}</p>
-                        </div>
-                        <div>
-                          <div className="mb-1 flex items-center gap-1.5">
-                            <label className="text-[11px] font-medium text-[var(--text-secondary)]">Custom label</label>
-                            <span
-                              title="Used in chat pickers, model badges, and the priority list. Leave blank to keep the original model name."
-                              className="inline-flex items-center text-[var(--text-muted)]"
-                            >
-                              <Info size={12} />
-                            </span>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${fitDotClassName}`} title={fitDotTitle} />
+                            <p className="truncate text-[13px] font-medium text-[var(--text-primary)]" title={model.name}>{model.name}</p>
                           </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            <span className="text-[10px] text-[var(--text-secondary)]">{ollamaModelDetails(model, systemSpecs)}</span>
+                            {speedLabels && (
+                              <span
+                                className="text-[10px] text-[var(--text-secondary)] tabular-nums"
+                                title={`Average generation speed across ${speedStat.chat_count} chats. Weighted overall speed shown after the slash.`}
+                              >
+                                {`${speedLabels.chatAverage} / ${speedLabels.weighted}`}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="min-w-0">
                           <input
                             value={modelLabels[model.name] || ""}
                             onChange={(e) => setModelLabel(model.name, e.target.value)}
@@ -1005,15 +1138,30 @@ export default function PreferencesView() {
                                 loadAiModels();
                               }
                             }}
-                            placeholder="Set label…"
-                            className="h-10 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors focus:border-[var(--accent-color)]"
+                            placeholder="Custom label"
+                            aria-label={`Custom label for ${model.name}`}
+                            className="h-9 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors focus:border-[var(--accent-color)]"
                           />
                         </div>
+                        <div className="flex items-center md:justify-end">
+                          <button
+                            type="button"
+                            onClick={() => { void toggleOllamaModelVisibility(model); }}
+                            className={`inline-flex h-7 items-center rounded-full px-2 text-[10px] font-medium whitespace-nowrap transition-colors ${
+                              hiddenFromSelection
+                                ? "bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                                : "bg-[var(--accent-color)]/12 text-[var(--accent-color)] hover:bg-[var(--accent-color)]/18"
+                            }`}
+                            title={hiddenFromSelection ? "Show this Ollama model in model selectors" : "Hide this Ollama model from model selectors"}
+                          >
+                            {hiddenFromSelection ? "Hidden" : "Visible"}
+                          </button>
+                        </div>
                       </div>
-                    ))
+                    );})
                   )}
                 </div>
-                <p className="text-[10px] text-[var(--text-muted)]">
+                <p className="text-[10px] text-[var(--text-secondary)]">
                   Priority list names stay in sync automatically.
                 </p>
               </div>
@@ -1256,79 +1404,6 @@ export default function PreferencesView() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Detected hardware guidance</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Aetherium uses unified memory on Apple Silicon, detected GPU memory when available, and otherwise falls back to conservative RAM and CPU estimates.
-                    </p>
-                  </div>
-                  <button
-                    onClick={loadSystemSpecs}
-                    disabled={systemSpecsLoading}
-                    className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
-                  >
-                    {systemSpecsLoading ? <RefreshCw size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-                    Refresh specs
-                  </button>
-                </div>
-
-                {systemSpecs ? (
-                  <>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">System</p>
-                        <p className="mt-1 text-sm text-[var(--text-primary)]">{formatSystemName(systemSpecs)}</p>
-                        <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{systemSpecs.cpu_arch}</p>
-                      </div>
-                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">CPU</p>
-                        <p className="mt-1 text-sm text-[var(--text-primary)]">{systemSpecs.cpu_brand}</p>
-                        <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
-                          {systemSpecs.physical_cores ? `${systemSpecs.physical_cores} physical` : "Physical cores unavailable"} / {systemSpecs.logical_cores} logical
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Memory</p>
-                        <p className="mt-1 text-sm text-[var(--text-primary)]">{formatBytes(systemSpecs.total_memory_bytes)} total</p>
-                        <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{formatBytes(systemSpecs.available_memory_bytes)} available now</p>
-                      </div>
-                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
-                          {systemSpecs.gpu_name ? "GPU" : "Swap"}
-                        </p>
-                        <p className="mt-1 text-sm text-[var(--text-primary)]">
-                          {systemSpecs.gpu_name
-                            ? systemSpecs.gpu_name
-                            : `${formatBytes(systemSpecs.total_swap_bytes)} configured`}
-                        </p>
-                        <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
-                          {systemSpecs.gpu_name
-                            ? (systemSpecs.gpu_memory_bytes
-                              ? `${formatBytes(systemSpecs.gpu_memory_bytes)} VRAM${systemSpecs.gpu_detection_source ? ` via ${systemSpecs.gpu_detection_source}` : ""}`
-                              : (systemSpecs.gpu_detection_source || "GPU memory unavailable"))
-                            : (systemSpecs.host_name ? systemSpecs.host_name : (systemSpecs.kernel_version || "Kernel version unavailable"))}
-                        </p>
-                      </div>
-                    </div>
-
-                    {systemGuidance && (
-                      <div className="rounded-lg border border-[var(--accent-color)]/20 bg-[var(--accent-color)]/8 px-3 py-3">
-                        <p className="text-[11px] font-semibold text-[var(--text-primary)]">{systemGuidance.headline}</p>
-                        <p className="mt-1 text-[11px] text-[var(--text-secondary)]">{systemGuidance.summary}</p>
-                        <p className="mt-1 text-[10px] text-[var(--text-muted)]">{systemGuidance.basis}</p>
-                        <p className="mt-1 text-[10px] text-[var(--text-muted)]">{systemGuidance.caution}</p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-[11px] text-[var(--text-muted)]">
-                    {systemSpecsLoading ? "Reading local system specs..." : (systemSpecsError || "System specs are not available yet.")}
-                  </p>
-                )}
-              </div>
-
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
                 <div>
                   <h3 className="text-sm font-semibold text-[var(--text-primary)]">Model defaults</h3>
@@ -1337,21 +1412,16 @@ export default function PreferencesView() {
                   </p>
                 </div>
 
-                <div>
+              <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-1 block">Background Task Model</label>
-                <div className="relative">
-                  <select
-                    value={dbSettings.background_model}
-                    onChange={(e) => set("background_model", e.target.value)}
-                    className={pillSelectClassName}
-                  >
-                    <option value="">Use preferred chat model</option>
-                    {nonEmbeddingOllamaModels.map((m) => (
-                      <option key={m.name} value={m.name}>{m.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                </div>
+                <CompactMenuSelect
+                  label="Background Task Model"
+                  value={dbSettings.background_model}
+                  options={backgroundTaskModelOptions}
+                  onChange={(value) => set("background_model", value)}
+                  buttonClassName="h-10 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] shadow-sm hover:border-[var(--accent-color)] focus-visible:border-[var(--accent-color)]"
+                  menuClassName="max-h-72 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-xl"
+                />
                 <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
                   Used for lightweight background AI work like topic clouds and workspace tagging.
                 </p>
@@ -1647,17 +1717,17 @@ export default function PreferencesView() {
                                   )}
                                   {modelFit === "good" && (
                                     <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">
-                                      good fit
+                                      recommended
                                     </span>
                                   )}
                                   {modelFit === "stretch" && (
                                     <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-400">
-                                      stretch
+                                      usable
                                     </span>
                                   )}
                                   {modelFit === "too-large" && (
                                     <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-400">
-                                      likely heavy
+                                      demanding
                                     </span>
                                   )}
                                 </div>
