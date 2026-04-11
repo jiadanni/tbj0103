@@ -1,9 +1,10 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { api } from "@/lib/api";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   confirm: vi.fn(),
@@ -67,6 +68,7 @@ vi.mock("@/views/FlashcardReviewView", () => ({ default: () => <div>Flashcards V
 vi.mock("@/views/ProjectDashboardView", () => ({ default: () => <div>Project Dashboard</div> }));
 vi.mock("@/views/PreferencesView", () => ({ default: () => <div>Preferences View</div> }));
 vi.mock("@/views/DocumentBrowserView", () => ({ default: () => <div>Documents View</div> }));
+vi.mock("@/views/HistoryView", () => ({ default: () => <div>History View</div> }));
 vi.mock("@/views/LearningPathView", () => ({ default: () => <div>Learning Path View</div> }));
 vi.mock("@/views/MemoryView", () => ({ default: () => <div>Memory View</div> }));
 vi.mock("@/views/NoteEditorView", () => ({ default: () => <div>Notes View</div> }));
@@ -102,6 +104,7 @@ describe("Layout", () => {
     useSettingsStore.setState({ switchWorkspaceToChat: false });
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1280 });
     vi.restoreAllMocks();
+    vi.spyOn(api.chat, "getRecentSessions").mockResolvedValue([]);
   });
 
   it("marks the workspace tab bar as a drag region", () => {
@@ -214,6 +217,88 @@ describe("Layout", () => {
 
     fireEvent.click(screen.getByText("Rust"));
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
+  });
+
+  it("renders the global History button in the titlebar on standard routes", () => {
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("button", { name: "Open History" })).toBeInTheDocument();
+    expect(screen.getByTitle("History")).toBeInTheDocument();
+  });
+
+  it("keeps the global History button visible on preferences", () => {
+    render(
+      <MemoryRouter initialEntries={["/preferences"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("button", { name: "Open History" })).toBeInTheDocument();
+    expect(screen.getByText("Preferences View")).toBeInTheDocument();
+  });
+
+  it("opens a history menu with recent sessions from the active workspace", async () => {
+    vi.spyOn(api.chat, "getRecentSessions").mockResolvedValue([
+      {
+        id: "chat-1",
+        workspace_id: "ws-1",
+        project_id: "project-1",
+        title: "Rust debugging notes",
+        model_name: "llama3.2",
+        system_prompt: "",
+        is_pinned: false,
+        is_incognito: false,
+        exclude_from_analytics: false,
+        is_deleted: false,
+        created_at: "2026-04-11T10:00:00.000Z",
+        updated_at: "2026-04-11T12:30:00.000Z",
+      },
+    ]);
+    useWorkspaceStore.setState({ activeWorkspaceId: "ws-1" });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const historyButton = screen.getByRole("button", { name: "Open History" });
+    fireEvent.click(historyButton);
+
+    expect(await screen.findByRole("menu", { name: "History menu" })).toBeInTheDocument();
+    expect(await screen.findByText("Rust debugging notes")).toBeInTheDocument();
+    expect(historyButton.className).toContain("border-[var(--accent-color)]");
+  });
+
+  it("shows the global History button as active on the history route", () => {
+    render(
+      <MemoryRouter initialEntries={["/history"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("button", { name: "Open History" }).className).toContain("border-[var(--accent-color)]");
+  });
+
+  it("navigates to the full history page from the history menu", async () => {
+    useWorkspaceStore.setState({ activeWorkspaceId: "ws-1" });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open History" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /show full history/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open History" }).className).toContain("border-[var(--accent-color)]");
+    });
   });
 
   it("renders a workspace selector in single-pane top-dropdown mode", () => {
@@ -383,7 +468,8 @@ describe("Layout", () => {
     const splitToggle = screen.getByRole("button", { name: "Toggle Split View" });
 
     expect(splitNav).not.toBeNull();
-    expect(splitNav?.className).toContain("right-14");
+    expect(splitNav?.className).toContain("right-24");
+    expect(screen.getByRole("button", { name: "Open History" })).toBeInTheDocument();
     expect(splitToggle).toHaveTextContent(/^$/);
   });
 

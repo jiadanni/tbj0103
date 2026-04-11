@@ -4,7 +4,7 @@ import { message } from "@tauri-apps/plugin-dialog";
 import {
   
 } from "react-resizable-panels";
-import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown } from "lucide-react";
+import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
@@ -34,6 +34,7 @@ const DocumentBrowserView = React.lazy(() => import("../views/DocumentBrowserVie
 const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
 const WebCaptureView = React.lazy(() => import("../views/WebCaptureView"));
 import type { Workspace, PaneId } from "../stores/workspaceStore";
+import type { ChatSession } from "../stores/chatStore";
 
 type WorkspaceDialogState =
   | { kind: "last-workspace" }
@@ -221,7 +222,7 @@ function SplitTitlebarWorkspaceNavigation() {
   const resolvedSplitWorkspaceNavigation = resolveSplitWorkspaceNavigation(workspaceNavigation);
   const primaryPanePaddingClass = (isLinux ? "pl-[52px]" : isMac ? "pl-[80px]" : "pl-2") + " pr-2";
   const secondaryPaneClass = "min-w-0 px-2";
-  const trailingInsetClass = isLinux ? "right-[152px]" : "right-14";
+  const trailingInsetClass = isLinux ? "right-[192px]" : "right-24";
 
   return (
     <div
@@ -267,6 +268,183 @@ function PreferencesDockButton() {
   );
 }
 
+function formatHistoryTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function TitlebarHistoryMenu() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const isHistoryRoute = location.pathname.startsWith("/history");
+  const displaySessions = activeWorkspaceId ? sessions : [];
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (rootRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !activeWorkspaceId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void api.chat.getRecentSessions(activeWorkspaceId, 8)
+      .then((recentSessions) => {
+        if (cancelled) {
+          return;
+        }
+        setSessions(recentSessions.filter((session) => !session.is_deleted));
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setSessions([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, activeWorkspaceId]);
+
+  function openSession(sessionId: string) {
+    navigate(`/chat/${sessionId}`);
+    setOpen(false);
+  }
+
+  function openFullHistory() {
+    navigate("/history");
+    setOpen(false);
+  }
+
+  function toggleMenu() {
+    setOpen((current) => {
+      const next = !current;
+      if (next) {
+        setLoading(Boolean(activeWorkspaceId));
+      }
+      return next;
+    });
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        onClick={toggleMenu}
+        aria-label="Open History"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="History"
+        className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
+          open || isHistoryRoute
+            ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+            : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+        }`}
+      >
+        <HistoryIcon size={15} />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label="History menu"
+          className="absolute right-0 top-10 z-50 w-80 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl backdrop-blur-xl"
+        >
+          <div className="border-b border-[var(--border-color)] px-4 py-3">
+            <div className="text-sm font-semibold text-[var(--text-primary)]">Recent history</div>
+            <div className="text-xs text-[var(--text-muted)]">
+              {activeWorkspaceId ? "Recent chats from this workspace" : "Open a workspace to see recent chats"}
+            </div>
+          </div>
+
+          <div className="max-h-96 overflow-y-auto p-2">
+            {loading ? (
+              <div className="px-2 py-6 text-center text-sm text-[var(--text-muted)]">Loading…</div>
+            ) : displaySessions.length === 0 ? (
+              <div className="px-2 py-6 text-center text-sm text-[var(--text-muted)]">No recent chats yet.</div>
+            ) : (
+              displaySessions.map((session) => (
+                <button
+                  key={session.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => openSession(session.id)}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
+                >
+                  <HistoryIcon size={14} className="shrink-0 text-[var(--text-muted)]" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-[var(--text-primary)]">
+                      {session.title || "Untitled"}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                      <span>{formatHistoryTimestamp(session.updated_at)}</span>
+                      {session.model_name ? <span className="truncate opacity-70">{session.model_name}</span> : null}
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="border-t border-[var(--border-color)] p-2">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={openFullHistory}
+              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
+            >
+              <span>Show full history</span>
+              <ExternalLink size={14} className="shrink-0 text-[var(--text-muted)]" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorkspaceTabBar({
   onToggleSplit,
   showWorkspaceTabs = true,
@@ -298,6 +476,7 @@ function WorkspaceTabBar({
   const splitUnsupportedRoute = ["/preferences", "/memory", "/webcapture"].some((path) => location.pathname.startsWith(path));
   const showSplitTitlebarWorkspaceNavigation = splitMode && !splitUnsupportedRoute;
   const showSinglePaneWorkspaceDropdown = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "top-dropdown";
+  const showSplitToggle = !splitUnsupportedRoute || splitMode;
   function resetCreateWorkspaceForm() {
     setNewName("");
     setNewDescription("");
@@ -518,7 +697,8 @@ function WorkspaceTabBar({
           title="Drag window"
         />
         <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
-          {(!splitUnsupportedRoute || splitMode) && (
+          <TitlebarHistoryMenu />
+          {showSplitToggle && (
             <button
               onClick={onToggleSplit}
               disabled={workspaces.length < 2}
