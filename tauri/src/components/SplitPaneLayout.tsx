@@ -50,7 +50,7 @@ function PaneViewRenderer({ view }: { view: PaneView }) {
 }
 
 function SplitSectionDropdown({ paneId }: { paneId: PaneId }) {
-  const { setPaneView } = useWorkspaceStore();
+  const setPaneView = useWorkspaceStore((s) => s.setPaneView);
   const { activeView } = useScopedWorkspace();
   const sectionOptions = PANE_NAV_ITEMS.map(({ view, label }) => ({ value: view, label }));
   const selectedView = sectionOptions.some((item) => item.value === activeView)
@@ -74,11 +74,9 @@ function SplitSectionDropdown({ paneId }: { paneId: PaneId }) {
 }
 
 function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
-  const {
-    sectionNavigation,
-    setPaneView,
-    setActivePaneId,
-  } = useWorkspaceStore();
+  const sectionNavigation = useWorkspaceStore((s) => s.sectionNavigation);
+  const setPaneView = useWorkspaceStore((s) => s.setPaneView);
+  const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
   const { activeView } = useScopedWorkspace();
   const resolvedSplitSectionNavigation = resolveSplitSectionNavigation(sectionNavigation);
 
@@ -120,7 +118,8 @@ function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
 }
 
 export default function SplitPaneLayout() {
-  const { splitSizes, setSplitSizes } = useWorkspaceStore();
+  const splitSizes = useWorkspaceStore((s) => s.splitSizes);
+  const setSplitSizes = useWorkspaceStore((s) => s.setSplitSizes);
 
   return (
     <PanelGroup

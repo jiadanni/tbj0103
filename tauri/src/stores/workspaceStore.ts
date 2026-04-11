@@ -465,12 +465,26 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     },
     setActiveTopicSignature: (activeTopicSignature) => set({ activeTopicSignature }),
     setWorkspaceTopicSignature: (workspaceId, sig) => set((state) => {
+      const existing = state.workspaces.find((w) => w.id === workspaceId);
+      const nextSig = sig ?? existing?.topic_signature;
+      const nextUpdatedAt = sig?.generated_at ?? existing?.signature_updated_at;
+
+      // Bail out if nothing actually changed to avoid creating a new array reference.
+      if (
+        existing &&
+        existing.topic_signature === nextSig &&
+        existing.signature_updated_at === nextUpdatedAt &&
+        (state.activeWorkspaceId !== workspaceId || state.activeTopicSignature === sig)
+      ) {
+        return {};
+      }
+
       const workspaces = state.workspaces.map((workspace) =>
         workspace.id === workspaceId
           ? {
               ...workspace,
-              topic_signature: sig ?? workspace.topic_signature,
-              signature_updated_at: sig?.generated_at ?? workspace.signature_updated_at,
+              topic_signature: nextSig,
+              signature_updated_at: nextUpdatedAt,
             }
           : workspace
       );
@@ -509,6 +523,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         },
       };
       persistSplitLayout({ splitMode: true, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
+      useChatStore.getState().setActiveChatId(null);
       return { splitMode: true, panes };
     }),
     exitSplitMode: () => set((state) => {

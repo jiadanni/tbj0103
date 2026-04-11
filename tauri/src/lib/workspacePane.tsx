@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useCallback, useContext, useMemo } from "react";
 import { useChatStore } from "../stores/chatStore";
 import {
@@ -5,6 +6,7 @@ import {
   type PaneView,
   useWorkspaceStore,
   type NoteSelectionState,
+  type Project,
 } from "../stores/workspaceStore";
 
 interface WorkspacePaneContextValue {
@@ -28,11 +30,39 @@ export function useWorkspacePane() {
 const NOOP_SET_VIEW = (_view: PaneView) => undefined;
 const NOOP_SET_NOTE = (_selection: NoteSelectionState | null) => undefined;
 const NOOP_FOCUS = () => undefined;
+const EMPTY_PROJECTS: Project[] = [];
 
 export function useScopedWorkspace() {
   const pane = useWorkspacePane();
-  const store = useWorkspaceStore();
   const paneId = pane?.paneId ?? null;
+
+  // Granular selectors — only re-render when the specific field changes,
+  // not on every unrelated store update. Critical for split-pane performance
+  // where two ChatView instances are mounted simultaneously.
+  const activeWorkspaceId = useWorkspaceStore(
+    useCallback(
+      (s) => (paneId ? s.panes[paneId].workspaceId : s.activeWorkspaceId),
+      [paneId],
+    ),
+  );
+  const activeProjectId = useWorkspaceStore(
+    useCallback(
+      (s) => (paneId ? s.panes[paneId].projectId : s.activeProjectId),
+      [paneId],
+    ),
+  );
+  const activeView = useWorkspaceStore(
+    useCallback(
+      (s): PaneView => (paneId ? s.panes[paneId].view : "chat"),
+      [paneId],
+    ),
+  );
+  const noteSelection = useWorkspaceStore(
+    useCallback(
+      (s): NoteSelectionState | null => (paneId ? s.panes[paneId].noteSelection : null),
+      [paneId],
+    ),
+  );
 
   const setActiveWorkspaceId = useCallback(
     (workspaceId: string | null) => {
@@ -74,10 +104,10 @@ export function useScopedWorkspace() {
   if (!pane) {
     return {
       paneId: null,
-      activeWorkspaceId: store.activeWorkspaceId,
-      activeProjectId: store.activeProjectId,
-      activeView: "chat" as PaneView,
-      noteSelection: null as NoteSelectionState | null,
+      activeWorkspaceId,
+      activeProjectId,
+      activeView,
+      noteSelection,
       setActiveWorkspaceId,
       setActiveProjectId,
       setActiveView: NOOP_SET_VIEW,
@@ -87,13 +117,12 @@ export function useScopedWorkspace() {
     };
   }
 
-  const paneState = store.panes[pane.paneId];
   return {
     paneId: pane.paneId,
-    activeWorkspaceId: paneState.workspaceId,
-    activeProjectId: paneState.projectId,
-    activeView: paneState.view,
-    noteSelection: paneState.noteSelection,
+    activeWorkspaceId,
+    activeProjectId,
+    activeView,
+    noteSelection,
     setActiveWorkspaceId,
     setActiveProjectId,
     setActiveView,
@@ -105,9 +134,16 @@ export function useScopedWorkspace() {
 
 export function useScopedChat() {
   const pane = useWorkspacePane();
-  const chatStore = useChatStore();
-  const workspaceStore = useWorkspaceStore();
   const paneId = pane?.paneId ?? null;
+
+  // Granular selectors — subscribe only to the specific chat ID field,
+  // not the entire chatStore + workspaceStore.
+  const globalActiveChatId = useChatStore((s) => s.activeChatId);
+  const paneChatSessionId = useWorkspaceStore(
+    useCallback((s) => (paneId ? s.panes[paneId].chatSessionId : null), [paneId]),
+  );
+
+  const activeChatId = paneId ? paneChatSessionId : globalActiveChatId;
 
   const setActiveChatId = useCallback(
     (chatSessionId: string | null) => {
@@ -117,29 +153,25 @@ export function useScopedChat() {
     [paneId],
   );
 
-  if (!pane) {
-    return {
-      activeChatId: chatStore.activeChatId,
-      setActiveChatId,
-      isSplitPane: false,
-    };
-  }
-
   return {
-    activeChatId: workspaceStore.panes[pane.paneId].chatSessionId,
+    activeChatId,
     setActiveChatId,
-    isSplitPane: true,
+    isSplitPane: paneId !== null,
   };
 }
 
 export function useScopedProjects() {
   const pane = useWorkspacePane();
-  const store = useWorkspaceStore();
+  const paneId = pane?.paneId ?? null;
 
-  if (!pane) {
-    return store.projects;
-  }
-
-  const workspaceId = store.panes[pane.paneId].workspaceId;
-  return workspaceId ? (store.projectsByWorkspace[workspaceId] ?? []) : [];
+  return useWorkspaceStore(
+    useCallback(
+      (s) => {
+        if (!paneId) { return s.projects; }
+        const workspaceId = s.panes[paneId].workspaceId;
+        return workspaceId ? (s.projectsByWorkspace[workspaceId] ?? EMPTY_PROJECTS) : EMPTY_PROJECTS;
+      },
+      [paneId],
+    ),
+  );
 }
