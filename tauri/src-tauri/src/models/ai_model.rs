@@ -15,6 +15,14 @@ pub struct AiModel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelSpeedStat {
+    pub model_name: String,
+    pub avg_chat_tokens_per_second: f64,
+    pub weighted_tokens_per_second: f64,
+    pub chat_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddAiModelRequest {
     pub name: String,
     pub model_id: String,

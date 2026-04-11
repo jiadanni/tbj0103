@@ -2,6 +2,7 @@ pub mod app_menu;
 pub mod commands;
 pub mod db;
 pub mod llamacpp;
+pub mod logging;
 pub mod mcp_client;
 pub mod mcp_server;
 pub mod mlx;
@@ -14,9 +15,79 @@ use tauri::tray::TrayIconBuilder;
 #[cfg(not(target_os = "linux"))]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::Manager;
+#[cfg(target_os = "linux")]
+use tauri::PhysicalPosition;
+#[cfg(target_os = "linux")]
+use tauri::PhysicalSize;
 use tauri::{WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::ShortcutState;
+
+#[cfg(target_os = "linux")]
+const MAIN_WINDOW_STATE_KEY: &str = "linux_main_window_state";
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct SavedWindowState {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    maximized: bool,
+}
+
+#[cfg(target_os = "linux")]
+fn load_saved_main_window_state(conn: &rusqlite::Connection) -> Option<SavedWindowState> {
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        rusqlite::params![MAIN_WINDOW_STATE_KEY],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
+    .and_then(|value| serde_json::from_str(&value).ok())
+}
+
+#[cfg(target_os = "linux")]
+fn save_main_window_state(
+    conn: &rusqlite::Connection,
+    window: &tauri::WebviewWindow,
+) -> Result<(), String> {
+    let position = window.outer_position().map_err(|e| e.to_string())?;
+    let size = window.outer_size().map_err(|e| e.to_string())?;
+    let maximized = window.is_maximized().map_err(|e| e.to_string())?;
+    let state = SavedWindowState {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+        maximized,
+    };
+    let serialized = serde_json::to_string(&state).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+        rusqlite::params![MAIN_WINDOW_STATE_KEY, serialized],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn apply_saved_main_window_state(
+    state: &SavedWindowState,
+    window: &tauri::WebviewWindow,
+) -> Result<(), String> {
+    window
+        .set_size(PhysicalSize::new(state.width, state.height))
+        .map_err(|e| e.to_string())?;
+    window
+        .set_position(PhysicalPosition::new(state.x, state.y))
+        .map_err(|e| e.to_string())?;
+    if state.maximized {
+        window.maximize().map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -58,6 +129,8 @@ pub fn run() {
             commands::settings::sync_autostart(&app.handle().clone(), &conn)
                 .map_err(|e| format!("Failed to synchronize autostart setting: {e}"))?;
             let should_open_in_background = commands::settings::should_open_in_background(&conn);
+            #[cfg(target_os = "linux")]
+            let saved_main_window_state = load_saved_main_window_state(&conn);
             let quick_search_shortcut: String = conn
                 .query_row(
                     "SELECT value FROM settings WHERE key = 'quick_search_shortcut'",
@@ -133,7 +206,39 @@ pub fn run() {
                     let _ = window.hide();
                 } else {
                     let _ = window.set_focus();
-                    let _ = window.maximize();
+                    #[cfg(target_os = "linux")]
+                    {
+                        if let Some(state) = saved_main_window_state.as_ref() {
+                            let _ = apply_saved_main_window_state(state, &window);
+                        } else {
+                            let _ = window.center();
+                            let _ = window.maximize();
+                        }
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        let _ = window.maximize();
+                    }
+                }
+
+                #[cfg(target_os = "linux")]
+                {
+                    let app_handle = app.handle().clone();
+                    let main_window = window.clone();
+                    window.on_window_event(move |event| {
+                        let should_persist = matches!(
+                            event,
+                            WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::CloseRequested { .. }
+                        );
+                        if !should_persist {
+                            return;
+                        }
+
+                        let db_state = app_handle.state::<db::DbState>();
+                        if let Ok(conn) = db_state.0.get() {
+                            let _ = save_main_window_state(&conn, &main_window);
+                        }
+                    });
                 }
             }
 
@@ -384,6 +489,7 @@ pub fn run() {
             commands::ai_model::delete_ai_model,
             commands::ai_model::get_default_model,
             commands::ai_model::record_model_token_usage,
+            commands::ai_model::list_model_speed_stats,
             // AI knowledge commands
             commands::ai_knowledge::analyze_workspace,
             commands::ai_knowledge::suggest_learning_goals,
@@ -445,7 +551,7 @@ pub fn run() {
         .run(tauri::generate_context!());
 
     if let Err(err) = run_result {
-        eprintln!("error while running tauri application: {err}");
+        crate::logging::stderr(format!("error while running tauri application: {err}"));
     }
 }
 

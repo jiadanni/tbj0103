@@ -444,6 +444,13 @@ export interface AiModel {
   tokens_used_total: number; created_at: string;
 }
 
+export interface ModelSpeedStat {
+  model_name: string;
+  avg_chat_tokens_per_second: number;
+  weighted_tokens_per_second: number;
+  chat_count: number;
+}
+
 export interface SystemSpecs {
   host_name?: string | null;
   os_name: string;
@@ -1053,6 +1060,7 @@ export const api = {
 
   aiModel: {
     list: () => invoke<AiModel[]>("list_ai_models"),
+    listSpeedStats: () => invoke<ModelSpeedStat[]>("list_model_speed_stats"),
     add: (name: string, modelId: string, opts?: { provider?: string; role_tags?: string[]; is_paid?: boolean; priority?: number }) =>
       invoke<AiModel>("add_ai_model", { req: { name, model_id: modelId, ...opts } }),
     update: (id: string, fields: { name?: string; role_tags?: string[]; priority?: number; is_paid?: boolean; enabled?: boolean }) =>

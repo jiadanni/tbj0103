@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 // Import from library
 use aetherium_lib::db;
+use aetherium_lib::logging;
 use aetherium_lib::mcp_server::{tools, JsonRpcError, JsonRpcRequest, JsonRpcResponse, MCPService};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -30,9 +31,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _service = MCPService::new(db_state);
 
     // Log startup to stderr (keep stdout clean for JSON-RPC)
-    eprintln!("Aetherium MCP Server started");
-    eprintln!("Database: {}", db_path);
-    eprintln!("Listening on stdio...");
+    logging::stderr("Aetherium MCP Server started");
+    logging::stderr(format!("Database: {}", db_path));
+    logging::stderr("Listening on stdio...");
 
     // Read JSON-RPC requests from stdin
     let stdin = io::stdin();
@@ -40,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for line in reader.lines().map_while(Result::ok) {
         if let Ok(request) = serde_json::from_str::<JsonRpcRequest>(&line) {
-            eprintln!("Received request: {}", request.method);
+            logging::stderr(format!("Received request: {}", request.method));
 
             let response = match request.method.as_str() {
                 "tools/list" => {

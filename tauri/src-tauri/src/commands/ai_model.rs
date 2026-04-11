@@ -1,5 +1,5 @@
 use crate::db::DbState;
-use crate::models::ai_model::{AddAiModelRequest, AiModel, UpdateAiModelRequest};
+use crate::models::ai_model::{AddAiModelRequest, AiModel, ModelSpeedStat, UpdateAiModelRequest};
 use tauri::State;
 
 fn row_to_model(row: &rusqlite::Row) -> rusqlite::Result<AiModel> {
@@ -174,4 +174,50 @@ pub fn record_model_token_usage(
         rusqlite::params![tokens, model_id, provider],
     ).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn list_model_speed_stats(state: State<DbState>) -> Result<Vec<ModelSpeedStat>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT model_name,
+                    AVG(chat_tokens_per_second) AS avg_chat_tokens_per_second,
+                    CAST(SUM(chat_tokens) AS REAL) / (SUM(chat_duration_ms) / 1000.0) AS weighted_tokens_per_second,
+                    COUNT(*) AS chat_count
+             FROM (
+                 SELECT model_name,
+                        session_id,
+                        SUM(tokens_used) AS chat_tokens,
+                        SUM(duration_ms) AS chat_duration_ms,
+                        CAST(SUM(tokens_used) AS REAL) / (SUM(duration_ms) / 1000.0) AS chat_tokens_per_second
+                 FROM messages
+                 WHERE role = 'assistant'
+                   AND model_name IS NOT NULL
+                   AND TRIM(model_name) <> ''
+                   AND tokens_used IS NOT NULL
+                   AND duration_ms IS NOT NULL
+                   AND duration_ms > 0
+                 GROUP BY model_name, session_id
+                 HAVING SUM(tokens_used) > 0 AND SUM(duration_ms) > 0
+             )
+             GROUP BY model_name
+             ORDER BY model_name ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let items = stmt
+        .query_map([], |row| {
+            Ok(ModelSpeedStat {
+                model_name: row.get(0)?,
+                avg_chat_tokens_per_second: row.get(1)?,
+                weighted_tokens_per_second: row.get(2)?,
+                chat_count: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(items)
 }
