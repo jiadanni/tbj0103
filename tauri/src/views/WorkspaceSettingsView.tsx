@@ -22,6 +22,7 @@ export default function WorkspaceSettingsView() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
   const [creating, setCreating] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [dialogState, setDialogState] = useState<WorkspaceDialogState | null>(null);
@@ -35,15 +36,21 @@ export default function WorkspaceSettingsView() {
     }
   }
 
+  function resetNewWorkspaceForm() {
+    setNewName("");
+    setNewDescription("");
+    setShowNew(false);
+  }
+
   async function createWorkspace() {
     if (!newName.trim()) {return;}
     setCreating(true);
     try {
-      const ws = await api.workspace.create(newName.trim());
+      const trimmedDescription = newDescription.trim();
+      const ws = await api.workspace.create(newName.trim(), trimmedDescription || undefined);
       addWorkspace(ws);
       activateWorkspace(ws.id);
-      setNewName("");
-      setShowNew(false);
+      resetNewWorkspaceForm();
     } finally {
       setCreating(false);
     }
@@ -100,31 +107,43 @@ export default function WorkspaceSettingsView() {
 
       {/* New workspace form */}
       {showNew && (
-        <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] shrink-0">
+        <div className="flex flex-col gap-2 px-5 py-3 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] shrink-0">
           <input
             autoFocus
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {createWorkspace();}
-              if (e.key === "Escape") { setShowNew(false); setNewName(""); }
+              if (e.key === "Escape") { resetNewWorkspaceForm(); }
             }}
             placeholder="Workspace name…"
-            className="flex-1 text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+            className="text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
           />
-          <button
-            onClick={createWorkspace}
-            disabled={creating || !newName.trim()}
-            className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
-          >
-            {creating ? "Creating…" : "Create"}
-          </button>
-          <button
-            onClick={() => { setShowNew(false); setNewName(""); }}
-            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          >
-            <X size={14} />
-          </button>
+          <textarea
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") { resetNewWorkspaceForm(); }
+            }}
+            placeholder="Optional description…"
+            rows={2}
+            className="resize-none text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+          />
+          <div className="flex items-center justify-end gap-2">
+            <button
+              onClick={createWorkspace}
+              disabled={creating || !newName.trim()}
+              className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
+            >
+              {creating ? "Creating…" : "Create"}
+            </button>
+            <button
+              onClick={() => { resetNewWorkspaceForm(); }}
+              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
       )}
 

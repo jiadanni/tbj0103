@@ -41,9 +41,7 @@ export default function AppHeaderMenu() {
           <div className="py-1">
             <button
               onClick={() => handleAction(() => {
-                 navigate("/chat", { replace: true });
-                 window.dispatchEvent(new CustomEvent("new-chat-command"));
-                 // This would normally be handled by global events
+                 navigate("/chat", { replace: true, state: { createNewChat: true } });
               })}
               className="w-full text-left px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-2"
             >

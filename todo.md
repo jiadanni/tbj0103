@@ -115,3 +115,16 @@ Each project's chat sessions should demonstrate a different capability:
 - [ ] Conflict resolution UI — show a diff when two machines edited the same note offline
 - [ ] Shared projects with permissions — read-only or read-write collaborator access
 - [ ] iCloud sync — CloudKit or iCloud Drive for seamless Apple device sync
+
+• You’re right. New Search is explicitly turning search on, regardless of the normal default.
+
+  That happens here in src/views/ChatView.tsx:1523: when route state comes in as subView: "grounded", the app runs setGroundedEnabled(true). The actual retrieval path
+  then keys off groundedEnabled at src/views/ChatView.tsx:2514.
+
+  So the real behavior is:
+
+  - Normal Chat: search starts off.
+  - New Search / grounded entry: search is force-enabled.
+
+  If you can still submit a search after the UI looks off, that’s a state/UI mismatch bug. If you want, I can fix it so New Search only opens the chat screen and does
+  not silently enable grounded search, or make the UI clearly reflect that it’s on.

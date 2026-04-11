@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { Plus, Trash2, Tag, Search, FileText, Save, Calendar } from "lucide-react";
 import { confirm } from "@tauri-apps/plugin-dialog";
+import { message } from "@tauri-apps/plugin-dialog";
 import { api, type ProjectNote } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import SmartTextEditor from "../components/SmartTextEditor";
@@ -25,6 +26,7 @@ export default function NoteEditorView() {
     }
   }, [location.state]);
   const { activeProjectId } = useWorkspaceStore();
+  const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const [notes, setNotes] = useState<ProjectNote[]>([]);
   const [selected, setSelected] = useState<ProjectNote | null>(null);
   const [title, setTitle] = useState("");
@@ -88,6 +90,10 @@ export default function NoteEditorView() {
   }
 
   async function deleteNote(id: string) {
+    if (isDemoMode) {
+      await message("Note deletion is not available in Demo Mode.", { title: "Demo Mode" });
+      return;
+    }
     if (!await confirm("Delete this note?", {
       title: "Delete note?",
       kind: "warning",

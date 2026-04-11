@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Trash2, MessageSquare } from "lucide-react";
+import { message } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import type { ChatSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -49,6 +50,7 @@ function groupSessionsByDate(sessions: ChatSession[]): DateGroup[] {
 export default function HistoryView() {
   const navigate = useNavigate();
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const isDemoMode = useWorkspaceStore((s) => s.isDemoMode);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -73,6 +75,10 @@ export default function HistoryView() {
 
   async function handleDelete(session: ChatSession, e: React.MouseEvent) {
     e.stopPropagation();
+    if (isDemoMode) {
+      await message("Chat deletion is not available in Demo Mode.", { title: "Demo Mode" });
+      return;
+    }
     await api.chat.deleteSession(session.workspace_id, session.id);
     setSessions((prev) => prev.filter((s) => s.id !== session.id));
   }

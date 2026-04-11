@@ -57,6 +57,7 @@ tbj0103/
 - **All Tauri IPC calls live in `tauri/src/lib/api.ts`** — never call `invoke()` directly from views. Add a typed wrapper in `api.ts` first.
 - Routes and navigation are defined in `tauri/src/App.tsx`. Every view file in `src/views/` must have a corresponding route.
 - State management uses **Zustand** (`src/stores/`). Prefer store actions over local component state for anything that persists across navigation.
+- The Tauri app supports split-pane workspace contexts. Components that must work in both single-pane and split-pane layouts should use the scoped helpers in `src/lib/workspacePane.tsx` (`useScopedWorkspace`, `useScopedChat`, `useScopedProjects`) instead of reading only the global active workspace/chat state.
 - Styling is **Tailwind CSS v3** with `@tailwindcss/typography`. No custom CSS files except `src/styles/`.
 - **Flex overflow pattern:** Any flex-column container whose children need to scroll must have `min-h-0` on every flex item in the height chain. Without it, flex items default to `min-height: auto` and `overflow-y-auto` on a child will never activate. The main content Panel in `Layout.tsx` and the active-chat container in `ChatView.tsx` both rely on this.
 - TypeScript strict mode is on. Run `npx tsc --noEmit` to verify — it must exit 0 before committing.
@@ -74,7 +75,7 @@ tbj0103/
 - **SQLite is the single source of truth.** The schema lives in `src-tauri/src/schema.sql`. All migrations are additive `CREATE TABLE IF NOT EXISTS` statements; never drop or alter existing columns.
 - Tauri commands go in `src-tauri/src/commands/`, one file per domain (note, chat, search, etc.). Register new commands in `src-tauri/src/lib.rs` inside the `.invoke_handler(tauri::generate_handler![...])` call.
 - Services (`src-tauri/src/services/`) contain business logic that commands delegate to. Commands should be thin — validate input, acquire the DB lock, call a service, return the result.
-- Use `rusqlite` with a `Mutex<Connection>` (`DbState`). Always call `state.0.lock().map_err(|e| e.to_string())?` to acquire the connection.
+- Use `rusqlite` through the app’s `r2d2_sqlite` connection pool (`DbState`). Acquire a connection with `state.0.get().map_err(|e| e.to_string())?`.
 - All command return types must be `Result<T, String>` where the error string is a human-readable message.
 - Run `cargo check` to verify — it must exit 0 before committing.
 
@@ -112,22 +113,25 @@ swift build                     # compile only
 swift test                      # run all tests
 ```
 
-### Tauri (Node path may be required)
+### Tauri (tool paths may vary by machine / OS)
 
 ```bash
 # TypeScript check
 cd tauri
-~/.nvm/versions/node/v22.22.1/bin/npx tsc --noEmit
+npx tsc --noEmit
+
+# Frontend tests
+npx vitest run
 
 # Rust check
-~/.cargo/bin/cargo check --manifest-path tauri/src-tauri/Cargo.toml
+cargo check --manifest-path tauri/src-tauri/Cargo.toml
 
 # Run dev server (requires Ollama running on :11434 for AI features)
 cd tauri
-PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v22.22.1/bin:$PATH" npm run tauri dev
+npm run tauri dev
 ```
 
-> **Note:** `node` and `npm` may not be in `$PATH` in some shell environments. Use absolute paths via `~/.nvm/versions/node/v22.22.1/bin/` when needed.
+> **Note:** `node`, `npm`, and `cargo` may resolve differently across macOS, Linux, and Windows setups. Use the local machine’s working toolchain path when they are not already on `$PATH` (for example, an `nvm`-managed `node` binary or `/usr/bin/cargo` on some Linux systems).
 
 ---
 
@@ -177,8 +181,10 @@ PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v22.22.1/bin:$PATH" npm run taur
 ## Testing
 
 - Swift tests: `Tests/AetheriumTests/`. Run with `swift test`.
-- Tauri: no automated test suite yet. Manual verification + `cargo check` + `tsc --noEmit` are the gates.
+- Tauri frontend tests live in `tauri/src/tests/` and run with `npx vitest run` (or the equivalent absolute `node` path if `npx` is not on `PATH`).
+- For Tauri work, manual verification is still important, but `vitest` + `cargo check` + `tsc --noEmit` are the standard gates.
 - When fixing a bug, add or update a Swift test covering the regression if the affected code is in the Swift app.
+- When fixing a Tauri bug, add or update a focused `vitest` regression test when the behavior is practical to cover in `src/tests/`.
 
 ---
 

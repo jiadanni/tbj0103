@@ -46,6 +46,7 @@ pub struct Settings {
     pub show_gen_info_duration: bool,
     pub show_gen_info_speed: bool,
     pub show_gen_info_model: bool,
+    pub demo_dismissed: bool,
 }
 
 impl Default for Settings {
@@ -91,6 +92,7 @@ impl Default for Settings {
             show_gen_info_duration: true,
             show_gen_info_speed: true,
             show_gen_info_model: true,
+            demo_dismissed: false,
         }
     }
 }
@@ -275,6 +277,9 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         show_gen_info_model: get_setting(&conn, "show_gen_info_model")
             .map(|v| v == "true")
             .unwrap_or(def.show_gen_info_model),
+        demo_dismissed: get_setting(&conn, "demo_dismissed")
+            .map(|v| v == "true")
+            .unwrap_or(def.demo_dismissed),
     })
 }
 
@@ -488,6 +493,11 @@ pub fn update_settings(
         &conn,
         "show_gen_info_model",
         &settings.show_gen_info_model.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "demo_dismissed",
+        &settings.demo_dismissed.to_string(),
     )?;
 
     if settings.start_at_login {

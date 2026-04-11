@@ -30,6 +30,7 @@ pub struct AddAiModelRequest {
     pub role_tags: Option<Vec<String>>,
     pub is_paid: Option<bool>,
     pub priority: Option<i64>,
+    pub enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

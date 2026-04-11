@@ -90,10 +90,16 @@ pub struct EmbeddingResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelDetails {
+    pub parameter_size: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
     pub name: String,
     pub size: Option<i64>,
     pub modified_at: Option<String>,
+    pub details: Option<ModelDetails>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -161,6 +161,7 @@ vi.mock("@/lib/api", () => ({
 
 const setActiveChatId = vi.fn();
 const setActiveProjectId = vi.fn();
+let mockWorkspacePane: Record<string, unknown> | null = null;
 
 vi.mock("@/lib/workspacePane", () => ({
   useScopedChat: () => ({ activeChat: null, activeChatId: null, setActiveChatId }),
@@ -171,12 +172,12 @@ vi.mock("@/lib/workspacePane", () => ({
     setActiveProjectId,
     workspace: null,
   }),
-  useWorkspacePane: () => null,
+  useWorkspacePane: () => mockWorkspacePane,
 }));
 
-function renderChatView() {
+function renderChatView(initialEntries?: Array<string | { pathname: string; state?: unknown }>) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <ChatView />
     </MemoryRouter>,
   );
@@ -193,6 +194,7 @@ async function openCreateWorkspaceInput() {
 describe("ChatView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockWorkspacePane = null;
 
     useWorkspaceStore.setState({
       workspaces: [
@@ -332,6 +334,27 @@ describe("ChatView", () => {
     ).toBe(true);
   });
 
+  it("uses a narrower sidebar and tighter trailing slot in split panes", async () => {
+    mockWorkspacePane = { paneId: "primary" };
+
+    renderChatView();
+
+    const sidebar = await screen.findByText("Conversations");
+    const sidebarRoot = sidebar.closest("div[style]");
+    expect(sidebarRoot?.getAttribute("style")).toContain("248px");
+
+    const title = await screen.findByText("Test Session");
+    const row = title.closest("div.group");
+
+    expect(row).not.toBeNull();
+    expect(
+      Array.from(row?.querySelectorAll("div") ?? []).some((element) => element.className.includes("w-[42px]"))
+    ).toBe(true);
+
+    const searchInput = screen.getByPlaceholderText("Search…");
+    expect(searchInput.className).toContain("min-w-0");
+  });
+
   it("reuses the same pending empty chat when new chat is clicked repeatedly", async () => {
     (api.chat.listSessions as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     (api.chat.createSession as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -391,5 +414,31 @@ describe("ChatView", () => {
       expect(setActiveChatId).toHaveBeenCalledWith("session-empty");
     });
     expect(api.chat.createSession).not.toHaveBeenCalled();
+  });
+
+  it("creates a new chat when routed in with a pending new-chat action", async () => {
+    (api.chat.listSessions as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (api.chat.createSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "session-from-route",
+      title: "New Chat",
+      model_name: "test-model",
+      system_prompt: "",
+      project_id: "",
+      workspace_id: "ws-1",
+      created_at: "",
+      updated_at: "",
+      is_incognito: false,
+      exclude_from_analytics: false,
+      is_pinned: false,
+      is_deleted: false,
+      message_count_at_title_gen: 0,
+    } satisfies ChatSession);
+
+    renderChatView([{ pathname: "/chat", state: { createNewChat: true } }]);
+
+    await waitFor(() => {
+      expect(api.chat.createSession).toHaveBeenCalledTimes(1);
+      expect(setActiveChatId).toHaveBeenCalledWith("session-from-route");
+    });
   });
 });

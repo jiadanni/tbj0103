@@ -11,7 +11,9 @@
       "Bash(git add:*)",
       "Bash(~/.nvm/versions/node/v22.22.1/bin/npx tsc:*)",
       "Bash(~/.cargo/bin/cargo check:*)",
-      "Bash($HOME/.cargo/bin/cargo check:*)"
+      "Bash($HOME/.cargo/bin/cargo check:*)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(/home/urljenkins/.nvm/versions/node/v22.22.1/bin/npx tsc:*)"
     ]
   },
   "outputStyle": "Learning",

@@ -174,6 +174,63 @@ describe("setWorkspaces", () => {
       "Zulu",
     ]);
   });
+
+  it("falls back from a deleted active workspace and clears the global selection", () => {
+    useWorkspaceStore.setState({
+      activeWorkspaceId: "ws-deleted",
+      activeProjectId: "project-1",
+      panes: {
+        primary: { workspaceId: "ws-deleted", projectId: "project-1", view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-keep", projectId: "project-2", view: "project", chatSessionId: "chat-2", noteSelection: null },
+      },
+      projectsByWorkspace: {
+        "ws-deleted": [makeProject({ id: "project-1", workspace_id: "ws-deleted" })],
+        "ws-keep": [makeProject({ id: "project-2", workspace_id: "ws-keep" })],
+      },
+    });
+    useChatStore.setState({ activeChatId: "chat-1" });
+
+    useWorkspaceStore.getState().setWorkspaces([
+      makeWorkspace({ id: "ws-keep", name: "Keep" }),
+      makeWorkspace({ id: "ws-other", name: "Other" }),
+    ]);
+
+    const state = useWorkspaceStore.getState();
+    expect(state.activeWorkspaceId).toBe("ws-keep");
+    expect(state.activeProjectId).toBeNull();
+    expect(state.panes.primary.workspaceId).toBe("ws-keep");
+    expect(state.panes.primary.projectId).toBeNull();
+    expect(state.panes.primary.chatSessionId).toBeNull();
+    expect(state.panes.secondary.workspaceId).toBe("ws-keep");
+    expect(state.panes.secondary.projectId).toBe("project-2");
+    expect(state.projectsByWorkspace).toEqual({
+      "ws-keep": [makeProject({ id: "project-2", workspace_id: "ws-keep" })],
+    });
+    expect(useChatStore.getState().activeChatId).toBeNull();
+  });
+
+  it("reassigns an invalid secondary pane to another available workspace", () => {
+    useWorkspaceStore.setState({
+      activeWorkspaceId: "ws-1",
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: "project-1", view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-deleted", projectId: "project-2", view: "project", chatSessionId: "chat-2", noteSelection: null },
+      },
+    });
+
+    useWorkspaceStore.getState().setWorkspaces([
+      makeWorkspace({ id: "ws-1", name: "One" }),
+      makeWorkspace({ id: "ws-2", name: "Two" }),
+    ]);
+
+    const state = useWorkspaceStore.getState();
+    expect(state.activeWorkspaceId).toBe("ws-1");
+    expect(state.panes.primary.workspaceId).toBe("ws-1");
+    expect(state.panes.primary.projectId).toBe("project-1");
+    expect(state.panes.secondary.workspaceId).toBe("ws-2");
+    expect(state.panes.secondary.projectId).toBeNull();
+    expect(state.panes.secondary.chatSessionId).toBeNull();
+  });
 });
 
 // ─── removeProject ─────────────────────────────────────────────────────────
@@ -271,6 +328,46 @@ describe("workspace/project selection", () => {
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-1");
     expect(useWorkspaceStore.getState().activeProjectId).toBe("p-2");
   });
+
+  it("setProjects clears a stale active project and matching pane selection", () => {
+    useWorkspaceStore.setState({
+      activeWorkspaceId: "ws-1",
+      activeProjectId: "p-stale",
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: "p-stale", view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: "p-keep", view: "project", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    useWorkspaceStore.getState().setProjects([
+      makeProject({ id: "p-fresh", workspace_id: "ws-1" }),
+    ]);
+
+    const state = useWorkspaceStore.getState();
+    expect(state.activeProjectId).toBeNull();
+    expect(state.panes.primary.projectId).toBeNull();
+    expect(state.panes.secondary.projectId).toBe("p-keep");
+  });
+
+  it("setProjectsForWorkspace clears stale pane project filters for that workspace", () => {
+    useWorkspaceStore.setState({
+      activeWorkspaceId: "ws-1",
+      activeProjectId: "p-stale",
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: "p-stale", view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-1", projectId: "p-stale-2", view: "project", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    useWorkspaceStore.getState().setProjectsForWorkspace("ws-1", [
+      makeProject({ id: "p-valid", workspace_id: "ws-1" }),
+    ]);
+
+    const state = useWorkspaceStore.getState();
+    expect(state.activeProjectId).toBeNull();
+    expect(state.panes.primary.projectId).toBeNull();
+    expect(state.panes.secondary.projectId).toBeNull();
+  });
 });
 
 describe("split layout", () => {
@@ -339,5 +436,20 @@ describe("split layout", () => {
     expect(state.splitMode).toBe(false);
     expect(state.activeWorkspaceId).toBe("ws-new");
     expect(state.activeProjectId).toBe("p-new");
+  });
+
+  it("exitSplitMode restores the primary pane chat selection to single-pane chat state", () => {
+    useWorkspaceStore.setState({
+      splitMode: true,
+      panes: {
+        primary: { workspaceId: "ws-1", projectId: "p-1", view: "chat", chatSessionId: "chat-primary", noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: null, view: "project", chatSessionId: "chat-secondary", noteSelection: null },
+      },
+    });
+    useChatStore.setState({ activeChatId: "chat-old" });
+
+    useWorkspaceStore.getState().exitSplitMode();
+
+    expect(useChatStore.getState().activeChatId).toBe("chat-primary");
   });
 });

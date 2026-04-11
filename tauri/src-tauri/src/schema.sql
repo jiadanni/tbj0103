@@ -404,7 +404,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('confirm_move_to_trash', 'true'),
     ('prompt_instructions', '""'),
     ('hide_native_menu', 'false'),
-    ('switch_workspace_to_chat', 'false');
+    ('switch_workspace_to_chat', 'false'),
+    ('demo_dismissed', 'false');
 
 -- Conversation summaries
 CREATE TABLE IF NOT EXISTS conversation_summaries (

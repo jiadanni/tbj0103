@@ -210,7 +210,8 @@ export interface QuickSearchResult {
   recent: boolean;
 }
 
-export interface OllamaModel { name: string; size?: number; modified_at?: string; }
+export interface OllamaModelDetails { parameter_size?: string; }
+export interface OllamaModel { name: string; size?: number; modified_at?: string; details?: OllamaModelDetails; }
 export interface OllamaRuntimeStatus {
   available: boolean;
   launched: boolean;
@@ -359,6 +360,7 @@ export interface AppSettings {
   show_gen_info_duration: boolean;
   show_gen_info_speed: boolean;
   show_gen_info_model: boolean;
+  demo_dismissed: boolean;
 }
 
 export interface GitSyncStatus {
@@ -1061,7 +1063,7 @@ export const api = {
   aiModel: {
     list: () => invoke<AiModel[]>("list_ai_models"),
     listSpeedStats: () => invoke<ModelSpeedStat[]>("list_model_speed_stats"),
-    add: (name: string, modelId: string, opts?: { provider?: string; role_tags?: string[]; is_paid?: boolean; priority?: number }) =>
+    add: (name: string, modelId: string, opts?: { provider?: string; role_tags?: string[]; is_paid?: boolean; priority?: number; enabled?: boolean }) =>
       invoke<AiModel>("add_ai_model", { req: { name, model_id: modelId, ...opts } }),
     update: (id: string, fields: { name?: string; role_tags?: string[]; priority?: number; is_paid?: boolean; enabled?: boolean }) =>
       invoke<AiModel>("update_ai_model", { req: { id, ...fields } }),

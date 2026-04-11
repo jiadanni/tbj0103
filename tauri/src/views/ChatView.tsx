@@ -1499,14 +1499,15 @@ export default function ChatView() {
   const navigate = useNavigate();
   const location = useLocation();
   const { sessionId: routeSessionId } = useParams();
-  const isSplitPane = useWorkspacePane() !== null;
+  const workspacePane = useWorkspacePane();
+  const isSplitPane = workspacePane !== null;
+  const currentPaneId = workspacePane?.paneId ?? null;
 
   const { activeChatId, setActiveChatId } = useScopedChat();
-  const sessions = useChatStore((s) => s.sessions);
+  const globalSessions = useChatStore((s) => s.sessions);
   // Granular selectors to avoid re-rendering entire view on every message update in background sessions
   const activeChatMessages = useChatStore(useCallback((s) => activeChatId ? (s.messages[activeChatId] ?? []) : [], [activeChatId]));
   const hasLoadedActiveMessages = useChatStore(useCallback((s) => activeChatId ? s.messages[activeChatId] !== undefined : false, [activeChatId]));
-  const setSessions = useChatStore((s) => s.setSessions);
   const setMessages = useChatStore((s) => s.setMessages);
   const appendMessage = useChatStore((s) => s.appendMessage);
   const appendStreamChunk = useChatStore((s) => s.appendStreamChunk);
@@ -1516,6 +1517,7 @@ export default function ChatView() {
 
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const activePaneId = useWorkspaceStore((s) => s.activePaneId);
   const isDemoMode = useWorkspaceStore((s) => s.isDemoMode);
   const setProjectsForWorkspace = useWorkspaceStore((s) => s.setProjectsForWorkspace);
   const projectsByWorkspace = useWorkspaceStore((s) => s.projectsByWorkspace);
@@ -1559,6 +1561,7 @@ export default function ChatView() {
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [scopedSessions, setScopedSessions] = useState<ChatSession[]>([]);
   const [sidebarSessions, setSidebarSessions] = useState<ChatSession[]>([]);
   const [selectedModel, setSelectedModel] = useState(preferredModel || "");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -1574,10 +1577,54 @@ export default function ChatView() {
   const chatViewRef = useRef<HTMLDivElement | null>(null);
   const streamUnlistenRef = useRef<(() => void) | null>(null);
   const refineUnlistenRef = useRef<(() => void) | null>(null);
+  const handledLocationActionKeyRef = useRef<string | null>(null);
   const currentSessionId = routeSessionId ?? activeChatId ?? null;
   const effectiveWorkspaceId = scopedWorkspaceId ?? activeWorkspaceId;
   const effectiveProjectId = scopedProjectId ?? activeProjectId;
   const sessionScopeKey = `${effectiveWorkspaceId ?? ""}::${effectiveProjectId ?? ""}`;
+  const sessions = isSplitPane ? scopedSessions : globalSessions;
+
+  const applySessionList = useCallback((transform: (prev: ChatSession[]) => ChatSession[]) => {
+    if (isSplitPane) {
+      setScopedSessions((prev) => transform(prev));
+      return;
+    }
+
+    const store = useChatStore.getState();
+    store.setSessions(transform(store.sessions));
+  }, [isSplitPane]);
+
+  const replaceSessions = useCallback((nextSessions: ChatSession[]) => {
+    if (isSplitPane) {
+      setScopedSessions(nextSessions);
+      return;
+    }
+
+    useChatStore.getState().setSessions(nextSessions);
+  }, [isSplitPane]);
+
+  const mergeSessionIntoScope = useCallback((session: ChatSession) => {
+    applySessionList((prev) => {
+      const existingIndex = prev.findIndex((existingSession) => existingSession.id === session.id);
+      if (existingIndex === -1) {
+        return [session, ...prev];
+      }
+
+      const next = [...prev];
+      next[existingIndex] = session;
+      return next;
+    });
+  }, [applySessionList]);
+
+  const updateSessionInScope = useCallback((session: ChatSession) => {
+    applySessionList((prev) => prev.map((existingSession) => (
+      existingSession.id === session.id ? session : existingSession
+    )));
+  }, [applySessionList]);
+
+  const removeSessionFromScope = useCallback((sessionId: string) => {
+    applySessionList((prev) => prev.filter((session) => session.id !== sessionId));
+  }, [applySessionList]);
 
   useEffect(() => {
     if (!currentSessionId) { return; }
@@ -1667,14 +1714,9 @@ export default function ChatView() {
 
   // Handle external subview switching via router state
   useEffect(() => {
-    const locState = location.state as { subView?: ChatSubView | "grounded" } | null;
+    const locState = location.state as { subView?: ChatSubView } | null;
     if (locState?.subView) {
-      if (locState.subView === "grounded") {
-        setGroundedEnabled(true);
-        setActiveSubView("chat");
-      } else {
-        setActiveSubView(locState.subView as ChatSubView);
-      }
+      setActiveSubView(locState.subView as ChatSubView);
       // Clear state so it doesn't persist on manual refreshes
       window.history.replaceState({}, document.title);
     }
@@ -2149,7 +2191,7 @@ export default function ChatView() {
 
   async function refreshScopedSessions(workspaceId: string, projectId: string | null) {
     const refreshedSessions = await api.chat.listSessions(workspaceId, projectId, { limit: 200, offset: 0 });
-    setSessions(refreshedSessions);
+    replaceSessions(refreshedSessions);
   }
 
   async function bulkDeleteSessions(sessionIds: string[], projectIds: string[] = []) {
@@ -2187,8 +2229,7 @@ export default function ChatView() {
       await api.project.delete(projectId);
     }
     const removedSessionIds = new Set(sessionIds);
-    setSessions(sessions.filter((session) => !removedSessionIds.has(session.id)));
-    sessionIds.forEach((id) => useChatStore.getState().removeSession(id));
+    replaceSessions(sessions.filter((session) => !removedSessionIds.has(session.id)));
 
     await Promise.all([
       refreshProjectTree(effectiveWorkspaceId),
@@ -2214,19 +2255,19 @@ export default function ChatView() {
   useEffect(() => {
     if (!effectiveWorkspaceId) {
       setLoadedSessionScopeKey(null);
-      setSessions([]);
+      replaceSessions([]);
       return;
     }
 
     const scopeKey = `${effectiveWorkspaceId}::${effectiveProjectId ?? ""}`;
     let cancelled = false;
-    setSessions([]);
+    replaceSessions([]);
     setLoadedSessionScopeKey(null);
 
     api.chat.listSessions(effectiveWorkspaceId, effectiveProjectId, { limit: 200, offset: 0 })
       .then((nextSessions) => {
         if (cancelled) { return; }
-        setSessions(nextSessions);
+        replaceSessions(nextSessions);
         setLoadedSessionScopeKey(scopeKey);
       })
       .catch(() => {
@@ -2237,7 +2278,7 @@ export default function ChatView() {
     return () => {
       cancelled = true;
     };
-  }, [effectiveWorkspaceId, effectiveProjectId, setSessions]);
+  }, [effectiveWorkspaceId, effectiveProjectId, replaceSessions]);
 
   useEffect(() => {
     if (!effectiveWorkspaceId || !currentSessionId) { return; }
@@ -2338,11 +2379,11 @@ export default function ChatView() {
     } catch {
       // Ignore cleanup failures during navigation away.
     }
-    useChatStore.getState().removeSession(sessionToDelete);
+    removeSessionFromScope(sessionToDelete);
     if (activeChatId === sessionToDelete) {
       setActiveChatId(null);
     }
-  }, [effectiveWorkspaceId, activeChatId, setActiveChatId]);
+  }, [effectiveWorkspaceId, activeChatId, removeSessionFromScope, setActiveChatId]);
 
   useEffect(() => {
     const previousSessionId = activeChatId;
@@ -2485,7 +2526,7 @@ export default function ChatView() {
     });
   }, [activeChatId, hasLoadedActiveMessages, activeMessages.length, isStreaming]);
 
-  function activateSession(session: ChatSession) {
+  const activateSession = useCallback((session: ChatSession) => {
     setScopedProjectId(session.project_id || null);
     setActiveChatId(session.id);
     if (!isSplitPane && routeSessionId !== session.id) {
@@ -2493,12 +2534,7 @@ export default function ChatView() {
     }
     api.chat.touchSessionAccessed(session.id).catch(() => { });
 
-    const store = useChatStore.getState();
-    if (!store.sessions.some((existingSession) => existingSession.id === session.id)) {
-      store.addSession(session);
-    } else {
-      store.updateSession(session);
-    }
+    mergeSessionIntoScope(session);
     setSidebarSessions((prev) => {
       const existingIndex = prev.findIndex((existingSession) => existingSession.id === session.id);
       if (existingIndex === -1) {
@@ -2509,19 +2545,18 @@ export default function ChatView() {
       next[existingIndex] = session;
       return next;
     });
-  }
+  }, [setScopedProjectId, setActiveChatId, isSplitPane, routeSessionId, navigate, mergeSessionIntoScope, setSidebarSessions]);
 
-  async function findOrCreateEmptySession(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
+  const findOrCreateEmptySession = useCallback(async (options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) => {
     if (!effectiveWorkspaceId) { return null; }
 
     const privacy = {
       isIncognito: options?.isIncognito ?? false,
       excludeFromAnalytics: options?.excludeFromAnalytics ?? false,
     };
-    const store = useChatStore.getState();
     const localUnusedSession = findUnusedSession(
-      store.sessions,
-      store.messages,
+      sessions,
+      useChatStore.getState().messages,
       effectiveWorkspaceId,
     );
     if (localUnusedSession) {
@@ -2543,9 +2578,9 @@ export default function ChatView() {
       is_incognito: privacy.isIncognito,
       exclude_from_analytics: privacy.excludeFromAnalytics,
     });
-  }
+  }, [effectiveWorkspaceId, sessions, effectiveProjectId, selectedModel]);
 
-  async function createNewSession(options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
+  const createNewSession = useCallback(async (options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) => {
     if (!effectiveWorkspaceId) { return; }
 
     if (pendingNewSessionRef.current) {
@@ -2567,14 +2602,33 @@ export default function ChatView() {
     if (session) {
       activateSession(session);
     }
-  }
+  }, [effectiveWorkspaceId, activateSession, findOrCreateEmptySession]);
+
+  useEffect(() => {
+    const state = location.state as { createNewChat?: boolean } | null;
+    if (!state?.createNewChat) {
+      return;
+    }
+
+    if (isSplitPane && currentPaneId !== activePaneId) {
+      return;
+    }
+
+    if (handledLocationActionKeyRef.current === location.key) {
+      return;
+    }
+
+    handledLocationActionKeyRef.current = location.key;
+    void createNewSession();
+    navigate(location.pathname, { replace: true, state: null });
+  }, [activePaneId, createNewSession, currentPaneId, isSplitPane, location.key, location.pathname, location.state, navigate]);
 
   async function ensureSessionForChat(modelId: string, options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
     if (!effectiveWorkspaceId) { return null; }
 
     let sessionId = activeChatId;
     let session = sessionId
-      ? useChatStore.getState().sessions.find((existingSession) => existingSession.id === sessionId) ?? null
+      ? sessions.find((existingSession) => existingSession.id === sessionId) ?? null
       : null;
 
     if (!sessionId) {
@@ -2592,7 +2646,7 @@ export default function ChatView() {
         model_name: modelId,
         updated_at: new Date().toISOString(),
       };
-      useChatStore.getState().updateSession(updatedSession);
+      updateSessionInScope(updatedSession);
       session = updatedSession;
     }
 
@@ -2602,7 +2656,7 @@ export default function ChatView() {
     const settings = await api.settings.get().catch(() => null);
     if (!settings || settings.chat_title_auto_refresh === "disabled") { return; }
 
-    const session = useChatStore.getState().sessions.find(s => s.id === sessionId);
+    const session = sessions.find((s) => s.id === sessionId);
     if (!session) { return; }
 
     const sessionMessages = useChatStore.getState().messages[sessionId] ?? [];
@@ -2617,7 +2671,7 @@ export default function ChatView() {
         // Persist to DB
         await api.chat.updateSession(effectiveWorkspaceId, sessionId, { title });
         // Update local store
-        useChatStore.getState().updateSession({
+        updateSessionInScope({
           ...session,
           title,
           title_generated_at: new Date().toISOString(),
@@ -2643,7 +2697,7 @@ export default function ChatView() {
           // Persist to DB
           await api.chat.updateSession(effectiveWorkspaceId, sessionId, { title });
           // Update local store
-          useChatStore.getState().updateSession({
+          updateSessionInScope({
             ...session,
             title,
             title_generated_at: new Date().toISOString(),
@@ -2658,7 +2712,7 @@ export default function ChatView() {
 
   function triggerFollowUps(sessionId: string) {
     const history = (useChatStore.getState().messages[sessionId] ?? []).map(m => ({ role: m.role, content: m.content }));
-    const model = selectedModel || useChatStore.getState().sessions.find(s => s.id === sessionId)?.model_name || "";
+    const model = selectedModel || sessions.find((s) => s.id === sessionId)?.model_name || "";
     if (!model) { return; }
     api.ollama.generateFollowUps(model, history, ollamaUrl)
       .then(suggestions => setFollowUps(suggestions))
@@ -2914,7 +2968,7 @@ export default function ChatView() {
     }
 
     await api.chat.deleteSession(effectiveWorkspaceId, id);
-    useChatStore.getState().removeSession(id);
+    removeSessionFromScope(id);
     setSidebarSessions((prev) => prev.filter((session) => session.id !== id));
     if (activeChatId === id) { setActiveChatId(null); }
   }
@@ -2922,7 +2976,7 @@ export default function ChatView() {
   async function togglePin(session: ChatSession) {
     if (!effectiveWorkspaceId) { return; }
     await api.chat.updateSession(effectiveWorkspaceId, session.id, { is_pinned: !session.is_pinned });
-    setSessions(
+    replaceSessions(
       sessions.map((s) =>
         s.id === session.id ? { ...s, is_pinned: !s.is_pinned } : s
       )
@@ -2933,7 +2987,7 @@ export default function ChatView() {
   async function renameSession(id: string) {
     if (!renameTitle.trim() || !effectiveWorkspaceId) { setRenamingId(null); return; }
     await api.chat.updateSession(effectiveWorkspaceId, id, { title: renameTitle });
-    setSessions(sessions.map((s) => s.id === id ? { ...s, title: renameTitle } : s));
+    replaceSessions(sessions.map((s) => s.id === id ? { ...s, title: renameTitle } : s));
     setSidebarSessions((prev) => prev.map((session) => session.id === id ? { ...session, title: renameTitle } : session));
     setRenamingId(null);
   }
@@ -2960,7 +3014,7 @@ export default function ChatView() {
 
       const title = resolveChatTitle({ aiTitle, firstMessage: firstUserMessage });
       await api.chat.updateSession(effectiveWorkspaceId, session.id, { title });
-      useChatStore.getState().updateSession({
+      updateSessionInScope({
         ...session,
         title,
         title_generated_at: new Date().toISOString(),
@@ -2981,7 +3035,7 @@ export default function ChatView() {
     // Optimistic UI update: remove from source immediately
     if (isCrossWorkspaceMove) {
       setSidebarSessions((prev) => prev.filter((session) => !sessionIdSet.has(session.id)));
-      setSessions(sessions.filter((session) => !sessionIdSet.has(session.id)));
+      replaceSessions(sessions.filter((session) => !sessionIdSet.has(session.id)));
     }
 
     if (isCrossWorkspaceMove && shouldPreserveProjectStructure) {
@@ -3025,7 +3079,7 @@ export default function ChatView() {
           ? { ...session, workspace_id: workspaceId, project_id: projectId ?? "" }
           : session
       )));
-      setSessions(sessions.map((session) => (
+      replaceSessions(sessions.map((session) => (
         sessionIdSet.has(session.id)
           ? { ...session, workspace_id: workspaceId, project_id: projectId ?? "" }
           : session
@@ -3061,7 +3115,7 @@ export default function ChatView() {
     // Instead we just remove it from sidebarSessions and sessions, and let the background refresh
     // or navigation handle the rest, specifically avoiding refreshProjectTree(effectiveWorkspaceId).
     setSidebarSessions((prev) => prev.filter((session) => session.project_id !== project.id));
-    setSessions(sessions.filter((session) => session.project_id !== project.id));
+    replaceSessions(sessions.filter((session) => session.project_id !== project.id));
 
     // For the projects list, we can optimistically update the workspace store
     useWorkspaceStore.getState().setProjectsForWorkspace(
@@ -3088,7 +3142,7 @@ export default function ChatView() {
     } catch (error) {
       // Rollback on failure
       setSidebarSessions(prevSidebarSessions);
-      setSessions(prevSessions);
+      replaceSessions(prevSessions);
       useWorkspaceStore.getState().setProjectsForWorkspace(project.workspace_id, prevWorkspaceProjects);
 
       const description = error instanceof Error

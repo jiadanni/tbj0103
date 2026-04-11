@@ -63,7 +63,7 @@ function WindowControls() {
   }
 
   return (
-    <div className="flex items-center ml-auto gap-0.5 shrink-0" data-no-drag>
+    <div className="relative z-10 flex min-w-[96px] shrink-0 items-center justify-end gap-0.5" data-no-drag>
       <button
         onClick={() => appWindow.minimize()}
         className="w-8 h-10 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"

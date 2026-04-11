@@ -40,6 +40,7 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
     let provider = req.provider.unwrap_or_else(|| "ollama".to_string());
     let role_tags = req.role_tags.unwrap_or_default();
     let is_paid = req.is_paid.unwrap_or(false);
+    let enabled = req.enabled.unwrap_or(true);
 
     let priority: i64 = if let Some(p) = req.priority {
         p
@@ -56,8 +57,8 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
     let role_tags_json = serde_json::to_string(&role_tags).map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO ai_models (id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 0, ?8)",
-        rusqlite::params![id, req.name, req.model_id, provider, role_tags_json, priority, is_paid as i32, now],
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9)",
+        rusqlite::params![id, req.name, req.model_id, provider, role_tags_json, priority, is_paid as i32, enabled as i32, now],
     ).map_err(|e| e.to_string())?;
 
     Ok(AiModel {
@@ -68,7 +69,7 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
         role_tags,
         priority,
         is_paid,
-        enabled: true,
+        enabled,
         tokens_used_total: 0,
         created_at: now,
     })
