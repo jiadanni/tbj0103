@@ -332,6 +332,11 @@ export default function KnowledgeGraphView() {
             return { ...baseNode, ...pos };
           }
         }
+
+        // In force mode, seed initial position from DB if previously persisted
+        if (layoutMode === "force" && node.x_position != null && node.y_position != null) {
+          return { ...baseNode, x: node.x_position, y: node.y_position };
+        }
         
         return baseNode;
       }),
@@ -456,6 +461,21 @@ export default function KnowledgeGraphView() {
     if (fgRef.current) {
       fgRef.current.zoom(fgRef.current.zoom() / 1.4, 400);
     }
+  }
+
+  // Persist dragged node positions back to the database
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function handleNodeDragEnd(node: any) {
+    // Don't persist in tree mode — positions are computed, not user-set
+    if (layoutMode === "tree") { return; }
+    if (typeof node.x !== "number" || typeof node.y !== "number") { return; }
+
+    api.graph.updateConcept(node.id, {
+      x_position: node.x,
+      y_position: node.y,
+    } as Partial<ConceptNode>).catch(() => {
+      // Non-critical — ignore persistence errors silently
+    });
   }
 
   if (!activeWorkspaceId) {
@@ -1075,6 +1095,7 @@ export default function KnowledgeGraphView() {
                     }}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     onNodeClick={(node: any) => setSelectedConcept(nodes.find((item) => item.id === node.id) ?? null)}
+                    onNodeDragEnd={handleNodeDragEnd}
                     backgroundColor="transparent"
                   />
               </div>
