@@ -1575,6 +1575,7 @@ export default function ChatView() {
   const [sessionSidebarDragActive, setSessionSidebarDragActive] = useState(false);
   const syncedSessionModelRef = useRef<{ sessionId: string | null; modelName: string }>({ sessionId: null, modelName: "" });
   const chatViewRef = useRef<HTMLDivElement | null>(null);
+  const emptyStatePrivacyMenuRef = useRef<HTMLDivElement | null>(null);
   const streamUnlistenRef = useRef<(() => void) | null>(null);
   const refineUnlistenRef = useRef<(() => void) | null>(null);
   const handledLocationActionKeyRef = useRef<string | null>(null);
@@ -1942,7 +1943,7 @@ export default function ChatView() {
   const [compareResponseB, setCompareResponseB] = useState("");
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
-  const [emptyStatePrivacyMode, setEmptyStatePrivacyMode] = useState<"standard" | "incognito" | "exclude">("standard");
+  const [isEmptyStatePrivacyMenuOpen, setIsEmptyStatePrivacyMenuOpen] = useState(false);
   const [compareModels, setCompareModels] = useState<OllamaModel[]>([]);
 
   // Grounded chat (RAG) state
@@ -2134,6 +2135,28 @@ export default function ChatView() {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [isModelSendMenuOpen]);
+
+  useEffect(() => {
+    if (!isEmptyStatePrivacyMenuOpen) { return; }
+
+    function handleClick(event: MouseEvent) {
+      if (emptyStatePrivacyMenuRef.current?.contains(event.target as Node)) { return; }
+      setIsEmptyStatePrivacyMenuOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsEmptyStatePrivacyMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isEmptyStatePrivacyMenuOpen]);
 
   useEffect(() => {
     if (!isModelPickerOpen) { return; }
@@ -2560,6 +2583,7 @@ export default function ChatView() {
       sessions,
       useChatStore.getState().messages,
       effectiveWorkspaceId,
+      privacy,
     );
     if (localUnusedSession) {
       return localUnusedSession;
@@ -2570,6 +2594,7 @@ export default function ChatView() {
       workspaceSessions,
       useChatStore.getState().messages,
       effectiveWorkspaceId,
+      privacy,
     );
     if (unusedSession) {
       return unusedSession;
@@ -3479,54 +3504,71 @@ export default function ChatView() {
               {!activeChatId ? (
                 <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center">
                   <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
-                  <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
-                  <div className="flex flex-wrap justify-center gap-2">
-                    <button
-                      onClick={() => createNewSession({
-                        isIncognito: emptyStatePrivacyMode === "incognito",
-                        excludeFromAnalytics: emptyStatePrivacyMode === "exclude",
-                      })}
-                      className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
-                    >
-                      Start a new chat
-                    </button>
-                  </div>
-                  <div className="w-full max-w-xs rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3 text-left">
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                        <input
-                          type="radio"
-                          name="empty-state-privacy"
-                          checked={emptyStatePrivacyMode === "incognito"}
-                          onChange={() => setEmptyStatePrivacyMode("incognito")}
-                          className="accent-[var(--accent-color)]"
-                        />
-                        <Ghost size={14} className="text-purple-400" />
-                        Incognito
-                      </label>
-                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                        <input
-                          type="radio"
-                          name="empty-state-privacy"
-                          checked={emptyStatePrivacyMode === "exclude"}
-                          onChange={() => setEmptyStatePrivacyMode("exclude")}
-                          className="accent-[var(--accent-color)]"
-                        />
-                        <Shield size={14} className="text-sky-400" />
-                        Exclude from analytics
-                      </label>
-                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                        <input
-                          type="radio"
-                          name="empty-state-privacy"
-                          checked={emptyStatePrivacyMode === "standard"}
-                          onChange={() => setEmptyStatePrivacyMode("standard")}
-                          className="accent-[var(--accent-color)]"
-                        />
-                        <MessageSquare size={14} className="text-[var(--text-muted)]" />
-                        Standard
-                      </label>
+                  <p className="text-[var(--text-muted)] text-sm">Select a chat or start a new one</p>
+                  <div
+                    ref={emptyStatePrivacyMenuRef}
+                    className="relative flex flex-wrap justify-center gap-2"
+                  >
+                    <div className="flex overflow-hidden rounded-lg border border-[rgba(var(--accent-color-rgb),0.26)] bg-[var(--accent-color)] text-white shadow-[0_18px_40px_-26px_rgba(var(--accent-color-rgb),0.9)]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEmptyStatePrivacyMenuOpen(false);
+                          void createNewSession();
+                        }}
+                        className="px-4 py-2 text-sm transition-opacity hover:opacity-90"
+                      >
+                        Start a new chat
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Choose new chat privacy mode"
+                        aria-haspopup="menu"
+                        aria-expanded={isEmptyStatePrivacyMenuOpen}
+                        onClick={() => setIsEmptyStatePrivacyMenuOpen((open) => !open)}
+                        className="flex items-center justify-center border-l border-white/15 px-3 transition-colors hover:bg-white/10"
+                      >
+                        <ChevronDown size={14} className={`transition-transform ${isEmptyStatePrivacyMenuOpen ? "rotate-180" : ""}`} />
+                      </button>
                     </div>
+                    {isEmptyStatePrivacyMenuOpen && (
+                      <div
+                        role="menu"
+                        aria-label="New chat privacy options"
+                        className="absolute top-full z-20 mt-2 w-full min-w-[240px] max-w-xs overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 text-left shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setIsEmptyStatePrivacyMenuOpen(false);
+                            void createNewSession({ isIncognito: true });
+                          }}
+                          className="flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
+                        >
+                          <Ghost size={14} className="mt-0.5 shrink-0 text-purple-400" />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-[var(--text-primary)]">Incognito</span>
+                            <span className="block text-xs text-[var(--text-secondary)]">Starts a chat that stays private.</span>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setIsEmptyStatePrivacyMenuOpen(false);
+                            void createNewSession({ excludeFromAnalytics: true });
+                          }}
+                          className="flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
+                        >
+                          <Shield size={14} className="mt-0.5 shrink-0 text-sky-400" />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-[var(--text-primary)]">Exclude from analytics</span>
+                            <span className="block text-xs text-[var(--text-secondary)]">Starts a chat without analytics collection.</span>
+                          </span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
