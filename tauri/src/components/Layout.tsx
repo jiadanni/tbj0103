@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, Suspense } from "r
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
 import { message } from "@tauri-apps/plugin-dialog";
 import {
-  
+
 } from "react-resizable-panels";
 import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -42,8 +42,8 @@ type WorkspaceDialogState =
 
 function handleHorizontalWheel(event: React.WheelEvent<HTMLDivElement>) {
   const element = event.currentTarget;
-  if (element.scrollWidth <= element.clientWidth) {return;}
-  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {return;}
+  if (element.scrollWidth <= element.clientWidth) { return; }
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) { return; }
   element.scrollLeft += event.deltaY;
   event.preventDefault();
 }
@@ -61,13 +61,12 @@ function workspaceTabClassName({
   isActive: boolean;
   isDragTarget?: boolean;
 }) {
-  return `relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
-    isDragTarget
+  return `relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${isDragTarget
       ? "border-[rgba(var(--accent-color-rgb),0.45)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] shadow-sm"
       : isActive
-      ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
-      : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
-  }`;
+        ? "border-[color-mix(in_srgb,var(--accent-color)_36%,var(--border-color))] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-14px_32px_-18px_rgba(var(--accent-color-rgb),0.42),0_-10px_24px_-18px_rgba(15,23,42,0.72)]"
+        : "border-[color-mix(in_srgb,var(--border-color)_72%,transparent)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+    }`;
 }
 
 function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
@@ -80,10 +79,10 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!menuOpen) {return;}
+    if (!menuOpen) { return; }
 
     function handlePointerDown(event: MouseEvent) {
-      if (menuRef.current?.contains(event.target as Node)) {return;}
+      if (menuRef.current?.contains(event.target as Node)) { return; }
       setMenuOpen(false);
     }
 
@@ -109,7 +108,7 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <div
-        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none"
+        className="flex min-w-0 flex-1 items-center gap-px overflow-x-auto scrollbar-none"
         onWheel={handleHorizontalWheel}
       >
         {workspaces.map((workspace) => (
@@ -156,11 +155,10 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
                     selectWorkspace(workspace.id);
                     setMenuOpen(false);
                   }}
-                  className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                    isActive
+                  className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${isActive
                       ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
                       : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                  }`}
+                    }`}
                 >
                   <span className="truncate">{workspace.name}</span>
                 </button>
@@ -423,11 +421,10 @@ function TitlebarHistoryMenu() {
         aria-haspopup="menu"
         aria-expanded={open}
         title="History"
-        className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
-          open || isHistoryRoute
+        className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${open || isHistoryRoute
             ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
             : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-        }`}
+          }`}
       >
         <HistoryIcon size={15} />
       </button>
@@ -527,6 +524,7 @@ function WorkspaceTabBar({
   const showSplitTitlebarWorkspaceNavigation = splitMode && !splitUnsupportedRoute;
   const showSinglePaneWorkspaceDropdown = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "top-dropdown";
   const showSplitToggle = !splitUnsupportedRoute || splitMode;
+  const compactDragHandle = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs;
   function resetCreateWorkspaceForm() {
     setNewName("");
     setNewDescription("");
@@ -587,10 +585,10 @@ function WorkspaceTabBar({
   }
 
   useEffect(() => {
-    if (!contextMenu) {return;}
+    if (!contextMenu) { return; }
 
     function handlePointerDown(event: MouseEvent) {
-      if (contextMenuRef.current?.contains(event.target as Node)) {return;}
+      if (contextMenuRef.current?.contains(event.target as Node)) { return; }
       setContextMenu(null);
     }
 
@@ -613,7 +611,7 @@ function WorkspaceTabBar({
   }, [contextMenu]);
 
   useLayoutEffect(() => {
-    if (!contextMenu || !contextMenuRef.current) {return;}
+    if (!contextMenu || !contextMenuRef.current) { return; }
     const el = contextMenuRef.current;
     const rect = el.getBoundingClientRect();
     const pad = 8;
@@ -646,8 +644,8 @@ function WorkspaceTabBar({
             showSplitTitlebarWorkspaceNavigation
               ? "relative z-0 min-w-0 flex-1 overflow-hidden"
               : showSinglePaneWorkspaceDropdown
-              ? "min-w-0 flex-1"
-              : "min-w-0 flex-1 overflow-x-auto scrollbar-none"
+                ? "min-w-0 flex-1"
+                : "min-w-0 flex-1 overflow-x-auto scrollbar-none"
           }
           {...(showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceDropdown ? { "data-workspace-tab-strip": "" } : {})}
         >
@@ -659,91 +657,92 @@ function WorkspaceTabBar({
               />
             </div>
           ) : (
-            <div className={`${showSplitTitlebarWorkspaceNavigation ? "hidden" : "flex min-w-max items-center"}`}>
+            <div className={`${showSplitTitlebarWorkspaceNavigation ? "hidden" : "flex min-w-max items-center gap-px"}`}>
               {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs ? (
-              workspaces.map((ws) => (
-                <button
-                  key={ws.id}
-                  onClick={() => activateWorkspace(ws.id)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setContextMenu({ workspace: ws, x: event.clientX, y: event.clientY });
-                  }}
-                  onDragOver={(event) => {
-                    if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
-                      return;
-                    }
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "move";
-                  }}
-                  onDragEnter={(event) => {
-                    if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
-                      return;
-                    }
-                    event.preventDefault();
-                    setDragOverWorkspaceId(ws.id);
-                    if (dragHoverTimerRef.current) {
-                      clearTimeout(dragHoverTimerRef.current);
-                    }
-                    dragHoverTimerRef.current = setTimeout(() => {
-                      setActiveWorkspaceId(ws.id);
-                    }, 600);
-                  }}
-                  onDragLeave={(event) => {
-                    const related = event.relatedTarget as Node | null;
-                    if (related && event.currentTarget.contains(related)) {
-                      return;
-                    }
-                    if (dragOverWorkspaceId === ws.id) {
-                      setDragOverWorkspaceId(null);
-                    }
-                    if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    setDragOverWorkspaceId(null);
-                    if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
-                    const raw = event.dataTransfer.getData("application/x-chat-session-ids");
-                    if (!raw) {
-                      return;
-                    }
-                    try {
-                      const sessionIds = JSON.parse(raw) as string[];
-                      if (sessionIds.length > 0) {
-                        void api.chat.moveSessions(sessionIds, ws.id).then(() => {
-                          activateWorkspace(ws.id);
-                        });
+                workspaces.map((ws) => (
+                  <button
+                    key={ws.id}
+                    onClick={() => activateWorkspace(ws.id)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setContextMenu({ workspace: ws, x: event.clientX, y: event.clientY });
+                    }}
+                    onDragOver={(event) => {
+                      if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                        return;
                       }
-                    } catch { /* ignore malformed data */ }
-                  }}
-                  className={workspaceTabClassName({
-                    isActive: activeWorkspaceId === ws.id,
-                    isDragTarget: dragOverWorkspaceId === ws.id,
-                  })}
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                    }}
+                    onDragEnter={(event) => {
+                      if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                        return;
+                      }
+                      event.preventDefault();
+                      setDragOverWorkspaceId(ws.id);
+                      if (dragHoverTimerRef.current) {
+                        clearTimeout(dragHoverTimerRef.current);
+                      }
+                      dragHoverTimerRef.current = setTimeout(() => {
+                        setActiveWorkspaceId(ws.id);
+                      }, 600);
+                    }}
+                    onDragLeave={(event) => {
+                      const related = event.relatedTarget as Node | null;
+                      if (related && event.currentTarget.contains(related)) {
+                        return;
+                      }
+                      if (dragOverWorkspaceId === ws.id) {
+                        setDragOverWorkspaceId(null);
+                      }
+                      if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setDragOverWorkspaceId(null);
+                      if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
+                      const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+                      if (!raw) {
+                        return;
+                      }
+                      try {
+                        const sessionIds = JSON.parse(raw) as string[];
+                        if (sessionIds.length > 0) {
+                          void api.chat.moveSessions(sessionIds, ws.id).then(() => {
+                            activateWorkspace(ws.id);
+                          });
+                        }
+                      } catch { /* ignore malformed data */ }
+                    }}
+                    className={workspaceTabClassName({
+                      isActive: activeWorkspaceId === ws.id,
+                      isDragTarget: dragOverWorkspaceId === ws.id,
+                    })}
+                  >
+                    {(dragOverWorkspaceId === ws.id || activeWorkspaceId === ws.id) && (
+                      <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+                    )}
+                    {ws.name}
+                  </button>
+                ))
+              ) : null}
+              {showWorkspaceTabs ? (
+                <button
+                  onClick={() => setCreating(true)}
+                  title="New Workspace"
+                  className="w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
                 >
-                  {(dragOverWorkspaceId === ws.id || activeWorkspaceId === ws.id) && (
-                    <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
-                  )}
-                  {ws.name}
+                  <Plus size={20} />
                 </button>
-              ))
-            ) : null}
-            {showWorkspaceTabs ? (
-              <button
-                onClick={() => setCreating(true)}
-                title="New Workspace"
-                className="ml-1 w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-              >
-                <Plus size={20} />
-              </button>
-            ) : null}
+              ) : null}
             </div>
           )}
         </div>
         <div
           data-window-drag-handle
-          className="mx-2 hidden h-5 min-w-16 flex-1 rounded-full border border-transparent bg-[var(--bg-hover)]/20 sm:block"
+          className={`mx-2 hidden h-5 rounded-full border border-transparent bg-[var(--bg-hover)]/20 sm:block ${compactDragHandle ? "w-16 shrink-0" : "min-w-16 flex-1"
+            }`}
           title="Drag window"
         />
         <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
@@ -754,11 +753,10 @@ function WorkspaceTabBar({
               disabled={workspaces.length < 2}
               aria-label="Toggle Split View"
               title="Toggle Split View"
-              className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
-                splitMode
+              className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${splitMode
                   ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
                   : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-              } disabled:opacity-40 disabled:hover:border-[var(--border-color)] disabled:hover:text-[var(--text-secondary)]`}
+                } disabled:opacity-40 disabled:hover:border-[var(--border-color)] disabled:hover:text-[var(--text-secondary)]`}
             >
               <Columns2 size={15} />
             </button>
@@ -832,7 +830,7 @@ function WorkspaceTabBar({
             }
           }}
           onConfirm={async () => {
-            if (dialogBusy) {return;}
+            if (dialogBusy) { return; }
             if (dialogState.kind !== "delete") {
               setDialogState(null);
               return;
@@ -915,10 +913,10 @@ function TopTabsNavigation() {
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!contextMenu) {return;}
+    if (!contextMenu) { return; }
 
     function handlePointerDown(event: MouseEvent) {
-      if (contextMenuRef.current?.contains(event.target as Node)) {return;}
+      if (contextMenuRef.current?.contains(event.target as Node)) { return; }
       setContextMenu(null);
     }
 
@@ -940,7 +938,7 @@ function TopTabsNavigation() {
   }, [contextMenu]);
 
   useLayoutEffect(() => {
-    if (!contextMenu || !contextMenuRef.current) {return;}
+    if (!contextMenu || !contextMenuRef.current) { return; }
     const el = contextMenuRef.current;
     const rect = el.getBoundingClientRect();
     const pad = 8;
@@ -971,11 +969,10 @@ function TopTabsNavigation() {
         event.stopPropagation();
         setContextMenu({ item, x: event.clientX, y: event.clientY });
       }}
-      className={`relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
-        activeSegment === item.path
+      className={`relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${activeSegment === item.path
           ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
           : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
-      }`}
+        }`}
     >
       {activeSegment === item.path && (
         <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
@@ -1134,7 +1131,7 @@ export default function Layout() {
     function handleOpenArtifact(event: Event) {
       const detail = (event as CustomEvent<{ artifactId?: string }>).detail;
       const artifactId = detail?.artifactId;
-      if (!artifactId) {return;}
+      if (!artifactId) { return; }
       void loadArtifact(artifactId).then(() => {
         setArtifactPanelOpen(true);
       });
@@ -1159,7 +1156,7 @@ export default function Layout() {
       {isDemoMode && (
         <div className="shrink-0 h-8 bg-amber-500/10 border-b border-amber-500/25 flex items-center justify-center gap-3 text-xs text-amber-600 dark:text-amber-400">
           <span>You&apos;re exploring Demo Mode — no changes are saved</span>
-          <button 
+          <button
             onClick={handleExitDemo}
             className="underline hover:no-underline font-medium"
           >
@@ -1202,33 +1199,33 @@ const LazyFallback = () => (
 function AppRoutes() {
   return (
     <Suspense fallback={<LazyFallback />}>
-    <Routes>
-      <Route path="/" element={<Navigate to="/project" replace />} />
-      <Route path="/project" element={<ProjectDashboardView />} />
-      <Route path="/chat" element={<ChatView />} />
-      <Route path="/chat/:sessionId" element={<ChatView />} />
-      <Route path="/notes" element={<NoteEditorView />} />
-      <Route path="/documents" element={<DocumentBrowserView />} />
-      <Route path="/webcapture" element={<WebCaptureView />} />
-      <Route path="/graph" element={<KnowledgeGraphView />} />
-      <Route path="/history" element={<HistoryView />} />
-      <Route path="/memory" element={<MemoryView />} />
-      <Route path="/preferences" element={<PreferencesView />} />
-      
-      {/* Legacy redirects */}
-      <Route path="/grounded" element={<Navigate to="/chat" replace />} />
-      <Route path="/chat-sessions" element={<Navigate to="/chat" replace />} />
-      <Route path="/daily" element={<Navigate to="/notes" state={{ subView: "daily" }} replace />} />
-      <Route path="/flashcards" element={<Navigate to="/graph" replace />} />
-      <Route path="/learning" element={<Navigate to="/graph" replace />} />
-      <Route path="/plugins" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
-      <Route path="/backlinks" element={<Navigate to="/graph" replace />} />
-      <Route path="/dedup" element={<Navigate to="/graph" replace />} />
-      <Route path="/settings" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
-      <Route path="/workspaces" element={<Navigate to="/preferences" state={{ settingsTab: "workspaces" }} replace />} />
-      <Route path="/backup" element={<Navigate to="/preferences" state={{ settingsTab: "backup" }} replace />} />
-      <Route path="/import" element={<Navigate to="/preferences" state={{ settingsTab: "import" }} replace />} />
-    </Routes>
+      <Routes>
+        <Route path="/" element={<Navigate to="/project" replace />} />
+        <Route path="/project" element={<ProjectDashboardView />} />
+        <Route path="/chat" element={<ChatView />} />
+        <Route path="/chat/:sessionId" element={<ChatView />} />
+        <Route path="/notes" element={<NoteEditorView />} />
+        <Route path="/documents" element={<DocumentBrowserView />} />
+        <Route path="/webcapture" element={<WebCaptureView />} />
+        <Route path="/graph" element={<KnowledgeGraphView />} />
+        <Route path="/history" element={<HistoryView />} />
+        <Route path="/memory" element={<MemoryView />} />
+        <Route path="/preferences" element={<PreferencesView />} />
+
+        {/* Legacy redirects */}
+        <Route path="/grounded" element={<Navigate to="/chat" replace />} />
+        <Route path="/chat-sessions" element={<Navigate to="/chat" replace />} />
+        <Route path="/daily" element={<Navigate to="/notes" state={{ subView: "daily" }} replace />} />
+        <Route path="/flashcards" element={<Navigate to="/graph" replace />} />
+        <Route path="/learning" element={<Navigate to="/graph" replace />} />
+        <Route path="/plugins" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
+        <Route path="/backlinks" element={<Navigate to="/graph" replace />} />
+        <Route path="/dedup" element={<Navigate to="/graph" replace />} />
+        <Route path="/settings" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
+        <Route path="/workspaces" element={<Navigate to="/preferences" state={{ settingsTab: "workspaces" }} replace />} />
+        <Route path="/backup" element={<Navigate to="/preferences" state={{ settingsTab: "backup" }} replace />} />
+        <Route path="/import" element={<Navigate to="/preferences" state={{ settingsTab: "import" }} replace />} />
+      </Routes>
     </Suspense>
   );
 }
