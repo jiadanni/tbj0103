@@ -486,9 +486,14 @@ describe("ChatView", () => {
 
   it("shows the active model label in the composer", () => {
     mockActiveChatId = "session-1";
+    useSettingsStore.setState({
+      modelLabels: {
+        "test-model": "Test Model",
+      },
+    });
     renderChatView();
 
-    expect(screen.getByRole("button", { name: /Active model: test-model/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Active model: Test Model" })).toBeInTheDocument();
   });
 
   it("focuses an existing empty chat instead of creating another one", async () => {

@@ -23,6 +23,7 @@ import {
   mergeComposerInput,
   type ComposerSuggestion,
 } from "../lib/composerSuggestions";
+import { getModelGroupMeta } from "../lib/modelGroups";
 import { resolveChatTitle } from "../lib/chatTitles";
 import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
 import { SelectionToolbar } from "../components/SelectionToolbar";
@@ -160,10 +161,10 @@ function SessionItem({
       onContextMenu={(e) => openContextMenu(e, session)}
       onClick={() => selectMode ? toggleSelect(session.id) : openSession(session)}
       className={`group flex min-w-0 items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${isSelected
+        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+        : isActive
           ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-          : isActive
-            ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
         }`}
       style={{ paddingLeft: `${12 + depth * 20}px` }}
     >
@@ -171,8 +172,8 @@ function SessionItem({
         <button
           onClick={(e) => { e.stopPropagation(); toggleSelect(session.id); }}
           className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${isSelected
-              ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
-              : "border-[var(--text-muted)] text-transparent"
+            ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+            : "border-[var(--text-muted)] text-transparent"
             }`}
         >
           <Check size={10} />
@@ -993,10 +994,10 @@ function SessionSidebar({
                         setExpanded((prev) => ({ ...prev, [project.id]: !isOpen }));
                       }}
                       className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${dragOverProjectId === project.id
-                          ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
-                          : selectedProjectIds.has(project.id)
-                            ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
+                        : selectedProjectIds.has(project.id)
+                          ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                         }`}
                     >
                       {selectMode && (
@@ -1006,8 +1007,8 @@ function SessionSidebar({
                             toggleProjectSelection(project.id);
                           }}
                           className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${selectedProjectIds.has(project.id)
-                              ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
-                              : "border-[var(--text-muted)] text-transparent"
+                            ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+                            : "border-[var(--text-muted)] text-transparent"
                             }`}
                         >
                           <Check size={10} />
@@ -1145,8 +1146,8 @@ function SessionSidebar({
                   }}
                   disabled={!canRefreshSessionTitle(ctxMenu.session, useChatStore.getState().messages)}
                   className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs ${canRefreshSessionTitle(ctxMenu.session, useChatStore.getState().messages)
-                      ? "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      : "cursor-not-allowed text-[var(--text-muted)] opacity-40"
+                    ? "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                    : "cursor-not-allowed text-[var(--text-muted)] opacity-40"
                     }`}
                 >
                   <RefreshCw size={11} /> Refresh chat name
@@ -1485,8 +1486,8 @@ function StreamingBubble({
   return (
     <div className="flex flex-col gap-1 items-start px-4 pb-4">
       <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${chatMessageStyle === "flat"
-          ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]"
-          : ""
+        ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]"
+        : ""
         }`}>
         <p ref={textRef} className="whitespace-pre-wrap" />
         <span className="streaming-cursor" />
@@ -2056,6 +2057,38 @@ export default function ChatView() {
     () => availableModels,
     [availableModels]
   );
+  const groupedModelPickerOptions = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
+
+    modelPickerOptions.forEach((modelId) => {
+      const provider = aiModelList.find((model) => model.model_id === modelId)?.provider;
+      const meta = getModelGroupMeta(provider);
+      const existing = groups.get(meta.key);
+      if (existing) {
+        existing.modelIds.push(modelId);
+        return;
+      }
+      groups.set(meta.key, { ...meta, modelIds: [modelId] });
+    });
+
+    return Array.from(groups.values()).sort((a, b) => a.order - b.order);
+  }, [aiModelList, modelPickerOptions]);
+  const groupedPinnedQuickSendModels = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
+
+    pinnedQuickSendModels.forEach((modelId) => {
+      const provider = aiModelList.find((model) => model.model_id === modelId)?.provider;
+      const meta = getModelGroupMeta(provider);
+      const existing = groups.get(meta.key);
+      if (existing) {
+        existing.modelIds.push(modelId);
+        return;
+      }
+      groups.set(meta.key, { ...meta, modelIds: [modelId] });
+    });
+
+    return Array.from(groups.values()).sort((a, b) => a.order - b.order);
+  }, [aiModelList, pinnedQuickSendModels]);
   // uses granular selector from above
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
@@ -2467,6 +2500,11 @@ export default function ChatView() {
       }
 
       setAiModelList(aiModels);
+      aiModels.forEach((model) => {
+        if (model.name && useSettingsStore.getState().modelLabels[model.model_id] !== model.name) {
+          useSettingsStore.getState().setModelLabel(model.model_id, model.name);
+        }
+      });
 
       const enabledModels = aiModels
         .filter((model) => model.enabled)
@@ -3254,6 +3292,18 @@ export default function ChatView() {
     setEditingMessageId(null);
     const idx = activeMessages.findIndex((m) => m.id === msgId);
     if (idx < 0) { return; }
+
+    if (idx < activeMessages.length - 1) {
+      if (!await openConfirmDialog({
+        title: "Edit Message?",
+        description: "Editing this message will delete all subsequent messages in this conversation. This cannot be undone.",
+        confirmLabel: "Edit Message",
+        tone: "danger",
+      })) {
+        return;
+      }
+    }
+
     const trimmedMessages = activeMessages.slice(0, idx);
     setMessages(activeChatId, trimmedMessages);
     setInput("");
@@ -3309,6 +3359,18 @@ export default function ChatView() {
     if (!activeChatId || isStreaming || !effectiveWorkspaceId) { return; }
     const idx = activeMessages.findIndex((m) => m.id === msgId);
     if (idx < 0) { return; }
+
+    if (idx < activeMessages.length - 1) {
+      if (!await openConfirmDialog({
+        title: "Regenerate Message?",
+        description: "Redoing this message will delete all subsequent messages in this conversation. This cannot be undone.",
+        confirmLabel: "Regenerate",
+        tone: "danger",
+      })) {
+        return;
+      }
+    }
+
     const trimmedMessages = activeMessages.slice(0, idx);
     setMessages(activeChatId, trimmedMessages);
 
@@ -3600,8 +3662,8 @@ export default function ChatView() {
                         onClick={() => { if (canRefreshActiveSessionTitle) { refreshSessionTitle(activeSession); } }}
                         disabled={!canRefreshActiveSessionTitle}
                         className={`p-1.5 rounded-lg text-[var(--text-muted)] transition-colors ${canRefreshActiveSessionTitle
-                            ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
-                            : "cursor-not-allowed opacity-40"
+                          ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
+                          : "cursor-not-allowed opacity-40"
                           }`}
                         title={canRefreshActiveSessionTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"}
                       >
@@ -3772,28 +3834,37 @@ export default function ChatView() {
                                 {isModelPickerOpen && modelPickerOptions.length > 0 && (
                                   <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
                                     <div className="max-h-72 overflow-y-auto">
-                                      {modelPickerOptions.map((modelId) => {
-                                        const isSelected = modelId === selectedModel;
-                                        return (
-                                          <button
-                                            key={modelId}
-                                            type="button"
-                                            onClick={async () => {
-                                              setSelectedModel(modelId);
-                                              setIsModelPickerOpen(false);
-                                              await persistModelChoice(modelId);
-                                            }}
-                                            className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${isSelected
-                                                ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                                                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                                              }`}
-                                            title={modelPickerLabel(modelId)}
-                                          >
-                                            <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
-                                            {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
-                                          </button>
-                                        );
-                                      })}
+                                      {groupedModelPickerOptions.map((group) => (
+                                        <div key={group.key} className="pb-1 last:pb-0">
+                                          {groupedModelPickerOptions.length > 1 && (
+                                            <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                                              {group.label}
+                                            </div>
+                                          )}
+                                          {group.modelIds.map((modelId) => {
+                                            const isSelected = modelId === selectedModel;
+                                            return (
+                                              <button
+                                                key={modelId}
+                                                type="button"
+                                                onClick={async () => {
+                                                  setSelectedModel(modelId);
+                                                  setIsModelPickerOpen(false);
+                                                  await persistModelChoice(modelId);
+                                                }}
+                                                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${isSelected
+                                                  ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
+                                                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                                  }`}
+                                                title={modelPickerLabel(modelId)}
+                                              >
+                                                <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
+                                                {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      ))}
                                     </div>
                                   </div>
                                 )}
@@ -3850,16 +3921,16 @@ export default function ChatView() {
                                   onKeyDown={handleKeyDown}
                                   disabled={isStreaming}
                                   placeholder={
-                                isStreaming
-                                  ? "Waiting for response…"
-                                  : !selectedModel
-                                    ? ollamaModelStatus === "unreachable"
-                                      ? "Ollama is unavailable — start it or enable auto-start in Preferences > AI"
-                                      : "No models available — install one via ollama pull"
-                                    : activeMessages.length > 0
-                                      ? "Message this thread…"
-                                      : "Start a new thread…"
-                              }
+                                    isStreaming
+                                      ? "Waiting for response…"
+                                      : !selectedModel
+                                        ? ollamaModelStatus === "unreachable"
+                                          ? "Ollama is unavailable — start it or enable auto-start in Preferences > AI"
+                                          : "No models available — install one via ollama pull"
+                                        : activeMessages.length > 0
+                                          ? "Message this thread…"
+                                          : "Start a new thread…"
+                                  }
                                   rows={1}
                                   className="flex-1 appearance-none resize-none border-0 bg-transparent px-5 py-3 text-[15px] font-medium leading-6 tracking-[0.01em] text-[rgba(255,255,255,0.94)] placeholder:text-[rgba(255,255,255,0.26)] shadow-none outline-none ring-0 transition-colors max-h-40 overflow-y-auto focus:border-0 focus:shadow-none focus:ring-0"
                                   style={{ minHeight: 56 }}
@@ -3893,78 +3964,87 @@ export default function ChatView() {
                                         }}
                                         disabled={!input.trim() || !selectedModel}
                                         className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.18)] bg-[rgba(var(--accent-color-rgb),0.1)] text-[rgba(255,255,255,0.72)] shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
-                                        }`}
-                                    title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
-                                  >
-                                    <ArrowUpCircle size={19} strokeWidth={2.2} />
-                                  </button>
-                                  {pinnedQuickSendModels.length > 0 && (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setIsModelPickerOpen(false);
-                                          setIsModelSendMenuOpen((open) => !open);
-                                        }}
-                                        disabled={!input.trim() || isStreaming}
-                                        className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.18)] border-l-white/10 bg-[rgba(var(--accent-color-rgb),0.1)] text-white shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
-                                        title="Send with another pinned model"
-                                        aria-label="Send with another pinned model"
-                                        aria-haspopup="menu"
-                                        aria-expanded={isModelSendMenuOpen}
+                                          }`}
+                                        title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
                                       >
-                                        <ChevronDown size={14} strokeWidth={2.2} />
+                                        <ArrowUpCircle size={19} strokeWidth={2.2} />
                                       </button>
-                                      {isModelSendMenuOpen && (
-                                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
-                                          <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                                            Send With
-                                          </div>
-                                          {pinnedQuickSendModels.map((modelId) => (
-                                            <button
-                                              key={modelId}
-                                              type="button"
-                                              onClick={async () => {
-                                                setIsModelSendMenuOpen(false);
-                                                await sendMessageWithModel(modelId);
-                                              }}
-                                              disabled={!input.trim() || isStreaming}
-                                              title={`Send with ${modelPickerLabel(modelId)}`}
-                                              className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-                                            >
-                                              <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
-                                              <Globe size={14} className="shrink-0 text-[var(--text-muted)]" />
-                                            </button>
-                                          ))}
-                                        </div>
+                                      {pinnedQuickSendModels.length > 0 && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setIsModelPickerOpen(false);
+                                              setIsModelSendMenuOpen((open) => !open);
+                                            }}
+                                            disabled={!input.trim() || isStreaming}
+                                            className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.18)] border-l-white/10 bg-[rgba(var(--accent-color-rgb),0.1)] text-white shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                            title="Send with another pinned model"
+                                            aria-label="Send with another pinned model"
+                                            aria-haspopup="menu"
+                                            aria-expanded={isModelSendMenuOpen}
+                                          >
+                                            <ChevronDown size={14} strokeWidth={2.2} />
+                                          </button>
+                                          {isModelSendMenuOpen && (
+                                            <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                                              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                                                Send With
+                                              </div>
+                                              {groupedPinnedQuickSendModels.map((group) => (
+                                                <div key={group.key} className="pb-1 last:pb-0">
+                                                  {groupedPinnedQuickSendModels.length > 1 && (
+                                                    <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                                                      {group.label}
+                                                    </div>
+                                                  )}
+                                                  {group.modelIds.map((modelId) => (
+                                                    <button
+                                                      key={modelId}
+                                                      type="button"
+                                                      onClick={async () => {
+                                                        setIsModelSendMenuOpen(false);
+                                                        await sendMessageWithModel(modelId);
+                                                      }}
+                                                      disabled={!input.trim() || isStreaming}
+                                                      title={`Send with ${modelPickerLabel(modelId)}`}
+                                                      className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                                                    >
+                                                      <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
+                                                      <Globe size={14} className="shrink-0 text-[var(--text-muted)]" />
+                                                    </button>
+                                                  ))}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </>
                                       )}
-                                    </>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={async () => {
-                                    if (!input.trim() || !effectiveWorkspaceId || !selectedModel) { return; }
-                                    const ensuredSession = await ensureSessionForChat(selectedModel);
-                                    if (!ensuredSession) { return; }
-                                    await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
-                                      modelName: selectedModel,
-                                      sessionId: ensuredSession.sessionId,
-                                      processAt: new Date(Date.now() + 60_000).toISOString(),
-                                    });
-                                    setInput("");
-                                  }}
-                                  disabled={!input.trim() || !selectedModel}
-                                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.58)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
-                                    title="Schedule for background processing"
-                                  >
-                                    <Clock size={14} strokeWidth={2.2} />
-                                  </button>
-                                </div>
-                              )}
+                                    </div>
+                                    <button
+                                      onClick={async () => {
+                                        if (!input.trim() || !effectiveWorkspaceId || !selectedModel) { return; }
+                                        const ensuredSession = await ensureSessionForChat(selectedModel);
+                                        if (!ensuredSession) { return; }
+                                        await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
+                                          modelName: selectedModel,
+                                          sessionId: ensuredSession.sessionId,
+                                          processAt: new Date(Date.now() + 60_000).toISOString(),
+                                        });
+                                        setInput("");
+                                      }}
+                                      disabled={!input.trim() || !selectedModel}
+                                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.58)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                      title="Schedule for background processing"
+                                    >
+                                      <Clock size={14} strokeWidth={2.2} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
 
                         {/* ── Composer tool row ─────────────────────────────────────── */}
                         <div className="flex items-center gap-2.5 border-t border-[rgba(255,255,255,0.06)] px-1 pt-2.5 flex-wrap">
@@ -4221,8 +4301,8 @@ export default function ChatView() {
                     <div
                       key={t.id}
                       className={`rounded-lg border text-[11px] ${t.status === "processing" ? "border-yellow-500/30 bg-yellow-500/5" :
-                          t.status === "done" ? "border-green-500/20 bg-[var(--bg-primary)]" :
-                            "border-[var(--border-color)] bg-[var(--bg-primary)]"
+                        t.status === "done" ? "border-green-500/20 bg-[var(--bg-primary)]" :
+                          "border-[var(--border-color)] bg-[var(--bg-primary)]"
                         }`}
                     >
                       <div className="p-2">
@@ -4274,8 +4354,8 @@ export default function ChatView() {
           >
             <div className="flex items-start gap-3">
               <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${confirmDialog.tone === "danger"
-                  ? "bg-red-500/12 text-red-400"
-                  : "bg-[var(--accent-color)]/12 text-[var(--accent-color)]"
+                ? "bg-red-500/12 text-red-400"
+                : "bg-[var(--accent-color)]/12 text-[var(--accent-color)]"
                 }`}>
                 {confirmDialog.tone === "danger" ? <Trash2 size={18} /> : <MessageSquare size={18} />}
               </div>
