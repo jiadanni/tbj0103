@@ -98,3 +98,4 @@ conversations-mac/
 *.orig
 *.rej
 .claude/settings.local.json
+tauri/.claude/settings.local.json
