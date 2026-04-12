@@ -116,7 +116,7 @@ export default function NoteEditorView() {
       {/* Subview tabs */}
       <div className="flex items-center gap-1.5 px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)] flex-shrink-0">
         {[
-          { id: "notes" as NotesSubView, label: "Project Notes", Icon: FileText },
+          { id: "notes" as NotesSubView, label: "Notes", Icon: FileText },
           { id: "daily" as NotesSubView, label: "Daily Notes", Icon: Calendar },
         ].map(({ id, label, Icon }) => (
           <button
@@ -164,7 +164,7 @@ export default function NoteEditorView() {
 
         <div className="flex-1 overflow-y-auto">
           {!activeProjectId ? (
-            <p className="p-4 text-xs text-[var(--text-muted)] text-center">Select a project to view notes.</p>
+            <p className="p-4 text-xs text-[var(--text-muted)] text-center">Select a folder to view notes.</p>
           ) : filtered.length === 0 ? (
             <p className="p-4 text-xs text-[var(--text-muted)] text-center">No notes yet. Click + to create one.</p>
           ) : (

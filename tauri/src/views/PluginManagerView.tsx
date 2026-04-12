@@ -23,7 +23,7 @@ const BUILT_IN_PLUGINS: PluginMeta[] = [
   {
     id: "com.aetherium.markdown-exporter",
     name: "Markdown Exporter",
-    description: "Export projects as Markdown files with full concept and note content.",
+    description: "Export workspaces as Markdown files with full concept and note content.",
     version: "1.0.0",
     author: "Aetherium",
     type: "exporter",
@@ -32,7 +32,7 @@ const BUILT_IN_PLUGINS: PluginMeta[] = [
   {
     id: "com.aetherium.obsidian-exporter",
     name: "Obsidian Vault Exporter",
-    description: "Export projects as an Obsidian-compatible vault with wiki-links.",
+    description: "Export workspaces as an Obsidian-compatible vault with wiki-links.",
     version: "1.0.0",
     author: "Aetherium",
     type: "exporter",
@@ -41,7 +41,7 @@ const BUILT_IN_PLUGINS: PluginMeta[] = [
   {
     id: "com.aetherium.youtube-importer",
     name: "YouTube Transcript Importer",
-    description: "Import YouTube video transcripts as project notes.",
+    description: "Import YouTube video transcripts as notes.",
     version: "1.0.0",
     author: "Aetherium",
     type: "importer",
