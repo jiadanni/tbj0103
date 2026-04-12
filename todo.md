@@ -98,3 +98,5 @@ Bug
 
   If you can still submit a search after the UI looks off, that’s a state/UI mismatch bug. If you want, I can fix it so New Search only opens the chat screen and does
   not silently enable grounded search, or make the UI clearly reflect that it’s on.
+
+  mlx

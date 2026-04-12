@@ -252,14 +252,18 @@ function SessionSidebar({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
   const [moveMenuOpen, setMoveMenuOpen] = useState(false);
+  const [bulkFolderMoveOpen, setBulkFolderMoveOpen] = useState(false);
   const [_bulkMoveWorkspaceId, setBulkMoveWorkspaceId] = useState<string | null>(null);
   const [bulkActionPending, setBulkActionPending] = useState<"move" | "delete" | null>(null);
   const [projectRenamingId, setProjectRenamingId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState("");
   const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
   const [ctxMoveOpen, setCtxMoveOpen] = useState(false);
+  const [ctxFolderMoveOpen, setCtxFolderMoveOpen] = useState(false);
   const [_ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
   const [ctxProjectMoveWorkspaceId, setCtxProjectMoveWorkspaceId] = useState<string | null>(null);
+  const [folderMoveShowCreate, setFolderMoveShowCreate] = useState(false);
+  const [folderMoveNewName, setFolderMoveNewName] = useState("");
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [showNewWorkspaceInput, setShowNewWorkspaceInput] = useState(false);
   const [workspaceMoveQuery, setWorkspaceMoveQuery] = useState("");
@@ -402,13 +406,17 @@ function SessionSidebar({
     setSelectedIds(new Set());
     setSelectedProjectIds(new Set());
     setMoveMenuOpen(false);
+    setBulkFolderMoveOpen(false);
     setBulkMoveWorkspaceId(null);
     setDragOverProjectId(null);
     setCtxMoveOpen(false);
+    setCtxFolderMoveOpen(false);
     setCtxMoveWorkspaceId(null);
     setCtxProjectMoveWorkspaceId(null);
     setShowNewWorkspaceInput(false);
     setNewWorkspaceName("");
+    setFolderMoveShowCreate(false);
+    setFolderMoveNewName("");
     setWorkspaceProjectFlyout(null);
   }
 
@@ -532,6 +540,84 @@ function SessionSidebar({
           })}
           {filteredWorkspaces.length === 0 && (
             <p className="px-3 py-2 text-xs text-[var(--text-muted)]">No matching workspaces.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderFolderMoveSubmenu(
+    currentProjectId: string | null,
+    workspaceId: string,
+    onSelect: (projectId: string | null) => void,
+  ) {
+    async function handleCreateFolderAndMove() {
+      const name = folderMoveNewName.trim();
+      if (!name) { return; }
+      setFolderMoveShowCreate(false);
+      setFolderMoveNewName("");
+      try {
+        const newProject = await api.project.create(workspaceId, name);
+        const refreshedProjects = await api.project.list(workspaceId);
+        useWorkspaceStore.getState().setProjectsForWorkspace(workspaceId, refreshedProjects);
+        onSelect(newProject.id);
+      } catch (error) {
+        const description = error instanceof Error ? error.message : "Failed to create folder.";
+        showAlertDialog("Create folder failed", description, "danger");
+      }
+    }
+
+    const isAtRoot = !currentProjectId;
+    return (
+      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
+        <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
+          <button
+            onClick={() => onSelect(null)}
+            disabled={isAtRoot}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <MessageSquare size={11} />
+            <span className="truncate flex-1">No folder{isAtRoot ? " (Current)" : ""}</span>
+          </button>
+          {projects.length > 0 && <div className="my-1 border-t border-[var(--border-color)]" />}
+          {projects.map((project) => {
+            const isCurrent = project.id === currentProjectId;
+            return (
+              <button
+                key={project.id}
+                onClick={() => onSelect(project.id)}
+                disabled={isCurrent}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Folder size={11} style={project.color ? { color: project.color } : undefined} />
+                <span className="truncate flex-1">
+                  {project.name}{isCurrent ? " (Current)" : ""}
+                </span>
+              </button>
+            );
+          })}
+          <div className="my-1 border-t border-[var(--border-color)]" />
+          {folderMoveShowCreate ? (
+            <form
+              onSubmit={(e) => { e.preventDefault(); void handleCreateFolderAndMove(); }}
+              className="px-2 py-1"
+            >
+              <input
+                autoFocus
+                value={folderMoveNewName}
+                onChange={(e) => setFolderMoveNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") { setFolderMoveShowCreate(false); setFolderMoveNewName(""); } }}
+                placeholder="Folder name"
+                className="w-full rounded border border-[var(--border-color)] bg-[var(--bg-input)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+              />
+            </form>
+          ) : (
+            <button
+              onClick={() => setFolderMoveShowCreate(true)}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+            >
+              <Plus size={11} /> Create folder...
+            </button>
           )}
         </div>
       </div>
@@ -843,6 +929,61 @@ function SessionSidebar({
                     </div>
                   </div>
                 )}
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => { setBulkFolderMoveOpen((v) => !v); setMoveMenuOpen(false); }}
+                  disabled={selectedIds.size === 0 || bulkActionPending !== null}
+                  className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
+                  title="Move selected chats to a folder"
+                >
+                  <Folder size={12} />
+                  To folder
+                </button>
+                {bulkFolderMoveOpen && bulkActionPending === null && (() => {
+                  const bulkWorkspaceId = sidebarSessions.find((s) => selectedIds.has(s.id))?.workspace_id;
+                  return (
+                  <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
+                    <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
+                      <button
+                        onClick={() => {
+                          if (!bulkWorkspaceId) { return; }
+                          setBulkFolderMoveOpen(false);
+                          setBulkActionPending("move");
+                          void moveSessionsToTarget(Array.from(selectedIds), bulkWorkspaceId, null).then(() => {
+                            resetSelectionState();
+                          }).finally(() => {
+                            setBulkActionPending(null);
+                          });
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      >
+                        <MessageSquare size={11} /> No folder
+                      </button>
+                      {projects.length > 0 && <div className="my-1 border-t border-[var(--border-color)]" />}
+                      {projects.map((project) => (
+                        <button
+                          key={project.id}
+                          onClick={() => {
+                            if (!bulkWorkspaceId) { return; }
+                            setBulkFolderMoveOpen(false);
+                            setBulkActionPending("move");
+                            void moveSessionsToTarget(Array.from(selectedIds), bulkWorkspaceId, project.id).then(() => {
+                              resetSelectionState();
+                            }).finally(() => {
+                              setBulkActionPending(null);
+                            });
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        >
+                          <Folder size={11} style={project.color ? { color: project.color } : undefined} />
+                          <span className="truncate">{project.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  );
+                })()}
               </div>
               <button
                 onClick={() => {
@@ -1203,7 +1344,38 @@ function SessionSidebar({
                 <div className="my-1 border-t border-[var(--border-color)]" />
                 <div
                   className="relative"
-                  onMouseEnter={() => setCtxMoveOpen(true)}
+                  onMouseEnter={() => { setCtxFolderMoveOpen(true); setCtxMoveOpen(false); }}
+                  onMouseLeave={() => { setCtxFolderMoveOpen(false); setFolderMoveShowCreate(false); setFolderMoveNewName(""); }}
+                >
+                  <button
+                    onClick={() => setCtxFolderMoveOpen((v) => !v)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    <Folder size={11} />
+                    <span className="truncate flex-1">Move to folder</span>
+                    <ChevronRight size={11} />
+                  </button>
+                  {ctxFolderMoveOpen && renderFolderMoveSubmenu(
+                    ctxMenu.session.project_id || null,
+                    ctxMenu.session.workspace_id,
+                    (targetProjectId) => {
+                      void moveSessionsToTarget([ctxMenu.session.id], ctxMenu.session.workspace_id, targetProjectId).catch((error: unknown) => {
+                        const description = error instanceof Error
+                          ? error.message
+                          : typeof error === "string" && error.trim()
+                            ? error
+                            : "Failed to move chat.";
+                        console.error("Failed to move chat:", error);
+                        showAlertDialog("Move failed", description, "danger");
+                      });
+                      setCtxFolderMoveOpen(false);
+                      setCtxMenu(null);
+                    },
+                  )}
+                </div>
+                <div
+                  className="relative"
+                  onMouseEnter={() => { setCtxMoveOpen(true); setCtxFolderMoveOpen(false); }}
                   onMouseLeave={() => { setCtxMoveOpen(false); setCtxMoveWorkspaceId(null); }}
                 >
                   <button
@@ -1211,7 +1383,7 @@ function SessionSidebar({
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                   >
                     <MoveRight size={11} />
-                    <span className="truncate flex-1">Move to</span>
+                    <span className="truncate flex-1">Move to workspace</span>
                     <ChevronRight size={11} />
                   </button>
                   {ctxMoveOpen && renderSessionMoveSubmenu((targetWorkspaceId, targetProjectId) => {
@@ -1554,11 +1726,11 @@ export default function ChatView() {
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
   const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
   const composerSelectClassName = "h-10 w-full appearance-none rounded-full border border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.9)] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] outline-none transition-all hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] focus:border-[rgba(var(--accent-color-rgb),0.42)] focus:bg-[rgba(var(--accent-color-rgb),0.06)]";
-  const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] transition-all";
-  const composerToggleInactiveClass = "border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.78)] hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] hover:text-white";
+  const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all";
+  const composerToggleInactiveClass = "border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.78)] hover:border-[rgba(255,255,255,0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white";
   const composerToggleActiveClass = "border-[rgba(var(--accent-color-rgb),0.34)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]";
   const composerUtilitySelectClassName = "h-9 appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 pl-3.5 pr-9 text-xs font-semibold text-[var(--text-secondary)] shadow-sm outline-none transition-all hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)] focus:border-[var(--accent-color)]";
-  const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.54)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.2)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
+  const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-transparent bg-[rgba(255,255,255,0.04)] text-[rgba(255,255,255,0.54)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -3767,12 +3939,12 @@ export default function ChatView() {
                   )}
 
                   {/* Input / composer area */}
-                  <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-5"}`}>
-                    <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[rgba(255,255,255,0.04)] bg-[rgba(14,16,20,0.58)] ${showComposerHeader ? "p-3" : "p-1.5"} shadow-[0_30px_90px_-46px_rgba(0,0,0,0.95)] backdrop-blur-[24px]`}>
-                      <div className="flex flex-col gap-3.5 min-w-0">
+                  <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-3 pt-2 sm:px-5"}`}>
+                    <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[rgba(255,255,255,0.10)] bg-[rgba(14,16,20,0.58)] ${showComposerHeader ? "p-2.5" : "p-1.5"} shadow-[0_30px_90px_-46px_rgba(0,0,0,0.95)] backdrop-blur-[24px]`}>
+                      <div className="flex flex-col gap-2 min-w-0">
                         {showComposerHeader && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
-                          <div className="px-1 pt-1">
-                            <div className="px-1.5 pb-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
+                          <div className="px-1 pt-0.5">
+                            <div className="px-1.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
                               General
                             </div>
                             <TopicChips
@@ -3788,28 +3960,26 @@ export default function ChatView() {
                             disabled={isStreaming}
                             disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
                             onSuggestionClick={handleComposerSuggestion}
+                            onToggleCollapse={() => setIsComposerHeaderCollapsed((c) => !c)}
                           />
                         )}
 
-                        {hasComposerHeader && (
-                          <div className={`flex justify-end ${showComposerHeader ? "-mt-1 px-1 pb-0.5" : "px-1"}`}>
+                        {hasComposerHeader && !showComposerHeader && (
+                          <div className="flex justify-end px-1">
                             <button
                               type="button"
                               onClick={() => setIsComposerHeaderCollapsed((collapsed) => !collapsed)}
-                              className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.42)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white"
-                              aria-label={showComposerHeader ? "Hide suggestions" : "Show suggestions"}
-                              aria-expanded={showComposerHeader}
-                              title={showComposerHeader ? "Hide suggestions" : "Show suggestions"}
+                              className="flex h-7 w-7 items-center justify-center rounded-full bg-[rgba(255,255,255,0.04)] text-[rgba(255,255,255,0.42)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+                              aria-label="Show suggestions"
+                              title="Show suggestions"
                             >
-                              {showComposerHeader ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              <ChevronDown size={13} />
                             </button>
                           </div>
                         )}
 
-                        <div className={`${showComposerHeader ? "rounded-[24px] border border-[rgba(255,255,255,0.06)] bg-[rgba(7,9,12,0.72)] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_22px_52px_-34px_rgba(0,0,0,0.95)]" : "rounded-[24px] border border-transparent bg-transparent p-1 shadow-none"} transition-all focus-within:border-[rgba(255,255,255,0.1)] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_22px_52px_-34px_rgba(0,0,0,0.95)]`}>
-                          <div className="flex flex-col gap-3 min-w-0">
-                            {/* Tool buttons row - moved above input */}
-                            <div className="flex flex-wrap items-center gap-1.5 px-1">
+                        {/* Tool buttons row */}
+                        <div className={`flex flex-wrap items-center gap-1.5 px-1 ${showComposerHeader ? "border-t border-[rgba(255,255,255,0.06)] pt-2" : ""}`}>
                               {/* Active model picker */}
                               <div className="relative" data-active-model-menu>
                                 <button
@@ -3911,9 +4081,8 @@ export default function ChatView() {
                               </button>
                             </div>
 
-                            {/* Textarea with gradient border wrapper */}
-                            <div className="rounded-[20px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.035)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors focus-within:border-[rgba(var(--accent-color-rgb),0.18)] focus-within:bg-[rgba(255,255,255,0.05)]">
-                              <div className="flex items-end gap-2.5">
+                        {/* Textarea */}
+                        <div className="flex items-end gap-2.5 rounded-2xl bg-[rgba(255,255,255,0.03)] px-1.5 py-1">
                                 <textarea
                                   ref={inputRef}
                                   value={input}
@@ -4041,13 +4210,10 @@ export default function ChatView() {
                                     </button>
                                   </div>
                                 )}
-                              </div>
-                            </div>
-                          </div>
                         </div>
 
                         {/* ── Composer tool row ─────────────────────────────────────── */}
-                        <div className="flex items-center gap-2.5 border-t border-[rgba(255,255,255,0.06)] px-1 pt-2.5 flex-wrap">
+                        <div className="flex items-center gap-2.5 px-1 pt-1 flex-wrap">
                           {/* Try better model button */}
                           {nextModel && !isStreaming && activeMessages.length > 0 && (
                             <button
@@ -4080,7 +4246,7 @@ export default function ChatView() {
                           )}
 
                           {sessionTokensUsed > 0 && (
-                            <div className="ml-auto flex h-10 items-center gap-2 rounded-full border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.74)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)]">
+                            <div className="ml-auto flex h-10 items-center gap-2 rounded-full border border-transparent bg-[rgba(255,255,255,0.04)] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.74)]">
                               <span className="text-[rgba(255,255,255,0.42)]">Tokens</span>
                               <span className="font-mono text-[rgba(255,255,255,0.95)]">
                                 {sessionTokensUsed >= 1000 ? `${(sessionTokensUsed / 1000).toFixed(1)}k` : sessionTokensUsed}
