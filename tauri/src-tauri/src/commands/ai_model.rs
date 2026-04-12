@@ -199,8 +199,9 @@ pub fn list_model_speed_stats(state: State<DbState>) -> Result<Vec<ModelSpeedSta
                    AND tokens_used IS NOT NULL
                    AND duration_ms IS NOT NULL
                    AND duration_ms > 0
+                   AND tokens_used >= 10
                  GROUP BY model_name, session_id
-                 HAVING SUM(tokens_used) > 0 AND SUM(duration_ms) > 0
+                 HAVING SUM(tokens_used) >= 10 AND SUM(duration_ms) > 0
              )
              GROUP BY model_name
              ORDER BY model_name ASC",

@@ -642,7 +642,6 @@ impl OllamaClient {
                         pending_chunk.push_str(&content);
                         let duration_ms = parsed
                             .eval_duration
-                            .or(parsed.total_duration)
                             .map(|ns| ns / 1_000_000);
                         let _ = app.emit(
                             &event_name,
