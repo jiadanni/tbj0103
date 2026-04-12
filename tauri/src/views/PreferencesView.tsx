@@ -2,21 +2,21 @@
  * PreferencesView — integrated preferences hub with focused tabs for app,
  * navigation, appearance, chat, AI, security, backup, and workspace controls.
  */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, Info } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
+import { getModelGroupMeta } from "../lib/modelGroups";
 import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
-import { classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB } from "../lib/modelSizing";
+import { classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB, type ModelFit } from "../lib/modelSizing";
 import { ACCENT_COLORS, THEMES, normalizeTheme } from "../lib/theme";
 import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore";
 import { type NavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import ImportSettingsSection from "./ImportSettingsSection";
-import CompactMenuSelect from "../components/CompactMenuSelect";
 import { MOD_KEY, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
 
@@ -79,35 +79,6 @@ function formatSystemName(specs: SystemSpecs): string {
   return [specs.os_name, specs.os_version].filter(Boolean).join(" ");
 }
 
-function getOllamaModelParamsB(model: OllamaModel): number | null {
-  return parseModelParamsB(model.details?.parameter_size ?? model.name);
-}
-
-function ollamaModelDetails(model: OllamaModel, systemSpecs: SystemSpecs | null): string {
-  const params = getOllamaModelParamsB(model);
-  const details: string[] = [];
-  const formattedParams = formatParams(params);
-  if (formattedParams) {
-    details.push(formattedParams);
-  } else if (typeof model.size === "number" && model.size > 0) {
-    details.push(formatBytes(model.size));
-  }
-
-  if (systemSpecs) {
-    const guidance = inferHardwareModelGuidance(systemSpecs);
-    const fit = classifyModelFit(params, guidance.recommendedMaxParamsB);
-    if (fit === "good") {
-      details.push("recommended");
-    } else if (fit === "stretch") {
-      details.push("usable");
-    } else if (fit === "too-large") {
-      details.push("demanding");
-    }
-  }
-
-  return details.join(" - ");
-}
-
 function formatModelSpeed(stat: ModelSpeedStat | undefined): { chatAverage: string; weighted: string } | null {
   if (
     !stat ||
@@ -120,8 +91,49 @@ function formatModelSpeed(stat: ModelSpeedStat | undefined): { chatAverage: stri
   }
 
   return {
-    chatAverage: `${stat.avg_chat_tokens_per_second.toFixed(1)} tok/s chat avg`,
-    weighted: `${stat.weighted_tokens_per_second.toFixed(1)} tok/s weighted`,
+    chatAverage: `${stat.avg_chat_tokens_per_second.toFixed(1)} tok/s`,
+    weighted: `${stat.weighted_tokens_per_second.toFixed(1)} tok/s`,
+  };
+}
+
+function getModelFitMeta(modelFit: ModelFit): {
+  dotClassName: string;
+  title: string;
+  label: string | null;
+  textClassName: string;
+} {
+  if (modelFit === "good") {
+    return {
+      dotClassName: "bg-emerald-400",
+      title: "Recommended for this system",
+      label: "recommended",
+      textClassName: "text-emerald-400",
+    };
+  }
+
+  if (modelFit === "stretch") {
+    return {
+      dotClassName: "bg-amber-400",
+      title: "Usable, but closer to the upper range for this system",
+      label: "usable",
+      textClassName: "text-amber-400",
+    };
+  }
+
+  if (modelFit === "too-large") {
+    return {
+      dotClassName: "bg-red-400",
+      title: "Likely demanding for this system",
+      label: "demanding",
+      textClassName: "text-red-400",
+    };
+  }
+
+  return {
+    dotClassName: "bg-[var(--text-muted)]",
+    title: "Fit guidance unavailable",
+    label: null,
+    textClassName: "text-[var(--text-muted)]",
   };
 }
 
@@ -132,7 +144,6 @@ export default function PreferencesView() {
   const autoGenerateFlashcards = useSettingsStore((state) => state.autoGenerateFlashcards);
   const setAutoGenerateFlashcards = useSettingsStore((state) => state.setAutoGenerateFlashcards);
   const modelLabels = useSettingsStore((state) => state.modelLabels);
-  const setModelLabel = useSettingsStore((state) => state.setModelLabel);
   const showGenInfo = useSettingsStore((state) => state.showGenInfo);
   const setShowGenInfo = useSettingsStore((state) => state.setShowGenInfo);
   const scrollToTopOnSend = useSettingsStore((state) => state.scrollToTopOnSend);
@@ -192,6 +203,7 @@ export default function PreferencesView() {
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const saveNoticeTimeoutRef = useRef<number | null>(null);
   const ollamaModelsRequestRef = useRef(0);
+  const syncingManagedOllamaModelsRef = useRef(false);
 
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
   const [modelSpeedStats, setModelSpeedStats] = useState<Record<string, ModelSpeedStat>>({});
@@ -206,25 +218,22 @@ export default function PreferencesView() {
   const systemGuidance = systemSpecs
     ? inferHardwareModelGuidance(systemSpecs)
     : null;
-  const ollamaModelNames = ollamaModels.map((model) => model.name);
   const nonEmbeddingOllamaModels = ollamaModels.filter((model) => !model.name.toLowerCase().includes("embed"));
-  const selectableOllamaModels = nonEmbeddingOllamaModels.filter((model) => {
-    const matchingAiModel = aiModels.find((aiModel) => aiModel.model_id === model.name);
-    return matchingAiModel?.enabled !== false;
-  });
-  const backgroundTaskModelOptions = [
-    { value: "", label: "Use preferred chat model" },
-    ...selectableOllamaModels.map((model) => {
-      const matchingAiModel = aiModels.find((aiModel) => aiModel.model_id === model.name);
-      const customLabel = modelLabels[model.name]?.trim();
-      const label = customLabel || matchingAiModel?.name || model.name;
+  const groupedAiModels = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; order: number; models: AiModel[] }>();
 
-      return {
-        value: model.name,
-        label,
-      };
-    }),
-  ];
+    aiModels.forEach((model) => {
+      const meta = getModelGroupMeta(model.provider);
+      const existing = groups.get(meta.key);
+      if (existing) {
+        existing.models.push(model);
+        return;
+      }
+      groups.set(meta.key, { ...meta, models: [model] });
+    });
+
+    return Array.from(groups.values()).sort((a, b) => a.order - b.order);
+  }, [aiModels]);
 
   async function refreshLlamacppModels(paths: string[]) {
     if (paths.length === 0) {
@@ -365,6 +374,53 @@ export default function PreferencesView() {
     }).catch(() => {});
   }
 
+  useEffect(() => {
+    if (ollamaModelsLoading || syncingManagedOllamaModelsRef.current) {
+      return;
+    }
+
+    const managedOllamaIds = new Set(
+      aiModels
+        .filter((model) => model.provider === "ollama")
+        .map((model) => model.model_id)
+    );
+    const missingModels = nonEmbeddingOllamaModels.filter((model) => !managedOllamaIds.has(model.name));
+
+    if (missingModels.length === 0) {
+      return;
+    }
+
+    const existingOllamaPriorities = aiModels
+      .filter((model) => model.provider === "ollama")
+      .map((model) => model.priority);
+    const startPriority = existingOllamaPriorities.length > 0
+      ? Math.max(...existingOllamaPriorities) + 1
+      : 0;
+
+    syncingManagedOllamaModelsRef.current = true;
+    Promise.allSettled(
+      missingModels.map((model, index) => {
+        const customLabel = modelLabels[model.name]?.trim();
+        const defaultName = customLabel || model.name.split(":")[0] || model.name;
+        return api.aiModel.add(defaultName, model.name, {
+          provider: "ollama",
+          role_tags: ["chat"],
+          enabled: true,
+          priority: startPriority + index,
+        });
+      })
+    )
+      .then((results) => {
+        if (results.some((result) => result.status === "fulfilled")) {
+          loadAiModels();
+          incrementModelRefreshCounter();
+        }
+      })
+      .finally(() => {
+        syncingManagedOllamaModelsRef.current = false;
+      });
+  }, [aiModels, incrementModelRefreshCounter, modelLabels, nonEmbeddingOllamaModels, ollamaModelsLoading]);
+
   function toggleRole(currentRoles: string[], role: ModelRole) {
     return currentRoles.includes(role)
       ? currentRoles.filter((value) => value !== role)
@@ -377,24 +433,6 @@ export default function PreferencesView() {
       ? dbSettings.quick_search_models.filter((value) => value !== modelId)
       : [...dbSettings.quick_search_models, modelId];
     set("quick_search_models", next);
-    incrementModelRefreshCounter();
-  }
-
-  async function toggleOllamaModelVisibility(model: OllamaModel) {
-    const matchingAiModel = aiModels.find((aiModel) => aiModel.model_id === model.name);
-
-    if (matchingAiModel) {
-      await api.aiModel.update(matchingAiModel.id, { enabled: !matchingAiModel.enabled });
-    } else {
-      const customLabel = modelLabels[model.name]?.trim();
-      const defaultName = customLabel || model.name.split(":")[0] || model.name;
-      await api.aiModel.add(defaultName, model.name, {
-        provider: "ollama",
-        enabled: false,
-      });
-    }
-
-    loadAiModels();
     incrementModelRefreshCounter();
   }
 
@@ -595,6 +633,330 @@ export default function PreferencesView() {
     ? "text-emerald-400"
     : "text-[var(--text-muted)]";
   const contentWidthClassName = activeTab === "ai" ? "max-w-5xl" : "max-w-lg";
+  const ollamaModelsSection = (
+    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Ollama models</h3>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">
+            Manage local models, pick the one used for background tasks, and adjust roles or ordering.
+          </p>
+        </div>
+        <button
+          onClick={() => { setShowAddModel(!showAddModel); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); setNewModelRoles(["chat"]); }}
+          className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
+        >
+          <Plus size={11} /> Add Model
+        </button>
+      </div>
+
+      {showAddModel && (
+        <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 space-y-2">
+          <div className="relative">
+            <select
+              value={newModelId}
+              onChange={(e) => {
+                setNewModelId(e.target.value);
+                if (!newModelName) {
+                  const name = e.target.value.split(":")[0];
+                  setNewModelName(name);
+                }
+              }}
+              className="h-9 w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-9 text-xs text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
+            >
+              <option value="">Select model...</option>
+              <optgroup label="Ollama">
+                {nonEmbeddingOllamaModels.map((m) => <option key={`ollama-${m.name}`} value={m.name}>{m.name}</option>)}
+              </optgroup>
+              {isMac && mlxModels.length > 0 && (
+                <optgroup label="MLX">
+                  {mlxModels.map((m) => <option key={`mlx-${m}`} value={`mlx:${m}`}>{m}</option>)}
+                </optgroup>
+              )}
+              {llamacppModels.length > 0 && (
+                <optgroup label="llama.cpp (GGUF)">
+                  {llamacppModels.map((p) => <option key={`llamacpp-${p}`} value={`llamacpp:${p}`}>{p.split("/").pop()}</option>)}
+                </optgroup>
+              )}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+          </div>
+          <input
+            value={newModelName}
+            onChange={(e) => setNewModelName(e.target.value)}
+            placeholder="Display name"
+            className="w-full px-2 py-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+          />
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Roles</p>
+            <div className="flex flex-wrap gap-1.5">
+              {MODEL_ROLE_OPTIONS.map((role) => {
+                const active = newModelRoles.includes(role);
+                return (
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => setNewModelRoles(toggleRole(newModelRoles, role) as ModelRole[])}
+                    className={`rounded-full px-2 py-1 text-[10px] transition-colors ${
+                      active
+                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                        : "bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                    }`}
+                  >
+                    {role}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+              <input type="checkbox" checked={newModelIsPaid} onChange={(e) => setNewModelIsPaid(e.target.checked)} className="accent-[var(--accent-color)]" />
+              Paid model
+            </label>
+            <div className="flex gap-2">
+              <button onClick={() => setShowAddModel(false)} className="px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">Cancel</button>
+              <button
+                disabled={!newModelId || !newModelName}
+                onClick={async () => {
+                  const isMlx = newModelId.startsWith("mlx:");
+                  const isLlamacpp = newModelId.startsWith("llamacpp:");
+                  const modelId = isMlx ? newModelId.replace("mlx:", "") : isLlamacpp ? newModelId.replace("llamacpp:", "") : newModelId;
+                  const provider = isMlx ? "mlx" : isLlamacpp ? "llamacpp" : "ollama";
+                  await api.aiModel.add(newModelName, modelId, { provider, is_paid: newModelIsPaid, role_tags: newModelRoles });
+                  loadAiModels();
+                  incrementModelRefreshCounter();
+                  setShowAddModel(false); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); setNewModelRoles(["chat"]);
+                }}
+                className="px-2 py-1 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {aiModels.length === 0 ? (
+        <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
+      ) : (
+        <div className="space-y-3">
+          <div className="hidden grid-cols-[minmax(0,1fr)_28px_110px_40px_20px] items-center gap-3 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)] md:grid">
+            <span>Model</span>
+            <span className="text-center">Background</span>
+            <span className="text-right">Speed</span>
+            <span className="text-center">Active</span>
+            <span />
+          </div>
+
+          {groupedAiModels.map((group) => (
+            <div key={group.key} className="space-y-1">
+              {group.models.map((m, idx) => {
+                const prev = idx > 0 ? group.models[idx - 1] : null;
+                const next = idx < group.models.length - 1 ? group.models[idx + 1] : null;
+                const ollamaMeta = ollamaModels.find((model) => model.name === m.model_id);
+                const speedStat = modelSpeedStats[m.model_id];
+                const speedLabels = formatModelSpeed(speedStat);
+                const modelParams = parseModelParamsB(m.model_id) ?? parseModelParamsB(m.name);
+                const formattedParams = formatParams(modelParams);
+                const formattedStorage = typeof ollamaMeta?.size === "number" ? formatBytes(ollamaMeta.size) : null;
+                const modelFit = systemGuidance
+                  ? classifyModelFit(modelParams, systemGuidance.recommendedMaxParamsB)
+                  : "unknown";
+                const fitMeta = getModelFitMeta(modelFit);
+                const metadataParts = [formattedParams, formattedStorage].filter(Boolean) as string[];
+                const isOllamaModel = m.provider === "ollama";
+                const canBeBackgroundModel = isOllamaModel && m.enabled;
+                const isBackgroundModel = dbSettings.background_model === m.model_id;
+                const providerMeta = getModelGroupMeta(m.provider);
+
+                return (
+                  <div key={m.id} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5">
+                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_28px_110px_40px_20px] md:items-start md:gap-3">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <div className="flex flex-col gap-0.5 pt-0.5">
+                          <button
+                            disabled={!prev}
+                            onClick={async () => {
+                              if (!prev) { return; }
+                              await api.aiModel.update(m.id, { priority: prev.priority });
+                              await api.aiModel.update(prev.id, { priority: m.priority });
+                              loadAiModels();
+                              incrementModelRefreshCounter();
+                            }}
+                            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
+                          >
+                            <ChevronUp size={11} />
+                          </button>
+                          <button
+                            disabled={!next}
+                            onClick={async () => {
+                              if (!next) { return; }
+                              await api.aiModel.update(m.id, { priority: next.priority });
+                              await api.aiModel.update(next.id, { priority: m.priority });
+                              loadAiModels();
+                              incrementModelRefreshCounter();
+                            }}
+                            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
+                          >
+                            <ChevronDown size={11} />
+                          </button>
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          {editingModelId === m.id ? (
+                            <input
+                              autoFocus
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                              onBlur={async () => {
+                                await api.aiModel.update(m.id, { name: editingName });
+                                setEditingModelId(null);
+                                loadAiModels();
+                              }}
+                              onKeyDown={async (e) => {
+                                if (e.key === "Enter") {
+                                  await api.aiModel.update(m.id, { name: editingName });
+                                  setEditingModelId(null);
+                                  loadAiModels();
+                                }
+                                if (e.key === "Escape") { setEditingModelId(null); }
+                              }}
+                              className="w-full rounded border border-[var(--accent-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-sm text-[var(--text-primary)] outline-none"
+                            />
+                          ) : (
+                            <div className="group min-w-0 cursor-pointer" onClick={() => { setEditingModelId(m.id); setEditingName(m.name); }}>
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${fitMeta.dotClassName}`} title={fitMeta.title} />
+                                <span className="truncate text-sm font-medium text-[var(--text-primary)]">{m.name}</span>
+                                <Pencil size={10} className="shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+                              </div>
+                              <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-[var(--text-muted)]">
+                                {!isOllamaModel && (
+                                  <span className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--text-secondary)]">
+                                    {providerMeta.label}
+                                  </span>
+                                )}
+                                <span className="truncate">{m.model_id}</span>
+                              </div>
+                              {(metadataParts.length > 0 || fitMeta.label) && (
+                                <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-secondary)]">
+                                  {metadataParts.map((part, partIndex) => (
+                                    <React.Fragment key={`${m.id}-${part}`}>
+                                      {partIndex > 0 && <span className="text-[var(--text-muted)]">•</span>}
+                                      <span>{part}</span>
+                                    </React.Fragment>
+                                  ))}
+                                  {fitMeta.label && metadataParts.length > 0 && <span className="text-[var(--text-muted)]">•</span>}
+                                  {fitMeta.label && <span className={`font-medium ${fitMeta.textClassName}`}>{fitMeta.label}</span>}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {isOllamaModel && (
+                        <label
+                          className={`flex items-center justify-center md:w-7 ${
+                            canBeBackgroundModel ? "cursor-pointer text-[var(--text-secondary)]" : "cursor-not-allowed text-[var(--text-muted)] opacity-60"
+                          }`}
+                          title={canBeBackgroundModel ? "Use for background tasks" : "Enable this model to make it selectable for background tasks"}
+                        >
+                          <input
+                            type="radio"
+                            name="background_model"
+                            checked={isBackgroundModel}
+                            disabled={!canBeBackgroundModel}
+                            onChange={() => set("background_model", m.model_id)}
+                            className="accent-[var(--accent-color)]"
+                            aria-label={`Use ${m.name} for background tasks`}
+                          />
+                          <span className="sr-only">Background model</span>
+                        </label>
+                      )}
+                      {!isOllamaModel && <div className="hidden md:block md:w-7" />}
+
+                      <div className="text-right text-[10px] leading-5 text-[var(--text-muted)] md:w-[110px]">
+                        {m.is_paid && (
+                          <div className="font-medium uppercase tracking-wide text-amber-400">Paid</div>
+                        )}
+                        {speedLabels && (
+                          <div
+                            className="tabular-nums whitespace-nowrap text-[var(--text-secondary)]"
+                            title={`Average generation speed across ${speedStat.chat_count} chats`}
+                          >
+                            {speedLabels.chatAverage} avg
+                          </div>
+                        )}
+                        {speedLabels && (
+                          <div
+                            className="tabular-nums whitespace-nowrap text-[var(--text-secondary)]"
+                            title="Weighted overall generation speed across all recorded assistant messages"
+                          >
+                            {speedLabels.weighted} weighted
+                          </div>
+                        )}
+                        <div
+                          className="tabular-nums whitespace-nowrap"
+                          title={`${m.tokens_used_total.toLocaleString()} total tokens recorded`}
+                        >
+                          {m.tokens_used_total.toLocaleString()} tok total
+                        </div>
+                      </div>
+
+                      <div className="flex justify-center pt-0.5 md:w-10">
+                        <Toggle
+                          on={m.enabled}
+                          onToggle={async () => {
+                            await api.aiModel.update(m.id, { enabled: !m.enabled });
+                            loadAiModels();
+                            incrementModelRefreshCounter();
+                          }}
+                        />
+                      </div>
+
+                      <button
+                        onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); incrementModelRefreshCounter(); }}
+                        className="p-1 text-[var(--text-muted)] transition-colors hover:text-red-400 md:w-5"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">Roles</span>
+                      {MODEL_ROLE_OPTIONS.map((role) => {
+                        const active = m.role_tags.includes(role);
+                        return (
+                          <button
+                            key={role}
+                            onClick={async () => {
+                              await api.aiModel.update(m.id, { role_tags: toggleRole(m.role_tags, role) });
+                              loadAiModels();
+                              incrementModelRefreshCounter();
+                            }}
+                            className={`rounded-md border px-2 py-0.5 text-[10px] transition-colors ${
+                              active
+                                ? "border-[var(--accent-color)]/35 bg-[var(--accent-color)]/10 text-[var(--accent-color)]"
+                                : "border-transparent bg-transparent text-[var(--text-muted)] hover:border-[var(--border-color)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+                            }`}
+                            title={`Toggle ${role} role`}
+                          >
+                            {role}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1067,104 +1429,7 @@ export default function PreferencesView() {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-[var(--accent-color)]/25 bg-[var(--accent-color)]/8 p-3.5 space-y-3">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-semibold text-[var(--text-primary)]">Ollama models</p>
-                  <span
-                    title="Rename your installed models so they are easier to recognize throughout the app."
-                    className="inline-flex items-center text-[var(--text-secondary)]"
-                  >
-                    <Info size={13} />
-                  </span>
-                </div>
-                <div className="space-y-1.5">
-                  {ollamaModels.length === 0 ? (
-                    <p className="text-[11px] text-[var(--text-secondary)]">No Ollama models found to label yet.</p>
-                  ) : (
-                    nonEmbeddingOllamaModels.map((model) => {
-                      const matchingAiModel = aiModels.find((aiModel) => aiModel.model_id === model.name);
-                      const hiddenFromSelection = matchingAiModel?.enabled === false;
-                      const speedStat = modelSpeedStats[model.name];
-                      const speedLabels = formatModelSpeed(speedStat);
-                      const modelParams = getOllamaModelParamsB(model);
-                      const modelFit = systemGuidance
-                        ? classifyModelFit(modelParams, systemGuidance.recommendedMaxParamsB)
-                        : "unknown";
-                      const fitDotClassName = modelFit === "good"
-                        ? "bg-emerald-400"
-                        : modelFit === "stretch"
-                        ? "bg-amber-400"
-                        : modelFit === "too-large"
-                        ? "bg-red-400"
-                        : "bg-[var(--text-muted)]";
-                      const fitDotTitle = modelFit === "good"
-                        ? "Recommended for this system"
-                        : modelFit === "stretch"
-                        ? "Usable, but closer to the upper range for this system"
-                        : modelFit === "too-large"
-                        ? "Likely demanding for this system"
-                        : "Fit guidance unavailable";
-
-                      return (
-                      <div
-                        key={model.name}
-                        className="grid gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5 md:grid-cols-[minmax(0,320px)_minmax(180px,1fr)_auto] md:items-center"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${fitDotClassName}`} title={fitDotTitle} />
-                            <p className="truncate text-[13px] font-medium text-[var(--text-primary)]" title={model.name}>{model.name}</p>
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-1">
-                            <span className="text-[10px] text-[var(--text-secondary)]">{ollamaModelDetails(model, systemSpecs)}</span>
-                            {speedLabels && (
-                              <span
-                                className="text-[10px] text-[var(--text-secondary)] tabular-nums"
-                                title={`Average generation speed across ${speedStat.chat_count} chats. Weighted overall speed shown after the slash.`}
-                              >
-                                {`${speedLabels.chatAverage} / ${speedLabels.weighted}`}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="min-w-0">
-                          <input
-                            value={modelLabels[model.name] || ""}
-                            onChange={(e) => setModelLabel(model.name, e.target.value)}
-                            onBlur={async () => {
-                              const matchingAiModel = aiModels.find((am) => am.model_id === model.name);
-                              if (matchingAiModel && matchingAiModel.name !== modelLabels[model.name]) {
-                                await api.aiModel.update(matchingAiModel.id, { name: modelLabels[model.name] });
-                                loadAiModels();
-                              }
-                            }}
-                            placeholder="Custom label"
-                            aria-label={`Custom label for ${model.name}`}
-                            className="h-9 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors focus:border-[var(--accent-color)]"
-                          />
-                        </div>
-                        <div className="flex items-center md:justify-end">
-                          <button
-                            type="button"
-                            onClick={() => { void toggleOllamaModelVisibility(model); }}
-                            className={`inline-flex h-7 items-center rounded-full px-2 text-[10px] font-medium whitespace-nowrap transition-colors ${
-                              hiddenFromSelection
-                                ? "bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                                : "bg-[var(--accent-color)]/12 text-[var(--accent-color)] hover:bg-[var(--accent-color)]/18"
-                            }`}
-                            title={hiddenFromSelection ? "Show this Ollama model in model selectors" : "Hide this Ollama model from model selectors"}
-                          >
-                            {hiddenFromSelection ? "Hidden" : "Visible"}
-                          </button>
-                        </div>
-                      </div>
-                    );})
-                  )}
-                </div>
-                <p className="text-[10px] text-[var(--text-secondary)]">
-                  Priority list names stay in sync automatically.
-                </p>
-              </div>
+              {ollamaModelsSection}
 
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
                 <div className="flex items-start justify-between gap-3">
@@ -1404,108 +1669,6 @@ export default function PreferencesView() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Model defaults</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Choose the supporting local models used for background tasks, embeddings, and dual-model workflows.
-                  </p>
-                </div>
-
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Background Task Model</label>
-                <CompactMenuSelect
-                  label="Background Task Model"
-                  value={dbSettings.background_model}
-                  options={backgroundTaskModelOptions}
-                  onChange={(value) => set("background_model", value)}
-                  buttonClassName="h-10 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] shadow-sm hover:border-[var(--accent-color)] focus-visible:border-[var(--accent-color)]"
-                  menuClassName="max-h-72 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-xl"
-                />
-                <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
-                  Used for lightweight background AI work like topic clouds and workspace tagging.
-                </p>
-              </div>
-
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Embedding Model</label>
-                <div className="space-y-2">
-                  {(() => {
-                    const isModelInstalled = (name: string) =>
-                      !hasLoadedOllamaModels ||
-                      ollamaModelNames.some((modelName) => modelName === name || modelName.startsWith(`${name}:`));
-                    const nomicInstalled = isModelInstalled("nomic-embed-text");
-                    const isCustom = dbSettings.embedding_model !== "nomic-embed-text";
-                    const customInstalled = !isCustom || isModelInstalled(dbSettings.embedding_model);
-                    return (
-                      <>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="embedding_model"
-                            checked={!isCustom}
-                            onChange={() => set("embedding_model", "nomic-embed-text")}
-                            className="accent-[var(--accent-color)]"
-                          />
-                          <span className="text-sm text-[var(--text-primary)]">nomic-embed-text</span>
-                          <span className="text-[10px] text-[var(--text-muted)]">(default)</span>
-                          {!nomicInstalled && (
-                            <span className="text-[10px] font-medium text-red-400 bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded">
-                              not installed
-                            </span>
-                          )}
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="embedding_model"
-                            checked={isCustom}
-                            onChange={() => set("embedding_model", "")}
-                            className="accent-[var(--accent-color)]"
-                          />
-                          <span className="text-sm text-[var(--text-primary)]">Custom</span>
-                        </label>
-                        {isCustom && (
-                          <div className="ml-6 space-y-2">
-                            <input
-                              value={dbSettings.embedding_model}
-                              onChange={(e) => set("embedding_model", e.target.value)}
-                              placeholder="e.g. mxbai-embed-large"
-                              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                            />
-                            {!customInstalled && dbSettings.embedding_model && (
-                              <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
-                                <p className="text-[11px] font-medium text-red-400">Model not installed</p>
-                                <p className="text-[10px] text-red-400/80 mt-0.5">
-                                  Run: <code className="bg-[var(--bg-primary)] px-1 rounded">ollama pull {dbSettings.embedding_model}</code>
-                                </p>
-                              </div>
-                            )}
-                            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1">
-                              <p className="text-[11px] font-medium text-amber-400">Before switching</p>
-                              <ul className="text-[10px] text-amber-400/80 list-disc ml-3 space-y-0.5">
-                                <li>Pull the model first: <code className="bg-[var(--bg-primary)] px-1 rounded">ollama pull model-name</code></li>
-                                <li>Changing models invalidates all existing embeddings (memories, documents, artifacts)</li>
-                                <li>You will need to re-index your data for search and deduplication to work correctly</li>
-                              </ul>
-                            </div>
-                          </div>
-                        )}
-                        {!isCustom && !nomicInstalled && hasLoadedOllamaModels && (
-                          <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
-                            <p className="text-[11px] font-medium text-red-400">Model not installed — embeddings are disabled</p>
-                            <p className="text-[10px] text-red-400/80 mt-0.5">
-                              Run: <code className="bg-[var(--bg-primary)] px-1 rounded">ollama pull nomic-embed-text</code>
-                            </p>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-              </div>
-
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
                 <div>
                   <p className="text-sm text-[var(--text-secondary)]">Dual-model execution</p>
@@ -1529,293 +1692,94 @@ export default function PreferencesView() {
                 </p>
               </div>
 
-              {/* Model Priority List */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs text-[var(--text-secondary)]">Model Priority List</label>
-                  <button
-                    onClick={() => { setShowAddModel(!showAddModel); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); setNewModelRoles(["chat"]); }}
-                    className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
-                  >
-                    <Plus size={11} /> Add Model
-                  </button>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Embedding model</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Choose the model used for embeddings and retrieval.
+                  </p>
                 </div>
 
-                {showAddModel && (
-                  <div className="mb-3 p-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] space-y-2">
-                    <div className="relative">
-                      <select
-                        value={newModelId}
-                        onChange={(e) => {
-                          setNewModelId(e.target.value);
-                          if (!newModelName) {
-                            const name = e.target.value.split(":")[0];
-                            setNewModelName(name);
-                          }
-                        }}
-                        className="h-9 w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-9 text-xs text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
-                      >
-                        <option value="">Select model...</option>
-                        <optgroup label="Ollama">
-                          {nonEmbeddingOllamaModels.map((m) => <option key={`ollama-${m.name}`} value={m.name}>{m.name}</option>)}
-                        </optgroup>
-                        {isMac && mlxModels.length > 0 && (
-                          <optgroup label="MLX">
-                            {mlxModels.map((m) => <option key={`mlx-${m}`} value={`mlx:${m}`}>{m}</option>)}
-                          </optgroup>
-                        )}
-                        {llamacppModels.length > 0 && (
-                          <optgroup label="llama.cpp (GGUF)">
-                            {llamacppModels.map((p) => <option key={`llamacpp-${p}`} value={`llamacpp:${p}`}>{p.split("/").pop()}</option>)}
-                          </optgroup>
-                        )}
-                      </select>
-                      <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                      </div>
-                      <input
-                      value={newModelName}
-                      onChange={(e) => setNewModelName(e.target.value)}
-                      placeholder="Display name"
-                      className="w-full px-2 py-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
-                      />
-                      <div>
-                      <p className="mb-1 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Roles</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {MODEL_ROLE_OPTIONS.map((role) => {
-                          const active = newModelRoles.includes(role);
-                          return (
-                            <button
-                              key={role}
-                              type="button"
-                              onClick={() => setNewModelRoles(toggleRole(newModelRoles, role) as ModelRole[])}
-                              className={`rounded-full px-2 py-1 text-[10px] transition-colors ${
-                                active
-                                  ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                                  : "bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                              }`}
-                            >
-                              {role}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                      <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-                        <input type="checkbox" checked={newModelIsPaid} onChange={(e) => setNewModelIsPaid(e.target.checked)} className="accent-[var(--accent-color)]" />
-                        Paid model
-                      </label>
-                      <div className="flex gap-2">
-                        <button onClick={() => setShowAddModel(false)} className="px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">Cancel</button>
-                        <button
-                          disabled={!newModelId || !newModelName}
-                          onClick={async () => {
-                            const isMlx = newModelId.startsWith("mlx:");
-                            const isLlamacpp = newModelId.startsWith("llamacpp:");
-                            const modelId = isMlx ? newModelId.replace("mlx:", "") : isLlamacpp ? newModelId.replace("llamacpp:", "") : newModelId;
-                            const provider = isMlx ? "mlx" : isLlamacpp ? "llamacpp" : "ollama";
-                            await api.aiModel.add(newModelName, modelId, { provider, is_paid: newModelIsPaid, role_tags: newModelRoles });
-                            loadAiModels();
-                            incrementModelRefreshCounter();
-                            setShowAddModel(false); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); setNewModelRoles(["chat"]);
-                          }}
-                          className="px-2 py-1 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
-                        >
-                          Add
-                        </button>                      </div>
-                    </div>
-                  </div>
-                )}
+                <div className="space-y-2">
+                  {(() => {
+                    const isModelInstalled = (name: string) =>
+                      ollamaModels.length === 0 ||
+                      ollamaModels.some((model) => model.name === name || model.name.startsWith(`${name}:`));
+                    const nomicInstalled = isModelInstalled("nomic-embed-text");
+                    const isCustom = dbSettings.embedding_model !== "nomic-embed-text";
+                    const customInstalled = !isCustom || isModelInstalled(dbSettings.embedding_model);
 
-                {aiModels.length === 0 ? (
-                  <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {aiModels.map((m, idx) => {
-                      const ollamaMeta = ollamaModels.find((model) => model.name === m.model_id);
-                      const speedStat = modelSpeedStats[m.model_id];
-                      const speedLabels = formatModelSpeed(speedStat);
-                      const modelParams = parseModelParamsB(m.model_id) ?? parseModelParamsB(m.name);
-                      const formattedParams = formatParams(modelParams);
-                      const formattedStorage = typeof ollamaMeta?.size === "number" ? formatBytes(ollamaMeta.size) : null;
-                      const modelFit = systemGuidance
-                        ? classifyModelFit(modelParams, systemGuidance.recommendedMaxParamsB)
-                        : "unknown";
+                    return (
+                      <>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="embedding_model"
+                            checked={!isCustom}
+                            onChange={() => set("embedding_model", "nomic-embed-text")}
+                            className="accent-[var(--accent-color)]"
+                          />
+                          <span className="text-sm text-[var(--text-primary)]">nomic-embed-text</span>
+                          <span className="text-[10px] text-[var(--text-muted)]">(default)</span>
+                          {!nomicInstalled && hasLoadedOllamaModels && (
+                            <span className="rounded border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+                              not installed
+                            </span>
+                          )}
+                        </label>
 
-                      return (
-                      <div key={m.id} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2">
-                        <div className="flex items-start gap-2">
-                          {/* Priority arrows */}
-                          <div className="flex flex-col gap-0.5 pt-0.5">
-                            <button
-                              disabled={idx === 0}
-                              onClick={async () => {
-                                const prev = aiModels[idx - 1];
-                                await api.aiModel.update(m.id, { priority: prev.priority });
-                                await api.aiModel.update(prev.id, { priority: m.priority });
-                                loadAiModels();
-                                incrementModelRefreshCounter();
-                              }}
-                              className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
-                            >
-                              <ChevronUp size={11} />
-                            </button>
-                            <button
-                              disabled={idx === aiModels.length - 1}
-                              onClick={async () => {
-                                const next = aiModels[idx + 1];
-                                await api.aiModel.update(m.id, { priority: next.priority });
-                                await api.aiModel.update(next.id, { priority: m.priority });
-                                loadAiModels();
-                                incrementModelRefreshCounter();
-                              }}
-                              className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
-                            >
-                              <ChevronDown size={11} />
-                            </button>
-                          </div>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="embedding_model"
+                            checked={isCustom}
+                            onChange={() => set("embedding_model", "")}
+                            className="accent-[var(--accent-color)]"
+                          />
+                          <span className="text-sm text-[var(--text-primary)]">Custom</span>
+                        </label>
 
-                          {/* Model info */}
-                          <div className="min-w-0 flex-1">
-                            {editingModelId === m.id ? (
-                              <input
-                                autoFocus
-                                value={editingName}
-                                onChange={(e) => setEditingName(e.target.value)}
-                                onBlur={async () => {
-                                  await api.aiModel.update(m.id, { name: editingName });
-                                  setEditingModelId(null);
-                                  loadAiModels();
-                                }}
-                                onKeyDown={async (e) => {
-                                  if (e.key === "Enter") {
-                                    await api.aiModel.update(m.id, { name: editingName });
-                                    setEditingModelId(null);
-                                    loadAiModels();
-                                  }
-                                  if (e.key === "Escape") {setEditingModelId(null);}
-                                }}
-                                className="w-full px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--accent-color)] text-sm text-[var(--text-primary)] outline-none"
-                              />
-                            ) : (
-                              <div className="group min-w-0 cursor-pointer" onClick={() => { setEditingModelId(m.id); setEditingName(m.name); }}>
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="truncate text-sm font-medium text-[var(--text-primary)]">{m.name}</span>
-                                  <Pencil size={10} className="shrink-0 text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
-                                </div>
-                                <div className="mt-0.5 truncate text-xs text-[var(--text-muted)]">{m.model_id}</div>
-                                <div className="mt-1 flex flex-wrap items-center gap-1">
-                                  {formattedParams && (
-                                    <span className="rounded-full bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">
-                                      {formattedParams}
-                                    </span>
-                                  )}
-                                  {formattedStorage && (
-                                    <span className="rounded-full bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-                                      {formattedStorage}
-                                    </span>
-                                  )}
-                                  {modelFit === "good" && (
-                                    <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">
-                                      recommended
-                                    </span>
-                                  )}
-                                  {modelFit === "stretch" && (
-                                    <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-400">
-                                      usable
-                                    </span>
-                                  )}
-                                  {modelFit === "too-large" && (
-                                    <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-400">
-                                      demanding
-                                    </span>
-                                  )}
-                                </div>
+                        {isCustom && (
+                          <div className="ml-6 space-y-2">
+                            <input
+                              value={dbSettings.embedding_model}
+                              onChange={(e) => set("embedding_model", e.target.value)}
+                              placeholder="e.g. mxbai-embed-large"
+                              className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                            />
+                            {!customInstalled && dbSettings.embedding_model && hasLoadedOllamaModels && (
+                              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2">
+                                <p className="text-[11px] font-medium text-red-400">Model not installed</p>
+                                <p className="mt-0.5 text-[10px] text-red-400/80">
+                                  Run: <code className="rounded bg-[var(--bg-primary)] px-1">ollama pull {dbSettings.embedding_model}</code>
+                                </p>
                               </div>
                             )}
-                          </div>
-
-                          <div className="ml-auto flex shrink-0 items-start gap-2">
-                            <div className="flex flex-wrap items-center justify-end gap-1.5 pt-0.5">
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--text-muted)]">{m.provider}</span>
-                              {m.is_paid && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">PAID</span>
-                              )}
-                              {speedLabels && (
-                                <>
-                                  <span
-                                    className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--text-secondary)] tabular-nums whitespace-nowrap"
-                                    title={`Average generation speed across ${speedStat.chat_count} chats`}
-                                  >
-                                    {speedLabels.chatAverage}
-                                  </span>
-                                  <span
-                                    className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--text-secondary)] tabular-nums whitespace-nowrap"
-                                    title="Weighted overall generation speed across all recorded assistant messages"
-                                  >
-                                    {speedLabels.weighted}
-                                  </span>
-                                </>
-                              )}
-                              <span className="text-[10px] text-[var(--text-muted)] tabular-nums whitespace-nowrap">{m.tokens_used_total.toLocaleString()} tok</span>
+                            <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 space-y-1">
+                              <p className="text-[11px] font-medium text-amber-400">Before switching</p>
+                              <ul className="ml-3 list-disc space-y-0.5 text-[10px] text-amber-400/80">
+                                <li>Pull the model first: <code className="rounded bg-[var(--bg-primary)] px-1">ollama pull model-name</code></li>
+                                <li>Changing models invalidates existing embeddings for memories, documents, and artifacts</li>
+                                <li>You will need to re-index data for search and deduplication to work correctly</li>
+                              </ul>
                             </div>
-
-                            <div className="pt-0.5">
-                              <Toggle
-                                on={m.enabled}
-                                onToggle={async () => {
-                                  await api.aiModel.update(m.id, { enabled: !m.enabled });
-                                  loadAiModels();
-                                  incrementModelRefreshCounter();
-                                }}
-                              />
-                            </div>
-
-                            <button
-                              onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); incrementModelRefreshCounter(); }}
-                              className="p-1 text-[var(--text-muted)] hover:text-red-400 transition-colors"
-                            >
-                              <Trash2 size={12} />
-                            </button>
                           </div>
-                        </div>
+                        )}
 
-                        <div className="mt-2 flex flex-wrap items-center gap-1">
-                          {m.role_tags.length > 0 && m.role_tags.map((role) => (
-                            <span key={`active-${role}`} className="rounded-full bg-[var(--accent-color)]/10 px-1.5 py-0.5 text-[10px] text-[var(--accent-color)]">
-                              {role}
-                            </span>
-                          ))}
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap items-center gap-1">
-                          {MODEL_ROLE_OPTIONS.map((role) => {
-                            const active = m.role_tags.includes(role);
-                            return (
-                              <button
-                                key={role}
-                                onClick={async () => {
-                                  await api.aiModel.update(m.id, { role_tags: toggleRole(m.role_tags, role) });
-                                  loadAiModels();
-                                  incrementModelRefreshCounter();
-                                }}
-                                className={`rounded-full px-1.5 py-0.5 text-[10px] transition-colors ${
-                                  active
-                                    ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                                    : "bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                                }`}
-                                title={`Toggle ${role} role`}
-                              >
-                                {role}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );})}
-                  </div>
-                )}
+                        {!isCustom && !nomicInstalled && hasLoadedOllamaModels && (
+                          <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2">
+                            <p className="text-[11px] font-medium text-red-400">Model not installed — embeddings are disabled</p>
+                            <p className="mt-0.5 text-[10px] text-red-400/80">
+                              Run: <code className="rounded bg-[var(--bg-primary)] px-1">ollama pull nomic-embed-text</code>
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
+
             </>
           )}
 
@@ -2010,7 +1974,7 @@ export default function PreferencesView() {
               <div className="pt-2 space-y-2">
                 <p className="text-xs text-[var(--text-secondary)] font-medium">Enabling browser-backed models</p>
                 <p className="text-xs text-[var(--text-muted)]">
-                  Go to the <strong>AI</strong> tab → Model Priority List and enable any browser-backed entry to make it appear in the Chat view model dropdown.
+                  Go to the <strong>AI</strong> tab → Ollama models and enable any browser-backed entry to make it appear in the Chat view model dropdown.
                 </p>
               </div>
 
