@@ -162,9 +162,10 @@ vi.mock("@/lib/api", () => ({
 const setActiveChatId = vi.fn();
 const setActiveProjectId = vi.fn();
 let mockWorkspacePane: Record<string, unknown> | null = null;
+let mockActiveChatId: string | null = null;
 
 vi.mock("@/lib/workspacePane", () => ({
-  useScopedChat: () => ({ activeChat: null, activeChatId: null, setActiveChatId }),
+  useScopedChat: () => ({ activeChat: mockActiveChatId, activeChatId: mockActiveChatId, setActiveChatId }),
   useScopedProjects: () => [],
   useScopedWorkspace: () => ({
     activeWorkspaceId: "ws-1",
@@ -195,6 +196,7 @@ describe("ChatView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockWorkspacePane = null;
+    mockActiveChatId = null;
 
     useWorkspaceStore.setState({
       workspaces: [
@@ -384,6 +386,13 @@ describe("ChatView", () => {
       expect(api.chat.createSession).toHaveBeenCalledTimes(1);
       expect(setActiveChatId).toHaveBeenCalledWith("session-new");
     });
+  });
+
+  it("shows the active model label in the composer", () => {
+    mockActiveChatId = "session-1";
+    renderChatView();
+
+    expect(screen.getByRole("button", { name: /Active model: test-model/i })).toBeInTheDocument();
   });
 
   it("focuses an existing empty chat instead of creating another one", async () => {
