@@ -151,6 +151,30 @@ describe("Layout", () => {
     expect(dragHandle?.parentElement).toHaveAttribute("data-tauri-drag-region");
   });
 
+  it("keeps the drag handle compact when single-pane workspace tabs are visible", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+        { id: "ws-2", name: "Linux", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "" },
+      ],
+      activeWorkspaceId: "ws-1",
+      splitMode: false,
+      workspaceNavigation: "top-tabs",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const dragHandle = document.querySelector("[data-window-drag-handle]");
+
+    expect(dragHandle).not.toBeNull();
+    expect(dragHandle).toHaveClass("w-16");
+    expect(dragHandle).not.toHaveClass("flex-1");
+  });
+
   it("renders the sidebar in sidebar navigation mode", () => {
     useWorkspaceStore.setState({ sectionNavigation: "sidebar" });
 
@@ -409,7 +433,7 @@ describe("Layout", () => {
     expect(splitAgenticTabs.some((button) => button.className.includes("h-[34px]"))).toBe(true);
     expect(splitAgenticTabs.some((button) => button.className.includes("bg-[var(--bg-primary)]"))).toBe(true);
     expect(splitRustTabs.some((button) => button.className.includes("rounded-t-xl"))).toBe(true);
-    expect(splitRustTabs.some((button) => button.className.includes("border-transparent"))).toBe(true);
+    expect(splitRustTabs.some((button) => button.className.includes("text-[var(--text-secondary)]"))).toBe(true);
   });
 
   it("keeps duplicated split workspace tab strips in the shared titlebar", () => {
@@ -495,9 +519,11 @@ describe("Layout", () => {
 
     const splitNav = document.querySelector("[data-split-titlebar-workspace-nav]");
     const splitToggle = screen.getByRole("button", { name: "Toggle Split View" });
+    const splitSecondaryPane = splitNav?.lastElementChild?.firstElementChild as HTMLElement | null;
 
     expect(splitNav).not.toBeNull();
-    expect(splitNav?.className).toContain("right-24");
+    expect(splitSecondaryPane).not.toBeNull();
+    expect(splitSecondaryPane?.className).toContain("pr-24");
     expect(screen.getByRole("button", { name: "Open History" })).toBeInTheDocument();
     expect(splitToggle).toHaveTextContent(/^$/);
   });
