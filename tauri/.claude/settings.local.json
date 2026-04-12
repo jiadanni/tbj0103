@@ -14,7 +14,11 @@
       "Bash($HOME/.cargo/bin/cargo check:*)",
       "Bash(./node_modules/.bin/tsc --noEmit)",
       "Bash(/home/urljenkins/.nvm/versions/node/v22.22.1/bin/npx tsc:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash($HOME/.nvm/versions/node/v24.14.0/bin/npx vitest:*)",
+      "Bash(git stash:*)",
+      "Bash(npx vitest:*)",
+      "Bash(/home/urljenkins/.nvm/versions/node/v22.22.1/bin/npx vitest:*)"
     ]
   },
   "outputStyle": "Learning",
