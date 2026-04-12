@@ -17,6 +17,7 @@ export default function ImportSettingsSection() {
     setWorkspaces,
   } = useWorkspaceStore();
   const [importingLmStudio, setImportingLmStudio] = useState(false);
+  const [importingGemini, setImportingGemini] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function importFromLmStudio() {
@@ -73,6 +74,57 @@ export default function ImportSettingsSection() {
     }
   }
 
+  async function importFromGeminiTakeout() {
+    setError(null);
+    setImportingGemini(true);
+
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Select Google Takeout folder (containing Gemini Apps)",
+      });
+      const folderPath = Array.isArray(selected) ? selected[0] : selected;
+      if (!folderPath) {return;}
+
+      const result = await api.chatFile.importGeminiTakeout(folderPath);
+      if (result.imported_sessions < 1) {
+        throw new Error("Gemini import completed without importing any conversations. Ensure the folder contains 'My Activity.html'.");
+      }
+
+      const [workspaces, importedProjects, firstSession] = await Promise.all([
+        api.workspace.list(),
+        api.project.list(result.workspace_id),
+        api.chat.listSessions(result.workspace_id, null, { limit: 1, offset: 0 }),
+      ]);
+
+      setWorkspaces(workspaces);
+      setProjectsForWorkspace(result.workspace_id, importedProjects);
+      setActiveWorkspaceId(result.workspace_id);
+      setActiveProjectId(null);
+
+      const lines = [
+        `${result.imported_sessions} conversation${result.imported_sessions === 1 ? "" : "s"} imported.`,
+        `${result.imported_messages} total message${result.imported_messages === 1 ? "" : "s"} processed.`,
+      ];
+
+      if (firstSession.length > 0) {
+        navigate(`/chat/${firstSession[0].id}`);
+      }
+
+      await message(lines.join("\n"), {
+        title: "Gemini import complete",
+        kind: "info",
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Gemini import failed";
+      setError(msg);
+      await message(msg, { title: "Gemini import failed", kind: "error" });
+    } finally {
+      setImportingGemini(false);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="border-b border-[var(--border-color)] px-5 py-3">
@@ -86,29 +138,55 @@ export default function ImportSettingsSection() {
           </div>
         )}
 
-        <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <FolderInput size={16} className="text-[var(--accent-color)]" />
-                <h2 className="text-sm font-medium text-[var(--text-primary)]">Import from LM Studio</h2>
+        <div className="flex flex-col gap-4">
+          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <FolderInput size={16} className="text-[var(--accent-color)]" />
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import from LM Studio</h2>
+                </div>
+                <p className="mt-2 text-xs text-[var(--text-muted)]">
+                  Pick a folder containing LM Studio <code>.conversation.json</code> files. The folder name becomes a new workspace and subfolders become projects.
+                </p>
               </div>
-              <p className="mt-2 text-xs text-[var(--text-muted)]">
-                Pick a folder containing LM Studio <code>.conversation.json</code> files. The folder name becomes a new workspace and subfolders become projects.
-              </p>
-            </div>
 
-            <button
-              onClick={() => void importFromLmStudio()}
-              disabled={importingLmStudio}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-            >
-              {importingLmStudio ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-              {importingLmStudio ? "Importing..." : "Import Folder"}
-            </button>
-          </div>
-        </section>
+              <button
+                onClick={() => void importFromLmStudio()}
+                disabled={importingLmStudio}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+              >
+                {importingLmStudio ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+                {importingLmStudio ? "Importing..." : "Import Folder"}
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <FolderInput size={16} className="text-[var(--accent-color)]" />
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import from Google Gemini</h2>
+                </div>
+                <p className="mt-2 text-xs text-[var(--text-muted)]">
+                  Pick your extracted Google Takeout folder. It will scan for <code>My Activity.html</code> and import all conversations into a &quot;Gemini Apps&quot; workspace.
+                </p>
+              </div>
+
+              <button
+                onClick={() => void importFromGeminiTakeout()}
+                disabled={importingGemini}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+              >
+                {importingGemini ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+                {importingGemini ? "Importing..." : "Import Takeout"}
+              </button>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );
 }
+

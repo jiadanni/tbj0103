@@ -447,24 +447,47 @@ pub fn import_lmstudio_folder(
     }))
 }
 
-/// Import a Gemini Takeout `My Activity.html` file into a new "Gemini Apps" workspace.
+/// Import a Gemini Takeout folder into a new or existing "Gemini Apps" workspace.
+/// Searches for `My Activity.html` within the folder.
 #[tauri::command]
 pub fn import_gemini_takeout(
-    file_path: String,
+    folder_path: String,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
-
-    let path = std::path::Path::new(&file_path);
-    if !path.is_file() {
-        return Err(format!("{} is not a file", file_path));
+    let folder = std::path::Path::new(&folder_path);
+    if !folder.is_dir() {
+        return Err(format!("{} is not a directory", folder_path));
     }
 
-    let html_bytes = std::fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
-    let html =
-        String::from_utf8(html_bytes).map_err(|e| format!("Invalid UTF-8 in HTML: {}", e))?;
+    // Try to find My Activity.html
+    let mut html_path = folder.join("My Activity.html");
+    if !html_path.exists() {
+        // Search one level deeper (Common in Takeout extracts)
+        if let Ok(entries) = std::fs::read_dir(folder) {
+            for entry in entries.flatten() {
+                let p = entry.path().join("Gemini Apps").join("My Activity.html");
+                if p.exists() {
+                    html_path = p;
+                    break;
+                }
+                let p2 = entry.path().join("My Activity.html");
+                if p2.exists() {
+                    html_path = p2;
+                    break;
+                }
+            }
+        }
+    }
+
+    if !html_path.exists() {
+        return Err("Could not find 'My Activity.html' in the selected folder.".to_string());
+    }
+
+    let html_bytes = std::fs::read(&html_path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let html = String::from_utf8_lossy(&html_bytes).to_string();
 
     let sessions = chat_file_store::parse_gemini_takeout(&html)?;
     if sessions.is_empty() {
@@ -498,6 +521,15 @@ pub fn import_gemini_takeout(
     let mut messages_count = 0;
 
     for data in sessions {
+        // Check if session ID already exists to avoid duplicates if re-importing
+        let exists: bool = conn.query_row(
+            "SELECT 1 FROM chat_sessions WHERE id = ?1",
+            rusqlite::params![data.id],
+            |_| Ok(true)
+        ).unwrap_or(false);
+
+        if exists { continue; }
+
         conn.execute(
             "INSERT INTO chat_sessions (
                 id, workspace_id, project_id, title, model_name, system_prompt,
@@ -528,7 +560,7 @@ pub fn import_gemini_takeout(
                     fmsg.content,
                     fmsg.model,
                     fmsg.tokens_used,
-                    data.created_at
+                    fmsg.timestamp,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -550,6 +582,7 @@ pub fn import_gemini_takeout(
         "workspace_name": workspace_name,
     }))
 }
+
 
 /// Sync every session in the DB to the chats directory.
 /// Useful after a cold start to ensure files are up to date.

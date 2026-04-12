@@ -654,13 +654,13 @@ export const api = {
         errors: number;
         error_messages: string[];
       }>("import_lmstudio_folder", { folderPath }),
-    importGeminiTakeout: (filePath: string) =>
+    importGeminiTakeout: (folderPath: string) =>
       invoke<{
         imported_sessions: number;
         imported_messages: number;
         workspace_id: string;
         workspace_name: string;
-      }>("import_gemini_takeout", { filePath }),
+      }>("import_gemini_takeout", { folderPath }),
   },
 
   security: {

@@ -3704,9 +3704,9 @@ export default function ChatView() {
 
                         <div className={`${showComposerHeader ? "rounded-[24px] border border-[rgba(255,255,255,0.06)] bg-[rgba(7,9,12,0.72)] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_22px_52px_-34px_rgba(0,0,0,0.95)]" : "rounded-[24px] border border-transparent bg-transparent p-1 shadow-none"} transition-all focus-within:border-[rgba(255,255,255,0.1)] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_22px_52px_-34px_rgba(0,0,0,0.95)]`}>
                           <div className="flex flex-col gap-3 min-w-0">
-                            {/* Tool buttons row (icon-only) - moved above input */}
-                            <div className="flex items-center gap-1.5 px-1">
-                              {/* Gemma3 model picker icon-only */}
+                            {/* Tool buttons row - moved above input */}
+                            <div className="flex flex-wrap items-center gap-1.5 px-1">
+                              {/* Active model picker */}
                               <div className="relative" data-active-model-menu>
                                 <button
                                   type="button"
@@ -3716,11 +3716,15 @@ export default function ChatView() {
                                     setIsModelPickerOpen((open) => !open);
                                   }}
                                   disabled={modelPickerOptions.length === 0}
-                                  className={`${composerIconOnlyButtonClass}`}
-                                  title="Active model"
+                                  className={`inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.18)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.88)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40`}
+                                  title={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
+                                  aria-label={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
                                   aria-haspopup="menu"
                                   aria-expanded={isModelPickerOpen}
                                 >
+                                  <span className="min-w-0 truncate">
+                                    {selectedModel ? modelPickerLabel(selectedModel) : "Select model"}
+                                  </span>
                                   <ChevronDown size={14} strokeWidth={2.2} />
                                 </button>
                                 {isModelPickerOpen && modelPickerOptions.length > 0 && (

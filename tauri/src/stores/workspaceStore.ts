@@ -466,8 +466,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     setActiveTopicSignature: (activeTopicSignature) => set({ activeTopicSignature }),
     setWorkspaceTopicSignature: (workspaceId, sig) => set((state) => {
       const existing = state.workspaces.find((w) => w.id === workspaceId);
-      const nextSig = sig ?? existing?.topic_signature;
-      const nextUpdatedAt = sig?.generated_at ?? existing?.signature_updated_at;
+      const nextSig = sig ?? existing?.topic_signature ?? {
+        domain_tags: [],
+        manual_tags: [],
+        ignored_tags: [],
+        intent_patterns: [],
+        generated_at: null,
+        message_count_at_gen: null,
+        ollama_enriched: false,
+      };
+      const nextUpdatedAt = sig?.generated_at ?? existing?.signature_updated_at ?? null;
 
       // Bail out if nothing actually changed to avoid creating a new array reference.
       if (

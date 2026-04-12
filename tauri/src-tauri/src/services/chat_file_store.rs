@@ -751,10 +751,10 @@ pub fn reencrypt_all_files(
 // ── Google Takeout (Gemini) parser ──────────────────────────────────────────
 
 pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>, String> {
-    let mut sessions: std::collections::BTreeMap<String, Vec<ChatFileMessage>> =
-        std::collections::BTreeMap::new();
+    let mut turns = Vec::new();
     let re_date = regex::Regex::new(r"(\d{1,2} [A-Z][a-z]{2} \d{4}), (\d{2}:\d{2}:\d{2})").unwrap();
     let re_tags = regex::Regex::new(r"<[^>]+>").unwrap();
+    let re_img = regex::Regex::new(r#"<img\s+[^>]*src="([^"]+)""#).unwrap();
 
     // Split by the outer cell div
     for part in html.split("<div class=\"outer-cell ") {
@@ -779,12 +779,24 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
         let prompt_text = &trimmed[..prompt_end];
 
         if let Some(caps) = re_date.captures(trimmed) {
-            let date_str = caps.get(1).unwrap().as_str().to_string();
-            let time_str = caps.get(2).unwrap().as_str().to_string();
+            let date_str = caps.get(1).unwrap().as_str();
+            let time_str = caps.get(2).unwrap().as_str();
             let date_match = caps.get(0).unwrap();
+
+            // Try to parse timestamp for grouping
+            let ts_str = format!("{} {}", date_str, time_str);
+            let timestamp = chrono::NaiveDateTime::parse_from_str(&ts_str, "%d %b %Y %H:%M:%S")
+                .map(|dt| dt.and_utc())
+                .unwrap_or_else(|_| chrono::Utc::now());
 
             let after_date = &trimmed[date_match.end()..];
             let mut assistant_html = after_date;
+
+            // Extract image if present
+            let mut image_ref = None;
+            if let Some(img_caps) = re_img.captures(part) {
+                image_ref = Some(img_caps.get(1).unwrap().as_str().to_string());
+            }
 
             // Skip the timezone/other meta info up to the response body
             if let Some(idx) = assistant_html.find("<p>") {
@@ -815,70 +827,104 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
                 .to_string()
                 .trim()
                 .to_string();
-            let safe_prompt = prompt_text
+            
+            let mut safe_prompt = prompt_text
                 .replace("&nbsp;", " ")
                 .replace("&quot;", "\"")
                 .replace("&amp;", "&")
                 .replace("&#39;", "'")
                 .replace("&lt;", "<")
-                .replace("&gt;", ">");
+                .replace("&gt;", ">")
+                .trim()
+                .to_string();
 
-            let messages = sessions.entry(date_str.clone()).or_insert_with(Vec::new);
-            let id_prefix = uuid::Uuid::new_v4().to_string();
+            // Append image reference to prompt if found
+            if let Some(ref img) = image_ref {
+                safe_prompt.push_str(&format!("\n\n![Attachment]({})", img));
+            }
 
-            // Because Gemini exports newest first, we push user then assistant.
-            // But we have to reverse the pairs later to make it chronological.
-            // A safer trick is to push (assistant, user) or we reverse them as a block later.
-            // Standard timeline: oldest at index 0. Here, latest is inserted first.
-            // Wait, we need the user/assistant pair to stay intact!
-            // So we'll push the prompt and response, and at the end we will `messages.reverse()`
-            // which flips their order. But wait - reversing [user1, assistant1, user2, assistant2]
-            // becomes [assistant2, user2, assistant1, user1].
-            // That's bad! We want [user2, assistant2, user1, assistant1].
-            // To do this simply, we will insert at the beginning of the vector `Vec::insert(0)`
-            messages.insert(
-                0,
-                ChatFileMessage {
-                    id: format!("{}-assistant", id_prefix),
-                    role: "assistant".to_string(),
-                    content: safe_text,
-                    model: Some("gemini".to_string()),
-                    tokens_used: None,
-                    timestamp: format!("{}T{}+00:00", date_str, time_str),
-                    duration_ms: None,
-                },
-            );
-            messages.insert(
-                0,
-                ChatFileMessage {
-                    id: format!("{}-user", id_prefix),
-                    role: "user".to_string(),
-                    content: safe_prompt,
-                    model: None,
-                    tokens_used: None,
-                    timestamp: format!("{}T{}+00:00", date_str, time_str),
-                    duration_ms: None,
-                },
-            );
+            turns.push((timestamp, safe_prompt, safe_text));
         }
     }
 
-    let mut result = Vec::new();
-    let now = chrono::Utc::now().to_rfc3339();
-    for (date, messages) in sessions {
-        result.push(ChatFileData {
-            id: uuid::Uuid::new_v4().to_string(),
-            title: format!("Gemini - {}", date),
-            model: "gemini".to_string(),
-            system_prompt: "".to_string(),
-            created_at: now.clone(),
-            updated_at: now.clone(),
-            messages,
-        });
+    if turns.is_empty() {
+        return Ok(Vec::new());
     }
 
-    Ok(result)
+    // Sort turns chronologically (Takeout is usually newest first)
+    turns.sort_by_key(|t| t.0);
+
+    let mut sessions = Vec::new();
+    let mut current_messages = Vec::new();
+    let mut last_ts: Option<chrono::DateTime<chrono::Utc>> = None;
+    let gap_threshold = chrono::Duration::minutes(30);
+
+    for (ts, prompt, response) in turns {
+        // Start new session if gap is too large
+        if let Some(last) = last_ts {
+            if ts.signed_duration_since(last) > gap_threshold {
+                if !current_messages.is_empty() {
+                    sessions.push(create_session_from_messages(current_messages));
+                    current_messages = Vec::new();
+                }
+            }
+        }
+
+        let id_prefix = uuid::Uuid::new_v4().to_string();
+        let ts_iso = ts.to_rfc3339();
+
+        current_messages.push(ChatFileMessage {
+            id: format!("{}-user", id_prefix),
+            role: "user".to_string(),
+            content: prompt,
+            model: None,
+            tokens_used: None,
+            timestamp: ts_iso.clone(),
+            duration_ms: None,
+        });
+
+        current_messages.push(ChatFileMessage {
+            id: format!("{}-assistant", id_prefix),
+            role: "assistant".to_string(),
+            content: response,
+            model: Some("gemini".to_string()),
+            tokens_used: None,
+            timestamp: ts_iso,
+            duration_ms: None,
+        });
+
+        last_ts = Some(ts);
+    }
+
+    if !current_messages.is_empty() {
+        sessions.push(create_session_from_messages(current_messages));
+    }
+
+    Ok(sessions)
 }
+
+fn create_session_from_messages(messages: Vec<ChatFileMessage>) -> ChatFileData {
+    let first_ts = messages.first().map(|m| m.timestamp.clone()).unwrap_or_default();
+    let first_prompt = messages.first().map(|m| m.content.clone()).unwrap_or_default();
+    
+    // Create a title from the first prompt (limit length)
+    let title = if first_prompt.len() > 40 {
+        format!("{}...", &first_prompt[..37].replace('\n', " "))
+    } else {
+        first_prompt.replace('\n', " ")
+    };
+
+    ChatFileData {
+        id: uuid::Uuid::new_v4().to_string(),
+        title: format!("Gemini: {}", title),
+        model: "gemini".to_string(),
+        system_prompt: "".to_string(),
+        created_at: first_ts.clone(),
+        updated_at: first_ts,
+        messages,
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
