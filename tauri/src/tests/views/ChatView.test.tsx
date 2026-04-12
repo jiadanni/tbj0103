@@ -1,6 +1,6 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useChatStore } from "@/stores/chatStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -83,6 +83,7 @@ vi.mock("@/lib/api", () => ({
       moveSessions: vi.fn(() => Promise.resolve(undefined)),
       createSession: vi.fn(),
       addMessage: vi.fn(),
+      touchSessionAccessed: vi.fn(() => Promise.resolve(undefined)),
       updateSession: vi.fn(() => Promise.resolve(undefined)),
       deleteSession: vi.fn(() => Promise.resolve(undefined)),
     },
@@ -182,6 +183,12 @@ function renderChatView(initialEntries?: Array<string | { pathname: string; stat
       <ChatView />
     </MemoryRouter>,
   );
+}
+
+async function flushMicrotasks(times = 4) {
+  for (let index = 0; index < times; index += 1) {
+    await Promise.resolve();
+  }
 }
 
 async function openCreateWorkspaceInput() {
@@ -386,6 +393,95 @@ describe("ChatView", () => {
       expect(api.chat.createSession).toHaveBeenCalledTimes(1);
       expect(setActiveChatId).toHaveBeenCalledWith("session-new");
     });
+  });
+
+  it("starts an incognito chat from the empty-state dropdown", async () => {
+    (api.chat.listSessions as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (api.chat.createSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "session-incognito",
+      title: "New Chat",
+      model_name: "test-model",
+      system_prompt: "",
+      project_id: "",
+      workspace_id: "ws-1",
+      created_at: "",
+      updated_at: "",
+      is_incognito: true,
+      exclude_from_analytics: false,
+      is_pinned: false,
+      is_deleted: false,
+      message_count_at_title_gen: 0,
+    } satisfies ChatSession);
+
+    renderChatView();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /choose new chat privacy mode/i }));
+      await flushMicrotasks(1);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: /incognito/i }));
+      await flushMicrotasks();
+    });
+
+    expect(api.chat.createSession).toHaveBeenCalledWith("ws-1", null, {
+      modelName: "test-model",
+      is_incognito: true,
+      exclude_from_analytics: false,
+    });
+    expect(setActiveChatId).toHaveBeenCalledWith("session-incognito");
+  });
+
+  it("does not reuse a standard empty chat when incognito is requested", async () => {
+    (api.chat.listSessions as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "session-empty-standard",
+        title: "New Chat",
+        model_name: "test-model",
+        system_prompt: "",
+        project_id: "",
+        workspace_id: "ws-1",
+        created_at: "",
+        updated_at: "",
+        is_incognito: false,
+        exclude_from_analytics: false,
+        is_pinned: false,
+        is_deleted: false,
+        message_count_at_title_gen: 0,
+      },
+    ]);
+    (api.chat.createSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "session-empty-incognito",
+      title: "New Chat",
+      model_name: "test-model",
+      system_prompt: "",
+      project_id: "",
+      workspace_id: "ws-1",
+      created_at: "",
+      updated_at: "",
+      is_incognito: true,
+      exclude_from_analytics: false,
+      is_pinned: false,
+      is_deleted: false,
+      message_count_at_title_gen: 0,
+    } satisfies ChatSession);
+
+    renderChatView();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /choose new chat privacy mode/i }));
+      await flushMicrotasks(1);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: /incognito/i }));
+      await flushMicrotasks();
+    });
+
+    expect(api.chat.createSession).toHaveBeenCalledTimes(1);
+    expect(setActiveChatId).toHaveBeenCalledWith("session-empty-incognito");
+    expect(setActiveChatId).not.toHaveBeenCalledWith("session-empty-standard");
   });
 
   it("shows the active model label in the composer", () => {

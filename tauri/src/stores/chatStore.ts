@@ -147,12 +147,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 export function findUnusedSession(
   sessions: ChatSession[],
   messages: Record<string, Message[]>,
-  workspaceId: string
+  workspaceId: string,
+  options?: {
+    isIncognito?: boolean;
+    excludeFromAnalytics?: boolean;
+  }
 ) {
   return sessions.find((s) => {
     const isWorkspaceMatch = s.workspace_id === workspaceId;
     const isNotPinned = !s.is_pinned;
     const isNotDeleted = !s.is_deleted;
+    const matchesPrivacyMode =
+      s.is_incognito === (options?.isIncognito ?? false) &&
+      s.exclude_from_analytics === (options?.excludeFromAnalytics ?? false);
     const isNewTitle = s.title === "New Chat" || s.title === "";
     // If we have messages loaded and there are none, it's unused.
     // If we don't have messages loaded, check message_count_at_title_gen (usually 0 for new chats).
@@ -164,6 +171,7 @@ export function findUnusedSession(
       isWorkspaceMatch &&
       isNotPinned &&
       isNotDeleted &&
+      matchesPrivacyMode &&
       isNewTitle &&
       hasNoMessages
     );
