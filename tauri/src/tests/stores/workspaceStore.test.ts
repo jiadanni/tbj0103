@@ -115,8 +115,8 @@ describe("navigation settings", () => {
     localStorage.setItem("workspaceNavigation", "icon-bar");
     vi.resetModules();
     const { useWorkspaceStore: freshStore } = await import("@/stores/workspaceStore");
-    expect(freshStore.getState().workspaceNavigation).toBe("icon-bar");
-    expect(freshStore.getState().sectionNavigation).toBe("icon-bar");
+    expect(freshStore.getState().workspaceNavigation).toBe("sidebar");
+    expect(freshStore.getState().sectionNavigation).toBe("sidebar");
   });
 });
 

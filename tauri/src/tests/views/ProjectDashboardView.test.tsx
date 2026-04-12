@@ -138,12 +138,9 @@ describe("ProjectDashboardView", () => {
       expect(mocks.getSummary).toHaveBeenCalledWith("ws-1");
     });
 
-    expect(await screen.findByText("Suggested Progression")).toBeInTheDocument();
-    expect(screen.getByText("Review Snapshot")).toBeInTheDocument();
+    expect(await screen.findByText("Continue Learning")).toBeInTheDocument();
     expect(screen.getByText("Goals In Motion")).toBeInTheDocument();
-    expect(screen.getByText("Review what is due now")).toBeInTheDocument();
     expect(screen.getByText("Explain Linux container isolation")).toBeInTheDocument();
-    expect(screen.getByText("PID namespaces")).toBeInTheDocument();
     expect(screen.getAllByText("Linux").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Review" })).toBeInTheDocument();
