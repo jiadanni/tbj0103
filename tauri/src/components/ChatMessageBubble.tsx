@@ -156,7 +156,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                   : "rounded border-l-2 border-[var(--accent-color)]/40 bg-transparent text-[var(--text-primary)]"
                 : msg.role === "user"
                   ? "rounded-2xl message-user"
-                  : "rounded-2xl message-assistant"
+                  : "rounded-2xl message-assistant overflow-hidden"
             }`}
           >
             {msg.role === "assistant" ? (

@@ -13,14 +13,22 @@ const mocks = vi.hoisted(() => ({
   getSummary: vi.fn(),
 }));
 
-const MockForceGraph = React.forwardRef<HTMLDivElement>((_props, _ref) => (
-  <div data-testid="force-graph" ref={_ref} />
-));
-MockForceGraph.displayName = "MockForceGraph";
-
-vi.mock("react-force-graph-2d", () => ({
-  default: MockForceGraph,
-}));
+vi.mock("react-force-graph-2d", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const MockForceGraph = React.forwardRef<any>((_props, ref) => {
+    React.useImperativeHandle(ref, () => ({
+      d3Force: vi.fn(() => ({ strength: vi.fn() })),
+      zoom: vi.fn(),
+      centerAt: vi.fn(),
+      zoomToFit: vi.fn(),
+    }), []);
+    return <div data-testid="force-graph" />;
+  });
+  MockForceGraph.displayName = "MockForceGraph";
+  return {
+    default: MockForceGraph,
+  };
+});
 
 vi.mock("@/lib/api", () => ({
   api: {
