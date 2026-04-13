@@ -1719,6 +1719,10 @@ export default function ChatView() {
   const skipLinkConfirm = useSettingsStore((s) => s.skipLinkConfirm);
   const setSkipLinkConfirm = useSettingsStore((s) => s.setSkipLinkConfirm);
   const showGenInfo = useSettingsStore((s) => s.showGenInfo);
+  const showGenInfoModel = useSettingsStore((s) => s.showGenInfoModel);
+  const showGenInfoTokenCount = useSettingsStore((s) => s.showGenInfoTokenCount);
+  const showGenInfoDuration = useSettingsStore((s) => s.showGenInfoDuration);
+  const showGenInfoSpeed = useSettingsStore((s) => s.showGenInfoSpeed);
   const scrollToTopOnSend = useSettingsStore((s) => s.scrollToTopOnSend);
   const chatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
@@ -1740,8 +1744,12 @@ export default function ChatView() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [ollamaModelStatus, setOllamaModelStatus] = useState<"idle" | "available" | "empty" | "unreachable">("idle");
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
+  const [messageVariations, setMessageVariations] = useState<Map<string, Message[]>>(new Map());
+  const [variationIndex, setVariationIndex] = useState<Map<string, number>>(new Map());
+  const [redoPickerOpenForId, setRedoPickerOpenForId] = useState<string | null>(null);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [isModelSendMenuOpen, setIsModelSendMenuOpen] = useState(false);
+  const [activeTierPickerIdx, setActiveTierPickerIdx] = useState<number | null>(null);
   type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
   const [activeContextSources, setActiveContextSources] = useState<Record<string, ContextSources>>({});
   const [loadedSessionScopeKey, setLoadedSessionScopeKey] = useState<string | null>(null);
@@ -2387,6 +2395,27 @@ export default function ChatView() {
   }, [isModelPickerOpen]);
 
   useEffect(() => {
+    if (!redoPickerOpenForId) { return; }
+
+    function handleClick(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-redo-picker]")) { return; }
+      setRedoPickerOpenForId(null);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") { setRedoPickerOpenForId(null); }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [redoPickerOpenForId]);
+
+  useEffect(() => {
     if (!effectiveWorkspaceId) {
       setSidebarSessions([]);
       return;
@@ -2633,6 +2662,9 @@ export default function ChatView() {
   // Load messages when session changes
   useEffect(() => {
     if (!activeChatId || hasLoadedActiveMessages || !activeSessionWorkspaceId) { return; }
+    setMessageVariations(new Map());
+    setVariationIndex(new Map());
+    setRedoPickerOpenForId(null);
     api.chat.getMessages(activeSessionWorkspaceId, activeChatId)
       .then((msgs) => setMessages(activeChatId, msgs))
       .catch((error) => {
@@ -3527,7 +3559,7 @@ export default function ChatView() {
     }
   }
 
-  async function redoMessage(msgId: string) {
+  async function redoMessage(msgId: string, modelId: string) {
     if (!activeChatId || isStreaming || !effectiveWorkspaceId) { return; }
     const idx = activeMessages.findIndex((m) => m.id === msgId);
     if (idx < 0) { return; }
@@ -3541,12 +3573,31 @@ export default function ChatView() {
       })) {
         return;
       }
+      // Clear variation state for deleted messages and the redo'd message since history changes
+      const deletedIds = activeMessages.slice(idx + 1).map((m) => m.id);
+      setMessageVariations((prev) => {
+        const next = new Map(prev);
+        deletedIds.forEach((id) => next.delete(id));
+        next.delete(msgId);
+        return next;
+      });
+      setVariationIndex((prev) => {
+        const next = new Map(prev);
+        deletedIds.forEach((id) => next.delete(id));
+        next.delete(msgId);
+        return next;
+      });
+    }
+
+    // Capture original message as variation 0 before overwriting
+    const existingVariations = messageVariations.get(msgId) ?? [];
+    const originalMsg = activeMessages[idx];
+    if (existingVariations.length === 0) {
+      setMessageVariations((prev) => new Map(prev).set(msgId, [originalMsg]));
     }
 
     const trimmedMessages = activeMessages.slice(0, idx);
     setMessages(activeChatId, trimmedMessages);
-
-    const _history = trimmedMessages.map((m) => ({ role: m.role, content: m.content }));
 
     setIsStreaming(true);
     try {
@@ -3554,29 +3605,44 @@ export default function ChatView() {
       clearStreamListener();
       const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
         if (done) {
-          finalizeStream(sid, selectedModel, tokensUsed, durationMs);
+          finalizeStream(sid, modelId, tokensUsed, durationMs);
           setIsStreaming(false);
           clearStreamListener();
           const assembled = useChatStore.getState().streamingContent;
-          api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
-            .then((persisted) => updateMessage(sid, persisted))
+          api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, modelId, tokensUsed, durationMs)
+            .then((persisted) => {
+              updateMessage(sid, persisted);
+              setMessageVariations((prev) => {
+                const existing: Message[] = prev.get(msgId) ?? [];
+                const updated = [...existing, persisted];
+                setVariationIndex((vi) => new Map(vi).set(msgId, updated.length - 1));
+                return new Map(prev).set(msgId, updated);
+              });
+            })
             .catch(() => { });
           if (tokensUsed && tokensUsed > 0) {
-            api.aiModel.recordTokenUsage(selectedModel, "ollama", tokensUsed).catch(() => { });
+            api.aiModel.recordTokenUsage(modelId, "ollama", tokensUsed).catch(() => { });
           }
         } else {
           appendStreamChunk(sid, chunk);
         }
       });
       streamUnlistenRef.current = unlisten;
-      await api.ollama.sendMessage(sid, selectedModel, trimmedMessages.map((m) => ({ role: m.role, content: m.content })), true, ollamaUrl || undefined);
+      await api.ollama.sendMessage(sid, modelId, trimmedMessages.map((m) => ({ role: m.role, content: m.content })), true, ollamaUrl || undefined);
     } catch (err) {
       clearStreamListener();
       setIsStreaming(false);
       const errMsg = err instanceof Error ? err.message : String(err);
       appendStreamChunk(activeChatId, `\n\n⚠️ Error: ${errMsg}`);
-      finalizeStream(activeChatId, selectedModel);
+      finalizeStream(activeChatId, modelId);
     }
+  }
+
+  function handleVariationChange(msgId: string, newIndex: number) {
+    const vars = messageVariations.get(msgId);
+    if (!vars || newIndex < 0 || newIndex >= vars.length) { return; }
+    setVariationIndex((prev) => new Map(prev).set(msgId, newIndex));
+    if (activeChatId) { updateMessage(activeChatId, vars[newIndex]); }
   }
 
   // Load models for comparison mode
@@ -3912,12 +3978,24 @@ export default function ChatView() {
                               expandedSources={expandedSources}
                               contextSources={i === activeMessages.length - 1 && currentSessionId ? activeContextSources[currentSessionId] ?? null : null}
                               markdownComponents={markdownComponents}
+                              variations={messageVariations.get(msg.id)}
+                              currentVariationIndex={variationIndex.get(msg.id)}
+                              redoPickerOpen={redoPickerOpenForId === msg.id}
+                              availableModels={availableModels}
+                              aiModelList={aiModelList}
+                              selectedModel={selectedModel}
+                              showGenInfoModel={showGenInfoModel}
+                              showGenInfoTokenCount={showGenInfoTokenCount}
+                              showGenInfoDuration={showGenInfoDuration}
+                              showGenInfoSpeed={showGenInfoSpeed}
                               onCopy={handleCopyMessage}
                               onStartEdit={handleStartEditing}
                               onSubmitEdit={submitEdit}
                               onSetEditContent={setEditContent}
                               onCancelEdit={handleCancelEdit}
-                              onRedo={redoMessage}
+                              onRedoWithModel={(id, model) => { setRedoPickerOpenForId(null); redoMessage(id, model); }}
+                              onToggleRedoPicker={(id) => setRedoPickerOpenForId((prev) => prev === id ? null : id)}
+                              onVariationChange={handleVariationChange}
                               onToggleThought={handleToggleThought}
                               onToggleSources={handleToggleSources}
                             />
