@@ -2395,6 +2395,23 @@ export default function ChatView() {
   }, [isModelPickerOpen]);
 
   useEffect(() => {
+    if (activeTierPickerIdx === null) { return; }
+    function handleClick(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-tier-picker]")) { setActiveTierPickerIdx(null); }
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") { setActiveTierPickerIdx(null); }
+    }
+    document.addEventListener("click", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("click", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [activeTierPickerIdx]);
+
+  useEffect(() => {
     if (!redoPickerOpenForId) { return; }
 
     function handleClick(event: MouseEvent) {
@@ -3689,10 +3706,17 @@ export default function ChatView() {
   const activeProject = projects.find((p) => p.id === effectiveProjectId) ?? null;
   const activeWorkspace = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId) ?? null;
 
-  // Compute next-priority enabled model for "Try better model" button
+  // Bucket enabled models into Fast / Balanced / Powerful tiers
   const enabledModels = aiModelList.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
-  const currentModelIdx = enabledModels.findIndex((m) => m.model_id === selectedModel);
-  const nextModel = currentModelIdx >= 0 && currentModelIdx < enabledModels.length - 1 ? enabledModels[currentModelIdx + 1] : null;
+  const tierSize = Math.ceil(enabledModels.length / 3);
+  const modelTiers = [
+    enabledModels.slice(0, tierSize),
+    enabledModels.slice(tierSize, tierSize * 2),
+    enabledModels.slice(tierSize * 2),
+  ].filter((tier) => tier.length > 0);
+  const activeTierIdx = modelTiers.findIndex((tier) =>
+    tier.some((m) => m.model_id === selectedModel)
+  );
   const composerSuggestionRows = useMemo(() => {
     const suggestionContext = {
       workspaceName: activeWorkspace?.name ?? null,
@@ -4292,21 +4316,75 @@ export default function ChatView() {
 
                         {/* ── Composer tool row ─────────────────────────────────────── */}
                         <div className="flex items-center gap-2.5 px-1 pt-1 flex-wrap">
-                          {/* Try better model button */}
-                          {nextModel && !isStreaming && activeMessages.length > 0 && (
-                            <button
-                              onClick={() => {
-                                setSelectedModel(nextModel.model_id);
-                                persistModelChoice(nextModel.model_id);
-                                if (lastUserMessage) { setInput(lastUserMessage); }
-                              }}
-                              title={`Try ${modelDisplayName(nextModel.model_id)}`}
-                              className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
-                            >
-                              <ArrowUpCircle size={13} />
-                              <span>Try better</span>
-                            </button>
-                          )}
+                          {/* ── Model tier picker ── */}
+                          {modelTiers.length >= 2 && (() => {
+                            const tierMeta = [
+                              { label: "Fast",     color: "#34d399", ring: "rgba(52,211,153,0.5)"  },
+                              { label: "Balanced", color: "#fbbf24", ring: "rgba(251,191,36,0.5)"  },
+                              { label: "Powerful", color: "#fb7185", ring: "rgba(251,113,133,0.5)" },
+                            ];
+                            return (
+                              <div className="flex items-center gap-1" data-tier-picker>
+                                {modelTiers.map((tier, idx) => {
+                                  const meta = tierMeta[idx];
+                                  const isActiveTier = idx === activeTierIdx;
+                                  const isOpen = activeTierPickerIdx === idx;
+                                  const byFamily = tier.reduce<Record<string, AiModel[]>>((acc, m) => {
+                                    const fam = m.provider || "Other";
+                                    (acc[fam] ??= []).push(m);
+                                    return acc;
+                                  }, {});
+                                  return (
+                                    <div key={idx} className="relative" data-tier-picker>
+                                      <button
+                                        onClick={() => setActiveTierPickerIdx(isOpen ? null : idx)}
+                                        title={meta.label}
+                                        style={{
+                                          backgroundColor: meta.color,
+                                          boxShadow: isActiveTier
+                                            ? `0 0 0 2px rgba(255,255,255,0.10), 0 0 0 3.5px ${meta.ring}`
+                                            : "none",
+                                          opacity: isActiveTier ? 1 : 0.4,
+                                        }}
+                                        className="h-2.5 w-2.5 rounded-full transition-all hover:opacity-100"
+                                      />
+                                      {isOpen && (
+                                        <div className="absolute left-0 bottom-full z-20 mb-3 w-[200px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                                          <div className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[rgba(255,255,255,0.3)]">
+                                            {meta.label}
+                                          </div>
+                                          {Object.entries(byFamily).map(([family, models]) => (
+                                            <div key={family}>
+                                              {Object.keys(byFamily).length > 1 && (
+                                                <div className="px-2 py-0.5 text-[10px] font-medium text-[rgba(255,255,255,0.25)]">{family}</div>
+                                              )}
+                                              {models.map((m) => (
+                                                <button
+                                                  key={m.model_id}
+                                                  onClick={() => {
+                                                    setSelectedModel(m.model_id);
+                                                    persistModelChoice(m.model_id);
+                                                    setActiveTierPickerIdx(null);
+                                                  }}
+                                                  className={`w-full rounded-xl px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-[rgba(255,255,255,0.06)] ${
+                                                    m.model_id === selectedModel
+                                                      ? "font-semibold text-white"
+                                                      : "text-[rgba(255,255,255,0.72)]"
+                                                  }`}
+                                                >
+                                                  {modelDisplayName(m.model_id)}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
 
                           {/* Top-K picker (only when grounded is on) */}
                           {groundedEnabled && (
