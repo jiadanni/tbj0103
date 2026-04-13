@@ -11,6 +11,7 @@ vi.mock("lucide-react", () => ({
   RotateCcw: () => <div data-testid="icon-rotate-ccw" />,
   ChevronDown: () => <div data-testid="icon-chevron-down" />,
   ChevronRight: () => <div data-testid="icon-chevron-right" />,
+  ChevronLeft: () => <div data-testid="icon-chevron-left" />,
   ChevronUp: () => <div data-testid="icon-chevron-up" />,
   BookOpen: () => <div data-testid="icon-book-open" />,
 }));
@@ -53,12 +54,22 @@ describe("ChatMessageBubble", () => {
         expandedSources={null}
         contextSources={null}
         markdownComponents={{}}
+        redoPickerOpen={false}
+        availableModels={[]}
+        aiModelList={[]}
+        selectedModel=""
+        showGenInfoModel={false}
+        showGenInfoTokenCount={false}
+        showGenInfoDuration={false}
+        showGenInfoSpeed={false}
         onCopy={vi.fn()}
         onStartEdit={vi.fn()}
         onSubmitEdit={vi.fn()}
         onSetEditContent={vi.fn()}
         onCancelEdit={vi.fn()}
-        onRedo={vi.fn()}
+        onRedoWithModel={vi.fn()}
+        onToggleRedoPicker={vi.fn()}
+        onVariationChange={vi.fn()}
         onToggleThought={vi.fn()}
         onToggleSources={vi.fn()}
       />,

@@ -1,9 +1,9 @@
 import React, { useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, Copy, Pencil, RotateCcw, ChevronDown, ChevronRight, ChevronUp, BookOpen } from "lucide-react";
+import { Check, Copy, Pencil, RotateCcw, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, BookOpen } from "lucide-react";
 import type { Message } from "../stores/chatStore";
-import type { SearchResult } from "../lib/api";
+import type { AiModel, SearchResult } from "../lib/api";
 import ContextIndicator from "./ContextIndicator";
 import { useWordHover } from "../hooks/useWordHover";
 import { WordDefinitionTooltip } from "./WordDefinitionTooltip";
@@ -53,6 +53,10 @@ export interface ChatMessageBubbleProps {
   chatMessageStyle: string;
   expandChatToWindowWidth: boolean;
   showGenInfo: boolean;
+  showGenInfoModel: boolean;
+  showGenInfoTokenCount: boolean;
+  showGenInfoDuration: boolean;
+  showGenInfoSpeed: boolean;
   editingMessageId: string | null;
   editContent: string;
   copiedMessageId: string | null;
@@ -62,12 +66,20 @@ export interface ChatMessageBubbleProps {
   contextSources: ContextSources | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   markdownComponents: any;
+  variations?: Message[];
+  currentVariationIndex?: number;
+  redoPickerOpen: boolean;
+  availableModels: string[];
+  aiModelList: AiModel[];
+  selectedModel: string;
   onCopy: (msgId: string, content: string) => void;
   onStartEdit: (msgId: string, content: string) => void;
   onSubmitEdit: (msgId: string) => void;
   onSetEditContent: (content: string) => void;
   onCancelEdit: () => void;
-  onRedo: (msgId: string) => void;
+  onRedoWithModel: (msgId: string, modelId: string) => void;
+  onToggleRedoPicker: (msgId: string) => void;
+  onVariationChange: (msgId: string, newIndex: number) => void;
   onToggleThought: (msgId: string) => void;
   onToggleSources: (msgId: string) => void;
 }
@@ -79,6 +91,10 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   chatMessageStyle,
   expandChatToWindowWidth,
   showGenInfo,
+  showGenInfoModel,
+  showGenInfoTokenCount,
+  showGenInfoDuration,
+  showGenInfoSpeed,
   editingMessageId,
   editContent,
   copiedMessageId,
@@ -87,18 +103,30 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   expandedSources,
   contextSources,
   markdownComponents,
+  variations,
+  currentVariationIndex,
+  redoPickerOpen,
+  availableModels,
+  aiModelList,
+  selectedModel,
   onCopy,
   onStartEdit,
   onSubmitEdit,
   onSetEditContent,
   onCancelEdit,
-  onRedo,
+  onRedoWithModel,
+  onToggleRedoPicker,
+  onVariationChange,
   onToggleThought,
   onToggleSources,
 }: ChatMessageBubbleProps) {
+  const displayMsg = (variations && currentVariationIndex !== undefined)
+    ? (variations[currentVariationIndex] ?? msg)
+    : msg;
+
   const parts = useMemo(
-    () => (msg.role === "assistant" ? splitAssistantMessage(msg.content) : null),
-    [msg.role, msg.content]
+    () => (msg.role === "assistant" ? splitAssistantMessage(displayMsg.content) : null),
+    [msg.role, displayMsg.content]
   );
 
   const thoughtExpanded = expandedThoughtIds.has(msg.id);
@@ -111,6 +139,9 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   const messageWidthClassName = expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]";
   const assistantColumnClassName = msg.role === "assistant" ? "w-full self-center" : "";
   const userBubbleWidthClassName = msg.role === "user" ? "w-fit self-end" : "";
+
+  const varCount = variations?.length ?? 0;
+  const varIdx = currentVariationIndex ?? 0;
 
   return (
     <div
@@ -184,9 +215,37 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                 )}
                 <div className="prose prose-sm prose-invert min-w-0 max-w-none" ref={assistantProseRef}>
                   <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                    {parts?.answer || msg.content}
+                    {parts?.answer || displayMsg.content}
                   </ReactMarkdown>
                 </div>
+                {varCount > 1 && (
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border-color)]">
+                    <button
+                      onClick={() => onVariationChange(msg.id, varIdx - 1)}
+                      disabled={varIdx === 0 || isStreaming}
+                      className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] disabled:opacity-30 transition-colors"
+                      title="Previous variation"
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                    <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+                      <span>{varIdx + 1} / {varCount}</span>
+                      {displayMsg.model_name && (
+                        <span className="px-1.5 py-0.5 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] font-medium text-[10px]">
+                          {displayMsg.model_name}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => onVariationChange(msg.id, varIdx + 1)}
+                      disabled={varIdx >= varCount - 1 || isStreaming}
+                      className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] disabled:opacity-30 transition-colors"
+                      title="Next variation"
+                    >
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="break-words whitespace-pre-wrap">{msg.content}</p>
@@ -194,7 +253,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
           </div>
           <div className={`flex gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
             <button
-              onClick={() => onCopy(msg.id, msg.content)}
+              onClick={() => onCopy(msg.id, displayMsg.content)}
               className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
               title="Copy"
             >
@@ -210,30 +269,71 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
               </button>
             )}
             {msg.role === "assistant" && !isStreaming && (
-              <button
-                onClick={() => onRedo(msg.id)}
-                className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                title="Redo"
-              >
-                <RotateCcw size={11} />
-              </button>
+              <div className="relative flex items-center" data-redo-picker="true">
+                <button
+                  onClick={() => onRedoWithModel(msg.id, selectedModel)}
+                  className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                  title={`Redo with ${selectedModel}`}
+                >
+                  <RotateCcw size={11} />
+                </button>
+                <button
+                  onClick={() => onToggleRedoPicker(msg.id)}
+                  className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                  title="Redo with different model"
+                >
+                  <ChevronDown size={10} />
+                </button>
+                {redoPickerOpen && (
+                  <div className="absolute bottom-full right-0 z-30 mb-1.5 w-[200px] overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-[0_16px_40px_-16px_rgba(15,23,42,0.7)]">
+                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                      Regenerate with
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                      {availableModels.map((modelId) => {
+                        const modelMeta = aiModelList.find((m) => m.model_id === modelId);
+                        const modelName = modelMeta?.name ?? modelId;
+                        const isCurrent = modelId === selectedModel;
+                        return (
+                          <button
+                            key={modelId}
+                            type="button"
+                            onClick={() => onRedoWithModel(msg.id, modelId)}
+                            className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] transition-colors ${
+                              isCurrent
+                                ? "bg-[rgba(var(--accent-color-rgb),0.10)] text-[var(--text-primary)]"
+                                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                            }`}
+                          >
+                            <span className="min-w-0 truncate">{modelName}</span>
+                            {isCurrent && <Check size={11} className="shrink-0 text-[var(--accent-color)]" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
-          <div className={`flex items-center gap-2 text-[10px] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
+          <div className={`flex items-center gap-2 text-[11px] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
             <span>{formatMessageTimestamp(msg.created_at)}</span>
-            {showGenInfo && msg.role === "assistant" && msg.tokens_used ? (
-              <span>{msg.tokens_used.toLocaleString()} tok</span>
+            {showGenInfo && showGenInfoModel && msg.role === "assistant" && displayMsg.model_name && varCount <= 1 ? (
+              <span className="text-[var(--text-secondary)]">{displayMsg.model_name}</span>
             ) : null}
-            {showGenInfo && msg.role === "assistant" && msg.duration_ms ? (
+            {showGenInfo && showGenInfoTokenCount && msg.role === "assistant" && displayMsg.tokens_used ? (
+              <span>{displayMsg.tokens_used.toLocaleString()} tok</span>
+            ) : null}
+            {showGenInfo && showGenInfoDuration && msg.role === "assistant" && displayMsg.duration_ms ? (
               <span>
-                {msg.duration_ms >= 1000
-                  ? `${(msg.duration_ms / 1000).toFixed(1)}s`
-                  : `${msg.duration_ms}ms`}
+                {displayMsg.duration_ms >= 1000
+                  ? `${(displayMsg.duration_ms / 1000).toFixed(1)}s`
+                  : `${displayMsg.duration_ms}ms`}
               </span>
             ) : null}
-            {showGenInfo && msg.role === "assistant" && msg.tokens_used && msg.duration_ms && msg.duration_ms > 0 ? (
+            {showGenInfo && showGenInfoSpeed && msg.role === "assistant" && displayMsg.tokens_used && displayMsg.duration_ms && displayMsg.duration_ms > 0 ? (
               <span className="text-[var(--accent-color)] font-medium">
-                {(msg.tokens_used / (msg.duration_ms / 1000)).toFixed(1)} tok/s
+                {(displayMsg.tokens_used / (displayMsg.duration_ms / 1000)).toFixed(1)} tok/s
               </span>
             ) : null}
           </div>
