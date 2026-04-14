@@ -1120,6 +1120,45 @@ export default function PreferencesView() {
                             : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                         }`}
                       >
+                        {/* Mini preview */}
+                        {option.id === "sidebar" && (
+                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70 flex" style={{ height: 48 }}>
+                            <div className="flex flex-col gap-1 px-1.5 pt-1.5 bg-[var(--bg-secondary)] w-8 shrink-0">
+                              <div className="h-1.5 w-5 rounded-sm bg-[var(--accent-color)] opacity-80" />
+                              <div className="h-1.5 w-4 rounded-sm bg-[var(--text-muted)] opacity-40" />
+                              <div className="h-1.5 w-5 rounded-sm bg-[var(--text-muted)] opacity-40" />
+                            </div>
+                            <div className="flex-1 px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
+                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
+                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
+                            </div>
+                          </div>
+                        )}
+                        {option.id === "top-tabs" && (
+                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70" style={{ height: 48 }}>
+                            <div className="flex items-center gap-1 px-1.5 py-1.5 bg-[var(--bg-secondary)]">
+                              <div className="h-2 w-6 rounded-full bg-[var(--accent-color)] opacity-80" />
+                              <div className="h-2 w-4 rounded-full bg-[var(--text-muted)] opacity-40" />
+                              <div className="h-2 w-5 rounded-full bg-[var(--text-muted)] opacity-40" />
+                            </div>
+                            <div className="px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
+                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
+                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
+                            </div>
+                          </div>
+                        )}
+                        {option.id === "top-dropdown" && (
+                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70" style={{ height: 48 }}>
+                            <div className="flex items-center gap-2 px-1.5 py-1.5 bg-[var(--bg-secondary)]">
+                              <div className="h-2 w-10 rounded-full bg-[var(--accent-color)] opacity-80" />
+                              <div className="h-1.5 w-1.5 rounded-sm bg-[var(--text-muted)] opacity-40" style={{ clipPath: "polygon(0 0, 100% 0, 50% 100%)" }} />
+                            </div>
+                            <div className="px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
+                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
+                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
+                            </div>
+                          </div>
+                        )}
                         <div className="text-xs font-medium">{option.label}</div>
                         <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
                       </button>
@@ -1144,6 +1183,45 @@ export default function PreferencesView() {
                             : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                         }`}
                       >
+                        {/* Mini preview */}
+                        {option.id === "sidebar" && (
+                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70 flex" style={{ height: 48 }}>
+                            <div className="flex flex-col gap-1 px-1.5 pt-1.5 bg-[var(--bg-secondary)] w-8 shrink-0">
+                              <div className="h-1.5 w-5 rounded-sm bg-[var(--accent-color)] opacity-80" />
+                              <div className="h-1.5 w-4 rounded-sm bg-[var(--text-muted)] opacity-40" />
+                              <div className="h-1.5 w-5 rounded-sm bg-[var(--text-muted)] opacity-40" />
+                            </div>
+                            <div className="flex-1 px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
+                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
+                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
+                            </div>
+                          </div>
+                        )}
+                        {option.id === "top-tabs" && (
+                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70" style={{ height: 48 }}>
+                            <div className="flex items-center gap-1 px-1.5 py-1.5 bg-[var(--bg-secondary)]">
+                              <div className="h-2 w-6 rounded-full bg-[var(--accent-color)] opacity-80" />
+                              <div className="h-2 w-4 rounded-full bg-[var(--text-muted)] opacity-40" />
+                              <div className="h-2 w-5 rounded-full bg-[var(--text-muted)] opacity-40" />
+                            </div>
+                            <div className="px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
+                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
+                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
+                            </div>
+                          </div>
+                        )}
+                        {option.id === "top-dropdown" && (
+                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70" style={{ height: 48 }}>
+                            <div className="flex items-center gap-2 px-1.5 py-1.5 bg-[var(--bg-secondary)]">
+                              <div className="h-2 w-10 rounded-full bg-[var(--accent-color)] opacity-80" />
+                              <div className="h-1.5 w-1.5 rounded-sm bg-[var(--text-muted)] opacity-40" style={{ clipPath: "polygon(0 0, 100% 0, 50% 100%)" }} />
+                            </div>
+                            <div className="px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
+                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
+                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
+                            </div>
+                          </div>
+                        )}
                         <div className="text-xs font-medium">{option.label}</div>
                         <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
                       </button>
@@ -1235,6 +1313,38 @@ export default function PreferencesView() {
                             : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                         }`}
                       >
+                        {/* Mini preview — shows what the settings panel will look like */}
+                        {layout.id === "top-tabs" ? (
+                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70" style={{ height: 52 }}>
+                            {/* Settings header with horizontal tab bar */}
+                            <div className="flex items-center gap-1 px-2 py-1.5 bg-[var(--bg-secondary)]">
+                              <div className="h-2 w-6 rounded-full bg-[var(--accent-color)] opacity-80" />
+                              <div className="h-2 w-4 rounded-full bg-[var(--text-muted)] opacity-40" />
+                              <div className="h-2 w-5 rounded-full bg-[var(--text-muted)] opacity-40" />
+                              <div className="h-2 w-3 rounded-full bg-[var(--text-muted)] opacity-40" />
+                            </div>
+                            {/* Content area */}
+                            <div className="px-2 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
+                              <div className="h-1.5 w-12 rounded-sm bg-[var(--text-muted)] opacity-30" />
+                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70 flex" style={{ height: 52 }}>
+                            {/* Side rail with section list */}
+                            <div className="flex flex-col gap-1 px-1.5 pt-1.5 bg-[var(--bg-secondary)] w-10 shrink-0">
+                              <div className="h-1.5 w-6 rounded-sm bg-[var(--accent-color)] opacity-80" />
+                              <div className="h-1.5 w-5 rounded-sm bg-[var(--text-muted)] opacity-40" />
+                              <div className="h-1.5 w-7 rounded-sm bg-[var(--text-muted)] opacity-40" />
+                              <div className="h-1.5 w-4 rounded-sm bg-[var(--text-muted)] opacity-40" />
+                            </div>
+                            {/* Content area */}
+                            <div className="flex-1 px-2 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
+                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
+                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
+                            </div>
+                          </div>
+                        )}
                         <div className="text-xs font-medium">{layout.label}</div>
                         <div className="mt-1 text-[11px] opacity-75">{layout.description}</div>
                       </button>
