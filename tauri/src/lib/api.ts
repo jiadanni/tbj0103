@@ -34,6 +34,7 @@ function ipcSlowThresholdMs(command: string): number {
     case "send_dual_model_message":
     case "generate_title":
     case "generate_title_from_conversation":
+    case "polish_prompt":
     case "generate_follow_ups":
     case "extract_topics":
       return 15_000;
@@ -211,7 +212,7 @@ export interface QuickSearchResult {
 }
 
 export interface OllamaModelDetails { parameter_size?: string; }
-export interface OllamaModel { name: string; size?: number; modified_at?: string; details?: OllamaModelDetails; }
+export interface OllamaModel { name: string; size?: number; modified_at?: string; details?: OllamaModelDetails; capabilities?: string[]; }
 export interface OllamaRuntimeStatus {
   available: boolean;
   launched: boolean;
@@ -930,6 +931,22 @@ export const api = {
           model,
           stream: false,
           messageCount: conversation.length,
+          ollamaUrl,
+        },
+      );
+    },
+    polishPrompt: (model: string, prompt: string, ollamaUrl?: string) => {
+      const requestId = createRequestId();
+      return invokeObserved<string>(
+        "polish_prompt",
+        { req: { model, prompt, ollama_url: ollamaUrl, request_id: requestId } },
+        {
+          requestId,
+          layer: "tauri-ipc",
+          provider: "ollama",
+          model,
+          stream: false,
+          promptLength: prompt.length,
           ollamaUrl,
         },
       );

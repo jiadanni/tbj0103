@@ -9,7 +9,6 @@ import { message } from "@tauri-apps/plugin-dialog";
 import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { getModelGroupMeta } from "../lib/modelGroups";
-import { MODEL_ROLE_OPTIONS, type ModelRole } from "../lib/modelRoles";
 import { classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB, type ModelFit } from "../lib/modelSizing";
 import { ACCENT_COLORS, THEMES, normalizeTheme } from "../lib/theme";
 import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore";
@@ -94,6 +93,14 @@ function formatModelSpeed(stat: ModelSpeedStat | undefined): { chatAverage: stri
     chatAverage: `${stat.avg_chat_tokens_per_second.toFixed(1)} tok/s`,
     weighted: `${stat.weighted_tokens_per_second.toFixed(1)} tok/s`,
   };
+}
+
+function formatCapabilityLabel(capability: string): string {
+  return capability
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function getModelFitMeta(modelFit: ModelFit): {
@@ -212,7 +219,6 @@ export default function PreferencesView() {
   const [newModelId, setNewModelId] = useState("");
   const [newModelName, setNewModelName] = useState("");
   const [newModelIsPaid, setNewModelIsPaid] = useState(false);
-  const [newModelRoles, setNewModelRoles] = useState<ModelRole[]>(["chat"]);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const systemGuidance = systemSpecs
@@ -401,10 +407,9 @@ export default function PreferencesView() {
     Promise.allSettled(
       missingModels.map((model, index) => {
         const customLabel = modelLabels[model.name]?.trim();
-        const defaultName = customLabel || model.name.split(":")[0] || model.name;
+        const defaultName = customLabel || model.name;
         return api.aiModel.add(defaultName, model.name, {
           provider: "ollama",
-          role_tags: ["chat"],
           enabled: true,
           priority: startPriority + index,
         });
@@ -420,12 +425,6 @@ export default function PreferencesView() {
         syncingManagedOllamaModelsRef.current = false;
       });
   }, [aiModels, incrementModelRefreshCounter, modelLabels, nonEmbeddingOllamaModels, ollamaModelsLoading]);
-
-  function toggleRole(currentRoles: string[], role: ModelRole) {
-    return currentRoles.includes(role)
-      ? currentRoles.filter((value) => value !== role)
-      : [...currentRoles, role];
-  }
 
   function toggleQuickSearchModel(modelId: string) {
     if (!dbSettings) {return;}
@@ -639,11 +638,11 @@ export default function PreferencesView() {
         <div>
           <h3 className="text-sm font-semibold text-[var(--text-primary)]">Ollama models</h3>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
-            Manage local models, pick the one used for background tasks, and adjust roles or ordering.
+            Manage local models, pick the one used for background tasks, and review capabilities or ordering.
           </p>
         </div>
         <button
-          onClick={() => { setShowAddModel(!showAddModel); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); setNewModelRoles(["chat"]); }}
+          onClick={() => { setShowAddModel(!showAddModel); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); }}
           className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
         >
           <Plus size={11} /> Add Model
@@ -658,8 +657,7 @@ export default function PreferencesView() {
               onChange={(e) => {
                 setNewModelId(e.target.value);
                 if (!newModelName) {
-                  const name = e.target.value.split(":")[0];
-                  setNewModelName(name);
+                  setNewModelName(e.target.value);
                 }
               }}
               className="h-9 w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-9 text-xs text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
@@ -687,28 +685,6 @@ export default function PreferencesView() {
             placeholder="Display name"
             className="w-full px-2 py-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
           />
-          <div>
-            <p className="mb-1 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Roles</p>
-            <div className="flex flex-wrap gap-1.5">
-              {MODEL_ROLE_OPTIONS.map((role) => {
-                const active = newModelRoles.includes(role);
-                return (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => setNewModelRoles(toggleRole(newModelRoles, role) as ModelRole[])}
-                    className={`rounded-full px-2 py-1 text-[10px] transition-colors ${
-                      active
-                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                        : "bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                    }`}
-                  >
-                    {role}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
               <input type="checkbox" checked={newModelIsPaid} onChange={(e) => setNewModelIsPaid(e.target.checked)} className="accent-[var(--accent-color)]" />
@@ -723,10 +699,10 @@ export default function PreferencesView() {
                   const isLlamacpp = newModelId.startsWith("llamacpp:");
                   const modelId = isMlx ? newModelId.replace("mlx:", "") : isLlamacpp ? newModelId.replace("llamacpp:", "") : newModelId;
                   const provider = isMlx ? "mlx" : isLlamacpp ? "llamacpp" : "ollama";
-                  await api.aiModel.add(newModelName, modelId, { provider, is_paid: newModelIsPaid, role_tags: newModelRoles });
+                  await api.aiModel.add(newModelName, modelId, { provider, is_paid: newModelIsPaid });
                   loadAiModels();
                   incrementModelRefreshCounter();
-                  setShowAddModel(false); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); setNewModelRoles(["chat"]);
+                  setShowAddModel(false); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false);
                 }}
                 className="px-2 py-1 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
               >
@@ -751,6 +727,11 @@ export default function PreferencesView() {
 
           {groupedAiModels.map((group) => (
             <div key={group.key} className="space-y-1">
+              <div className="px-1 pt-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  {group.label}
+                </div>
+              </div>
               {group.models.map((m, idx) => {
                 const prev = idx > 0 ? group.models[idx - 1] : null;
                 const next = idx < group.models.length - 1 ? group.models[idx + 1] : null;
@@ -769,6 +750,7 @@ export default function PreferencesView() {
                 const canBeBackgroundModel = isOllamaModel && m.enabled;
                 const isBackgroundModel = dbSettings.background_model === m.model_id;
                 const providerMeta = getModelGroupMeta(m.provider);
+                const capabilityBadges = isOllamaModel ? ollamaMeta?.capabilities ?? [] : [];
 
                 return (
                   <div key={m.id} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5">
@@ -810,13 +792,15 @@ export default function PreferencesView() {
                               value={editingName}
                               onChange={(e) => setEditingName(e.target.value)}
                               onBlur={async () => {
-                                await api.aiModel.update(m.id, { name: editingName });
+                                const nextName = editingName.trim() || m.model_id;
+                                await api.aiModel.update(m.id, { name: nextName });
                                 setEditingModelId(null);
                                 loadAiModels();
                               }}
                               onKeyDown={async (e) => {
                                 if (e.key === "Enter") {
-                                  await api.aiModel.update(m.id, { name: editingName });
+                                  const nextName = editingName.trim() || m.model_id;
+                                  await api.aiModel.update(m.id, { name: nextName });
                                   setEditingModelId(null);
                                   loadAiModels();
                                 }
@@ -825,11 +809,22 @@ export default function PreferencesView() {
                               className="w-full rounded border border-[var(--accent-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-sm text-[var(--text-primary)] outline-none"
                             />
                           ) : (
-                            <div className="group min-w-0 cursor-pointer" onClick={() => { setEditingModelId(m.id); setEditingName(m.name); }}>
+                            <div className="group min-w-0">
                               <div className="flex min-w-0 items-center gap-2">
                                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${fitMeta.dotClassName}`} title={fitMeta.title} />
                                 <span className="truncate text-sm font-medium text-[var(--text-primary)]">{m.name}</span>
-                                <Pencil size={10} className="shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingModelId(m.id);
+                                    setEditingName(m.name);
+                                  }}
+                                  className="shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[var(--text-primary)]"
+                                  title="Rename model"
+                                  aria-label={`Rename ${m.name}`}
+                                >
+                                  <Pencil size={10} />
+                                </button>
                               </div>
                               <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-[var(--text-muted)]">
                                 {!isOllamaModel && (
@@ -924,30 +919,20 @@ export default function PreferencesView() {
                       </button>
                     </div>
 
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">Roles</span>
-                      {MODEL_ROLE_OPTIONS.map((role) => {
-                        const active = m.role_tags.includes(role);
-                        return (
-                          <button
-                            key={role}
-                            onClick={async () => {
-                              await api.aiModel.update(m.id, { role_tags: toggleRole(m.role_tags, role) });
-                              loadAiModels();
-                              incrementModelRefreshCounter();
-                            }}
-                            className={`rounded-md border px-2 py-0.5 text-[10px] transition-colors ${
-                              active
-                                ? "border-[var(--accent-color)]/35 bg-[var(--accent-color)]/10 text-[var(--accent-color)]"
-                                : "border-transparent bg-transparent text-[var(--text-muted)] hover:border-[var(--border-color)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
-                            }`}
-                            title={`Toggle ${role} role`}
+                    {capabilityBadges.length > 0 && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">Capabilities</span>
+                        {capabilityBadges.map((capability) => (
+                          <span
+                            key={`${m.id}-${capability}`}
+                            className="rounded-md border border-[var(--accent-color)]/25 bg-[var(--accent-color)]/10 px-2 py-0.5 text-[10px] text-[var(--accent-color)]"
+                            title={`${formatCapabilityLabel(capability)} capability reported by Ollama`}
                           >
-                            {role}
-                          </button>
-                        );
-                      })}
-                    </div>
+                            {formatCapabilityLabel(capability)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}

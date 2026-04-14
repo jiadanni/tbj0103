@@ -4,7 +4,7 @@ use crate::commands::ollama::{StreamAbortEntry, StreamAbortState};
 ///
 /// Connects to a local Ollama instance (default: http://localhost:11434).
 /// Supports chat, streaming, embeddings, and model listing.
-use futures::StreamExt;
+use futures::{future::join_all, StreamExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -100,11 +100,22 @@ pub struct ModelInfo {
     pub size: Option<i64>,
     pub modified_at: Option<String>,
     pub details: Option<ModelDetails>,
+    pub capabilities: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TagsResponse {
     pub models: Vec<ModelInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ShowModelRequest {
+    pub model: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ShowModelResponse {
+    pub capabilities: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +139,20 @@ pub struct RequestContext {
 pub struct OllamaClient {
     client: Client,
     pub base_url: String,
+}
+
+fn normalize_capabilities(capabilities: Option<Vec<String>>) -> Option<Vec<String>> {
+    let capabilities = capabilities?
+        .into_iter()
+        .map(|capability| capability.trim().to_string())
+        .filter(|capability| !capability.is_empty())
+        .collect::<Vec<_>>();
+
+    if capabilities.is_empty() {
+        None
+    } else {
+        Some(capabilities)
+    }
 }
 
 impl OllamaClient {
@@ -1046,13 +1071,15 @@ impl OllamaClient {
             message
         })?;
 
+        let models = self.enrich_models_with_capabilities(tags.models, ctx).await;
+
         // Store in cache.
         {
             let mut guard = model_cache()
                 .lock()
                 .map_err(|e| format!("model cache lock poisoned: {e}"))?;
             *guard = Some(CachedModels {
-                models: tags.models.clone(),
+                models: models.clone(),
                 fetched_at: Instant::now(),
                 url: self.base_url.clone(),
             });
@@ -1067,7 +1094,92 @@ impl OllamaClient {
             &[("cache", "miss".to_string())],
         );
 
-        Ok(tags.models)
+        Ok(models)
+    }
+
+    async fn enrich_models_with_capabilities(
+        &self,
+        models: Vec<ModelInfo>,
+        ctx: &RequestContext,
+    ) -> Vec<ModelInfo> {
+        join_all(models.into_iter().map(|mut model| async {
+            model.capabilities = self.fetch_model_capabilities_observed(&model.name, ctx).await;
+            model
+        }))
+        .await
+    }
+
+    async fn fetch_model_capabilities_observed(
+        &self,
+        model: &str,
+        ctx: &RequestContext,
+    ) -> Option<Vec<String>> {
+        let url = format!("{}/api/show", self.base_url);
+        let started_at = Instant::now();
+        let response = match self
+            .client
+            .post(&url)
+            .json(&ShowModelRequest {
+                model: model.to_string(),
+            })
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(e) => {
+                self.log_http_error(
+                    "POST",
+                    "/api/show",
+                    started_at.elapsed(),
+                    ctx,
+                    &format!("Failed to fetch model details for {model}: {e}"),
+                    &[("model", model.to_string())],
+                );
+                return None;
+            }
+        };
+
+        if !response.status().is_success() {
+            self.log_http_error(
+                "POST",
+                "/api/show",
+                started_at.elapsed(),
+                ctx,
+                &format!("Ollama returned status {} for model details", response.status()),
+                &[
+                    ("model", model.to_string()),
+                    ("status", response.status().as_u16().to_string()),
+                ],
+            );
+            return None;
+        }
+
+        let status = response.status().as_u16();
+        let details: ShowModelResponse = match response.json().await {
+            Ok(details) => details,
+            Err(e) => {
+                self.log_http_error(
+                    "POST",
+                    "/api/show",
+                    started_at.elapsed(),
+                    ctx,
+                    &format!("Failed to parse model details for {model}: {e}"),
+                    &[("model", model.to_string())],
+                );
+                return None;
+            }
+        };
+
+        self.log_http_success(
+            "POST",
+            "/api/show",
+            status,
+            started_at.elapsed(),
+            ctx,
+            &[("model", model.to_string())],
+        );
+
+        normalize_capabilities(details.capabilities)
     }
 
     /// Force-flush the process-level model cache (called by `list_models_fresh`).
@@ -1171,6 +1283,24 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_capabilities_discards_empty_entries() {
+        assert_eq!(
+            normalize_capabilities(Some(vec![
+                "vision".to_string(),
+                "".to_string(),
+                "  ".to_string()
+            ])),
+            Some(vec!["vision".to_string()])
+        );
+    }
+
+    #[test]
+    fn normalize_capabilities_returns_none_when_empty() {
+        assert_eq!(normalize_capabilities(Some(vec![])), None);
+        assert_eq!(normalize_capabilities(None), None);
+    }
 
     #[test]
     fn test_cosine_similarity_identical() {
