@@ -1,9 +1,11 @@
 use tauri::State;
 
+use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
 use crate::db::DbState;
 use crate::models::chat::{
     AddMessageRequest, ChatSession, CreateChatSessionRequest, Message, MessageRole,
 };
+use crate::services::chat_file_store;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct SearchChatSessionsRequest {
@@ -292,11 +294,15 @@ pub fn move_chat_sessions(
     session_ids: Vec<String>,
     target_workspace_id: String,
     target_project_id: Option<String>,
+    chats_dir_state: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
 ) -> Result<(), String> {
     if session_ids.is_empty() {
         return Ok(());
     }
     let conn = state.0.get().map_err(|e| e.to_string())?;
+    let previous_paths =
+        chat_file_store::capture_session_file_variants(&conn, &chats_dir_state.0, &session_ids);
     let now = chrono::Utc::now().to_rfc3339();
     let target_project_id = target_project_id.unwrap_or_default();
 
@@ -330,6 +336,14 @@ pub fn move_chat_sessions(
     match result {
         Ok(()) => {
             conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
+            chat_file_store::sync_session_files_for_hierarchy_change(
+                &conn,
+                &chats_dir_state.0,
+                &session_ids,
+                &previous_paths,
+                pass.as_deref(),
+            )?;
             Ok(())
         }
         Err(e) => {
@@ -362,12 +376,16 @@ pub struct BatchMoveSessionsResult {
 pub fn batch_move_sessions(
     state: State<DbState>,
     req: BatchMoveSessionsRequest,
+    chats_dir_state: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
 ) -> Result<BatchMoveSessionsResult, String> {
     if req.session_ids.is_empty() {
         return Ok(BatchMoveSessionsResult::default());
     }
 
     let conn = state.0.get().map_err(|e| e.to_string())?;
+    let previous_paths =
+        chat_file_store::capture_session_file_variants(&conn, &chats_dir_state.0, &req.session_ids);
     let now = chrono::Utc::now().to_rfc3339();
 
     conn.execute_batch("BEGIN IMMEDIATE")
@@ -526,6 +544,15 @@ pub fn batch_move_sessions(
         }
 
         res.sessions_moved = session_project_pairs.len();
+        let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
+        chat_file_store::sync_session_files_for_hierarchy_change(
+            &conn,
+            &chats_dir_state.0,
+            &req.session_ids,
+            &previous_paths,
+            pass.as_deref(),
+        )?;
+
         Ok(res)
     })();
 
