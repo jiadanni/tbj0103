@@ -1,10 +1,11 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy } from "lucide-react";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy } from "lucide-react";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
+import { readTextFile } from "@tauri-apps/plugin-fs";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
@@ -23,6 +24,7 @@ import {
   mergeComposerInput,
   type ComposerSuggestion,
 } from "../lib/composerSuggestions";
+import { resolveModelDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { resolveChatTitle } from "../lib/chatTitles";
 import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
@@ -40,6 +42,70 @@ function clampSessionSidebarWidth(width: number, isSplitPane = false) {
   const maxWidth = isSplitPane ? MAX_SPLIT_SESSION_SIDEBAR_WIDTH : MAX_SESSION_SIDEBAR_WIDTH;
 
   return Math.max(minWidth, Math.min(width, maxWidth));
+}
+
+function splitAttachmentIntoExcerpts(content: string) {
+  const normalized = content.replace(/\r\n/g, "\n").trim();
+  if (!normalized) { return []; }
+
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const segments = paragraphs.length > 0 ? paragraphs : [normalized];
+  return segments.flatMap((segment) => {
+    if (segment.length <= 1200) { return [segment]; }
+    const chunkSize = 1200;
+    const overlap = 200;
+    const chunks: string[] = [];
+    for (let start = 0; start < segment.length; start += chunkSize - overlap) {
+      chunks.push(segment.slice(start, start + chunkSize).trim());
+      if (start + chunkSize >= segment.length) { break; }
+    }
+    return chunks;
+  });
+}
+
+function buildAttachmentContext(query: string, attachments: Array<{ title: string; content: string }>) {
+  const queryTerms = Array.from(new Set(
+    query
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((term) => term.length >= 3),
+  ));
+  const excerpts: string[] = [];
+
+  for (const attachment of attachments.slice(0, 4)) {
+    const rankedExcerpts = splitAttachmentIntoExcerpts(attachment.content)
+      .map((excerpt) => {
+        const haystack = excerpt.toLowerCase();
+        const score = queryTerms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
+        return { excerpt, score };
+      })
+      .sort((left, right) => {
+        if (right.score !== left.score) { return right.score - left.score; }
+        return left.excerpt.length - right.excerpt.length;
+      })
+      .slice(0, 2)
+      .map(({ excerpt }) => excerpt);
+
+    if (rankedExcerpts.length === 0) { continue; }
+
+    excerpts.push(
+      `Attachment: ${attachment.title}\n` +
+      rankedExcerpts.map((excerpt, index) => `[${index + 1}] ${excerpt}`).join("\n\n"),
+    );
+  }
+
+  if (excerpts.length === 0) { return null; }
+
+  return [
+    "Use the attached source material below when it is relevant to the user request.",
+    "Cite the attachment title when you rely on it.",
+    "",
+    excerpts.join("\n\n"),
+  ].join("\n");
 }
 
 interface ConfirmDialogState {
@@ -2266,10 +2332,9 @@ export default function ChatView() {
   const [isEmptyStatePrivacyMenuOpen, setIsEmptyStatePrivacyMenuOpen] = useState(false);
   const [compareModels, setCompareModels] = useState<OllamaModel[]>([]);
 
-  // Grounded chat (RAG) state
-  const [groundedEnabled, setGroundedEnabled] = useState(false);
-  const [groundedTopK, setGroundedTopK] = useState(5);
-  const [processedDocCount, setProcessedDocCount] = useState(0);
+  const [attachedSources, setAttachedSources] = useState<Array<{ id: string; title: string; content: string }>>([]);
+  const [isAttachingFiles, setIsAttachingFiles] = useState(false);
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [messageSources, setMessageSources] = useState<Record<string, SearchResult[]>>({});
   const [expandedSources, setExpandedSources] = useState<string | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
@@ -2498,6 +2563,29 @@ export default function ChatView() {
   }, [isModelSendMenuOpen]);
 
   useEffect(() => {
+    if (!isAttachmentMenuOpen) { return; }
+
+    function handleClick(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-attachment-menu]")) { return; }
+      setIsAttachmentMenuOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsAttachmentMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isAttachmentMenuOpen]);
+
+  useEffect(() => {
     if (!isEmptyStatePrivacyMenuOpen) { return; }
 
     function handleClick(event: MouseEvent) {
@@ -2665,13 +2753,9 @@ export default function ChatView() {
     }
   }
 
-  // Load processed doc count for grounded chat indicator
   useEffect(() => {
-    if (!effectiveWorkspaceId) { setProcessedDocCount(0); return; }
-    api.document.list(effectiveWorkspaceId).then((docs) => {
-      setProcessedDocCount(docs.filter((d) => d.is_processed).length);
-    }).catch(() => setProcessedDocCount(0));
-  }, [effectiveWorkspaceId]);
+    setAttachedSources([]);
+  }, [effectiveWorkspaceId, activeChatId]);
 
   // Load sessions (scoped to active project, or unscoped when none selected)
   useEffect(() => {
@@ -3157,6 +3241,64 @@ export default function ChatView() {
     await sendMessageWithModel(selectedModel);
   }
 
+  async function handleAttachFiles() {
+    if (!effectiveWorkspaceId || isAttachingFiles || isStreaming) { return; }
+
+    setIsAttachingFiles(true);
+    try {
+      const paths = await openDialog({
+        multiple: true,
+        filters: [{ name: "Documents", extensions: ["txt", "md", "json", "csv"] }],
+      }) as string[] | null;
+      if (!paths || paths.length === 0) { return; }
+
+      const uploaded = await Promise.all(paths.map(async (path) => {
+        const content = await readTextFile(path);
+        const filename = path.split("/").pop() ?? path;
+        const fileType = filename.split(".").pop() ?? "txt";
+        const source = await api.source.create({
+          workspace_id: effectiveWorkspaceId,
+          source_type: "document",
+          title: filename,
+          filename,
+          file_type: fileType,
+          file_size: content.length,
+          content,
+        });
+        void api.source.process(source.id).catch(() => {});
+        return {
+          id: source.id,
+          title: source.title,
+          content: source.content || content,
+        };
+      }));
+
+      setAttachedSources((prev) => {
+        const next = [...prev];
+        for (const source of uploaded) {
+          if (next.some((item) => item.id === source.id)) { continue; }
+          next.push(source);
+        }
+        return next;
+      });
+      resizeAndFocusComposer();
+    } catch (error) {
+      const description = error instanceof Error ? error.message : "Aetherium could not attach those files.";
+      openAlertDialog("Attachment failed", description, "danger");
+    } finally {
+      setIsAttachingFiles(false);
+    }
+  }
+
+  function handleAttachImage() {
+    setIsAttachmentMenuOpen(false);
+    openAlertDialog(
+      "Image attachments are not available yet",
+      "This model can be marked for vision, but chat transport still sends text-only messages. Native image attachment support needs provider-level multimodal payloads before this menu item can be enabled.",
+      "default",
+    );
+  }
+
   async function polishComposerPrompt() {
     const originalInput = input;
     const trimmedInput = originalInput.trim();
@@ -3249,32 +3391,15 @@ export default function ChatView() {
     }));
 
     let finalUserContent = userContent;
-    if (groundedEnabled && effectiveProjectId) {
-      try {
-        const keywordResults = await api.search.keyword(userContent, effectiveWorkspaceId, effectiveProjectId);
-        const chunkResults = keywordResults.filter((r) => r.result_type === "document_chunk").slice(0, groundedTopK);
-        if (chunkResults.length > 0) {
-          const contextParts = chunkResults.map((r, i) => `[${i + 1}] **${r.title}**: ${r.excerpt}`);
-          finalUserContent =
-            `You have access to the following document excerpts:\n\n` +
-            contextParts.join("\n\n") +
-            `\n\nUsing the above context where relevant, answer: ${userContent}\n\n` +
-            `Cite sources as [1], [2], etc. when referencing specific content.`;
-          setMessageSources((prev) => ({ ...prev, [optimisticUserMsg.id]: chunkResults }));
-        }
-      } catch {
-        // grounded search failures are non-critical
-      }
+    const attachmentContext = buildAttachmentContext(userContent, attachedSources);
+    if (attachmentContext) {
+      finalUserContent =
+        `${attachmentContext}\n\n` +
+        `User request: ${userContent}`;
     }
 
-    if (optimisticUserMsg.id !== userMsg.id) {
-      setMessageSources((prev) => {
-        const pending = prev[optimisticUserMsg.id];
-        if (!pending) { return prev; }
-        const next = { ...prev, [userMsg.id]: pending };
-        delete next[optimisticUserMsg.id];
-        return next;
-      });
+    if (attachedSources.length > 0) {
+      setAttachedSources([]);
     }
 
     history.push({ role: "user", content: finalUserContent });
@@ -3908,7 +4033,7 @@ export default function ChatView() {
       workspaceName: activeWorkspace?.name ?? null,
       projectName: activeProject?.name ?? null,
       topicSignature: activeTopicSignature,
-      processedDocCount,
+      processedDocCount: attachedSources.length,
       activeMessages,
       followUps,
     };
@@ -3919,7 +4044,7 @@ export default function ChatView() {
     activeWorkspace,
     activeProject,
     activeTopicSignature,
-    processedDocCount,
+    attachedSources.length,
     activeMessages,
     followUps,
   ]);
@@ -3929,11 +4054,8 @@ export default function ChatView() {
   const showComposerHeader = hasComposerHeader && !isComposerHeaderCollapsed;
 
   // Map model_id to display name from global labels or priority list
-  const modelDisplayName = (modelId: string) => {
-    if (modelLabels[modelId]) { return modelLabels[modelId]; }
-    const found = aiModelList.find((m) => m.model_id === modelId);
-    return found ? found.name : modelId;
-  };
+  const modelDisplayName = (modelId: string) => resolveModelDisplayName(modelId, modelLabels, aiModelList);
+  const selectedModelSupportsVision = !!aiModelList.find((model) => model.model_id === selectedModel)?.role_tags?.includes("vision");
 
   const modelPickerLabel = (modelId: string) => {
     return modelDisplayName(modelId);
@@ -4151,14 +4273,6 @@ export default function ChatView() {
                     </div>
                   )}
 
-                  {/* Grounded mode warning if no processed docs */}
-                  {groundedEnabled && processedDocCount === 0 && effectiveProjectId && (
-                    <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-500 flex items-center gap-1.5">
-                      <FileText size={12} />
-                      No processed documents. Upload and process docs in the Document Browser.
-                    </div>
-                  )}
-
                   {/* Messages */}
                   <div className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
                     <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
@@ -4337,19 +4451,54 @@ export default function ChatView() {
                                 <SplitSquareHorizontal size={13} />
                               </button>
 
-                              {/* Docs button icon-only */}
-                              <button
-                                onClick={() => setGroundedEnabled((v) => !v)}
-                                title={groundedEnabled ? `Grounded ON (${processedDocCount} docs)` : "Grounded mode — use your documents as context (RAG)"}
-                                className={`relative ${composerIconOnlyButtonClass} ${groundedEnabled ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
-                              >
-                                <BookOpen size={13} />
-                                {groundedEnabled && processedDocCount > 0 && (
-                                  <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
-                                    {processedDocCount > 9 ? "9+" : processedDocCount}
-                                  </span>
+                              {/* Attachment menu */}
+                              <div className="relative" data-attachment-menu>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsAttachmentMenuOpen((open) => !open)}
+                                  disabled={!effectiveWorkspaceId || isStreaming}
+                                  title={attachedSources.length > 0 ? `Attached ${attachedSources.length} file${attachedSources.length === 1 ? "" : "s"}` : "Attach to this message"}
+                                  aria-label="Open attachment menu"
+                                  aria-haspopup="menu"
+                                  aria-expanded={isAttachmentMenuOpen}
+                                  className={`relative ${composerIconOnlyButtonClass} ${attachedSources.length > 0 || isAttachmentMenuOpen ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
+                                >
+                                  {isAttachingFiles ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />}
+                                  {attachedSources.length > 0 && (
+                                    <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                                      {attachedSources.length > 9 ? "9+" : attachedSources.length}
+                                    </span>
+                                  )}
+                                </button>
+                                {isAttachmentMenuOpen && (
+                                  <div className="absolute bottom-full left-0 z-20 mb-2 min-w-[188px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setIsAttachmentMenuOpen(false);
+                                        void handleAttachFiles();
+                                      }}
+                                      disabled={isAttachingFiles}
+                                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                                      role="menuitem"
+                                    >
+                                      <Paperclip size={15} />
+                                      <span>Attach file</span>
+                                    </button>
+                                    {selectedModelSupportsVision && (
+                                      <button
+                                        type="button"
+                                        onClick={handleAttachImage}
+                                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                        role="menuitem"
+                                      >
+                                        <Image size={15} />
+                                        <span>Attach image</span>
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
-                              </button>
+                              </div>
 
                               {/* Queue button icon-only */}
                               <button
@@ -4393,8 +4542,8 @@ export default function ChatView() {
                               )}
                             </div>
 
-                        {/* Textarea */}
-                        <div className="flex items-end gap-2.5 rounded-2xl bg-[rgba(255,255,255,0.03)] px-1.5 py-1">
+	                        {/* Textarea */}
+	                        <div className="flex items-end gap-2.5 rounded-2xl bg-[rgba(255,255,255,0.03)] px-1.5 py-1">
                                 <textarea
                                   ref={inputRef}
                                   value={input}
@@ -4526,11 +4675,34 @@ export default function ChatView() {
                                       <Clock size={14} strokeWidth={2.2} />
                                     </button>
                                   </div>
-                                )}
-                        </div>
+	                                )}
+	                        </div>
 
-                        {/* ── Composer tool row ─────────────────────────────────────── */}
-                        <div className="flex items-center gap-2.5 px-1 pt-1 flex-wrap">
+                          {attachedSources.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
+                              {attachedSources.map((source) => (
+                                <span
+                                  key={source.id}
+                                  className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(var(--accent-color-rgb),0.22)] bg-[rgba(var(--accent-color-rgb),0.1)] px-3 py-1 text-[11px] font-medium text-[rgba(255,255,255,0.82)]"
+                                >
+                                  <FileText size={11} />
+                                  <span className="max-w-44 truncate">{source.title}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAttachedSources((prev) => prev.filter((item) => item.id !== source.id))}
+                                    className="rounded-full text-[rgba(255,255,255,0.55)] transition-colors hover:text-white"
+                                    title={`Remove ${source.title}`}
+                                    aria-label={`Remove ${source.title}`}
+                                  >
+                                    <X size={11} />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+	                        {/* ── Composer tool row ─────────────────────────────────────── */}
+	                        <div className="flex items-center gap-2.5 px-1 pt-1 flex-wrap">
                           {/* ── Model tier picker ── */}
                           {modelTiers.length >= 2 && (() => {
                             const tierMeta = [
@@ -4601,22 +4773,7 @@ export default function ChatView() {
                             );
                           })()}
 
-                          {/* Top-K picker (only when grounded is on) */}
-                          {groundedEnabled && (
-                            <div className="relative">
-                              <select
-                                value={groundedTopK}
-                                onChange={(e) => setGroundedTopK(Number(e.target.value))}
-                                className={composerUtilitySelectClassName}
-                                title="Document chunks to retrieve"
-                              >
-                                {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
-                              </select>
-                              <ChevronDown size={14} strokeWidth={2.2} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.46)]" />
-                            </div>
-                          )}
-
-                          {sessionTokensUsed > 0 && (
+	                          {sessionTokensUsed > 0 && (
                             <div className="ml-auto flex h-10 items-center gap-2 rounded-full border border-transparent bg-[rgba(255,255,255,0.04)] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.74)]">
                               <span className="text-[rgba(255,255,255,0.42)]">Tokens</span>
                               <span className="font-mono text-[rgba(255,255,255,0.95)]">

@@ -7,7 +7,10 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { api } from "@/lib/api";
 import ChatView from "@/views/ChatView";
+import { resolveModelDisplayName } from "@/lib/modelDisplayName";
 import type { ChatSession } from "@/stores/chatStore";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { readTextFile } from "@tauri-apps/plugin-fs";
 
 vi.mock("lucide-react", () => ({
   Send: () => <div data-testid="icon-send" />,
@@ -26,6 +29,8 @@ vi.mock("lucide-react", () => ({
   SplitSquareHorizontal: () => <div data-testid="icon-split-square-horizontal" />,
   RefreshCw: () => <div data-testid="icon-refresh-cw" />,
   BookOpen: () => <div data-testid="icon-book-open" />,
+  Paperclip: () => <div data-testid="icon-paperclip" />,
+  Image: () => <div data-testid="icon-image" />,
   FileText: () => <div data-testid="icon-file-text" />,
   ChevronUp: () => <div data-testid="icon-chevron-up" />,
   Zap: () => <div data-testid="icon-zap" />,
@@ -47,10 +52,15 @@ vi.mock("lucide-react", () => ({
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn(),
   save: vi.fn(),
   confirm: vi.fn(() => Promise.resolve(false)),
   ask: vi.fn(() => Promise.resolve(false)),
   message: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/plugin-fs", () => ({
+  readTextFile: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/plugin-shell", () => ({
@@ -109,6 +119,10 @@ vi.mock("@/lib/api", () => ({
     document: {
       list: vi.fn(() => Promise.resolve([])),
     },
+    source: {
+      create: vi.fn(),
+      process: vi.fn(() => Promise.resolve(1)),
+    },
     topicSignature: {
       get: vi.fn(() => Promise.resolve(null)),
       checkMatch: vi.fn(() => Promise.resolve({ is_match: true, suggestion: null })),
@@ -126,7 +140,7 @@ vi.mock("@/lib/api", () => ({
     },
     aiModel: {
       list: vi.fn(() => Promise.resolve([
-        { model_id: "test-model", name: "Test Model", provider: "ollama", enabled: true, priority: 1 },
+        { model_id: "test-model", name: "Test Model", provider: "ollama", enabled: true, priority: 1, role_tags: ["chat"] },
       ])),
       recordTokenUsage: vi.fn(() => Promise.resolve(undefined)),
     },
@@ -513,6 +527,66 @@ describe("ChatView", () => {
     renderChatView();
 
     expect(screen.getByRole("button", { name: "Active model: Test Model" })).toBeInTheDocument();
+  });
+
+  it("shows the full Ollama model id when the stored label is only the base model name", () => {
+    expect(resolveModelDisplayName(
+      "gemma4:latest",
+      { "gemma4:latest": "gemma4" },
+      [{ model_id: "gemma4:latest", name: "gemma4", provider: "ollama", enabled: true, priority: 1 } as never],
+    )).toBe("gemma4:latest");
+  });
+
+  it("attaches files into the composer as draft sources", async () => {
+    mockActiveChatId = "session-1";
+    (openDialog as ReturnType<typeof vi.fn>).mockResolvedValue(["/tmp/notes.md"]);
+    (readTextFile as ReturnType<typeof vi.fn>).mockResolvedValue("# Notes\n\nAttachment content");
+    (api.source.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "source-1",
+      workspace_id: "ws-1",
+      source_type: "document",
+      title: "notes.md",
+      filename: "notes.md",
+      file_type: "md",
+      file_size: 27,
+      content: "# Notes\n\nAttachment content",
+      is_processed: false,
+      created_at: "",
+      updated_at: "",
+    });
+
+    renderChatView();
+
+    fireEvent.click(screen.getByRole("button", { name: /open attachment menu/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /attach file/i }));
+
+    await waitFor(() => {
+      expect(api.source.create).toHaveBeenCalledWith({
+        workspace_id: "ws-1",
+        source_type: "document",
+        title: "notes.md",
+        filename: "notes.md",
+        file_type: "md",
+        file_size: 27,
+        content: "# Notes\n\nAttachment content",
+      });
+      expect(screen.getByText("notes.md")).toBeInTheDocument();
+    });
+
+    expect(api.source.process).toHaveBeenCalledWith("source-1");
+  });
+
+  it("shows attach image only for vision-tagged models", async () => {
+    mockActiveChatId = "session-1";
+    (api.aiModel.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { model_id: "test-model", name: "Test Model", provider: "ollama", enabled: true, priority: 1, role_tags: ["chat", "vision"] },
+    ]);
+
+    renderChatView();
+
+    fireEvent.click(screen.getByRole("button", { name: /open attachment menu/i }));
+
+    expect(await screen.findByRole("menuitem", { name: /attach image/i })).toBeInTheDocument();
   });
 
   it("polishes the composer prompt in place and allows undo", async () => {
