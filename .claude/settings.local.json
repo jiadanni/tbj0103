@@ -19,7 +19,9 @@
       "Bash(xargs -I {} basename {} .rs)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('\\\\n'.join\\(f'{k}: {v}' for k,v in d.get\\('dependencies',{}\\).items\\(\\)\\)\\)\")",
       "Bash(xargs basename:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(nvm use:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

@@ -1,6 +1,7 @@
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, Result};
+use std::collections::BTreeSet;
 use std::path::Path;
 
 #[cfg(test)]
@@ -803,5 +804,272 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v36: dedupe legacy ai_models rows and enforce provider+model uniqueness
+    let applied_v36: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v36_ai_models_provider_model_unique'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v36 == 0 {
+        dedupe_ai_models(conn)?;
+        conn.execute_batch(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_models_provider_model_unique
+             ON ai_models(provider, model_id);
+             INSERT INTO _migrations(name) VALUES('v36_ai_models_provider_model_unique');",
+        )?;
+    }
+
     Ok(())
+}
+
+fn parse_role_tags(value: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(value).unwrap_or_default()
+}
+
+fn dedupe_ai_models(conn: &Connection) -> Result<()> {
+    let duplicate_keys = {
+        let mut stmt = conn.prepare(
+            "SELECT provider, model_id
+             FROM ai_models
+             GROUP BY provider, model_id
+             HAVING COUNT(*) > 1",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+
+    for (provider, model_id) in duplicate_keys {
+        let rows = {
+            let mut stmt = conn.prepare(
+                "SELECT id, name, role_tags, priority, is_paid, enabled, tokens_used_total
+                 FROM ai_models
+                 WHERE provider = ?1 AND model_id = ?2
+                 ORDER BY priority ASC, created_at ASC, id ASC",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![provider, model_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i32>(4)? != 0,
+                    row.get::<_, i32>(5)? != 0,
+                    row.get::<_, i64>(6)?,
+                ))
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+
+        if rows.len() < 2 {
+            continue;
+        }
+
+        let canonical = &rows[0];
+        let canonical_id = canonical.0.clone();
+        let canonical_name = if canonical.1.trim().is_empty() {
+            rows.iter()
+                .skip(1)
+                .find_map(|row| {
+                    let name = row.1.trim();
+                    if name.is_empty() { None } else { Some(name.to_string()) }
+                })
+                .unwrap_or_default()
+        } else {
+            canonical.1.clone()
+        };
+        let enabled = rows.iter().any(|row| row.5);
+        let is_paid = rows.iter().any(|row| row.4);
+        let tokens_used_total = rows.iter().map(|row| row.6).sum::<i64>();
+        let role_tags = rows
+            .iter()
+            .flat_map(|row| parse_role_tags(&row.2))
+            .fold(BTreeSet::new(), |mut acc, tag| {
+                acc.insert(tag);
+                acc
+            })
+            .into_iter()
+            .collect::<Vec<_>>();
+        let role_tags_json = serde_json::to_string(&role_tags)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        conn.execute(
+            "UPDATE ai_models
+             SET name = ?1,
+                 role_tags = ?2,
+                 is_paid = ?3,
+                 enabled = ?4,
+                 tokens_used_total = ?5
+             WHERE id = ?6",
+            rusqlite::params![
+                canonical_name,
+                role_tags_json,
+                is_paid as i32,
+                enabled as i32,
+                tokens_used_total,
+                canonical_id,
+            ],
+        )?;
+
+        for row in rows.iter().skip(1) {
+            conn.execute("DELETE FROM ai_models WHERE id = ?1", rusqlite::params![row.0])?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::initialize_database;
+    use rusqlite::Connection;
+
+    #[test]
+    fn migrates_legacy_ai_model_duplicates_into_single_rows() {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let path = dir.path().join("legacy.db");
+        let conn = Connection::open(&path).expect("Failed to open legacy db");
+
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS _migrations (
+                name TEXT PRIMARY KEY NOT NULL,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS ai_models (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                provider TEXT NOT NULL DEFAULT 'ollama',
+                role_tags TEXT NOT NULL DEFAULT '[]',
+                priority INTEGER NOT NULL DEFAULT 0,
+                is_paid INTEGER NOT NULL DEFAULT 0,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                tokens_used_total INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        )
+        .expect("Failed to create legacy schema");
+
+        let migration_names = [
+            "v1_chat_project_no_fk",
+            "v2_ai_models_table",
+            "v3_memories_table",
+            "v4_messages_duration_ms",
+            "v5_workspace_topic_signature",
+            "v6_learning_cards_workspace",
+            "v7_chat_workspace_scope",
+            "v8_all_tables_workspace_id",
+            "v9_ensure_all_indexes",
+            "v10_chat_sessions_is_incognito",
+            "v11_conversation_summaries",
+            "v12_artifacts",
+            "v13_artifact_embeddings",
+            "v14_memory_embeddings",
+            "v15_project_scoped_memories",
+            "v16_context_snapshots",
+            "v17_chat_recycle_bin",
+            "v18_git_sync_settings",
+            "v19_confirm_move_to_trash",
+            "v20_pin_lock_settings",
+            "v21_chat_sessions_exclude_from_analytics",
+            "v22_ai_model_role_tags",
+            "v23_memory_scope",
+            "v24_workspace_description",
+            "v25_prompt_instructions",
+            "v26_thought_session_id",
+            "v27_switch_workspace_to_chat",
+            "v27_sources_folder_tokens",
+            "v28_workspace_is_hidden",
+            "v29_query_indexes",
+            "v30_performance_indexes",
+            "v31_chat_sessions_is_imported",
+            "v32_chat_sessions_last_accessed_at",
+            "v33_source_chunks_embedding_blob",
+            "v34_chat_sessions_last_processed_message_count",
+            "v35_concept_nodes_hierarchy_level",
+        ];
+
+        for name in migration_names {
+            conn.execute(
+                "INSERT INTO _migrations(name) VALUES(?1)",
+                rusqlite::params![name],
+            )
+            .expect("Failed to seed migration");
+        }
+
+        conn.execute(
+            "INSERT INTO ai_models (id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            rusqlite::params![
+                "model-a",
+                "Gemma 4",
+                "gemma4:latest",
+                "ollama",
+                "[\"chat\"]",
+                1_i64,
+                0_i32,
+                1_i32,
+                50_i64,
+                "2026-04-10T08:00:00Z",
+            ],
+        )
+        .expect("Failed to insert canonical row");
+        conn.execute(
+            "INSERT INTO ai_models (id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            rusqlite::params![
+                "model-b",
+                "Gemma 4 Duplicate",
+                "gemma4:latest",
+                "ollama",
+                "[\"vision\",\"chat\"]",
+                4_i64,
+                1_i32,
+                0_i32,
+                75_i64,
+                "2026-04-11T08:00:00Z",
+            ],
+        )
+        .expect("Failed to insert duplicate row");
+        drop(conn);
+
+        let pool = initialize_database(&path).expect("Failed to initialize migrated db");
+        let conn = pool.get().expect("Failed to get connection");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ai_models WHERE provider = 'ollama' AND model_id = 'gemma4:latest'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("Failed to count merged rows");
+        assert_eq!(count, 1);
+
+        let (id, role_tags, is_paid, enabled, tokens_used_total): (String, String, i32, i32, i64) = conn
+            .query_row(
+                "SELECT id, role_tags, is_paid, enabled, tokens_used_total
+                 FROM ai_models
+                 WHERE provider = 'ollama' AND model_id = 'gemma4:latest'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .expect("Failed to fetch merged row");
+
+        assert_eq!(id, "model-a");
+        assert_eq!(serde_json::from_str::<Vec<String>>(&role_tags).expect("Invalid role tag json"), vec!["chat", "vision"]);
+        assert_eq!(is_paid, 1);
+        assert_eq!(enabled, 1);
+        assert_eq!(tokens_used_total, 125);
+
+        let unique_index_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master
+                 WHERE type = 'index' AND name = 'idx_ai_models_provider_model_unique'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("Failed to count unique index");
+        assert_eq!(unique_index_count, 1);
+    }
 }

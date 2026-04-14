@@ -42,6 +42,19 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
     let is_paid = req.is_paid.unwrap_or(false);
     let enabled = req.enabled.unwrap_or(true);
 
+    let existing = conn.query_row(
+        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at
+         FROM ai_models
+         WHERE model_id = ?1 AND provider = ?2",
+        rusqlite::params![&req.model_id, &provider],
+        row_to_model,
+    );
+    match existing {
+        Ok(model) => return Ok(model),
+        Err(rusqlite::Error::QueryReturnedNoRows) => {}
+        Err(e) => return Err(e.to_string()),
+    }
+
     let priority: i64 = if let Some(p) = req.priority {
         p
     } else {

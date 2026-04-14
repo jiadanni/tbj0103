@@ -61,13 +61,59 @@ struct EncryptedFile {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Returns the file path for a session. Encrypted files use `.json.enc`.
+/// Returns the flat (legacy) file path for a session. Encrypted files use `.json.enc`.
+/// Used as a fallback when the DB-aware path cannot be resolved.
 pub fn session_file_path(chats_dir: &Path, session_id: &str, encrypted: bool) -> PathBuf {
     if encrypted {
         chats_dir.join(format!("{}.json.enc", session_id))
     } else {
         chats_dir.join(format!("{}.json", session_id))
     }
+}
+
+/// Replace filesystem-unsafe characters in a workspace or project name.
+fn sanitize_dir_name(name: &str) -> String {
+    name.trim()
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
+            c => c,
+        })
+        .collect()
+}
+
+/// Returns the file path for a session organized into workspace/project subdirectories.
+/// Path: `chats_dir/{workspace_name}/{project_name}/{session_id}.json[.enc]`
+/// Falls back to the flat `chats_dir/{session_id}.json[.enc]` path if the session
+/// is not found in the database.
+pub fn session_file_path_for_session(
+    conn: &Connection,
+    chats_dir: &Path,
+    session_id: &str,
+    encrypted: bool,
+) -> PathBuf {
+    let row: Option<(String, String)> = conn
+        .query_row(
+            "SELECT w.name, COALESCE(NULLIF(p.name, ''), '')
+             FROM chat_sessions cs
+             JOIN workspaces w ON w.id = cs.workspace_id
+             LEFT JOIN projects p ON p.id = cs.project_id AND cs.project_id != ''
+             WHERE cs.id = ?1",
+            rusqlite::params![session_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .ok();
+
+    let subdir = match row {
+        Some((ws, proj)) if !proj.is_empty() => chats_dir
+            .join(sanitize_dir_name(&ws))
+            .join(sanitize_dir_name(&proj)),
+        Some((ws, _)) => chats_dir.join(sanitize_dir_name(&ws)),
+        None => chats_dir.to_path_buf(),
+    };
+
+    let ext = if encrypted { "json.enc" } else { "json" };
+    subdir.join(format!("{}.{}", session_id, ext))
 }
 
 /// Derive a 256-bit AES key from a passphrase + random salt using PBKDF2-SHA256.
@@ -126,8 +172,9 @@ fn load_from_db(conn: &Connection, session_id: &str) -> Result<ChatFileData, Str
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Write a chat session to its JSON file.
+/// Write a chat session to its JSON file, organized into workspace/project subdirectories.
 /// Pass `passphrase = Some(p)` to encrypt, `None` for plaintext.
+/// Also removes any legacy flat-directory files for the same session (migration).
 /// Best-effort: callers should tolerate errors gracefully.
 pub fn write_session_file(
     conn: &Connection,
@@ -135,7 +182,20 @@ pub fn write_session_file(
     session_id: &str,
     passphrase: Option<&str>,
 ) -> Result<(), String> {
-    std::fs::create_dir_all(chats_dir).map_err(|e| e.to_string())?;
+    let encrypted = passphrase.is_some();
+    let target_path = session_file_path_for_session(conn, chats_dir, session_id, encrypted);
+    let target_dir = target_path.parent().unwrap_or(chats_dir);
+    std::fs::create_dir_all(target_dir).map_err(|e| e.to_string())?;
+
+    // Remove legacy flat-directory twins (migration from old layout)
+    let legacy_plain = session_file_path(chats_dir, session_id, false);
+    let legacy_enc = session_file_path(chats_dir, session_id, true);
+    if legacy_plain != target_path {
+        let _ = std::fs::remove_file(&legacy_plain);
+    }
+    if legacy_enc != target_path {
+        let _ = std::fs::remove_file(&legacy_enc);
+    }
 
     let data = load_from_db(conn, session_id)?;
     let json_bytes = serde_json::to_vec_pretty(&data).map_err(|e| e.to_string())?;
@@ -164,23 +224,26 @@ pub fn write_session_file(
             ciphertext: B64.encode(&ciphertext),
         };
 
-        let enc_path = session_file_path(chats_dir, session_id, true);
-        // Remove plaintext twin
-        let _ = std::fs::remove_file(session_file_path(chats_dir, session_id, false));
+        // Remove the plaintext twin at the new location
+        let _ = std::fs::remove_file(session_file_path_for_session(conn, chats_dir, session_id, false));
         let out = serde_json::to_vec_pretty(&envelope).map_err(|e| e.to_string())?;
-        std::fs::write(enc_path, out).map_err(|e| e.to_string())?;
+        std::fs::write(&target_path, out).map_err(|e| e.to_string())?;
     } else {
-        let plain_path = session_file_path(chats_dir, session_id, false);
-        // Remove encrypted twin
-        let _ = std::fs::remove_file(session_file_path(chats_dir, session_id, true));
-        std::fs::write(plain_path, &json_bytes).map_err(|e| e.to_string())?;
+        // Remove the encrypted twin at the new location
+        let _ = std::fs::remove_file(session_file_path_for_session(conn, chats_dir, session_id, true));
+        std::fs::write(&target_path, &json_bytes).map_err(|e| e.to_string())?;
     }
 
     Ok(())
 }
 
-/// Delete both file variants (plain + encrypted) for a session.
-pub fn delete_session_file(chats_dir: &Path, session_id: &str) {
+/// Delete both file variants (plain + encrypted) for a session, from both the
+/// workspace/project subdirectory and the legacy flat location.
+pub fn delete_session_file(conn: &Connection, chats_dir: &Path, session_id: &str) {
+    // Delete from the current (subdirectory) location
+    let _ = std::fs::remove_file(session_file_path_for_session(conn, chats_dir, session_id, false));
+    let _ = std::fs::remove_file(session_file_path_for_session(conn, chats_dir, session_id, true));
+    // Also clean up any legacy flat-dir files
     let _ = std::fs::remove_file(session_file_path(chats_dir, session_id, false));
     let _ = std::fs::remove_file(session_file_path(chats_dir, session_id, true));
 }
@@ -673,7 +736,7 @@ pub fn import_chat_data(
     Ok(session_id)
 }
 
-/// Re-encrypt (or decrypt) every chat file in `chats_dir`.
+/// Re-encrypt (or decrypt) every chat file under `chats_dir` (walks recursively).
 /// Called when the user enables/disables encryption or changes the passphrase.
 /// Returns the number of files re-written.
 pub fn reencrypt_all_files(
@@ -685,9 +748,18 @@ pub fn reencrypt_all_files(
         return Ok(0);
     }
     let mut count = 0usize;
-    let entries = std::fs::read_dir(chats_dir).map_err(|e| e.to_string())?;
+    reencrypt_walk(chats_dir, old_passphrase, new_passphrase, &mut count);
+    Ok(count)
+}
+
+fn reencrypt_walk(dir: &Path, old_passphrase: Option<&str>, new_passphrase: Option<&str>, count: &mut usize) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
+        if path.is_dir() {
+            reencrypt_walk(&path, old_passphrase, new_passphrase, count);
+            continue;
+        }
         let name = match path.file_name().and_then(|n| n.to_str()) {
             Some(n) => n.to_string(),
             None => continue,
@@ -709,6 +781,8 @@ pub fn reencrypt_all_files(
         } else {
             name.trim_end_matches(".json")
         };
+        // File lives in `path.parent()` (its subdir), so write back there
+        let file_dir = path.parent().unwrap_or(dir);
 
         if let Some(pass) = new_passphrase {
             use aes_gcm::aead::rand_core::RngCore;
@@ -731,21 +805,20 @@ pub fn reencrypt_all_files(
                 nonce: B64.encode(nonce.as_slice()),
                 ciphertext: B64.encode(&ciphertext),
             };
-            let new_path = chats_dir.join(format!("{}.json.enc", stem));
-            let _ = std::fs::remove_file(chats_dir.join(format!("{}.json", stem)));
-            let _ = std::fs::remove_file(chats_dir.join(format!("{}.json.enc", stem)));
+            let new_path = file_dir.join(format!("{}.json.enc", stem));
+            let _ = std::fs::remove_file(file_dir.join(format!("{}.json", stem)));
+            let _ = std::fs::remove_file(file_dir.join(format!("{}.json.enc", stem)));
             if let Ok(out) = serde_json::to_vec_pretty(&envelope) {
                 let _ = std::fs::write(new_path, out);
             }
         } else {
-            let new_path = chats_dir.join(format!("{}.json", stem));
-            let _ = std::fs::remove_file(chats_dir.join(format!("{}.json.enc", stem)));
-            let _ = std::fs::remove_file(chats_dir.join(format!("{}.json", stem)));
+            let new_path = file_dir.join(format!("{}.json", stem));
+            let _ = std::fs::remove_file(file_dir.join(format!("{}.json.enc", stem)));
+            let _ = std::fs::remove_file(file_dir.join(format!("{}.json", stem)));
             let _ = std::fs::write(new_path, &json_bytes);
         }
-        count += 1;
+        *count += 1;
     }
-    Ok(count)
 }
 
 // ── Google Takeout (Gemini) parser ──────────────────────────────────────────

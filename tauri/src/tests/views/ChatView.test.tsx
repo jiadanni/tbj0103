@@ -43,6 +43,7 @@ vi.mock("lucide-react", () => ({
   MoreHorizontal: () => <div data-testid="icon-more-horizontal" />,
   MoveRight: () => <div data-testid="icon-move-right" />,
   ExternalLink: () => <div data-testid="icon-external-link" />,
+  Copy: () => <div data-testid="icon-copy" />,
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -134,6 +135,7 @@ vi.mock("@/lib/api", () => ({
       listModels: vi.fn(() => Promise.resolve([{ name: "test-model" }])),
       generateTitle: vi.fn(),
       generateTitleFromConversation: vi.fn(),
+      polishPrompt: vi.fn(),
       generateFollowUps: vi.fn(() => Promise.resolve([])),
       sendMessage: vi.fn(),
       sendDualModelMessage: vi.fn(),
@@ -273,6 +275,11 @@ describe("ChatView", () => {
       callback(0);
       return 0;
     });
+    Object.assign(window.navigator, {
+      clipboard: {
+        writeText: vi.fn(() => Promise.resolve()),
+      },
+    });
   });
 
   it.skip("does not create a workspace when the inline name is empty", async () => {
@@ -334,6 +341,25 @@ describe("ChatView", () => {
     expect(
       Array.from(row?.querySelectorAll("div") ?? []).some((element) => element.className.includes("w-[92px]"))
     ).toBe(true);
+  });
+
+  it("prevents selecting chat titles in the sidebar session list", async () => {
+    renderChatView();
+
+    const title = await screen.findByText("Test Session");
+    const row = title.closest("div.group");
+
+    expect(row).not.toBeNull();
+    expect(row?.className).toContain("select-none");
+  });
+
+  it("copies the chat name from the sidebar session menu", async () => {
+    renderChatView();
+
+    fireEvent.contextMenu(await screen.findByText("Test Session"));
+    fireEvent.click(await screen.findByText("Copy chat name"));
+
+    expect(window.navigator.clipboard.writeText).toHaveBeenCalledWith("Test Session");
   });
 
   it("uses a narrower sidebar and tighter trailing slot in split panes", async () => {
@@ -487,6 +513,37 @@ describe("ChatView", () => {
     renderChatView();
 
     expect(screen.getByRole("button", { name: "Active model: Test Model" })).toBeInTheDocument();
+  });
+
+  it("polishes the composer prompt in place and allows undo", async () => {
+    (api.ollama.polishPrompt as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "Write a concise summary of this Rust error and explain the root cause."
+    );
+    mockActiveChatId = "session-1";
+
+    renderChatView();
+
+    const composer = await screen.findByPlaceholderText("Start a new thread…");
+    fireEvent.change(composer, {
+      target: { value: "summarize this rust error and why it happens" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Polish prompt" }));
+
+    await waitFor(() => {
+      expect(api.ollama.polishPrompt).toHaveBeenCalledWith(
+        "test-model",
+        "summarize this rust error and why it happens",
+        ""
+      );
+      expect(composer).toHaveValue(
+        "Write a concise summary of this Rust error and explain the root cause."
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo prompt polish" }));
+
+    expect(composer).toHaveValue("summarize this rust error and why it happens");
   });
 
   it("focuses an existing empty chat instead of creating another one", async () => {

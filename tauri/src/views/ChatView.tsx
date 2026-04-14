@@ -1,7 +1,7 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
+import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy } from "lucide-react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
@@ -169,7 +169,7 @@ function SessionItem({
           openSession(session);
         }
       }}
-      className={`group flex min-w-0 items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${isSelected
+      className={`group flex min-w-0 select-none items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${isSelected
         ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
         : isActive
           ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
@@ -1406,6 +1406,15 @@ function SessionSidebar({
                 </button>
                 <button
                   onClick={() => {
+                    void window.navigator.clipboard.writeText(ctxMenu.session.title || "New Chat");
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <Copy size={11} /> Copy chat name
+                </button>
+                <button
+                  onClick={() => {
                     const currentMessages = useChatStore.getState().messages;
                     if (canRefreshSessionTitle(ctxMenu.session, currentMessages)) {
                       void refreshSessionTitle(ctxMenu.session);
@@ -1835,6 +1844,7 @@ export default function ChatView() {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const projects = useScopedProjects();
   const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const draftModel = useSettingsStore((s) => s.draftModel);
   const setPreferredModel = useSettingsStore((s) => s.setPreferredModel);
   const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
   const savedCompareA = useSettingsStore((s) => s.compareModelA);
@@ -1864,6 +1874,8 @@ export default function ChatView() {
   const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-transparent bg-[rgba(255,255,255,0.04)] text-[rgba(255,255,255,0.54)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
 
   const [input, setInput] = useState("");
+  const [isPolishingPrompt, setIsPolishingPrompt] = useState(false);
+  const [polishUndoInput, setPolishUndoInput] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [scopedSessions, setScopedSessions] = useState<ChatSession[]>([]);
   const [sidebarSessions, setSidebarSessions] = useState<ChatSession[]>([]);
@@ -2353,6 +2365,18 @@ export default function ChatView() {
   const pendingNewSessionRef = useRef<Promise<ChatSession | null> | null>(null);
   const incognitoSessionIdsRef = useRef<Set<string>>(new Set());
 
+  const resizeAndFocusComposer = useCallback((cursorPosition?: number) => {
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) { return; }
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+      el.focus();
+      const nextCursorPosition = cursorPosition ?? el.value.length;
+      el.setSelectionRange(nextCursorPosition, nextCursorPosition);
+    });
+  }, []);
+
   const activeMessages = activeChatMessages;
   const pinnedQuickSendModels = useMemo(
     () => quickSearchModels.filter((modelId) =>
@@ -2445,13 +2469,10 @@ export default function ChatView() {
       const newText = input.trim() ? `${input}\n\n${pendingPromptText}` : pendingPromptText;
       setInput(newText);
       setPendingPromptText(null);
-      // Wait for React to update the state before focusing
-      setTimeout(() => {
-        inputRef.current?.focus();
-        window.getSelection()?.removeAllRanges();
-      }, 0);
+      resizeAndFocusComposer(newText.length);
+      window.getSelection()?.removeAllRanges();
     }
-  }, [pendingPromptText, input, setPendingPromptText]);
+  }, [pendingPromptText, input, resizeAndFocusComposer, setPendingPromptText]);
 
   useEffect(() => {
     if (!isModelSendMenuOpen) { return; }
@@ -3134,6 +3155,44 @@ export default function ChatView() {
 
   async function sendMessage() {
     await sendMessageWithModel(selectedModel);
+  }
+
+  async function polishComposerPrompt() {
+    const originalInput = input;
+    const trimmedInput = originalInput.trim();
+    const polishModel = draftModel || selectedModel || preferredModel;
+
+    if (!trimmedInput || isStreaming || isPolishingPrompt || !polishModel) { return; }
+
+    setIsPolishingPrompt(true);
+    try {
+      const polished = await api.ollama.polishPrompt(polishModel, originalInput, ollamaUrl);
+      if (inputRef.current?.value !== originalInput) {
+        return;
+      }
+
+      const nextInput = polished.trim();
+      if (!nextInput || nextInput === trimmedInput) {
+        resizeAndFocusComposer();
+        return;
+      }
+
+      setPolishUndoInput(originalInput);
+      setInput(nextInput);
+      resizeAndFocusComposer(nextInput.length);
+    } catch (error) {
+      const description = error instanceof Error ? error.message : "Aetherium could not polish that prompt.";
+      openAlertDialog("Prompt polish failed", description, "danger");
+    } finally {
+      setIsPolishingPrompt(false);
+    }
+  }
+
+  function undoPolishedPrompt() {
+    if (polishUndoInput === null || isPolishingPrompt || isStreaming) { return; }
+    setInput(polishUndoInput);
+    resizeAndFocusComposer(polishUndoInput.length);
+    setPolishUndoInput(null);
   }
 
   function maybeExtractFlashcards(responseText: string, sessionId: string, modelId: string) {
@@ -4308,6 +4367,30 @@ export default function ChatView() {
                                   ) : null;
                                 })()}
                               </button>
+
+                              <button
+                                type="button"
+                                onClick={() => { void polishComposerPrompt(); }}
+                                disabled={!input.trim() || isStreaming || isPolishingPrompt || !(draftModel || selectedModel || preferredModel)}
+                                title={isPolishingPrompt ? "Polishing prompt…" : "Polish prompt with a smaller model"}
+                                aria-label={isPolishingPrompt ? "Polishing prompt" : "Polish prompt"}
+                                className={`${composerIconOnlyButtonClass} ${isPolishingPrompt ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
+                              >
+                                {isPolishingPrompt ? <Loader2 size={13} className="animate-spin" /> : <Pencil size={13} />}
+                              </button>
+
+                              {polishUndoInput !== null && (
+                                <button
+                                  type="button"
+                                  onClick={undoPolishedPrompt}
+                                  disabled={isStreaming || isPolishingPrompt}
+                                  title="Undo prompt polish"
+                                  aria-label="Undo prompt polish"
+                                  className={composerIconOnlyButtonClass}
+                                >
+                                  <ArrowLeft size={13} />
+                                </button>
+                              )}
                             </div>
 
                         {/* Textarea */}
@@ -4315,7 +4398,12 @@ export default function ChatView() {
                                 <textarea
                                   ref={inputRef}
                                   value={input}
-                                  onChange={(e) => setInput(e.target.value)}
+                                  onChange={(e) => {
+                                    setInput(e.target.value);
+                                    if (polishUndoInput !== null) {
+                                      setPolishUndoInput(null);
+                                    }
+                                  }}
                                   onKeyDown={handleKeyDown}
                                   disabled={isStreaming}
                                   placeholder={
