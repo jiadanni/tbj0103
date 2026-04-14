@@ -1,5 +1,7 @@
 use crate::db::DbState;
+use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
 use crate::models::project::{CreateProjectRequest, Project, UpdateProjectRequest};
+use crate::services::chat_file_store;
 use serde::Serialize;
 use tauri::State;
 
@@ -81,8 +83,28 @@ pub fn get_project(state: State<DbState>, id: String) -> Result<Option<Project>,
 }
 
 #[tauri::command]
-pub fn update_project(state: State<DbState>, req: UpdateProjectRequest) -> Result<(), String> {
+pub fn update_project(
+    state: State<DbState>,
+    req: UpdateProjectRequest,
+    chats_dir_state: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
+) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
+    let session_ids = if req.name.is_some() {
+        let mut stmt = conn
+            .prepare("SELECT id FROM chat_sessions WHERE project_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![req.id.clone()], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        rows
+    } else {
+        Vec::new()
+    };
+    let previous_paths =
+        chat_file_store::capture_session_file_variants(&conn, &chats_dir_state.0, &session_ids);
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE projects SET
@@ -104,6 +126,18 @@ pub fn update_project(state: State<DbState>, req: UpdateProjectRequest) -> Resul
         ],
     )
     .map_err(|e| e.to_string())?;
+
+    if !session_ids.is_empty() {
+        let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
+        chat_file_store::sync_session_files_for_hierarchy_change(
+            &conn,
+            &chats_dir_state.0,
+            &session_ids,
+            &previous_paths,
+            pass.as_deref(),
+        )?;
+    }
+
     Ok(())
 }
 
@@ -120,8 +154,21 @@ pub fn move_project_to_workspace(
     state: State<DbState>,
     project_id: String,
     target_workspace_id: String,
+    chats_dir_state: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
 ) -> Result<Project, String> {
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
+    let mut session_id_stmt = conn
+        .prepare("SELECT id FROM chat_sessions WHERE project_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let session_ids = session_id_stmt
+        .query_map(rusqlite::params![project_id.clone()], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    drop(session_id_stmt);
+    let previous_paths =
+        chat_file_store::capture_session_file_variants(&conn, &chats_dir_state.0, &session_ids);
 
     // Get the source project
     let source_project: Project = conn.query_row(
@@ -183,6 +230,17 @@ pub fn move_project_to_workspace(
 
     tx.commit().map_err(|e| e.to_string())?;
 
+    if !session_ids.is_empty() {
+        let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
+        chat_file_store::sync_session_files_for_hierarchy_change(
+            &conn,
+            &chats_dir_state.0,
+            &session_ids,
+            &previous_paths,
+            pass.as_deref(),
+        )?;
+    }
+
     // Return the newly created project
     Ok(Project {
         id: new_project.id,
@@ -195,6 +253,110 @@ pub fn move_project_to_workspace(
         created_at: new_project.created_at,
         updated_at: new_project.updated_at,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::chat::create_chat_session;
+    use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
+    use crate::commands::workspace::create_workspace;
+    use crate::db::DbState;
+    use crate::db::initialize_database;
+    use crate::models::chat::CreateChatSessionRequest;
+    use crate::models::workspace::CreateWorkspaceRequest;
+    use crate::services::chat_file_store;
+    use tauri::Manager;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+
+    #[test]
+    fn update_project_renames_chat_file_directory() {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let db_path = dir.path().join("test.db");
+        let chats_dir = dir.path().join("chats");
+        let db = initialize_database(&db_path).expect("Failed to initialize test db");
+
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        app.manage(DbState(db));
+        app.manage(ChatsDirState(chats_dir.clone()));
+        app.manage(ChatCryptoState(std::sync::Mutex::new(None)));
+
+        let db_state = app.state::<DbState>();
+        let chats_dir_state = app.state::<ChatsDirState>();
+        let crypto_state = app.state::<ChatCryptoState>();
+
+        let workspace = create_workspace(
+            db_state.clone(),
+            CreateWorkspaceRequest {
+                name: "Workspace Alpha".to_string(),
+                description: None,
+            },
+        )
+        .expect("Failed to create workspace");
+
+        let project = create_project(
+            db_state.clone(),
+            CreateProjectRequest {
+                workspace_id: workspace.id.clone(),
+                name: "Folder One".to_string(),
+                project_description: None,
+                custom_instructions: None,
+                color: None,
+                icon: None,
+            },
+        )
+        .expect("Failed to create project");
+
+        let session = create_chat_session(
+            db_state.clone(),
+            CreateChatSessionRequest {
+                workspace_id: workspace.id.clone(),
+                project_id: project.id.clone(),
+                title: Some("Hierarchy check".to_string()),
+                model_name: None,
+                system_prompt: None,
+                is_incognito: None,
+                exclude_from_analytics: None,
+                parent_session_id: None,
+                branch_message_id: None,
+            },
+        )
+        .expect("Failed to create chat session");
+
+        let conn = db_state.0.get().expect("Failed to get DB connection");
+        chat_file_store::write_session_file(&conn, &chats_dir, &session.id, None)
+            .expect("Failed to write session file");
+        drop(conn);
+
+        let old_path = chats_dir
+            .join("Workspace Alpha")
+            .join("Folder One")
+            .join(format!("{}.json", session.id));
+        assert!(old_path.exists(), "expected original hierarchy path to exist");
+
+        update_project(
+            db_state,
+            UpdateProjectRequest {
+                id: project.id,
+                workspace_id: None,
+                name: Some("Folder Renamed".to_string()),
+                project_description: None,
+                custom_instructions: None,
+                color: None,
+                icon: None,
+            },
+            chats_dir_state,
+            crypto_state,
+        )
+        .expect("Failed to update project");
+
+        let new_path = chats_dir
+            .join("Workspace Alpha")
+            .join("Folder Renamed")
+            .join(format!("{}.json", session.id));
+        assert!(new_path.exists(), "expected session file at renamed folder path");
+        assert!(!old_path.exists(), "expected stale folder path to be removed");
+    }
 }
 
 #[derive(Debug, Serialize)]

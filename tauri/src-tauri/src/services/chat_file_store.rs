@@ -18,6 +18,7 @@ use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 // ── Public file-data structs ──────────────────────────────────────────────────
@@ -82,6 +83,12 @@ fn sanitize_dir_name(name: &str) -> String {
         .collect()
 }
 
+#[derive(Debug, Clone)]
+pub struct SessionFileVariants {
+    pub plain: PathBuf,
+    pub encrypted: PathBuf,
+}
+
 /// Returns the file path for a session organized into workspace/project subdirectories.
 /// Path: `chats_dir/{workspace_name}/{project_name}/{session_id}.json[.enc]`
 /// Falls back to the flat `chats_dir/{session_id}.json[.enc]` path if the session
@@ -114,6 +121,78 @@ pub fn session_file_path_for_session(
 
     let ext = if encrypted { "json.enc" } else { "json" };
     subdir.join(format!("{}.{}", session_id, ext))
+}
+
+fn session_file_variants_for_session(
+    conn: &Connection,
+    chats_dir: &Path,
+    session_id: &str,
+) -> SessionFileVariants {
+    SessionFileVariants {
+        plain: session_file_path_for_session(conn, chats_dir, session_id, false),
+        encrypted: session_file_path_for_session(conn, chats_dir, session_id, true),
+    }
+}
+
+pub fn capture_session_file_variants(
+    conn: &Connection,
+    chats_dir: &Path,
+    session_ids: &[String],
+) -> HashMap<String, SessionFileVariants> {
+    session_ids
+        .iter()
+        .map(|session_id| {
+            (
+                session_id.clone(),
+                session_file_variants_for_session(conn, chats_dir, session_id),
+            )
+        })
+        .collect()
+}
+
+fn prune_empty_parent_dirs(chats_dir: &Path, file_path: &Path) {
+    let mut current = file_path.parent();
+
+    while let Some(dir) = current {
+        if dir == chats_dir {
+            break;
+        }
+
+        match std::fs::remove_dir(dir) {
+            Ok(()) => current = dir.parent(),
+            Err(_) => break,
+        }
+    }
+}
+
+fn remove_stale_file_if_needed(chats_dir: &Path, old_path: &Path, new_path: &Path) {
+    if old_path == new_path {
+        return;
+    }
+
+    if std::fs::remove_file(old_path).is_ok() {
+        prune_empty_parent_dirs(chats_dir, old_path);
+    }
+}
+
+pub fn sync_session_files_for_hierarchy_change(
+    conn: &Connection,
+    chats_dir: &Path,
+    session_ids: &[String],
+    previous_paths: &HashMap<String, SessionFileVariants>,
+    passphrase: Option<&str>,
+) -> Result<(), String> {
+    for session_id in session_ids {
+        write_session_file(conn, chats_dir, session_id, passphrase)?;
+
+        let current_paths = session_file_variants_for_session(conn, chats_dir, session_id);
+        if let Some(previous) = previous_paths.get(session_id) {
+            remove_stale_file_if_needed(chats_dir, &previous.plain, &current_paths.plain);
+            remove_stale_file_if_needed(chats_dir, &previous.encrypted, &current_paths.encrypted);
+        }
+    }
+
+    Ok(())
 }
 
 /// Derive a 256-bit AES key from a passphrase + random salt using PBKDF2-SHA256.

@@ -1,5 +1,7 @@
 use crate::db::DbState;
 use crate::models::workspace::{CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace};
+use crate::services::chat_file_store;
+use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
 use tauri::State;
 
 #[tauri::command]
@@ -138,8 +140,28 @@ pub fn unhide_workspace(state: State<DbState>, id: String) -> Result<(), String>
 }
 
 #[tauri::command]
-pub fn update_workspace(state: State<DbState>, req: UpdateWorkspaceRequest) -> Result<(), String> {
+pub fn update_workspace(
+    state: State<DbState>,
+    req: UpdateWorkspaceRequest,
+    chats_dir_state: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
+) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
+    let session_ids = if req.name.trim().is_empty() {
+        Vec::new()
+    } else {
+        let mut stmt = conn
+            .prepare("SELECT id FROM chat_sessions WHERE workspace_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![req.id.clone()], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        rows
+    };
+    let previous_paths =
+        chat_file_store::capture_session_file_variants(&conn, &chats_dir_state.0, &session_ids);
     let now = chrono::Utc::now().to_rfc3339();
     // Always update name and updated_at; conditionally update description and prompt_instructions
     conn.execute(
@@ -161,6 +183,18 @@ pub fn update_workspace(state: State<DbState>, req: UpdateWorkspaceRequest) -> R
         )
         .map_err(|e| e.to_string())?;
     }
+
+    if !session_ids.is_empty() {
+        let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
+        chat_file_store::sync_session_files_for_hierarchy_change(
+            &conn,
+            &chats_dir_state.0,
+            &session_ids,
+            &previous_paths,
+            pass.as_deref(),
+        )?;
+    }
+
     Ok(())
 }
 
