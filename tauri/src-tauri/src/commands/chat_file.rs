@@ -105,12 +105,25 @@ pub fn reveal_chat_file(
     session_id: String,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
+    db_state: State<DbState>,
 ) -> Result<(), String> {
+    let conn = db_state.0.get().map_err(|e| e.to_string())?;
     let encrypted = crypto.0.lock().map_err(|e| e.to_string())?.is_some();
-    let path = chat_file_store::session_file_path(&chats_dir_state.0, &session_id, encrypted);
-    let fallback_path =
-        chat_file_store::session_file_path(&chats_dir_state.0, &session_id, !encrypted);
-    let reveal_path = if path.exists() { path } else { fallback_path };
+    // Try the workspace/project subdirectory path first
+    let path = chat_file_store::session_file_path_for_session(&conn, &chats_dir_state.0, &session_id, encrypted);
+    let fallback_path = chat_file_store::session_file_path_for_session(&conn, &chats_dir_state.0, &session_id, !encrypted);
+    // Legacy flat-directory paths as final fallback
+    let legacy_path = chat_file_store::session_file_path(&chats_dir_state.0, &session_id, encrypted);
+    let legacy_fallback = chat_file_store::session_file_path(&chats_dir_state.0, &session_id, !encrypted);
+    let reveal_path = if path.exists() {
+        path
+    } else if fallback_path.exists() {
+        fallback_path
+    } else if legacy_path.exists() {
+        legacy_path
+    } else {
+        legacy_fallback
+    };
 
     if !reveal_path.exists() {
         return Err("Chat file not found on disk".to_string());

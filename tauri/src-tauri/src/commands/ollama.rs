@@ -44,6 +44,14 @@ pub struct DualModelRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolishPromptRequest {
+    pub model: String,
+    pub prompt: String,
+    pub ollama_url: Option<String>,
+    pub request_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OllamaRuntimeStatus {
     pub available: bool,
     pub launched: bool,
@@ -193,6 +201,31 @@ pub async fn generate_title_from_conversation(
     client
         .generate_title_from_conversation_observed(&model, conversation, &ctx)
         .await
+}
+
+#[tauri::command]
+pub async fn polish_prompt(req: PolishPromptRequest) -> Result<String, String> {
+    let client = OllamaClient::new(req.ollama_url)?;
+    let ctx = context(req.request_id, "polish_prompt", None, Some(&req.model), Some(false));
+    let prompt = format!(
+        "Rewrite the user's prompt for clarity and completeness.\n\
+Preserve the original intent, tone, facts, constraints, named entities, code, paths, commands, and requested output format.\n\
+Do not answer the prompt.\n\
+Do not add new requirements unless they are already strongly implied.\n\
+If the input is already clear, return a lightly cleaned version.\n\
+Return only the rewritten prompt.\n\n\
+User prompt:\n{}",
+        req.prompt.trim()
+    );
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+
+    client
+        .send_message_observed(&req.model, messages, &ctx)
+        .await
+        .map(|response| response.trim().to_string())
 }
 
 #[tauri::command]

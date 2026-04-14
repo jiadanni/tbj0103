@@ -415,6 +415,7 @@ pub fn run() {
             commands::ollama::ensure_ollama_running,
             commands::ollama::generate_title,
             commands::ollama::generate_title_from_conversation,
+            commands::ollama::polish_prompt,
             commands::ollama::generate_embedding,
             commands::ollama::send_dual_model_message,
             commands::ollama::extract_topics,
