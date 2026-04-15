@@ -1186,6 +1186,7 @@ export default function Layout() {
           </div>
         )}
       </div>
+      {showSinglePaneNavigation && !showSectionSidebar && <PreferencesDockButton />}
       {showSplitPaneLayout && !hasLeftRail && <PreferencesDockButton />}
       <ArtifactPanel />
     </div>

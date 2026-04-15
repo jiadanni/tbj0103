@@ -1,4 +1,4 @@
-# Aetherium — Tauri Roadmap & To-Do
+# Tauri App Roadmap — Aetherium
 
 Scope: `todo.md` tracks the Tauri app only. Swift/macOS work may differ and is not reflected here unless explicitly noted.
 
@@ -6,97 +6,73 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 
 ---
 
-## Imminent (Priority 0)
+## 🔄 UI & Navigation Refinements
+- [ ] **Project Scratchpad**: A persistent per-project markdown canvas/note for manual dumping of context that remains visible or easily accessible during chat.
+- [/] **Unified 'Source' model**: Migrating both Documents and Web Captures to a single `sources` table with type-specific metadata. (Backend complete and SourceBrowserView implemented, but specialized views still co-exist).
+- [ ] **Onboarding tooltips**: First-run tour highlighting the sidebar, model selection, and workspace switcher.
+- [ ] **Progress Indicators**: Real progress bars (not just boolean spinners) for embedding, large document imports, and graph rebuilds.
 
-### 1. 🔄 UI & Navigation Refinements
-- [ ] **Project Scratchpad** — Add a dedicated quick-access scratchpad pane per project within the chat view.
+## 🔄 Feature Consolidation
+- [ ] **Chat & Thought Queue Merger**: Move the "Passive Processing" (Thought Queue) into a specialized "Scheduled Chat" or "Background Thought" state within the main Chat view.
+- [/] **Graph & Flashcard Unification**: Show related flashcards directly within the Knowledge Graph detail panel when a concept is selected. (Basic integration in KG view exists).
+- [/] **Adaptive Context Window**: Show a small indicator of the current chat's token count and estimated context window usage (requires `tiktoken` or rough char-count estimation).
 
-### 2. 🔄 Feature Consolidation
-- [ ] **Chat & Thought Queue Merger** — ThoughtQueueView still exists as a standalone view; integrate into the Chat architecture. (Note: thought queue is already accessible from ChatView via inline panel, but the standalone view remains.)
-- [ ] **Graph & Flashcard Unification** — Merge Knowledge Graph and Flashcards interfaces so navigating the graph transitions into reviewing spaced-repetition cards.
-- [ ] **Unified 'Source' Concept** — Documents and Web Captures are still separate views/models. Combine into a single ingestion model.
+## ⬜ Security — PIN Recovery
+- [ ] **Forgotten PIN**: A "Reset App Data" flow on the PIN entry screen. Since data is local, loss of PIN means loss of data unless we implement a recovery key (Mnemonic).
 
-### 3. ⬜ Security — PIN Recovery
-- [ ] **Forgotten PIN** — No recovery path exists. Add a recovery flow (emergency data-wipe with warning, or one-time recovery phrase at PIN-setup time). Defer until security layer stabilizes.
-
-### 4. 🔄 Data Lifecycle & Migrations
-- [ ] **Move projects between workspaces** — not yet implemented.
-- [ ] **Entity ownership rules** — define exact behavior for chats, concepts, notes, flashcards, learning goals, daily notes, and templates when a project moves.
-
----
+## 🔄 Data Lifecycle & Migrations
+- [/] **Move projects between workspaces**: Allow dragging a project (and its orphaned sessions) from the Sidebar into a different workspace. (Implemented for chat sessions/project container, but notes/sources/flashcards are not yet moved).
+- [ ] **Entity ownership rules**: When a project moves, determine whether its linked Notes, Documents, and Flashcards move with it or remain workspace-global.
 
 ## Demo Mode (Remaining Work)
-
-Backend infrastructure exists (`activate_demo_mode` / `deactivate_demo_mode` commands seed 3 demo projects under a special workspace). Frontend wiring is partial — `workspaceStore` has `isDemoMode` and `setDemo`.
-
-### Still needed
-- [ ] Add "Try Demo" button on the AuthenticationView / initial screen
-- [ ] Show demo banner in Layout when `isDemoMode` is active
-- [ ] Guard destructive actions with a modal when in demo mode
-- [ ] Add scripted AI responses (mock Ollama service) so demo chat works without Ollama
-- [ ] Add onboarding tooltips & "What can I try?" help sheet
-
-### Demo scenario content (3 pre-seeded projects)
-
-| # | Project title | Theme | Features highlighted |
-|---|---|---|---|
-| 1 | **"Understanding Transformers"** | ML paper deep-dive | RAG chat with citations, 20-node knowledge graph, flashcard deck, learning path with milestones |
-| 2 | **"Building a SaaS Product"** | Startup / product notes | Daily notes, meeting note templates, backlinks, concept clustering |
-| 3 | **"History of the Roman Empire"** | Humanities research | Timeline-style daily notes, person-type concept nodes, Obsidian-style backlinks, spaced repetition deck |
-
-Each project's chat sessions should demonstrate a different capability:
-- Session with source citations (RAG)
-- Session showing a branched conversation (`branchLabel` set)
-- Session starting from a template ("Learning Session" template)
-
----
+- [x] **Show demo banner**: A fixed banner in the Sidebar/Layout when `isDemoMode` is true.
+- [/] **Guard destructive actions**: Pre-emptively disable Delete/Edit buttons or show "Not available in Demo" alerts. (Implemented for sessions and workspaces).
+- [ ] **Add "Try Demo" button**: Ensure the Authentication/Onboarding screen allows users to jump into the Demo without setting a PIN.
+- [ ] **Scripted AI responses**: Use a mock Ollama service for the Demo to ensure it works even if the user hasn't downloaded models yet.
+- [ ] **Demo scenario content**: Replace the placeholder demo workspace with a high-quality "Japanese Language Learning" or "Biology 101" scenario with existing notes/concepts.
 
 ## Polish & Production-Ready
-- [ ] **Progress Indicators** — Show real progress bars during embedding generation, document imports, and graph rebuilds (currently only boolean loading spinners exist).
-- [ ] **Configurable keyboard shortcuts** — hotkey framework exists (`useHotkeys` hook + tests) but no user-facing remap UI in Preferences.
-- [ ] **Auto-summarization on document upload** — summarization service exists but only runs on chat sessions via background scheduler; not triggered on document import.
-
----
+- [/] **Auto-summarization**: Automatically generate a 1-sentence summary of documents/web captures on upload using the background model. (Field exists in DB, but automation not triggered).
+- [ ] **Configurable keyboard shortcuts**: UI to remap the Quick Search and Command Palette triggers.
+- [x] **Git-based sync**: Initial implementation of `git push/pull` for the SQLite database and attachments to a private remote repository.
+- [x] **Google Gemini Takeout import (text-only)**.
 
 ## High-Impact Features
-
-### 5. ⬜ Advanced Graph — Remaining
-- [ ] **Time-based evolution** — a slider or animation showing how the graph grew over time, note by note
-
-### 6. ⬜ Plugin Developer Experience
-- [ ] Plugin SDK with documentation — a clearly defined API + README for third-party importers/exporters
-- [ ] Example plugin template — minimal starter project with boilerplate
-- [ ] Plugin testing framework — helpers for unit tests without a full app instance
-
-> Note: A plugin manager UI exists (`PluginManagerView.tsx`) with enable/disable toggles for built-in plugins, but the Tauri runtime has no dynamic plugin loader — it is settings-only.
+- [/] **RAG: recursive semantic search**: If a search result is highly relevant, also pull in its outbound `[[wiki-links]]` even if they don't match the keyword.
+- [x] **Flashcard AI: direct extraction from concept context**.
+- [ ] **Flashcard AI: highlight text to create card**.
+- [ ] **Knowledge Graph: radial tree layout mode**.
 
 ---
 
+### Recently Completed
+- [x] Integrated Preferences Hub (AI Models, Sync, Security).
+- [x] Modernized knowledge graph visualization (force-directed d3).
+- [x] Workspace Topic Signatures & Topic-based Routing.
+- [x] Multi-pane workspace support (Split View).
+- [x] Transparent proxy support for Ollama.
 
-- [x] Google Gemini Takeout import (text-only)
+---
 
+### Known Issues
+- [ ] **PIN Lock Loop**: On some macOS systems, the PIN screen re-appears immediately after entering a valid PIN if Touch ID is partially configured.
+- [ ] **Flex overflow issue**: Long file names in the document browser can break the sidebar width in split-pane mode.
+- [/] **Bulk operations**: Multi-select sessions for move/delete is currently limited to the "Move Sessions" dialog.
+- [ ] **Quick Search lag**: If the user has >500 notes, the initial search debounce is too aggressive.
 
-## Advanced Features
+# Bug
+• You’re right. New Search is explicitly turning search on, regardless of the normal default. 
 
-### 9. ⬜ AI Enhancements
-- [ ] Auto-summarization on document upload — generate a TL;DR note alongside raw chunks on import
-- [ ] Browser automation rebrand follow-up — keep the current user-facing rename, then later clean up internal `web_*` identifiers, seeded labels, and provider-specific implementation names so the feature reads as manually configured browser automation throughout the codebase
+Here are the issues I’m tracking: 
+• On MacOS, searching with Search Box (not the one in side bar) causes focus to shift to main window when Search Box closes. This causes window to scroll to top. 
+• Also happens when Command Palette is closed. 
+• If you click a search result that should trigger navigation, it sometimes fails to update the view even though the URL changes. 
 
-### 10. 🔄 Collaboration & Sync
-- [] Git-based sync — `git_sync` service with auto-commit/push every ~5 min, configurable remote URL
+Other items: 
+• Move flashcards, webcaptures and notes from Project to work space. 
+• Flashcards should have a global view. 
 
-Bug
-• You’re right. New Search is explicitly turning search on, regardless of the normal default.
-
-  That happens here in src/views/ChatView.tsx:1523: when route state comes in as subView: "grounded", the app runs setGroundedEnabled(true). The actual retrieval path
-  then keys off groundedEnabled at src/views/ChatView.tsx:2514.
-
-  So the real behavior is:
-
-  - Normal Chat: search starts off.
-  - New Search / grounded entry: search is force-enabled.
-
-  If you can still submit a search after the UI looks off, that’s a state/UI mismatch bug. If you want, I can fix it so New Search only opens the chat screen and does
-  not silently enable grounded search, or make the UI clearly reflect that it’s on.
-
+Models to add: 
+  ollama
+  lms
   mlx

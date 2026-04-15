@@ -16,7 +16,7 @@ import { type NavigationPresentation, useWorkspaceStore } from "../stores/worksp
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import ImportSettingsSection from "./ImportSettingsSection";
-import { MOD_KEY, isMac } from "../lib/platform";
+import { MOD_KEY, isLinux, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
 
 const MIN_FONT_SIZE = 11;
@@ -943,6 +943,91 @@ export default function PreferencesView() {
     </div>
   );
 
+  const NavPreview = ({ workspaceNav, sectionNav }: { workspaceNav: NavigationPresentation; sectionNav: NavigationPresentation }) => (
+    <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70 flex flex-col" style={{ height: 56 }}>
+      {/* Workspace top bar */}
+      {workspaceNav === "top-tabs" && (
+        <div className="flex items-center gap-1 px-1.5 py-1 bg-[var(--bg-secondary)] shrink-0">
+          <div className="h-2 w-6 rounded-full bg-[var(--accent-color)] opacity-80" />
+          <div className="h-2 w-4 rounded-full bg-[var(--text-muted)] opacity-40" />
+          <div className="h-2 w-5 rounded-full bg-[var(--text-muted)] opacity-40" />
+        </div>
+      )}
+      {workspaceNav === "top-dropdown" && (
+        <div className="flex items-center gap-1.5 px-1.5 py-1 bg-[var(--bg-secondary)] shrink-0">
+          <div className="h-2 w-9 rounded-full bg-[var(--accent-color)] opacity-80" />
+          <div className="h-1.5 w-1.5 bg-[var(--text-muted)] opacity-40" style={{ clipPath: "polygon(0 0, 100% 0, 50% 100%)" }} />
+        </div>
+      )}
+      {/* Section top bar (only when workspace is not sidebar) */}
+      {workspaceNav !== "sidebar" && sectionNav === "top-tabs" && (
+        <div className="flex items-center gap-1 px-1.5 py-0.5 bg-[var(--bg-secondary)]/70 shrink-0">
+          <div className="h-1.5 w-5 rounded-full bg-[var(--accent-color)] opacity-70" />
+          <div className="h-1.5 w-3 rounded-full bg-[var(--text-muted)] opacity-35" />
+          <div className="h-1.5 w-4 rounded-full bg-[var(--text-muted)] opacity-35" />
+        </div>
+      )}
+      {workspaceNav !== "sidebar" && sectionNav === "top-dropdown" && (
+        <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-[var(--bg-secondary)]/70 shrink-0">
+          <div className="h-1.5 w-7 rounded-full bg-[var(--accent-color)] opacity-70" />
+          <div className="h-1 w-1 bg-[var(--text-muted)] opacity-35" style={{ clipPath: "polygon(0 0, 100% 0, 50% 100%)" }} />
+        </div>
+      )}
+      {/* Body */}
+      <div className="flex flex-1 min-h-0">
+        {/* Workspace sidebar rail */}
+        {workspaceNav === "sidebar" && (
+          <div className="flex flex-col gap-1 px-1 pt-1 bg-[var(--bg-secondary)] w-7 shrink-0">
+            <div className="h-1.5 w-4 rounded-sm bg-[var(--accent-color)] opacity-80" />
+            <div className="h-1.5 w-3 rounded-sm bg-[var(--text-muted)] opacity-40" />
+            <div className="h-1.5 w-4 rounded-sm bg-[var(--text-muted)] opacity-40" />
+          </div>
+        )}
+        {/* Section sidebar rail (inside body) */}
+        {sectionNav === "sidebar" && (
+          <div className="flex flex-col gap-1 px-1 pt-1 bg-[var(--bg-secondary)]/60 w-6 shrink-0">
+            <div className="h-1.5 w-3 rounded-sm bg-[var(--accent-color)] opacity-70" />
+            <div className="h-1.5 w-3 rounded-sm bg-[var(--text-muted)] opacity-35" />
+            <div className="h-1.5 w-3 rounded-sm bg-[var(--text-muted)] opacity-35" />
+          </div>
+        )}
+        {/* Section top bars when workspace is sidebar */}
+        {workspaceNav === "sidebar" && sectionNav === "top-tabs" && (
+          <div className="flex flex-col flex-1 min-w-0">
+            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-[var(--bg-secondary)]/70 shrink-0">
+              <div className="h-1.5 w-5 rounded-full bg-[var(--accent-color)] opacity-70" />
+              <div className="h-1.5 w-3 rounded-full bg-[var(--text-muted)] opacity-35" />
+              <div className="h-1.5 w-4 rounded-full bg-[var(--text-muted)] opacity-35" />
+            </div>
+            <div className="flex-1 px-1.5 pt-1 flex flex-col gap-1 bg-[var(--bg-primary)]">
+              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-25" />
+              <div className="h-1.5 w-6 rounded-sm bg-[var(--text-muted)] opacity-15" />
+            </div>
+          </div>
+        )}
+        {workspaceNav === "sidebar" && sectionNav === "top-dropdown" && (
+          <div className="flex flex-col flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-[var(--bg-secondary)]/70 shrink-0">
+              <div className="h-1.5 w-7 rounded-full bg-[var(--accent-color)] opacity-70" />
+              <div className="h-1 w-1 bg-[var(--text-muted)] opacity-35" style={{ clipPath: "polygon(0 0, 100% 0, 50% 100%)" }} />
+            </div>
+            <div className="flex-1 px-1.5 pt-1 flex flex-col gap-1 bg-[var(--bg-primary)]">
+              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-25" />
+              <div className="h-1.5 w-6 rounded-sm bg-[var(--text-muted)] opacity-15" />
+            </div>
+          </div>
+        )}
+        {/* Content area (default — no special section handling needed) */}
+        {!(workspaceNav === "sidebar" && sectionNav !== "sidebar") && (
+          <div className="flex-1 px-1.5 pt-1 flex flex-col gap-1 bg-[var(--bg-primary)]">
+            <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-25" />
+            <div className="h-1.5 w-6 rounded-sm bg-[var(--text-muted)] opacity-15" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {settingsNavLayout === "top-tabs" ? (
@@ -985,8 +1070,14 @@ export default function PreferencesView() {
 
                 <div className="flex items-center justify-between py-1">
                   <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Start at login</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically launch Aetherium when you log in</p>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      {isLinux ? "Start with desktop session" : "Start at login"}
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      {isLinux
+                        ? "Adds Aetherium to your desktop environment's autostart applications"
+                        : "Automatically launch Aetherium when you log in"}
+                    </p>
                   </div>
                   <Toggle
                     on={dbSettings.start_at_login}
@@ -1120,45 +1211,7 @@ export default function PreferencesView() {
                             : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                         }`}
                       >
-                        {/* Mini preview */}
-                        {option.id === "sidebar" && (
-                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70 flex" style={{ height: 48 }}>
-                            <div className="flex flex-col gap-1 px-1.5 pt-1.5 bg-[var(--bg-secondary)] w-8 shrink-0">
-                              <div className="h-1.5 w-5 rounded-sm bg-[var(--accent-color)] opacity-80" />
-                              <div className="h-1.5 w-4 rounded-sm bg-[var(--text-muted)] opacity-40" />
-                              <div className="h-1.5 w-5 rounded-sm bg-[var(--text-muted)] opacity-40" />
-                            </div>
-                            <div className="flex-1 px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
-                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
-                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
-                            </div>
-                          </div>
-                        )}
-                        {option.id === "top-tabs" && (
-                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70" style={{ height: 48 }}>
-                            <div className="flex items-center gap-1 px-1.5 py-1.5 bg-[var(--bg-secondary)]">
-                              <div className="h-2 w-6 rounded-full bg-[var(--accent-color)] opacity-80" />
-                              <div className="h-2 w-4 rounded-full bg-[var(--text-muted)] opacity-40" />
-                              <div className="h-2 w-5 rounded-full bg-[var(--text-muted)] opacity-40" />
-                            </div>
-                            <div className="px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
-                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
-                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
-                            </div>
-                          </div>
-                        )}
-                        {option.id === "top-dropdown" && (
-                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70" style={{ height: 48 }}>
-                            <div className="flex items-center gap-2 px-1.5 py-1.5 bg-[var(--bg-secondary)]">
-                              <div className="h-2 w-10 rounded-full bg-[var(--accent-color)] opacity-80" />
-                              <div className="h-1.5 w-1.5 rounded-sm bg-[var(--text-muted)] opacity-40" style={{ clipPath: "polygon(0 0, 100% 0, 50% 100%)" }} />
-                            </div>
-                            <div className="px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
-                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
-                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
-                            </div>
-                          </div>
-                        )}
+                        <NavPreview workspaceNav={option.id as NavigationPresentation} sectionNav={sectionNavigation} />
                         <div className="text-xs font-medium">{option.label}</div>
                         <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
                       </button>
@@ -1183,45 +1236,7 @@ export default function PreferencesView() {
                             : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                         }`}
                       >
-                        {/* Mini preview */}
-                        {option.id === "sidebar" && (
-                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70 flex" style={{ height: 48 }}>
-                            <div className="flex flex-col gap-1 px-1.5 pt-1.5 bg-[var(--bg-secondary)] w-8 shrink-0">
-                              <div className="h-1.5 w-5 rounded-sm bg-[var(--accent-color)] opacity-80" />
-                              <div className="h-1.5 w-4 rounded-sm bg-[var(--text-muted)] opacity-40" />
-                              <div className="h-1.5 w-5 rounded-sm bg-[var(--text-muted)] opacity-40" />
-                            </div>
-                            <div className="flex-1 px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
-                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
-                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
-                            </div>
-                          </div>
-                        )}
-                        {option.id === "top-tabs" && (
-                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70" style={{ height: 48 }}>
-                            <div className="flex items-center gap-1 px-1.5 py-1.5 bg-[var(--bg-secondary)]">
-                              <div className="h-2 w-6 rounded-full bg-[var(--accent-color)] opacity-80" />
-                              <div className="h-2 w-4 rounded-full bg-[var(--text-muted)] opacity-40" />
-                              <div className="h-2 w-5 rounded-full bg-[var(--text-muted)] opacity-40" />
-                            </div>
-                            <div className="px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
-                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
-                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
-                            </div>
-                          </div>
-                        )}
-                        {option.id === "top-dropdown" && (
-                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70" style={{ height: 48 }}>
-                            <div className="flex items-center gap-2 px-1.5 py-1.5 bg-[var(--bg-secondary)]">
-                              <div className="h-2 w-10 rounded-full bg-[var(--accent-color)] opacity-80" />
-                              <div className="h-1.5 w-1.5 rounded-sm bg-[var(--text-muted)] opacity-40" style={{ clipPath: "polygon(0 0, 100% 0, 50% 100%)" }} />
-                            </div>
-                            <div className="px-1.5 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
-                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
-                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
-                            </div>
-                          </div>
-                        )}
+                        <NavPreview workspaceNav={workspaceNavigation} sectionNav={option.id as NavigationPresentation} />
                         <div className="text-xs font-medium">{option.label}</div>
                         <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
                       </button>
