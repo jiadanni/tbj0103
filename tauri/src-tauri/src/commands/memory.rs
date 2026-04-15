@@ -44,7 +44,7 @@ async fn store_memory_embedding(
         return;
     };
 
-    if let Ok(embedding) = client.generate_embedding(&embedding_model, content).await {
+    if let Ok(embedding) = client.generate_embedding("memory_command", &embedding_model, content).await {
         if let Ok(conn) = state.0.get() {
             let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
             let now = chrono::Utc::now().to_rfc3339();
@@ -269,7 +269,7 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
         role: "user".to_string(),
         content: prompt,
     }];
-    let raw = client.send_message(&req.model, messages).await?;
+    let raw = client.send_message("memory_command", &req.model, messages).await?;
 
     // 4. Parse JSON array from response
     let trimmed = raw.trim();
@@ -321,7 +321,7 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
 
         if let Some(embedding_model) = embedding_model {
             if let Ok(embedding) = client
-                .generate_embedding(&embedding_model, &em.content)
+                .generate_embedding("memory_command", &embedding_model, &em.content)
                 .await
             {
                 if let Ok(conn) = state.0.get() {

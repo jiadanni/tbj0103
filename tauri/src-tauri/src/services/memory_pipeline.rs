@@ -157,7 +157,7 @@ pub async fn extract_and_store_memories(
     };
 
     if let Ok(response) = client
-        .send_message_with_options(&model, msgs, Some("0s"))
+        .send_message_with_options("memory_pipeline", &model, msgs, Some("0s"))
         .await
     {
         // Parse JSON
@@ -169,7 +169,7 @@ pub async fn extract_and_store_memories(
                     let mut new_memories: Vec<(String, String, Vec<u8>)> = Vec::new();
                     for fact in facts {
                         let embedding = if let Ok(emb) = client
-                            .generate_embedding_with_options(&embedding_model, &fact, Some("0s"))
+                            .generate_embedding_with_options("memory_pipeline", &embedding_model, &fact, Some("0s"))
                             .await
                         {
                             emb

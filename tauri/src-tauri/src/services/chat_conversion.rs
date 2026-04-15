@@ -169,7 +169,7 @@ Rules:\n\
         OllamaMessage { role: "user".to_string(), content: user_prompt },
     ];
 
-    let raw = client.send_message(model, messages).await?;
+    let raw = client.send_message("chat_conversion", model, messages).await?;
     Ok(parse_envelope(&raw))
 }
 

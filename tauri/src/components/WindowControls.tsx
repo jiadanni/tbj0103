@@ -30,7 +30,6 @@ export function onDragRegionMouseDown(e: React.MouseEvent) {
   if (e.button !== 0) {return;}
   const target = e.target as HTMLElement;
   if (target.closest("button, input, select, textarea, a, [data-no-drag]")) {return;}
-  e.preventDefault();
   getCurrentWindow().startDragging();
 }
 
@@ -96,3 +95,23 @@ function WindowControls() {
 }
 
 export default WindowControls;
+
+export function LinuxResizeBorders() {
+  if (!isLinux) {return null;}
+  const appWindow = getCurrentWindow();
+  
+  return (
+    <>
+      <div className="absolute top-0 left-2 right-2 h-1 cursor-n-resize z-[9999]" onMouseDown={() => appWindow.startResizeDragging('North')} />
+      <div className="absolute bottom-0 left-2 right-2 h-1.5 cursor-s-resize z-[9999]" onMouseDown={() => appWindow.startResizeDragging('South')} />
+      <div className="absolute top-2 bottom-2 left-0 w-1.5 cursor-w-resize z-[9999]" onMouseDown={() => appWindow.startResizeDragging('West')} />
+      <div className="absolute top-2 bottom-2 right-0 w-1.5 cursor-e-resize z-[9999]" onMouseDown={() => appWindow.startResizeDragging('East')} />
+      
+      {/* corners */}
+      <div className="absolute top-0 left-0 w-3 h-3 cursor-nw-resize z-[10000]" onMouseDown={() => appWindow.startResizeDragging('NorthWest')} />
+      <div className="absolute top-0 right-0 w-3 h-3 cursor-ne-resize z-[10000]" onMouseDown={() => appWindow.startResizeDragging('NorthEast')} />
+      <div className="absolute bottom-0 left-0 w-3 h-3 cursor-sw-resize z-[10000]" onMouseDown={() => appWindow.startResizeDragging('SouthWest')} />
+      <div className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize z-[10000]" onMouseDown={() => appWindow.startResizeDragging('SouthEast')} />
+    </>
+  );
+}

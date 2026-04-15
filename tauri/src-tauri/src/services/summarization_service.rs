@@ -84,7 +84,7 @@ pub async fn generate_rolling_summary(
     };
 
     if let Ok(summary_content) = client
-        .send_message_with_options(&model, msgs, Some("0s"))
+        .send_message_with_options("summarization_service", &model, msgs, Some("0s"))
         .await
     {
         let conn = state.0.get().map_err(|e| e.to_string())?;

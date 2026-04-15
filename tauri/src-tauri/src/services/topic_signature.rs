@@ -458,7 +458,7 @@ Chat excerpts:\n{sample}"
         content: prompt,
     }];
 
-    let Ok(raw) = client.send_message(model, messages).await else {
+    let Ok(raw) = client.send_message("topic_signature", model, messages).await else {
         return heuristic;
     };
     let Some(json_str) = extract_json_object(&raw) else {

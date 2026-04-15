@@ -398,6 +398,10 @@ select optgroup {
   -webkit-app-region: drag;
 }
 
+:root[data-platform="linux"] [data-tauri-drag-region] {
+  -webkit-app-region: no-drag;
+}
+
 [data-tauri-drag-region] button,
 [data-tauri-drag-region] input,
 [data-tauri-drag-region] select,
