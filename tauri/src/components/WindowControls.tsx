@@ -30,6 +30,7 @@ export function onDragRegionMouseDown(e: React.MouseEvent) {
   if (e.button !== 0) {return;}
   const target = e.target as HTMLElement;
   if (target.closest("button, input, select, textarea, a, [data-no-drag]")) {return;}
+  e.preventDefault();
   getCurrentWindow().startDragging();
 }
 
