@@ -221,6 +221,30 @@ describe("Layout", () => {
     expect(screen.getByTitle("Preferences")).toBeInTheDocument();
   });
 
+  it("renders a bottom-left Preferences button in top-tab section navigation", () => {
+    useWorkspaceStore.setState({ sectionNavigation: "top-tabs" });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTitle("Preferences")).toBeInTheDocument();
+  });
+
+  it("renders a bottom-left Preferences button in top-dropdown section navigation", () => {
+    useWorkspaceStore.setState({ sectionNavigation: "top-dropdown" });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTitle("Preferences")).toBeInTheDocument();
+  });
+
   it("renders workspace tabs and allows switching", () => {
     useWorkspaceStore.setState({
       workspaces: [
@@ -624,6 +648,18 @@ describe("Layout", () => {
     expect(screen.getByText("Customize navigation")).toBeInTheDocument();
   });
 
+  it("does not show Preferences as a top-tab section item", () => {
+    useWorkspaceStore.setState({ sectionNavigation: "top-tabs" });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getAllByRole("button", { name: "Preferences" })).toHaveLength(1);
+  });
+
   it("keeps the main route containers shrinkable for scrollable views", () => {
     useWorkspaceStore.setState({ sectionNavigation: "icon-bar" });
 
@@ -661,6 +697,48 @@ describe("Layout", () => {
     fireEvent.click(screen.getByRole("option", { name: "Documents" }));
 
     expect(await screen.findByText("Documents View")).toBeInTheDocument();
+  });
+
+  it("does not show Preferences in the top-dropdown section options", () => {
+    useWorkspaceStore.setState({ sectionNavigation: "top-dropdown" });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Section: Dashboard" }));
+
+    expect(screen.queryByRole("option", { name: "Preferences" })).not.toBeInTheDocument();
+  });
+
+  it("opens Preferences from the bottom-left button in top-tab section navigation", async () => {
+    useWorkspaceStore.setState({ sectionNavigation: "top-tabs" });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTitle("Preferences"));
+
+    expect(await screen.findByText("Preferences View")).toBeInTheDocument();
+  });
+
+  it("opens Preferences from the bottom-left button in top-dropdown section navigation", async () => {
+    useWorkspaceStore.setState({ sectionNavigation: "top-dropdown" });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTitle("Preferences"));
+
+    expect(await screen.findByText("Preferences View")).toBeInTheDocument();
   });
 
 });
