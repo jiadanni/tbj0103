@@ -303,7 +303,6 @@ pub fn move_chat_sessions(
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let previous_paths =
         chat_file_store::capture_session_file_variants(&conn, &chats_dir_state.0, &session_ids);
-    let now = chrono::Utc::now().to_rfc3339();
     let target_project_id = target_project_id.unwrap_or_default();
 
     conn.execute_batch("BEGIN IMMEDIATE")
@@ -316,14 +315,13 @@ pub fn move_chat_sessions(
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
-            "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2, updated_at = ?3 WHERE id IN ({})",
+            "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2 WHERE id IN ({})",
             placeholders
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
-            Vec::with_capacity(3 + session_ids.len());
+            Vec::with_capacity(2 + session_ids.len());
         params.push(Box::new(target_workspace_id.clone()));
         params.push(Box::new(target_project_id.clone()));
-        params.push(Box::new(now.clone()));
         for sid in &session_ids {
             params.push(Box::new(sid.clone()));
         }
@@ -386,7 +384,6 @@ pub fn batch_move_sessions(
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let previous_paths =
         chat_file_store::capture_session_file_variants(&conn, &chats_dir_state.0, &req.session_ids);
-    let now = chrono::Utc::now().to_rfc3339();
 
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|e| e.to_string())?;
@@ -519,21 +516,20 @@ pub fn batch_move_sessions(
                 };
 
                 conn.execute(
-                    "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2, updated_at = ?3 WHERE id = ?4",
-                    rusqlite::params![&req.target_workspace_id, &target_pid, &now, session_id],
+                    "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2 WHERE id = ?3",
+                    rusqlite::params![&req.target_workspace_id, &target_pid, session_id],
                 ).map_err(|e| e.to_string())?;
             }
         } else {
             // Simple move all to workspace root (no folder structure)
             let sql = format!(
-                "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2, updated_at = ?3 WHERE id IN ({})",
+                "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2 WHERE id IN ({})",
                 placeholders
             );
             let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
-                Vec::with_capacity(3 + req.session_ids.len());
+                Vec::with_capacity(2 + req.session_ids.len());
             params.push(Box::new(req.target_workspace_id.clone()));
             params.push(Box::new(String::new())); // Empty project_id = root
-            params.push(Box::new(now.clone()));
             for sid in &req.session_ids {
                 params.push(Box::new(sid.clone()));
             }
