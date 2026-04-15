@@ -1936,7 +1936,6 @@ export default function ChatView() {
   const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all";
   const composerToggleInactiveClass = "border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.78)] hover:border-[rgba(255,255,255,0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white";
   const composerToggleActiveClass = "border-[rgba(var(--accent-color-rgb),0.34)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]";
-  const composerUtilitySelectClassName = "h-9 appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 pl-3.5 pr-9 text-xs font-semibold text-[var(--text-secondary)] shadow-sm outline-none transition-all hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)] focus:border-[var(--accent-color)]";
   const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-transparent bg-[rgba(255,255,255,0.04)] text-[rgba(255,255,255,0.54)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
 
   const [input, setInput] = useState("");
@@ -2335,7 +2334,7 @@ export default function ChatView() {
   const [attachedSources, setAttachedSources] = useState<Array<{ id: string; title: string; content: string }>>([]);
   const [isAttachingFiles, setIsAttachingFiles] = useState(false);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
-  const [messageSources, setMessageSources] = useState<Record<string, SearchResult[]>>({});
+  const [messageSources] = useState<Record<string, SearchResult[]>>({});
   const [expandedSources, setExpandedSources] = useState<string | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
 
@@ -4579,9 +4578,20 @@ export default function ChatView() {
                                   <button
                                     onClick={() => {
                                       if (activeChatId) {
+                                        setIsStreaming(false);
                                         api.ollama.stopStream(activeChatId).catch(() => { });
                                         api.llamacpp.stopStream(activeChatId).catch(() => { });
                                         api.webAI.stopStream(activeChatId).catch(() => { });
+                                        if (lastUserMessage) {
+                                          setInput(lastUserMessage);
+                                          requestAnimationFrame(() => {
+                                            if (inputRef.current) {
+                                              inputRef.current.style.height = "auto";
+                                              inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 160) + "px";
+                                              inputRef.current.focus();
+                                            }
+                                          });
+                                        }
                                       }
                                     }}
                                     className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-red-500 text-white shadow-[0_12px_30px_-18px_rgba(239,68,68,0.65)] transition-opacity hover:opacity-90"

@@ -130,7 +130,7 @@ pub struct StreamEvent {
 #[derive(Debug, Clone, Default)]
 pub struct RequestContext {
     pub request_id: Option<String>,
-    pub command_name: Option<&'static str>,
+    pub source: Option<&'static str>,
     pub session_id: Option<String>,
     pub model: Option<String>,
     pub stream: Option<bool>,
@@ -207,8 +207,8 @@ impl OllamaClient {
         extras: &[(&str, String)],
     ) -> Vec<String> {
         let mut parts = Vec::new();
-        if let Some(command_name) = ctx.command_name {
-            parts.push(format!("api={command_name}"));
+        if let Some(source) = ctx.source {
+            parts.push(format!("source={source}"));
         }
         if let Some(model) = ctx.model.as_deref() {
             parts.push(format!("model={model}"));
@@ -396,7 +396,7 @@ impl OllamaClient {
 
     /// Resolves the requested model name to an available one, with fallback logic.
     pub async fn resolve_model(&self, requested: &str) -> Result<String, String> {
-        let models = self.list_models().await?;
+        let models = self.list_models("resolve_model").await?;
         if models.is_empty() {
             return Err("No Ollama models found. Install a model with `ollama pull <model-name>` and ensure Ollama is running.".to_string());
         }
@@ -431,17 +431,26 @@ impl OllamaClient {
     /// Send a single non-streaming message and return the full response.
     pub async fn send_message(
         &self,
+        source: &'static str,
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
-        self.send_message_observed(model, messages, &RequestContext::default())
-            .await
+        self.send_message_observed(
+            model,
+            messages,
+            &RequestContext {
+                source: Some(source),
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     /// Send a non-streaming message with an optional keep_alive duration.
     /// Pass `Some("0s")` to unload the model immediately after the call.
     pub async fn send_message_with_options(
         &self,
+        source: &'static str,
         model: &str,
         messages: Vec<OllamaMessage>,
         keep_alive: Option<&str>,
@@ -450,7 +459,10 @@ impl OllamaClient {
             model,
             messages,
             keep_alive,
-            &RequestContext::default(),
+            &RequestContext {
+                source: Some(source),
+                ..Default::default()
+            },
         )
         .await
     }
@@ -744,13 +756,24 @@ impl OllamaClient {
     /// Event name: "ollama-stream-{session_id}"
     pub async fn stream_message(
         &self,
+        source: &'static str,
         app: &AppHandle,
         session_id: &str,
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<String, String> {
-        self.stream_message_observed(app, session_id, model, messages, &RequestContext::default())
-            .await
+        self.stream_message_observed(
+            app,
+            session_id,
+            model,
+            messages,
+            &RequestContext {
+                source: Some(source),
+                session_id: Some(session_id.to_string()),
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     pub async fn stream_message_observed(
@@ -775,6 +798,7 @@ impl OllamaClient {
 
     pub async fn stream_message_unmanaged(
         &self,
+        source: &'static str,
         app: &AppHandle,
         session_id: &str,
         model: &str,
@@ -785,7 +809,11 @@ impl OllamaClient {
             session_id,
             model,
             messages,
-            &RequestContext::default(),
+            &RequestContext {
+                source: Some(source),
+                session_id: Some(session_id.to_string()),
+                ..Default::default()
+            },
         )
         .await
     }
@@ -814,6 +842,7 @@ impl OllamaClient {
     /// Event name: "ollama-refine-{session_id}"
     pub async fn stream_refine_message(
         &self,
+        source: &'static str,
         app: &AppHandle,
         session_id: &str,
         model: &str,
@@ -824,7 +853,11 @@ impl OllamaClient {
             session_id,
             model,
             messages,
-            &RequestContext::default(),
+            &RequestContext {
+                source: Some(source),
+                session_id: Some(session_id.to_string()),
+                ..Default::default()
+            },
         )
         .await
     }
@@ -851,6 +884,7 @@ impl OllamaClient {
 
     pub async fn stream_refine_message_unmanaged(
         &self,
+        source: &'static str,
         app: &AppHandle,
         session_id: &str,
         model: &str,
@@ -861,7 +895,11 @@ impl OllamaClient {
             session_id,
             model,
             messages,
-            &RequestContext::default(),
+            &RequestContext {
+                source: Some(source),
+                session_id: Some(session_id.to_string()),
+                ..Default::default()
+            },
         )
         .await
     }
@@ -887,15 +925,29 @@ impl OllamaClient {
     }
 
     /// Generate an embedding vector for the given text.
-    pub async fn generate_embedding(&self, model: &str, text: &str) -> Result<Vec<f32>, String> {
-        self.generate_embedding_observed(model, text, &RequestContext::default())
-            .await
+    pub async fn generate_embedding(
+        &self,
+        source: &'static str,
+        model: &str,
+        text: &str,
+    ) -> Result<Vec<f32>, String> {
+        self.generate_embedding_observed(
+            model,
+            text,
+            &RequestContext {
+                source: Some(source),
+                model: Some(model.to_string()),
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     /// Generate an embedding with an optional keep_alive duration.
     /// Pass `Some("0s")` to unload the model immediately after the call.
     pub async fn generate_embedding_with_options(
         &self,
+        source: &'static str,
         model: &str,
         text: &str,
         keep_alive: Option<&str>,
@@ -904,7 +956,11 @@ impl OllamaClient {
             model,
             text,
             keep_alive,
-            &RequestContext::default(),
+            &RequestContext {
+                source: Some(source),
+                model: Some(model.to_string()),
+                ..Default::default()
+            },
         )
         .await
     }
@@ -1004,8 +1060,12 @@ impl OllamaClient {
 
     /// Fetch list of locally available models, with a 30-second process-level cache.
     /// This eliminates the redundant GET /api/tags that was issued before every /api/chat.
-    pub async fn list_models(&self) -> Result<Vec<ModelInfo>, String> {
-        self.list_models_observed(&RequestContext::default()).await
+    pub async fn list_models(&self, source: &'static str) -> Result<Vec<ModelInfo>, String> {
+        self.list_models_observed(&RequestContext {
+            source: Some(source),
+            ..Default::default()
+        })
+        .await
     }
 
     pub async fn list_models_observed(
@@ -1190,9 +1250,22 @@ impl OllamaClient {
     }
 
     /// Generate a short title for a chat session given the first user message.
-    pub async fn generate_title(&self, model: &str, first_message: &str) -> Result<String, String> {
-        self.generate_title_observed(model, first_message, &RequestContext::default())
-            .await
+    pub async fn generate_title(
+        &self,
+        source: &'static str,
+        model: &str,
+        first_message: &str,
+    ) -> Result<String, String> {
+        self.generate_title_observed(
+            model,
+            first_message,
+            &RequestContext {
+                source: Some(source),
+                model: Some(model.to_string()),
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     pub async fn generate_title_observed(
@@ -1216,13 +1289,18 @@ impl OllamaClient {
     /// Generate a title from a full conversation history (for periodic refresh).
     pub async fn generate_title_from_conversation(
         &self,
+        source: &'static str,
         model: &str,
         conversation: Vec<OllamaMessage>,
     ) -> Result<String, String> {
         self.generate_title_from_conversation_observed(
             model,
             conversation,
-            &RequestContext::default(),
+            &RequestContext {
+                source: Some(source),
+                model: Some(model.to_string()),
+                ..Default::default()
+            },
         )
         .await
     }

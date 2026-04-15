@@ -8,7 +8,7 @@ import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2,
 import type { LucideIcon } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
-import WindowControls, { onDragRegionMouseDown, onDragRegionDoubleClick } from "./WindowControls";
+import WindowControls, { onDragRegionMouseDown, onDragRegionDoubleClick, LinuxResizeBorders } from "./WindowControls";
 import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -1189,6 +1189,7 @@ export default function Layout() {
       {showSinglePaneNavigation && !showSectionSidebar && <PreferencesDockButton />}
       {showSplitPaneLayout && !hasLeftRail && <PreferencesDockButton />}
       <ArtifactPanel />
+      <LinuxResizeBorders />
     </div>
   );
 }

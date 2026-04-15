@@ -344,7 +344,7 @@ pub async fn analyze_workspace(
         role: "user".to_string(),
         content: prompt,
     }];
-    let raw = client.send_message(&req.model, messages).await?;
+    let raw = client.send_message("ai_knowledge", &req.model, messages).await?;
 
     // 4. Parse JSON — find first { / last }
     let trimmed = raw.trim();
@@ -666,7 +666,7 @@ pub async fn suggest_learning_goals(
         role: "user".to_string(),
         content: prompt,
     }];
-    let raw = client.send_message(&req.model, messages).await?;
+    let raw = client.send_message("ai_knowledge", &req.model, messages).await?;
 
     let trimmed = raw.trim();
     let json_str = match (trimmed.find('['), trimmed.rfind(']')) {

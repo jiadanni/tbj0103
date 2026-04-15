@@ -169,7 +169,7 @@ pub async fn generate_flashcards(
         role: "user".to_string(),
         content: prompt,
     }];
-    let raw = client.send_message(&req.model, messages).await?;
+    let raw = client.send_message("flashcard", &req.model, messages).await?;
 
     // Parse the JSON array from the response, stripping any markdown fences
     let trimmed = raw.trim();
@@ -252,7 +252,7 @@ pub async fn generate_flashcards_from_concept(
         role: "user".to_string(),
         content: prompt,
     }];
-    let raw = client.send_message(&req.model, messages).await?;
+    let raw = client.send_message("flashcard", &req.model, messages).await?;
 
     let trimmed = raw.trim();
     let json_str = if let Some(start) = trimmed.find('[') {
@@ -369,7 +369,7 @@ pub async fn extract_flashcards_from_content(
         role: "user".to_string(),
         content: prompt,
     }];
-    let raw = client.send_message(&req.model, messages).await?;
+    let raw = client.send_message("flashcard", &req.model, messages).await?;
 
     let trimmed = raw.trim();
     let json_str = if let Some(start) = trimmed.find('[') {

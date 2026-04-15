@@ -61,14 +61,14 @@ pub struct OllamaRuntimeStatus {
 
 fn context(
     request_id: Option<String>,
-    command_name: &'static str,
+    source: &'static str,
     session_id: Option<&str>,
     model: Option<&str>,
     stream: Option<bool>,
 ) -> crate::ollama::client::RequestContext {
     crate::ollama::client::RequestContext {
         request_id,
-        command_name: Some(command_name),
+        source: Some(source),
         session_id: session_id.map(ToOwned::to_owned),
         model: model.map(ToOwned::to_owned),
         stream,
