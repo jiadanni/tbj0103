@@ -399,12 +399,23 @@ pub async fn analyze_workspace(
         relationships: Vec<AiRelationship>,
     }
 
-    let output: AiHierarchicalOutput = match serde_json::from_str(json_str) {
+    // Deserialize via serde_json::Value first so that duplicate keys produced
+    // by some models (e.g. a second "sections" field in the same object) are
+    // handled gracefully (last-value-wins) instead of causing a hard parse
+    // error.  Then convert from Value → typed struct.
+    let parse_via_value = |s: &str| -> Result<AiHierarchicalOutput, String> {
+        let v: Value = serde_json::from_str(s)
+            .map_err(|e| format!("Failed to parse AI JSON: {e}\nRaw snippet: {s}"))?;
+        serde_json::from_value(v)
+            .map_err(|e| format!("Failed to convert AI JSON to expected shape: {e}\nRaw snippet: {s}"))
+    };
+
+    let output: AiHierarchicalOutput = match parse_via_value(json_str) {
         Ok(parsed) => parsed,
         Err(parse_error) => {
             let repaired = repair_truncated_json_object(json_str)
                 .ok_or_else(|| format!("Failed to parse AI JSON: {parse_error}\nRaw snippet: {json_str}"))?;
-            serde_json::from_str(&repaired).map_err(|e| {
+            parse_via_value(&repaired).map_err(|e| {
                 format!("Failed to parse AI JSON after repair: {e}\nRaw snippet: {json_str}")
             })?
         }
