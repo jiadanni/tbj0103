@@ -11,6 +11,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 function sanitizeFilenamePart(value: string) {
   return value
     .trim()
+    // eslint-disable-next-line no-control-regex
     .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
@@ -124,7 +125,7 @@ export default function BackupSettingsSection() {
           </div>
         )}
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2 max-w-4xl">
           <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
             <div className="flex items-start justify-between gap-4">
               <div>

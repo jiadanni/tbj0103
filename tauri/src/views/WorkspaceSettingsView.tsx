@@ -108,6 +108,7 @@ export default function WorkspaceSettingsView() {
       {/* New workspace form */}
       {showNew && (
         <div className="flex flex-col gap-2 px-5 py-3 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] shrink-0">
+          <div className="max-w-3xl w-full flex flex-col gap-2">
           <input
             autoFocus
             value={newName}
@@ -144,11 +145,13 @@ export default function WorkspaceSettingsView() {
               <X size={14} />
             </button>
           </div>
+          </div>
         </div>
       )}
 
       {/* Workspace list */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+      <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="max-w-4xl w-full space-y-3">
         {workspaces.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">
             <LayoutGrid size={32} className="opacity-30" />
@@ -235,6 +238,7 @@ export default function WorkspaceSettingsView() {
             );
           })
         )}
+        </div>
       </div>
 
       {/* Help text */}

@@ -4,7 +4,7 @@ import { message } from "@tauri-apps/plugin-dialog";
 import {
 
 } from "react-resizable-panels";
-import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon } from "lucide-react";
+import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon, ArrowDownAZ, ArrowDownZA, Clock } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
@@ -507,6 +507,8 @@ function WorkspaceTabBar({
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
   const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
+  const workspaceSortOrder = useWorkspaceStore((state) => state.workspaceSortOrder);
+  const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
   const hideNativeMenu = useSettingsStore((state) => state.hideNativeMenu);
@@ -638,7 +640,8 @@ function WorkspaceTabBar({
         {showSplitTitlebarWorkspaceNavigation && <SplitTitlebarWorkspaceNavigation />}
         {(hideNativeMenu || isLinux) && <div className="relative z-10"><AppHeaderMenu /></div>}
         <div
-          data-no-drag
+          onMouseDown={onDragRegionMouseDown}
+          onDoubleClick={onDragRegionDoubleClick}
           onWheel={handleHorizontalWheel}
           className={
             showSplitTitlebarWorkspaceNavigation
@@ -741,6 +744,8 @@ function WorkspaceTabBar({
         </div>
         <div
           data-window-drag-handle
+          onMouseDown={onDragRegionMouseDown}
+          onDoubleClick={onDragRegionDoubleClick}
           className={`mx-2 hidden h-5 rounded-full border border-transparent bg-[var(--bg-hover)]/20 sm:block ${compactDragHandle ? "w-16 shrink-0" : "min-w-16 flex-1"
             }`}
           title="Drag window"
@@ -800,6 +805,38 @@ function WorkspaceTabBar({
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
           >
             <SettingsIcon size={11} /> Manage workspaces
+          </button>
+          
+          <div className="my-1 border-t border-[var(--border-color)]" />
+          <div className="px-3 py-1 flex items-center justify-between pointer-events-none">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Sort Workspaces</span>
+          </div>
+          <button
+            onClick={() => {
+              setWorkspaceSortOrder("name-asc");
+              setContextMenu(null);
+            }}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--bg-hover)] ${workspaceSortOrder === "name-asc" ? "text-[var(--text-primary)] font-medium" : "text-[var(--text-secondary)]"}`}
+          >
+            <ArrowDownAZ size={11} /> Name (A-Z)
+          </button>
+          <button
+            onClick={() => {
+              setWorkspaceSortOrder("name-desc");
+              setContextMenu(null);
+            }}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--bg-hover)] ${workspaceSortOrder === "name-desc" ? "text-[var(--text-primary)] font-medium" : "text-[var(--text-secondary)]"}`}
+          >
+            <ArrowDownZA size={11} /> Name (Z-A)
+          </button>
+          <button
+            onClick={() => {
+              setWorkspaceSortOrder("updated-newest");
+              setContextMenu(null);
+            }}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--bg-hover)] ${workspaceSortOrder === "updated-newest" ? "text-[var(--text-primary)] font-medium" : "text-[var(--text-secondary)]"}`}
+          >
+            <Clock size={11} /> Recently Updated
           </button>
           <div className="my-1 border-t border-[var(--border-color)]" />
           <button
