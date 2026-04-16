@@ -6,7 +6,6 @@ use crate::models::dashboard::{
 };
 use crate::models::workspace::TopicSignature;
 use rusqlite::params;
-use serde_json::json;
 use tauri::State;
 
 fn route(path: impl Into<String>, state: Option<serde_json::Value>) -> DashboardRoute {
@@ -171,7 +170,7 @@ pub fn get_dashboard_summary(
                 name,
                 review_count,
                 reason,
-                route: route("/graph", Some(json!({ "subView": "flashcards" }))),
+                route: route("/graph", None),
             })
         })
         .map_err(|e| e.to_string())?
@@ -226,7 +225,7 @@ pub fn get_dashboard_summary(
                 is_completed: row.get::<_, i64>(3)? != 0,
                 due_date: row.get(4)?,
                 updated_at: row.get(5)?,
-                route: route("/graph", Some(json!({ "subView": "learning" }))),
+                route: route("/learning", None),
             })
         })
         .map_err(|e| e.to_string())?
@@ -325,7 +324,7 @@ pub fn get_dashboard_summary(
             let kind = row.get::<_, String>(2)?;
             let route = match kind.as_str() {
                 "chat" => route(format!("/chat/{id}"), None),
-                "concept" => route("/graph", Some(json!({ "subView": "graph" }))),
+                "concept" => route("/graph", None),
                 "source" => route("/documents", None),
                 _ => route("/notes", None),
             };
@@ -369,7 +368,7 @@ pub fn get_dashboard_summary(
                 if due_today == 1 { "" } else { "s" },
                 if due_today == 1 { "is" } else { "are" }
             ),
-            route: route("/graph", Some(json!({ "subView": "flashcards" }))),
+            route: route("/flashcards", None),
         });
     }
 
@@ -386,7 +385,7 @@ pub fn get_dashboard_summary(
                 "You already have concept coverage around {}. Capture a goal so progress becomes visible.",
                 goal_hint
             ),
-            route: route("/graph", Some(json!({ "subView": "learning" }))),
+            route: route("/learning", None),
         });
     }
 
@@ -396,7 +395,7 @@ pub fn get_dashboard_summary(
             kind: "review".to_string(),
             title: "Create a starter review set".to_string(),
             description: "Your knowledge graph is growing, but none of it is scheduled for recall yet.".to_string(),
-            route: route("/graph", Some(json!({ "subView": "flashcards" }))),
+            route: route("/flashcards", None),
         });
     }
 
@@ -426,7 +425,7 @@ pub fn get_dashboard_summary(
                 if isolated_concepts == 1 { "" } else { "s" },
                 if isolated_concepts == 1 { "is" } else { "are" }
             ),
-            route: route("/graph", Some(json!({ "subView": "graph" }))),
+            route: route("/graph", None),
         });
     }
 
@@ -462,7 +461,7 @@ pub fn get_dashboard_summary(
             avg_ease,
             under_reviewed_concepts,
             weak_concepts,
-            route: route("/graph", Some(json!({ "subView": "flashcards" }))),
+            route: route("/flashcards", None),
         },
         goals,
         progression,
