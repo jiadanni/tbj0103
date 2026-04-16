@@ -77,7 +77,7 @@ function timeAgo(iso: string) {
 }
 
 function normalizeKnowledgeRoute(route: DashboardRoute): { path: string; state?: Record<string, unknown> } {
-  if (route.path === "/graph" || route.path === "/flashcards" || route.path === "/learning" || route.path === "/backlinks" || route.path === "/dedup") {
+  if (route.path === "/backlinks" || route.path === "/dedup") {
     return { path: "/graph" };
   }
 
