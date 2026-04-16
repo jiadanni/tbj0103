@@ -138,7 +138,7 @@ export default function ImportSettingsSection() {
           </div>
         )}
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 max-w-3xl">
           <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>

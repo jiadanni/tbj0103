@@ -2440,6 +2440,7 @@ export default function PreferencesView() {
 
       {activeTab === "mcp" && (
         <div className="flex-1 overflow-y-auto p-6">
+          <div className="max-w-4xl w-full">
           <h2 className="text-2xl font-bold mb-4">Model Context Protocol Servers</h2>
 
           <div className="mb-6">
@@ -2565,6 +2566,7 @@ export default function PreferencesView() {
                 </div>
               ))
             )}
+          </div>
           </div>
         </div>
       )}
