@@ -532,6 +532,7 @@ pub fn run() {
             commands::chat_file::sync_all_chats_to_files,
             commands::chat_file::import_lmstudio_folder,
             commands::chat_file::import_gemini_takeout,
+            commands::chat_file::import_claude_desktop,
             // Web AI (Playwright bridge)
             commands::web_ai::send_web_message,
             // Topic signatures
