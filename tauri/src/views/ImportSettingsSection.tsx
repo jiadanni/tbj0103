@@ -48,14 +48,23 @@ export default function ImportSettingsSection() {
   } = useWorkspaceStore();
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const [importingLmStudio, setImportingLmStudio] = useState(false);
+  const [importingMultipleFolders, setImportingMultipleFolders] = useState(false);
   const [importingGemini, setImportingGemini] = useState(false);
   const [importingClaude, setImportingClaude] = useState(false);
   const [claudeFolder, setClaudeFolder] = useState<string | null>(null);
   const [claudePreviews, setClaudePreviews] = useState<
     { uuid: string; name: string; message_count: number; created_at: string; updated_at: string }[]
   >([]);
-  const [claudeProjects, setClaudeProjects] = useState<string[]>([]);
+  const [claudeProjects, setClaudeProjects] = useState<
+    { uuid: string; name: string; description: string; has_prompt: boolean; doc_count: number }[]
+  >([]);
+  const [claudeMemories, setClaudeMemories] = useState<{
+    conversations_memory: string;
+    project_memories: { project_uuid: string; project_name: string; memory: string }[];
+  } | null>(null);
   const [claudeSelected, setClaudeSelected] = useState<Set<string>>(new Set());
+  const [claudeSelectedProjects, setClaudeSelectedProjects] = useState<Set<string>>(new Set());
+  const [claudeImportMemories, setClaudeImportMemories] = useState(true);
   const [claudeScanning, setClaudeScanning] = useState(false);
   const [importingClaudeProjects, setImportingClaudeProjects] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +138,52 @@ export default function ImportSettingsSection() {
       await message(msg, { title: "LM Studio import failed", kind: "error" });
     } finally {
       setImportingLmStudio(false);
+    }
+  }
+
+  async function importFromMultipleFolders() {
+    setError(null);
+    setImportingMultipleFolders(true);
+
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: true,
+        title: "Select folders to import as workspaces",
+      });
+      const folderPaths = Array.isArray(selected) ? selected : (selected ? [selected] : []);
+      if (!folderPaths || folderPaths.length === 0) { return; }
+
+      const result = await api.chatFile.importMultipleFolders(folderPaths);
+
+      if (result.total_imported < 1) {
+        throw new Error("No conversations were imported from the selected folders.");
+      }
+
+      const freshWorkspaces = await api.workspace.list();
+      setWorkspaces(freshWorkspaces);
+
+      const lines = [
+        `${result.successful}/${result.total_folders} folders processed successfully.`,
+        `${result.total_imported} total conversation${result.total_imported === 1 ? "" : "s"} imported.`,
+      ];
+      if (result.total_skipped > 0) {
+        lines.push(`${result.total_skipped} duplicate${result.total_skipped === 1 ? "" : "s"} skipped.`);
+      }
+      if (result.total_errors > 0) {
+        lines.push(`${result.total_errors} file${result.total_errors === 1 ? "" : "s"} had errors.`);
+      }
+
+      await message(lines.join("\n"), {
+        title: "Multi-folder import complete",
+        kind: result.total_errors > 0 ? "warning" : "info",
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Multi-folder import failed";
+      setError(msg);
+      await message(msg, { title: "Multi-folder import failed", kind: "error" });
+    } finally {
+      setImportingMultipleFolders(false);
     }
   }
 
@@ -235,6 +290,7 @@ export default function ImportSettingsSection() {
     setClaudeScanning(true);
     setClaudePreviews([]);
     setClaudeProjects([]);
+    setClaudeMemories(null);
     setClaudeFolder(null);
 
     try {
@@ -255,8 +311,11 @@ export default function ImportSettingsSection() {
       setClaudeFolder(filePath);
       setClaudePreviews(result.conversations);
       setClaudeProjects(result.projects);
+      setClaudeMemories(result.memories);
       // Select all by default
       setClaudeSelected(new Set(result.conversations.map((c) => c.uuid)));
+      setClaudeSelectedProjects(new Set(result.projects.map((p) => p.uuid)));
+      setClaudeImportMemories(result.memories != null);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Claude Desktop scan failed";
       setError(msg);
@@ -277,10 +336,13 @@ export default function ImportSettingsSection() {
       if (!resolvedName) { return; }
 
       const selectedIds = [...claudeSelected];
+      const selectedProjectIds = [...claudeSelectedProjects];
       const result = await api.chatFile.importClaudeDesktop(
         claudeFolder,
         resolvedName !== defaultName ? resolvedName : undefined,
         selectedIds,
+        selectedProjectIds.length > 0 ? selectedProjectIds : undefined,
+        claudeImportMemories,
       );
       if (result.imported < 1) {
         throw new Error("Claude Desktop import completed without importing any conversations.");
@@ -301,6 +363,9 @@ export default function ImportSettingsSection() {
         `${result.imported} conversation${result.imported === 1 ? "" : "s"} imported.`,
         `${result.projects_created} project${result.projects_created === 1 ? "" : "s"} created.`,
       ];
+      if (result.memories_imported > 0) {
+        lines.push(`${result.memories_imported} memor${result.memories_imported === 1 ? "y" : "ies"} imported.`);
+      }
       if (result.skipped > 0) {
         lines.push(`${result.skipped} duplicate${result.skipped === 1 ? "" : "s"} skipped.`);
       }
@@ -312,7 +377,10 @@ export default function ImportSettingsSection() {
       setClaudeFolder(null);
       setClaudePreviews([]);
       setClaudeProjects([]);
+      setClaudeMemories(null);
       setClaudeSelected(new Set());
+      setClaudeSelectedProjects(new Set());
+      setClaudeImportMemories(true);
 
       if (firstSession.length > 0) {
         navigate(`/chat/${firstSession[0].id}`);
@@ -364,6 +432,29 @@ export default function ImportSettingsSection() {
               >
                 {importingLmStudio ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
                 {importingLmStudio ? "Importing..." : "Import Folder"}
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <FolderInput size={16} className="text-[var(--accent-color)]" />
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Multiple Folders</h2>
+                </div>
+                <p className="mt-2 text-xs text-[var(--text-muted)]">
+                  Select multiple folders at once. Each folder containing <code>.conversation.json</code> files will be imported as a separate workspace.
+                </p>
+              </div>
+
+              <button
+                onClick={() => void importFromMultipleFolders()}
+                disabled={importingMultipleFolders}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+              >
+                {importingMultipleFolders ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+                {importingMultipleFolders ? "Importing..." : "Import Folders"}
               </button>
             </div>
           </section>
@@ -436,73 +527,159 @@ export default function ImportSettingsSection() {
               </button>
             </div>
 
-            {/* ── Conversation picker ─────────────────────────────── */}
+            {/* ── Selection picker ─────────────────────────────── */}
             {claudePreviews.length > 0 && (
-              <div className="mt-4 flex flex-col gap-3">
-                {claudeProjects.length > 0 && (
-                  <p className="text-xs text-[var(--text-muted)]">
-                    {claudeProjects.length} project{claudeProjects.length !== 1 && "s"} found: {claudeProjects.join(", ")}
-                  </p>
-                )}
+              <div className="mt-4 flex flex-col gap-4">
 
-                {/* Select all / none */}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-[var(--text-secondary)]">
-                    {claudeSelected.size} of {claudePreviews.length} selected
-                  </span>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setClaudeSelected(new Set(claudePreviews.map((c) => c.uuid)))}
-                      className="text-xs text-[var(--accent-color)] hover:underline"
-                    >
-                      Select all
-                    </button>
-                    <button
-                      onClick={() => setClaudeSelected(new Set())}
-                      className="text-xs text-[var(--text-muted)] hover:underline"
-                    >
-                      Select none
-                    </button>
+                {/* ── Conversations ── */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-[var(--text-primary)]">
+                      Conversations ({claudeSelected.size}/{claudePreviews.length})
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setClaudeSelected(new Set(claudePreviews.map((c) => c.uuid)))}
+                        className="text-xs text-[var(--accent-color)] hover:underline"
+                      >
+                        All
+                      </button>
+                      <button
+                        onClick={() => setClaudeSelected(new Set())}
+                        className="text-xs text-[var(--text-muted)] hover:underline"
+                      >
+                        None
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
+                    {claudePreviews.map((conv) => {
+                      const checked = claudeSelected.has(conv.uuid);
+                      return (
+                        <label
+                          key={conv.uuid}
+                          className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 hover:bg-[var(--bg-hover)]"
+                        >
+                          <button
+                            type="button"
+                            role="checkbox"
+                            aria-checked={checked}
+                            onClick={() => {
+                              setClaudeSelected((prev) => {
+                                const next = new Set(prev);
+                                if (checked) { next.delete(conv.uuid); }
+                                else { next.add(conv.uuid); }
+                                return next;
+                              });
+                            }}
+                            className="shrink-0 text-[var(--accent-color)]"
+                          >
+                            {checked ? <CheckSquare size={16} /> : <Square size={16} className="text-[var(--text-muted)]" />}
+                          </button>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-medium text-[var(--text-primary)]">
+                              {conv.name || "Untitled"}
+                            </p>
+                            <p className="text-[10px] text-[var(--text-muted)]">
+                              {conv.message_count} msg{conv.message_count !== 1 && "s"} &middot; {new Date(conv.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Scrollable list */}
-                <div className="max-h-72 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
-                  {claudePreviews.map((conv) => {
-                    const checked = claudeSelected.has(conv.uuid);
-                    return (
-                      <label
-                        key={conv.uuid}
-                        className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 hover:bg-[var(--bg-hover)]"
-                      >
+                {/* ── Projects ── */}
+                {claudeProjects.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[var(--text-primary)]">
+                        Projects ({claudeSelectedProjects.size}/{claudeProjects.length})
+                      </span>
+                      <div className="flex gap-2">
                         <button
-                          type="button"
-                          role="checkbox"
-                          aria-checked={checked}
-                          onClick={() => {
-                            setClaudeSelected((prev) => {
-                              const next = new Set(prev);
-                              if (checked) { next.delete(conv.uuid); }
-                              else { next.add(conv.uuid); }
-                              return next;
-                            });
-                          }}
-                          className="shrink-0 text-[var(--accent-color)]"
+                          onClick={() => setClaudeSelectedProjects(new Set(claudeProjects.map((p) => p.uuid)))}
+                          className="text-xs text-[var(--accent-color)] hover:underline"
                         >
-                          {checked ? <CheckSquare size={16} /> : <Square size={16} className="text-[var(--text-muted)]" />}
+                          All
                         </button>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium text-[var(--text-primary)]">
-                            {conv.name || "Untitled"}
-                          </p>
-                          <p className="text-[10px] text-[var(--text-muted)]">
-                            {conv.message_count} msg{conv.message_count !== 1 && "s"} &middot; {new Date(conv.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
+                        <button
+                          onClick={() => setClaudeSelectedProjects(new Set())}
+                          className="text-xs text-[var(--text-muted)] hover:underline"
+                        >
+                          None
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-44 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
+                      {claudeProjects.map((proj) => {
+                        const checked = claudeSelectedProjects.has(proj.uuid);
+                        return (
+                          <label
+                            key={proj.uuid}
+                            className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 hover:bg-[var(--bg-hover)]"
+                          >
+                            <button
+                              type="button"
+                              role="checkbox"
+                              aria-checked={checked}
+                              onClick={() => {
+                                setClaudeSelectedProjects((prev) => {
+                                  const next = new Set(prev);
+                                  if (checked) { next.delete(proj.uuid); }
+                                  else { next.add(proj.uuid); }
+                                  return next;
+                                });
+                              }}
+                              className="shrink-0 text-[var(--accent-color)]"
+                            >
+                              {checked ? <CheckSquare size={16} /> : <Square size={16} className="text-[var(--text-muted)]" />}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium text-[var(--text-primary)]">
+                                {proj.name}
+                              </p>
+                              <p className="text-[10px] text-[var(--text-muted)]">
+                                {proj.has_prompt && "Has instructions"}
+                                {proj.has_prompt && proj.doc_count > 0 && " · "}
+                                {proj.doc_count > 0 && `${proj.doc_count} doc${proj.doc_count !== 1 ? "s" : ""}`}
+                                {!proj.has_prompt && proj.doc_count === 0 && "Empty project"}
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Memories ── */}
+                {claudeMemories && (claudeMemories.conversations_memory || claudeMemories.project_memories.length > 0) && (
+                  <div className="flex flex-col gap-2">
+                    <label className="flex cursor-pointer items-center gap-2.5">
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={claudeImportMemories}
+                        onClick={() => setClaudeImportMemories((v) => !v)}
+                        className="shrink-0 text-[var(--accent-color)]"
+                      >
+                        {claudeImportMemories ? <CheckSquare size={16} /> : <Square size={16} className="text-[var(--text-muted)]" />}
+                      </button>
+                      <span className="text-xs font-medium text-[var(--text-primary)]">
+                        Import memories
+                      </span>
+                    </label>
+                    <p className="text-[10px] text-[var(--text-muted)] pl-6">
+                      {claudeMemories.conversations_memory ? "1 conversation memory" : ""}
+                      {claudeMemories.conversations_memory && claudeMemories.project_memories.length > 0 ? " + " : ""}
+                      {claudeMemories.project_memories.length > 0
+                        ? `${claudeMemories.project_memories.length} project memor${claudeMemories.project_memories.length !== 1 ? "ies" : "y"}`
+                        : ""}
+                    </p>
+                  </div>
+                )}
 
                 {/* Import / Cancel buttons */}
                 <div className="flex items-center justify-end gap-2">
@@ -511,7 +688,10 @@ export default function ImportSettingsSection() {
                       setClaudeFolder(null);
                       setClaudePreviews([]);
                       setClaudeProjects([]);
+                      setClaudeMemories(null);
                       setClaudeSelected(new Set());
+                      setClaudeSelectedProjects(new Set());
+                      setClaudeImportMemories(true);
                     }}
                     className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                   >

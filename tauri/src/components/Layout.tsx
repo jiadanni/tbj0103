@@ -113,9 +113,9 @@ function WorkspaceNavigationTabs({
   }, [menuOpen]);
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1">
+    <div className="relative flex h-full min-w-0 flex-1 items-center gap-1" data-no-drag>
       <div
-        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none"
+        className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none"
         onWheel={handleHorizontalWheel}
       >
         {workspaces.map((workspace) => (
@@ -199,10 +199,15 @@ function WorkspaceNavigationTabs({
       <div ref={menuRef} className="relative shrink-0">
         <button
           type="button"
+          data-no-drag
           aria-label={paneId ? `More workspaces for ${paneId}` : "More workspaces"}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((current) => !current)}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setMenuOpen((current) => !current);
+          }}
           className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)]/80 text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
         >
           <ChevronDown size={14} />
@@ -211,8 +216,9 @@ function WorkspaceNavigationTabs({
         {menuOpen && (
           <div
             role="menu"
+            data-no-drag
             aria-label={paneId ? `Workspace menu ${paneId}` : "Workspace menu"}
-            className="absolute right-0 top-full z-30 mt-2 max-h-80 min-w-[220px] overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-xl backdrop-blur-xl"
+            className="absolute right-0 top-full z-[100] mt-1 flex max-h-80 min-w-[220px] flex-col overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-xl backdrop-blur-xl"
           >
             {workspaces.map((workspace) => {
               const isActive = workspace.id === activeWorkspaceId;
@@ -733,10 +739,10 @@ function WorkspaceTabBar({
           onWheel={handleHorizontalWheel}
           className={
             showSplitTitlebarWorkspaceNavigation
-              ? "relative z-0 min-w-0 flex-1 overflow-hidden"
+              ? "relative z-0 min-w-0 flex-1"
               : showSinglePaneWorkspaceDropdown
               ? "min-w-0 flex-1"
-              : "min-w-0 flex-1 overflow-x-auto scrollbar-none"
+              : "min-w-0 flex-1 overflow-visible"
           }
           {...(showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceDropdown ? { "data-workspace-tab-strip": "" } : {})}
         >
@@ -1183,7 +1189,11 @@ export default function Layout() {
         />
       )}
 
-      <WorkspaceTabBar onToggleSplit={toggleSplitModeFromShell} showWorkspaceTabs={!splitMode} />
+      <WorkspaceTabBar 
+        onToggleSplit={toggleSplitModeFromShell} 
+        showWorkspaceTabs={!splitMode} 
+        className="z-40"
+      />
 
       {isDemoMode && (
         <div className="shrink-0 h-8 bg-amber-500/10 border-b border-amber-500/25 flex items-center justify-center gap-3 text-xs text-amber-600 dark:text-amber-400">

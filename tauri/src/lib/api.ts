@@ -666,6 +666,25 @@ export const api = {
         errors: number;
         error_messages: string[];
       }>("import_lmstudio_folder", { folderPath, workspaceName: workspaceName ?? null }),
+    importMultipleFolders: (folderPaths: string[]) =>
+      invoke<{
+        total_folders: number;
+        successful: number;
+        total_imported: number;
+        total_skipped: number;
+        total_errors: number;
+        results: Array<{
+          folder_path: string;
+          workspace_name?: string;
+          workspace_id?: string;
+          status: "success" | "error" | "warning";
+          message?: string;
+          imported?: number;
+          skipped?: number;
+          projects_created?: number;
+          errors?: number;
+        }>;
+      }>("import_multiple_folders", { folderPaths }),
     importGeminiTakeout: (filePath: string, workspaceName?: string) =>
       invoke<{
         imported_sessions: number;
@@ -673,21 +692,26 @@ export const api = {
         workspace_id: string;
         workspace_name: string;
       }>("import_gemini_takeout", { filePath, workspaceName: workspaceName ?? null }),
-    importClaudeDesktop: (filePath: string, workspaceName?: string, selectedIds?: string[]) =>
+    importClaudeDesktop: (filePath: string, workspaceName?: string, selectedIds?: string[], selectedProjectIds?: string[], importMemories?: boolean) =>
       invoke<{
         imported: number;
         skipped: number;
         workspace_id: string;
         workspace_name: string;
         projects_created: number;
+        memories_imported: number;
         errors: number;
         error_messages: string[];
-      }>("import_claude_desktop", { filePath, workspaceName: workspaceName ?? null, selectedIds: selectedIds ?? null }),
+      }>("import_claude_desktop", { filePath, workspaceName: workspaceName ?? null, selectedIds: selectedIds ?? null, selectedProjectIds: selectedProjectIds ?? null, importMemories: importMemories ?? false }),
     previewClaudeDesktop: (filePath: string) =>
       invoke<{
         conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string }[];
         total: number;
-        projects: string[];
+        projects: { uuid: string; name: string; description: string; has_prompt: boolean; doc_count: number }[];
+        memories: {
+          conversations_memory: string;
+          project_memories: { project_uuid: string; project_name: string; memory: string }[];
+        } | null;
       }>("preview_claude_desktop", { filePath }),
     importClaudeProjects: (filePath: string) =>
       invoke<{
