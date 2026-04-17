@@ -491,6 +491,7 @@ pub fn import_multiple_folders(
     }
 
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
+    let total_folder_count = folder_paths.len();
     let mut results = Vec::new();
     let mut total_imported = 0;
     let mut total_skipped = 0;
@@ -653,7 +654,7 @@ pub fn import_multiple_folders(
     }
 
     Ok(serde_json::json!({
-        "total_folders": folder_paths.len(),
+        "total_folders": total_folder_count,
         "successful": results.iter().filter(|r| r.get("status").and_then(|s| s.as_str()) == Some("success")).count(),
         "total_imported": total_imported,
         "total_skipped": total_skipped,
