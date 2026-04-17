@@ -665,14 +665,14 @@ export const api = {
         errors: number;
         error_messages: string[];
       }>("import_lmstudio_folder", { folderPath, workspaceName: workspaceName ?? null }),
-    importGeminiTakeout: (folderPath: string, workspaceName?: string) =>
+    importGeminiTakeout: (filePath: string, workspaceName?: string) =>
       invoke<{
         imported_sessions: number;
         imported_messages: number;
         workspace_id: string;
         workspace_name: string;
-      }>("import_gemini_takeout", { folderPath, workspaceName: workspaceName ?? null }),
-    importClaudeDesktop: (folderPath: string, workspaceName?: string, selectedIds?: string[]) =>
+      }>("import_gemini_takeout", { filePath, workspaceName: workspaceName ?? null }),
+    importClaudeDesktop: (filePath: string, workspaceName?: string, selectedIds?: string[]) =>
       invoke<{
         imported: number;
         skipped: number;
@@ -681,13 +681,19 @@ export const api = {
         projects_created: number;
         errors: number;
         error_messages: string[];
-      }>("import_claude_desktop", { folderPath, workspaceName: workspaceName ?? null, selectedIds: selectedIds ?? null }),
-    previewClaudeDesktop: (folderPath: string) =>
+      }>("import_claude_desktop", { filePath, workspaceName: workspaceName ?? null, selectedIds: selectedIds ?? null }),
+    previewClaudeDesktop: (filePath: string) =>
       invoke<{
         conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string }[];
         total: number;
         projects: string[];
-      }>("preview_claude_desktop", { folderPath }),
+      }>("preview_claude_desktop", { filePath }),
+    importClaudeProjects: (filePath: string) =>
+      invoke<{
+        created: number;
+        skipped: number;
+        total: number;
+      }>("import_claude_projects", { filePath }),
   },
 
   security: {

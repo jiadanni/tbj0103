@@ -481,43 +481,19 @@ pub fn import_lmstudio_folder(
 /// Searches for `My Activity.html` within the folder.
 #[tauri::command]
 pub fn import_gemini_takeout(
-    folder_path: String,
+    file_path: String,
     workspace_name: Option<String>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
-    let folder = std::path::Path::new(&folder_path);
-    if !folder.is_dir() {
-        return Err(format!("{} is not a directory", folder_path));
+    let html_file = std::path::Path::new(&file_path);
+    if !html_file.is_file() {
+        return Err(format!("{} is not a file", file_path));
     }
 
-    // Try to find My Activity.html
-    let mut html_path = folder.join("My Activity.html");
-    if !html_path.exists() {
-        // Search one level deeper (Common in Takeout extracts)
-        if let Ok(entries) = std::fs::read_dir(folder) {
-            for entry in entries.flatten() {
-                let p = entry.path().join("Gemini Apps").join("My Activity.html");
-                if p.exists() {
-                    html_path = p;
-                    break;
-                }
-                let p2 = entry.path().join("My Activity.html");
-                if p2.exists() {
-                    html_path = p2;
-                    break;
-                }
-            }
-        }
-    }
-
-    if !html_path.exists() {
-        return Err("Could not find 'My Activity.html' in the selected folder.".to_string());
-    }
-
-    let html_bytes = std::fs::read(&html_path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let html_bytes = std::fs::read(html_file).map_err(|e| format!("Failed to read file: {}", e))?;
     let html = String::from_utf8_lossy(&html_bytes).to_string();
 
     let sessions = chat_file_store::parse_gemini_takeout(&html)?;
@@ -619,26 +595,22 @@ pub fn import_gemini_takeout(
 /// conversations to import before calling `import_claude_desktop`.
 #[tauri::command]
 pub fn preview_claude_desktop(
-    folder_path: String,
+    file_path: String,
 ) -> Result<serde_json::Value, String> {
-    let folder = std::path::Path::new(&folder_path);
-    if !folder.is_dir() {
-        return Err(format!("{} is not a directory", folder_path));
-    }
-
-    let conv_path = folder.join("conversations.json");
-    if !conv_path.exists() {
-        return Err(
-            "Could not find 'conversations.json' in the selected folder.".to_string(),
-        );
+    let conv_file = std::path::Path::new(&file_path);
+    if !conv_file.is_file() {
+        return Err(format!("{} is not a file", file_path));
     }
 
     let conv_bytes =
-        std::fs::read(&conv_path).map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+        std::fs::read(conv_file).map_err(|e| format!("Failed to read conversations.json: {e}"))?;
     let previews = chat_file_store::preview_claude_conversations(&conv_bytes)?;
 
-    // Check for projects.json
-    let projects_path = folder.join("projects.json");
+    // Check for sibling projects.json in the same directory
+    let projects_path = conv_file
+        .parent()
+        .map(|p| p.join("projects.json"))
+        .unwrap_or_default();
     let project_names: Vec<String> = if projects_path.exists() {
         if let Ok(proj_bytes) = std::fs::read(&projects_path) {
             chat_file_store::parse_claude_projects(&proj_bytes)
@@ -669,7 +641,7 @@ pub fn preview_claude_desktop(
 /// are imported. Use `preview_claude_desktop` first to get the list.
 #[tauri::command]
 pub fn import_claude_desktop(
-    folder_path: String,
+    file_path: String,
     workspace_name: Option<String>,
     selected_ids: Option<Vec<String>>,
     chats_dir_state: State<ChatsDirState>,
@@ -677,21 +649,13 @@ pub fn import_claude_desktop(
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
-    let folder = std::path::Path::new(&folder_path);
-    if !folder.is_dir() {
-        return Err(format!("{} is not a directory", folder_path));
-    }
-
-    // Find conversations.json
-    let conv_path = folder.join("conversations.json");
-    if !conv_path.exists() {
-        return Err(
-            "Could not find 'conversations.json' in the selected folder.".to_string(),
-        );
+    let conv_file = std::path::Path::new(&file_path);
+    if !conv_file.is_file() {
+        return Err(format!("{} is not a file", file_path));
     }
 
     let conv_bytes =
-        std::fs::read(&conv_path).map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+        std::fs::read(conv_file).map_err(|e| format!("Failed to read conversations.json: {e}"))?;
     let chat_data_list = chat_file_store::parse_claude_conversations_filtered(
         &conv_bytes,
         selected_ids.as_deref().unwrap_or(&[]),
@@ -725,9 +689,12 @@ pub fn import_claude_desktop(
         new_id
     };
 
-    // Import projects from projects.json if present
+    // Import projects from sibling projects.json if present
     let mut projects_created = 0usize;
-    let projects_path = folder.join("projects.json");
+    let projects_path = conv_file
+        .parent()
+        .map(|p| p.join("projects.json"))
+        .unwrap_or_default();
     let mut project_map: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
 
@@ -848,6 +815,63 @@ fn sync_all_to_files_internal(
         }
     }
     Ok(count)
+}
+
+/// Import Claude Desktop `projects.json` — each project becomes a separate workspace.
+/// The project's `prompt_template` maps to `prompt_instructions` and `description` maps
+/// to the workspace description.
+#[tauri::command]
+pub fn import_claude_projects(
+    file_path: String,
+    db_state: State<DbState>,
+) -> Result<serde_json::Value, String> {
+    let conn = db_state.0.get().map_err(|e| e.to_string())?;
+    let proj_file = std::path::Path::new(&file_path);
+    if !proj_file.is_file() {
+        return Err(format!("{} is not a file", file_path));
+    }
+
+    let proj_bytes =
+        std::fs::read(proj_file).map_err(|e| format!("Failed to read projects.json: {e}"))?;
+    let projects = chat_file_store::parse_claude_projects(&proj_bytes)?;
+    if projects.is_empty() {
+        return Err("No projects found in the selected file.".to_string());
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut created = 0usize;
+    let mut skipped = 0usize;
+
+    for (_proj_uuid, proj_name, proj_description, proj_prompt) in &projects {
+        let normalized = proj_name.trim();
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
+                rusqlite::params![normalized],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+
+        if exists {
+            skipped += 1;
+            continue;
+        }
+
+        let ws_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, '{}', ?5, ?5)",
+            rusqlite::params![ws_id, proj_name, proj_description, proj_prompt, now],
+        )
+        .map_err(|e| e.to_string())?;
+        created += 1;
+    }
+
+    Ok(serde_json::json!({
+        "created": created,
+        "skipped": skipped,
+        "total": projects.len(),
+    }))
 }
 
 /// Called by lib.rs during app setup.

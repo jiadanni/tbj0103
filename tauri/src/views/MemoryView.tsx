@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Brain, ChevronDown, Globe, Layers, Pin, PinOff, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Brain, Globe, Layers, Pin, PinOff, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { api, type Memory } from "../lib/api";
 import { useScopedWorkspace } from "../lib/workspacePane";
+import CompactMenuSelect from "../components/CompactMenuSelect";
 
 const MEMORY_TYPES: Memory["memory_type"][] = ["fact", "preference", "context"];
 
@@ -152,20 +153,16 @@ export default function MemoryView() {
               rows={4}
               className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />
-            <div className="relative">
-              <select
-                value={newType}
-                onChange={(e) => setNewType(e.target.value as Memory["memory_type"])}
-                className="h-11 w-full appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-10 text-sm text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
-              >
-                {MEMORY_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type[0].toUpperCase() + type.slice(1)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-            </div>
+            <CompactMenuSelect
+              label="Type"
+              value={newType}
+              options={MEMORY_TYPES.map((type) => ({
+                value: type,
+                label: type[0].toUpperCase() + type.slice(1),
+              }))}
+              onChange={(val) => setNewType(val as Memory["memory_type"])}
+              widthClassName="w-full"
+            />
             <button
               onClick={createMemory}
               disabled={submitting || !newContent.trim() || isWorkspaceDisabled}

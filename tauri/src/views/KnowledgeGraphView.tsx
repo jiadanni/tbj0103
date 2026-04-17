@@ -44,6 +44,7 @@ import {
   selectRootNode,
   estimateOptimalRadius,
 } from "../lib/treeLayout";
+import CompactMenuSelect from "../components/CompactMenuSelect";
 
 
 const TYPE_COLORS: Record<string, string> = {
@@ -507,19 +508,16 @@ export default function KnowledgeGraphView() {
             <span className="text-xs font-semibold text-[var(--text-primary)]">AI Analysis</span>
           </div>
 
-          <div className="relative mb-2">
-            <select
-              value={selectedModel}
-              onChange={(event) => setSelectedModel(event.target.value)}
-              className="w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-input)] px-2 py-1 pr-8 text-xs text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
-            >
-              {availableModels.length === 0 && <option value="">No models found</option>}
-              {availableModels.map((model) => (
-                <option key={model} value={model}>{model}</option>
-              ))}
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-          </div>
+          <CompactMenuSelect
+            label="AI Model"
+            value={selectedModel}
+            options={availableModels.length === 0 
+              ? [{ value: "", label: "No models found" }] 
+              : availableModels.map((m) => ({ value: m, label: m }))
+            }
+            onChange={(val) => setSelectedModel(val)}
+            widthClassName="w-full mb-2"
+          />
 
           <input
             value={focusTopic}
@@ -954,21 +952,18 @@ export default function KnowledgeGraphView() {
 
                       {/* Root node selector (only in tree mode) */}
                       {layoutMode === "tree" && (
-                        <select
+                        <CompactMenuSelect
+                          label="Tree Root"
                           value={selectedRootId || ""}
-                          onChange={(e) => setSelectedRootId(e.target.value || null)}
-                          className="appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2 py-1.5 pr-6 text-xs text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
-                          title="Select tree root"
-                        >
-                          <option value="">Auto-select root</option>
-                          {nodes
-                            .filter((n) => n.hierarchy_level === "chapter")
-                            .map((n) => (
-                              <option key={n.id} value={n.id}>
-                                Root: {n.name}
-                              </option>
-                            ))}
-                        </select>
+                          options={[
+                            { value: "", label: "Auto-select root" },
+                            ...nodes
+                              .filter((n) => n.hierarchy_level === "chapter")
+                              .map((n) => ({ value: n.id, label: `Root: ${n.name}` })),
+                          ]}
+                          onChange={(val) => setSelectedRootId(val || null)}
+                          widthClassName="min-w-[140px]"
+                        />
                       )}
                     </>
                   )}
@@ -1247,20 +1242,16 @@ export default function KnowledgeGraphView() {
               className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />
 
-            <div className="relative">
-              <select
-                value={newConceptType}
-                onChange={(event) => setNewConceptType(event.target.value)}
-                className="w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-input)] px-3 py-2 pr-9 text-sm text-[var(--text-secondary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
-              >
-                {["topic", "person", "technology", "definition", "question", "insight", "resource", "custom"].map((type) => (
-                  <option key={type} value={type}>
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-            </div>
+            <CompactMenuSelect
+              label="Concept Type"
+              value={newConceptType}
+              options={["topic", "person", "technology", "definition", "question", "insight", "resource", "custom"].map((type) => ({
+                value: type,
+                label: type.charAt(0).toUpperCase() + type.slice(1),
+              }))}
+              onChange={(val) => setNewConceptType(val)}
+              widthClassName="w-full"
+            />
 
             <div className="flex gap-2">
               <button

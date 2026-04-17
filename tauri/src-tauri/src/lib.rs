@@ -536,6 +536,7 @@ pub fn run() {
             commands::chat_file::import_lmstudio_folder,
             commands::chat_file::import_gemini_takeout,
             commands::chat_file::import_claude_desktop,
+            commands::chat_file::import_claude_projects,
             commands::chat_file::preview_claude_desktop,
             // Web AI (Playwright bridge)
             commands::web_ai::send_web_message,

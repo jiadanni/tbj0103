@@ -1570,12 +1570,14 @@ export default function ChatView() {
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [isModelSendMenuOpen, setIsModelSendMenuOpen] = useState(false);
+  const [isEmptyStatePrivacyMenuOpen, setIsEmptyStatePrivacyMenuOpen] = useState(false);
   type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
   const [activeContextSources, setActiveContextSources] = useState<Record<string, ContextSources>>({});
   const [loadedSessionScopeKey, setLoadedSessionScopeKey] = useState<string | null>(null);
   const [sessionSidebarDragActive, setSessionSidebarDragActive] = useState(false);
   const syncedSessionModelRef = useRef<{ sessionId: string | null; modelName: string }>({ sessionId: null, modelName: "" });
   const chatViewRef = useRef<HTMLDivElement | null>(null);
+  const emptyStatePrivacyMenuRef = useRef<HTMLDivElement | null>(null);
   const streamUnlistenRef = useRef<(() => void) | null>(null);
   const refineUnlistenRef = useRef<(() => void) | null>(null);
   const handledLocationActionKeyRef = useRef<string | null>(null);
@@ -1669,6 +1671,18 @@ export default function ChatView() {
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isSplitPane, sessionSidebarDragActive, setSidebarWidth]);
+
+  // Handle outside clicks for empty state privacy menu
+  useEffect(() => {
+    if (!isEmptyStatePrivacyMenuOpen) { return; }
+    function handleOutsideClick(event: MouseEvent) {
+      if (emptyStatePrivacyMenuRef.current && !emptyStatePrivacyMenuRef.current.contains(event.target as Node)) {
+        setIsEmptyStatePrivacyMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [isEmptyStatePrivacyMenuOpen]);
 
   // Persist model choice to global settings
   const persistModelChoice = useCallback(async (model: string) => {
@@ -1943,7 +1957,6 @@ export default function ChatView() {
   const [compareResponseB, setCompareResponseB] = useState("");
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
-  const [emptyStatePrivacyMode, setEmptyStatePrivacyMode] = useState<"standard" | "incognito" | "exclude">("standard");
   const [compareModels, setCompareModels] = useState<OllamaModel[]>([]);
 
   // Grounded chat (RAG) state
@@ -3533,52 +3546,73 @@ export default function ChatView() {
                 <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center">
                   <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
                   <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
-                  <div className="flex flex-wrap justify-center gap-2">
-                    <button
-                      onClick={() => createNewSession({
-                        isIncognito: emptyStatePrivacyMode === "incognito",
-                        excludeFromAnalytics: emptyStatePrivacyMode === "exclude",
-                      })}
-                      className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
-                    >
-                      Start a new chat
-                    </button>
-                  </div>
-                  <div className="w-full max-w-xs rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3 text-left">
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                        <input
-                          type="radio"
-                          name="empty-state-privacy"
-                          checked={emptyStatePrivacyMode === "incognito"}
-                          onChange={() => setEmptyStatePrivacyMode("incognito")}
-                          className="accent-[var(--accent-color)]"
-                        />
-                        <Ghost size={14} className="text-purple-400" />
-                        Incognito
-                      </label>
-                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                        <input
-                          type="radio"
-                          name="empty-state-privacy"
-                          checked={emptyStatePrivacyMode === "exclude"}
-                          onChange={() => setEmptyStatePrivacyMode("exclude")}
-                          className="accent-[var(--accent-color)]"
-                        />
-                        <Shield size={14} className="text-sky-400" />
-                        Exclude from analytics
-                      </label>
-                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                        <input
-                          type="radio"
-                          name="empty-state-privacy"
-                          checked={emptyStatePrivacyMode === "standard"}
-                          onChange={() => setEmptyStatePrivacyMode("standard")}
-                          className="accent-[var(--accent-color)]"
-                        />
-                        <MessageSquare size={14} className="text-[var(--text-muted)]" />
-                        Standard
-                      </label>
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="relative" ref={emptyStatePrivacyMenuRef}>
+                      <div className="group flex items-center">
+                        <button
+                          onClick={() => createNewSession()}
+                          className="flex h-11 items-center gap-2.5 rounded-l-2xl border border-[rgba(var(--accent-color-rgb),0.18)] bg-[rgba(var(--accent-color-rgb),0.1)] px-6 py-0 text-[15px] font-semibold text-white shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)]"
+                        >
+                          <Plus size={18} />
+                          Start a new chat
+                        </button>
+                        <button
+                          onClick={() => setIsEmptyStatePrivacyMenuOpen((v) => !v)}
+                          className="flex h-11 w-11 items-center justify-center rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.18)] border-l-[rgba(255,255,255,0.06)] bg-[rgba(var(--accent-color-rgb),0.1)] text-white shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)]"
+                        >
+                          <ChevronDown size={16} className={`transition-transform duration-200 ${isEmptyStatePrivacyMenuOpen ? "rotate-180" : ""}`} />
+                        </button>
+                      </div>
+
+                      {isEmptyStatePrivacyMenuOpen && (
+                        <div className="absolute left-0 top-full z-20 mt-2 w-72 overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[rgba(14,16,20,0.95)] p-1.5 shadow-[0_24px_50px_-24px_rgba(0,0,0,0.9)] backdrop-blur-xl transition-all animate-in fade-in slide-in-from-top-2 duration-200">
+                          <div className="flex flex-col gap-1">
+                            {[
+                              {
+                                id: "incognito",
+                                label: "Incognito",
+                                description: "Private session. History is not saved after you close the app.",
+                                icon: <Ghost size={16} />,
+                                color: "text-purple-400",
+                                action: () => createNewSession({ isIncognito: true }),
+                              },
+                              {
+                                id: "exclude",
+                                label: "Exclude from analytics",
+                                description: "Session is saved but excluded from memory and discovery.",
+                                icon: <Shield size={16} />,
+                                color: "text-sky-400",
+                                action: () => createNewSession({ excludeFromAnalytics: true }),
+                              },
+                              {
+                                id: "standard",
+                                label: "Standard",
+                                description: "Full history, local extraction, and long-term memory enabled.",
+                                icon: <MessageSquare size={16} />,
+                                color: "text-[var(--text-muted)]",
+                                action: () => createNewSession(),
+                              },
+                            ].map((item) => (
+                              <button
+                                key={item.id}
+                                onClick={() => {
+                                  setIsEmptyStatePrivacyMenuOpen(false);
+                                  item.action();
+                                }}
+                                className="group/item flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-all hover:bg-[rgba(255,255,255,0.05)]"
+                              >
+                                <div className={`mt-0.5 transition-colors ${item.color} opacity-70 group-hover/item:opacity-100`}>
+                                  {item.icon}
+                                </div>
+                                <div className="flex flex-col gap-0.5">
+                                  <div className="text-[13px] font-semibold text-white">{item.label}</div>
+                                  <div className="text-[11px] leading-normal text-[var(--text-muted)]">{item.description}</div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

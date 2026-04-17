@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Bug, Download, Info, RefreshCw, Search, Trash2, XCircle } from "lucide-react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { api, type LogEntry } from "../lib/api";
+import CompactMenuSelect from "../components/CompactMenuSelect";
 
 const LEVEL_OPTIONS = ["all", "debug", "info", "warn", "error"] as const;
 
@@ -148,18 +149,16 @@ export default function LogsView() {
         </div>
 
         {/* Source filter */}
-        <select
+        <CompactMenuSelect
+          label="Source"
           value={sourceFilter}
-          onChange={(e) => setSourceFilter(e.target.value)}
-          className="px-2 py-1 text-xs rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)]"
-        >
-          <option value="all">All sources</option>
-          {sources.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "all", label: "All sources" },
+            ...sources.map((s) => ({ value: s, label: s })),
+          ]}
+          onChange={(val) => setSourceFilter(val)}
+          widthClassName="min-w-[140px]"
+        />
 
         {/* Search */}
         <div className="relative flex-1 min-w-[180px] max-w-[320px]">
