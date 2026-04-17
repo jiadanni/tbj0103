@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB, type ModelFit } from "../lib/modelSizing";
@@ -16,6 +16,7 @@ import { type NavigationPresentation, useWorkspaceStore } from "../stores/worksp
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import ImportSettingsSection from "./ImportSettingsSection";
+const LogsView = React.lazy(() => import("./LogsView"));
 import CompactMenuSelect from "../components/CompactMenuSelect";
 import { MOD_KEY, isLinux, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
@@ -38,6 +39,7 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "import",      label: "Import",      Icon: FolderInput },
   { id: "mcp",         label: "MCP",         Icon: Network },
   { id: "sync",        label: "Sync",        Icon: GitBranch },
+  { id: "logs",        label: "Logs",        Icon: ScrollText },
 ];
 
 function normalizePreferencesSection(section: string | undefined): PreferencesSection | null {
@@ -153,6 +155,14 @@ export default function PreferencesView() {
   const setAutoGenerateFlashcards = useSettingsStore((state) => state.setAutoGenerateFlashcards);
   const showGenInfo = useSettingsStore((state) => state.showGenInfo);
   const setShowGenInfo = useSettingsStore((state) => state.setShowGenInfo);
+  const showGenInfoTokenCount = useSettingsStore((state) => state.showGenInfoTokenCount);
+  const setShowGenInfoTokenCount = useSettingsStore((state) => state.setShowGenInfoTokenCount);
+  const showGenInfoDuration = useSettingsStore((state) => state.showGenInfoDuration);
+  const setShowGenInfoDuration = useSettingsStore((state) => state.setShowGenInfoDuration);
+  const showGenInfoSpeed = useSettingsStore((state) => state.showGenInfoSpeed);
+  const setShowGenInfoSpeed = useSettingsStore((state) => state.setShowGenInfoSpeed);
+  const showGenInfoModel = useSettingsStore((state) => state.showGenInfoModel);
+  const setShowGenInfoModel = useSettingsStore((state) => state.setShowGenInfoModel);
   const scrollToTopOnSend = useSettingsStore((state) => state.scrollToTopOnSend);
   const setScrollToTopOnSend = useSettingsStore((state) => state.setScrollToTopOnSend);
   const chatMessageStyle = useSettingsStore((state) => state.chatMessageStyle);
@@ -316,6 +326,11 @@ export default function PreferencesView() {
     settingsStore.setPromptInstructions(settings.prompt_instructions);
     settingsStore.setSwitchWorkspaceToChat(settings.switch_workspace_to_chat);
     settingsStore.setHideNativeMenu(settings.hide_native_menu);
+    settingsStore.setShowGenInfo(settings.show_gen_info);
+    settingsStore.setShowGenInfoTokenCount(settings.show_gen_info_token_count);
+    settingsStore.setShowGenInfoDuration(settings.show_gen_info_duration);
+    settingsStore.setShowGenInfoSpeed(settings.show_gen_info_speed);
+    settingsStore.setShowGenInfoModel(settings.show_gen_info_model);
   }
 
   function scheduleSavedNoticeReset() {
@@ -410,7 +425,7 @@ export default function PreferencesView() {
       });
   }
 
-  function refreshOllamaModels(ollamaUrl: string, options?: { clearResult?: boolean }) {
+  function refreshOllamaModels(ollamaUrl: string, options?: { clearResult?: boolean; useCache?: boolean }) {
     const requestId = ++ollamaModelsRequestRef.current;
     setOllamaModelsLoading(true);
     if (options?.clearResult) {
@@ -418,7 +433,8 @@ export default function PreferencesView() {
       setOllamaReachable(null);
     }
 
-    api.ollama.listModelsFresh(ollamaUrl || undefined)
+    const mode = options?.useCache ? api.ollama.listModels : api.ollama.listModelsFresh;
+    mode(ollamaUrl || undefined)
       .then((models) => {
         if (requestId !== ollamaModelsRequestRef.current) {return;}
         setOllamaReachable(true);
@@ -450,7 +466,7 @@ export default function PreferencesView() {
       setDbSettings(normalizedSettings);
       dbSettingsRef.current = normalizedSettings;
       syncClientSettings(normalizedSettings);
-      refreshOllamaModels(normalizedSettings.ollama_base_url);
+      refreshOllamaModels(normalizedSettings.ollama_base_url, { useCache: true });
     }).catch(() => {});
     loadSystemSpecs();
     loadAiModels();
@@ -1074,7 +1090,7 @@ export default function PreferencesView() {
                 {isDemoMode ? (
                   <div className="flex items-center justify-between py-1">
                     <div>
-                      <p className="text-sm text-[var(--text-secondary)]">Disable Demo Mode</p>
+                      <p className="text-sm text-[var(--text-secondary)]">Exit Demo Mode</p>
                       <p className="text-xs text-[var(--text-muted)] mt-0.5">
                         Exit demo and return to your regular workspaces. All demo data will be deleted.
                       </p>
@@ -1082,22 +1098,24 @@ export default function PreferencesView() {
                     <button
                       onClick={async () => {
                         try {
+                          // Mark demo as dismissed to prevent re-auto-activation
+                          await api.settings.update({ ...dbSettings, demo_dismissed: true });
                           await api.demo.deactivate();
                           setDemo(false);
                           window.location.reload();
                         } catch (e) {
-                          await message(`Failed to disable demo mode.\n${e}`, { title: "Error", kind: "error" });
+                          await message(`Failed to exit demo mode.\n${e}`, { title: "Error", kind: "error" });
                         }
                       }}
                       className="rounded-lg border border-red-500/50 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 transition-colors hover:border-red-500 hover:bg-red-500/10"
                     >
-                      Disable Demo
+                      Exit Demo
                     </button>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between py-1">
                     <div>
-                      <p className="text-sm text-[var(--text-secondary)]">Launch Demo Mode</p>
+                      <p className="text-sm text-[var(--text-secondary)]">Start Demo Mode</p>
                       <p className="text-xs text-[var(--text-muted)] mt-0.5">
                         Explore Aetherium with pre-populated examples and a fully featured workspace.
                       </p>
@@ -1105,6 +1123,8 @@ export default function PreferencesView() {
                     <button
                       onClick={async () => {
                         try {
+                          // Ensure demo_dismissed is false when manually starting demo
+                          await api.settings.update({ ...dbSettings, demo_dismissed: false });
                           const demoWorkspaceId = await api.demo.activate();
                           setDemo(true, demoWorkspaceId);
                           window.location.reload();
@@ -1976,12 +1996,34 @@ export default function PreferencesView() {
               )}
 
               {/* Show Gen Info */}
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Show Gen Info</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Display token count, duration, and speed (tok/s) below assistant messages</p>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Show Gen Info</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Display token count, duration, and speed (tok/s) below assistant messages</p>
+                  </div>
+                  <Toggle on={showGenInfo} onToggle={() => setShowGenInfo(!showGenInfo)} />
                 </div>
-                <Toggle on={showGenInfo} onToggle={() => setShowGenInfo(!showGenInfo)} />
+                {showGenInfo && (
+                  <div className="ml-4 space-y-2 border-l border-[var(--border-color)] pl-4 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[var(--text-secondary)]">Model name</span>
+                      <Toggle on={showGenInfoModel} onToggle={() => setShowGenInfoModel(!showGenInfoModel)} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[var(--text-secondary)]">Token count</span>
+                      <Toggle on={showGenInfoTokenCount} onToggle={() => setShowGenInfoTokenCount(!showGenInfoTokenCount)} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[var(--text-secondary)]">Generation duration</span>
+                      <Toggle on={showGenInfoDuration} onToggle={() => setShowGenInfoDuration(!showGenInfoDuration)} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[var(--text-secondary)]">Generation speed (tok/s)</span>
+                      <Toggle on={showGenInfoSpeed} onToggle={() => setShowGenInfoSpeed(!showGenInfoSpeed)} />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Scroll message to top on send */}
@@ -2408,6 +2450,14 @@ export default function PreferencesView() {
       {activeTab === "import" && (
         <div className="flex-1 min-h-0 overflow-hidden">
           <ImportSettingsSection />
+        </div>
+      )}
+      
+      {activeTab === "logs" && (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <React.Suspense fallback={null}>
+            <LogsView />
+          </React.Suspense>
         </div>
       )}
 

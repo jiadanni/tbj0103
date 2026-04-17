@@ -1547,6 +1547,10 @@ export default function ChatView() {
   const skipLinkConfirm = useSettingsStore((s) => s.skipLinkConfirm);
   const setSkipLinkConfirm = useSettingsStore((s) => s.setSkipLinkConfirm);
   const showGenInfo = useSettingsStore((s) => s.showGenInfo);
+  const showGenInfoTokenCount = useSettingsStore((s) => s.showGenInfoTokenCount);
+  const showGenInfoDuration = useSettingsStore((s) => s.showGenInfoDuration);
+  const showGenInfoSpeed = useSettingsStore((s) => s.showGenInfoSpeed);
+  const showGenInfoModel = useSettingsStore((s) => s.showGenInfoModel);
   const scrollToTopOnSend = useSettingsStore((s) => s.scrollToTopOnSend);
   const chatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
@@ -2476,7 +2480,7 @@ export default function ChatView() {
 
     Promise.allSettled([
       api.aiModel.list(),
-      api.ollama.listModelsFresh(ollamaUrl),
+      api.ollama.listModels(ollamaUrl),
     ]).then(([aiModelsResult, ollamaModelsResult]) => {
       const aiModels = aiModelsResult.status === "fulfilled" ? aiModelsResult.value : [];
       const installedOllamaModels = ollamaModelsResult.status === "fulfilled"
@@ -3715,6 +3719,10 @@ export default function ChatView() {
                               chatMessageStyle={chatMessageStyle}
                               expandChatToWindowWidth={expandChatToWindowWidth}
                               showGenInfo={showGenInfo}
+                              showGenInfoTokenCount={showGenInfoTokenCount}
+                              showGenInfoDuration={showGenInfoDuration}
+                              showGenInfoSpeed={showGenInfoSpeed}
+                              showGenInfoModel={showGenInfoModel}
                               editingMessageId={editingMessageId}
                               editContent={editContent}
                               copiedMessageId={copiedMessageId}

@@ -73,13 +73,21 @@ function workspaceTabClassName({
   }`;
 }
 
-function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
+function WorkspaceNavigationTabs({
+  activeWorkspaceId,
+  onSelect,
+  onContextMenu,
+  paneId,
+}: {
+  activeWorkspaceId: string | null;
+  onSelect: (workspaceId: string) => void;
+  onContextMenu?: (workspace: Workspace, x: number, y: number) => void;
+  paneId?: PaneId;
+}) {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
-  const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
-  const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
-  const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
-  const activeWorkspaceId = paneWorkspaceId ?? "";
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
+  const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -104,11 +112,6 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
     };
   }, [menuOpen]);
 
-  function selectWorkspace(workspaceId: string) {
-    setActivePaneId(paneId);
-    setPaneWorkspace(paneId, workspaceId);
-  }
-
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <div
@@ -117,11 +120,76 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
       >
         {workspaces.map((workspace) => (
           <button
-            key={`${paneId}-${workspace.id}`}
-            onClick={() => selectWorkspace(workspace.id)}
-            className={workspaceTabClassName({ isActive: activeWorkspaceId === workspace.id })}
+            key={`${paneId ? paneId + "-" : ""}${workspace.id}`}
+            onClick={() => onSelect(workspace.id)}
+            onContextMenu={(event) => {
+              if (onContextMenu) {
+                event.preventDefault();
+                event.stopPropagation();
+                onContextMenu(workspace, event.clientX, event.clientY);
+              }
+            }}
+            onDragOver={(event) => {
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                return;
+              }
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }}
+            onDragEnter={(event) => {
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                return;
+              }
+              event.preventDefault();
+              setDragOverWorkspaceId(workspace.id);
+              if (dragHoverTimerRef.current) {
+                clearTimeout(dragHoverTimerRef.current);
+              }
+              dragHoverTimerRef.current = setTimeout(() => {
+                onSelect(workspace.id);
+              }, 600);
+            }}
+            onDragLeave={(event) => {
+              const related = event.relatedTarget as Node | null;
+              if (related && event.currentTarget.contains(related)) {
+                return;
+              }
+              if (dragOverWorkspaceId === workspace.id) {
+                setDragOverWorkspaceId(null);
+              }
+              if (dragHoverTimerRef.current) {
+                clearTimeout(dragHoverTimerRef.current);
+                dragHoverTimerRef.current = null;
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragOverWorkspaceId(null);
+              if (dragHoverTimerRef.current) {
+                clearTimeout(dragHoverTimerRef.current);
+                dragHoverTimerRef.current = null;
+              }
+              const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+              if (!raw) {
+                return;
+              }
+              try {
+                const sessionIds = JSON.parse(raw) as string[];
+                if (sessionIds.length > 0) {
+                  void api.chat.moveSessions(sessionIds, workspace.id).then(() => {
+                    onSelect(workspace.id);
+                  });
+                }
+              } catch {
+                /* ignore malformed data */
+              }
+            }}
+            className={workspaceTabClassName({
+              isActive: activeWorkspaceId === workspace.id,
+              isDragTarget: dragOverWorkspaceId === workspace.id,
+            })}
           >
-            {activeWorkspaceId === workspace.id && (
+            {(dragOverWorkspaceId === workspace.id || activeWorkspaceId === workspace.id) && (
               <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
             )}
             {workspace.name}
@@ -131,7 +199,7 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
       <div ref={menuRef} className="relative shrink-0">
         <button
           type="button"
-          aria-label={`More workspaces for ${paneId}`}
+          aria-label={paneId ? `More workspaces for ${paneId}` : "More workspaces"}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((current) => !current)}
@@ -143,7 +211,7 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
         {menuOpen && (
           <div
             role="menu"
-            aria-label={`Workspace menu ${paneId}`}
+            aria-label={paneId ? `Workspace menu ${paneId}` : "Workspace menu"}
             className="absolute right-0 top-full z-30 mt-2 max-h-80 min-w-[220px] overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-xl backdrop-blur-xl"
           >
             {workspaces.map((workspace) => {
@@ -151,12 +219,12 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
 
               return (
                 <button
-                  key={`${paneId}-menu-${workspace.id}`}
+                  key={`${paneId ? paneId + "-menu-" : "menu-"}${workspace.id}`}
                   type="button"
                   role="menuitemradio"
                   aria-checked={isActive}
                   onClick={() => {
-                    selectWorkspace(workspace.id);
+                    onSelect(workspace.id);
                     setMenuOpen(false);
                   }}
                   className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
@@ -173,6 +241,26 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
         )}
       </div>
     </div>
+  );
+}
+
+function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
+  const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
+  const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
+  const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
+  const activeWorkspaceId = paneWorkspaceId ?? "";
+
+  function selectWorkspace(workspaceId: string) {
+    setActivePaneId(paneId);
+    setPaneWorkspace(paneId, workspaceId);
+  }
+
+  return (
+    <WorkspaceNavigationTabs
+      activeWorkspaceId={activeWorkspaceId}
+      onSelect={selectWorkspace}
+      paneId={paneId}
+    />
   );
 }
 
@@ -523,8 +611,6 @@ function WorkspaceTabBar({
   const [dialogState, setDialogState] = useState<WorkspaceDialogState | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
-  const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
-  const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
   const splitUnsupportedRoute = ["/preferences", "/memory", "/webcapture"].some((path) => location.pathname.startsWith(path));
   const showSplitTitlebarWorkspaceNavigation = splitMode && !splitUnsupportedRoute;
@@ -662,85 +748,23 @@ function WorkspaceTabBar({
               />
             </div>
           ) : (
-            <div className={`${showSplitTitlebarWorkspaceNavigation ? "hidden" : "flex min-w-max items-center"}`}>
+            <div className={`${showSplitTitlebarWorkspaceNavigation ? "hidden" : "flex min-w-0 flex-1 items-center"}`}>
               {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs ? (
-              workspaces.map((ws) => (
+                <WorkspaceNavigationTabs
+                  activeWorkspaceId={activeWorkspaceId}
+                  onSelect={activateWorkspace}
+                  onContextMenu={(ws, x, y) => setContextMenu({ workspace: ws, x, y })}
+                />
+              ) : null}
+              {showWorkspaceTabs ? (
                 <button
-                  key={ws.id}
-                  onClick={() => activateWorkspace(ws.id)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setContextMenu({ workspace: ws, x: event.clientX, y: event.clientY });
-                  }}
-                  onDragOver={(event) => {
-                    if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
-                      return;
-                    }
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "move";
-                  }}
-                  onDragEnter={(event) => {
-                    if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
-                      return;
-                    }
-                    event.preventDefault();
-                    setDragOverWorkspaceId(ws.id);
-                    if (dragHoverTimerRef.current) {
-                      clearTimeout(dragHoverTimerRef.current);
-                    }
-                    dragHoverTimerRef.current = setTimeout(() => {
-                      setActiveWorkspaceId(ws.id);
-                    }, 600);
-                  }}
-                  onDragLeave={(event) => {
-                    const related = event.relatedTarget as Node | null;
-                    if (related && event.currentTarget.contains(related)) {
-                      return;
-                    }
-                    if (dragOverWorkspaceId === ws.id) {
-                      setDragOverWorkspaceId(null);
-                    }
-                    if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    setDragOverWorkspaceId(null);
-                    if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
-                    const raw = event.dataTransfer.getData("application/x-chat-session-ids");
-                    if (!raw) {
-                      return;
-                    }
-                    try {
-                      const sessionIds = JSON.parse(raw) as string[];
-                      if (sessionIds.length > 0) {
-                        void api.chat.moveSessions(sessionIds, ws.id).then(() => {
-                          activateWorkspace(ws.id);
-                        });
-                      }
-                    } catch { /* ignore malformed data */ }
-                  }}
-                  className={workspaceTabClassName({
-                    isActive: activeWorkspaceId === ws.id,
-                    isDragTarget: dragOverWorkspaceId === ws.id,
-                  })}
+                  onClick={() => setCreating(true)}
+                  title="New Workspace"
+                  className="ml-1 w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
                 >
-                  {(dragOverWorkspaceId === ws.id || activeWorkspaceId === ws.id) && (
-                    <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
-                  )}
-                  {ws.name}
+                  <Plus size={20} />
                 </button>
-              ))
-            ) : null}
-            {showWorkspaceTabs ? (
-              <button
-                onClick={() => setCreating(true)}
-                title="New Workspace"
-                className="ml-1 w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-              >
-                <Plus size={20} />
-              </button>
-            ) : null}
+              ) : null}
             </div>
           )}
         </div>

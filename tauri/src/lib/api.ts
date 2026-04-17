@@ -24,7 +24,8 @@ function createRequestId(): string {
 
 function logIpcEvent(level: "debug" | "error", message: string, payload: ObservabilityMeta): void {
   if (!OBSERVABILITY_ENABLED) {return;}
-  const logger = level === "error" ? console.error : console.warn;
+  // eslint-disable-next-line no-console
+  const logger = level === "error" ? console.error : console.log;
   logger(`[ipc] ${message}`, payload);
 }
 

@@ -430,9 +430,8 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
 pub fn deactivate_demo_mode(state: State<DbState>) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     // CASCADE deletes all demo data (projects, chats, concepts, etc.)
-    for ws_id in DEMO_WORKSPACE_IDS {
-        conn.execute("DELETE FROM workspaces WHERE id = ?1", rusqlite::params![ws_id])
-            .map_err(|e| e.to_string())?;
-    }
+    // We use a wildcard to ensure any stray demo workspaces are cleaned up
+    conn.execute("DELETE FROM workspaces WHERE id LIKE 'demo-%'", [])
+        .map_err(|e| e.to_string())?;
     Ok(())
 }

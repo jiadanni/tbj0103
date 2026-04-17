@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bug, Download, Info, RefreshCw, Search, Trash2, XCircle } from "lucide-react";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AlertTriangle, ArrowDownToLine, Bug, Download, Info, RefreshCw, Search, Trash2, XCircle } from "lucide-react";
 import { api, type LogEntry } from "../lib/api";
 import CompactMenuSelect from "../components/CompactMenuSelect";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 const LEVEL_OPTIONS = ["all", "debug", "info", "warn", "error"] as const;
 
@@ -23,22 +23,36 @@ const LEVEL_ICONS: Record<string, React.ReactNode> = {
 export default function LogsView() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [levelFilter, setLevelFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [sources, setSources] = useState<string[]>([]);
   const [autoScroll, setAutoScroll] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isFetchingRef = useRef(false);
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const fetchLogs = useCallback(async () => {
+    if (isFetchingRef.current) { return; }
+    isFetchingRef.current = true;
     try {
       const [entries, srcs] = await Promise.all([
         api.logs.get({
           level: levelFilter === "all" ? undefined : levelFilter,
           source: sourceFilter === "all" ? undefined : sourceFilter,
-          search: searchQuery || undefined,
+          search: debouncedSearchQuery || undefined,
           limit: 1000,
         }),
         api.logs.getSources(),
@@ -48,9 +62,10 @@ export default function LogsView() {
     } catch (e) {
       console.error("Failed to fetch logs", e);
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
     }
-  }, [levelFilter, sourceFilter, searchQuery]);
+  }, [levelFilter, sourceFilter, debouncedSearchQuery]);
 
   useEffect(() => {
     setLoading(true);
@@ -66,23 +81,26 @@ export default function LogsView() {
   }, [fetchLogs]);
 
   // Auto-scroll to bottom
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (autoScroll && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [logs, autoScroll]);
 
-  const handleClear = async () => {
-    const ok = await confirm("Clear all log entries? This cannot be undone.", {
-      title: "Clear Logs",
-      kind: "warning",
-    });
-    if (!ok) { return; }
+  const handleClear = () => {
+    setShowClearConfirm(true);
+  };
+
+  const performClear = async () => {
+    setClearing(true);
     try {
       await api.logs.clear();
       setLogs([]);
+      setShowClearConfirm(false);
     } catch (e) {
       console.error("Failed to clear logs", e);
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -101,6 +119,16 @@ export default function LogsView() {
     URL.revokeObjectURL(url);
   };
 
+  const handleScroll = () => {
+    if (!scrollRef.current) { return; }
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 20;
+    
+    if (autoScroll && !isAtBottom) {
+      setAutoScroll(false);
+    }
+  };
+
   const toggleExpand = (id: number) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -112,7 +140,15 @@ export default function LogsView() {
 
   const formatTimestamp = (ts: string) => {
     try {
-      const d = new Date(ts + "Z");
+      // SQLite datetime('now') returns "YYYY-MM-DD HH:MM:SS".
+      // We need "YYYY-MM-DDTHH:MM:SSZ" for reliable ISO 8601 parsing across browsers.
+      const isoTs = ts.includes("T") ? ts : ts.replace(" ", "T") + "Z";
+      const d = new Date(isoTs);
+      
+      if (isNaN(d.getTime())) {
+        return ts;
+      }
+
       return d.toLocaleString(undefined, {
         month: "short",
         day: "numeric",
@@ -127,9 +163,8 @@ export default function LogsView() {
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-[var(--bg-primary)] text-[var(--text-primary)]">
-      {/* Header / Toolbar */}
+      {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border-color)] shrink-0 flex-wrap">
-        <h1 className="text-lg font-semibold mr-2">Logs</h1>
 
         {/* Level filter chips */}
         <div className="flex items-center gap-1">
@@ -173,16 +208,17 @@ export default function LogsView() {
         </div>
 
         <div className="flex items-center gap-1 ml-auto">
-          {/* Auto-scroll toggle */}
-          <label className="flex items-center gap-1 text-xs text-[var(--text-secondary)] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={autoScroll}
-              onChange={(e) => setAutoScroll(e.target.checked)}
-              className="rounded"
-            />
-            Tail
-          </label>
+          <button
+            onClick={() => setAutoScroll(!autoScroll)}
+            className={`p-1.5 rounded transition-colors ${
+              autoScroll 
+                ? "bg-[var(--accent-color)] text-white shadow-sm" 
+                : "hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]"
+            }`}
+            title={autoScroll ? "Stop Tailing" : "Jump to Bottom & Tail"}
+          >
+            <ArrowDownToLine size={14} />
+          </button>
 
           <button
             onClick={fetchLogs}
@@ -211,19 +247,23 @@ export default function LogsView() {
       </div>
 
       {/* Log entries */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto font-mono text-xs">
+      <div 
+        ref={scrollRef} 
+        onScroll={handleScroll}
+        className="flex-1 min-h-0 overflow-y-auto font-mono text-xs"
+      >
         {logs.length === 0 && !loading ? (
           <div className="flex items-center justify-center h-full text-[var(--text-muted)]">
             No log entries
           </div>
         ) : (
           <table className="w-full">
-            <thead className="sticky top-0 bg-[var(--bg-secondary)] text-[var(--text-secondary)] text-left">
+            <thead className="z-20 text-[var(--text-secondary)] text-left border-b border-[var(--border-color)]">
               <tr>
-                <th className="px-3 py-1.5 w-[140px]">Time</th>
-                <th className="px-3 py-1.5 w-[70px]">Level</th>
-                <th className="px-3 py-1.5 w-[100px]">Source</th>
-                <th className="px-3 py-1.5">Message</th>
+                <th className="sticky top-0 px-3 py-1.5 w-[140px] font-semibold bg-[var(--bg-primary)] z-20">Time</th>
+                <th className="sticky top-0 px-3 py-1.5 w-[70px] font-semibold bg-[var(--bg-primary)] z-20">Level</th>
+                <th className="sticky top-0 px-3 py-1.5 w-[100px] font-semibold bg-[var(--bg-primary)] z-20">Source</th>
+                <th className="sticky top-0 px-3 py-1.5 font-semibold bg-[var(--bg-primary)] z-20">Message</th>
               </tr>
             </thead>
             <tbody>
@@ -264,6 +304,17 @@ export default function LogsView() {
           </table>
         )}
       </div>
+      {showClearConfirm && (
+        <ConfirmDialog
+          title="Clear Logs"
+          description="Are you sure you want to clear all log entries? This action cannot be undone."
+          confirmLabel="Clear All Logs"
+          tone="danger"
+          busy={clearing}
+          onConfirm={performClear}
+          onCancel={() => setShowClearConfirm(false)}
+        />
+      )}
     </div>
   );
 }

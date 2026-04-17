@@ -289,7 +289,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     activePaneId: storedSplitLayout.activePaneId,
     panes: storedSplitLayout.panes,
     setWorkspaces: (workspaces) => set((state) => {
-      const sortedWorkspaces = sortWorkspaces(workspaces, state.workspaceSortOrder);
+      let filteredWorkspaces = workspaces;
+      if (state.isDemoMode) {
+        filteredWorkspaces = workspaces.filter(ws => ws.id.startsWith("demo-"));
+      }
+      const sortedWorkspaces = sortWorkspaces(filteredWorkspaces, state.workspaceSortOrder);
       const activeWorkspaceId = findFallbackWorkspaceId(sortedWorkspaces, state.activeWorkspaceId);
       const primaryWorkspaceId = findFallbackWorkspaceId(
         sortedWorkspaces,
@@ -421,7 +425,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
       return { isDemoMode, activeWorkspaceId: nextWorkspaceId, panes };
     }),
-    addWorkspace: (ws) => set((s) => ({ workspaces: sortWorkspaces([...s.workspaces, ws], s.workspaceSortOrder) })),
+    addWorkspace: (ws) => set((s) => {
+      if (s.isDemoMode && !ws.id.startsWith("demo-")) {
+        return {}; // Hide regular workspaces in demo mode
+      }
+      return { workspaces: sortWorkspaces([...s.workspaces, ws], s.workspaceSortOrder) };
+    }),
     addProject: (p) => set((s) => ({
       projects: p.workspace_id === s.activeWorkspaceId ? [...s.projects, p] : s.projects,
       projectsByWorkspace: {
