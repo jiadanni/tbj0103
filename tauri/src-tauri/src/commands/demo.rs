@@ -150,11 +150,11 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
 
     // Concepts for Japanese workspace
     let jpn_concepts: Vec<(&str, &str, &str, &str)> = vec![
-        ("demo-concept-teform-000000000000000001", "Te-form", "The て conjugation — the most versatile verb form in Japanese, used for connecting clauses, requests, progressive, and permission.", "grammar"),
-        ("demo-concept-teiru-0000000000000000001", "ている Form", "Te-form + いる: expresses ongoing actions (progressive) or resultant states depending on verb type.", "grammar"),
-        ("demo-concept-verbconj-00000000000000001", "Verb Conjugation", "Japanese verbs conjugate into multiple forms (dictionary, masu, te, ta, nai, etc.) based on three groups: godan, ichidan, and irregular.", "grammar"),
+        ("demo-concept-teform-000000000000000001", "Te-form", "The て conjugation — the most versatile verb form in Japanese, used for connecting clauses, requests, progressive, and permission.", "definition"),
+        ("demo-concept-teiru-0000000000000000001", "ている Form", "Te-form + いる: expresses ongoing actions (progressive) or resultant states depending on verb type.", "definition"),
+        ("demo-concept-verbconj-00000000000000001", "Verb Conjugation", "Japanese verbs conjugate into multiple forms (dictionary, masu, te, ta, nai, etc.) based on three groups: godan, ichidan, and irregular.", "definition"),
         ("demo-concept-kanji-n4-0000000000000001", "JLPT N4 Kanji", "Approximately 300 kanji required for the JLPT N4 level, building on the 100 kanji from N5.", "topic"),
-        ("demo-concept-particles-00000000000000001", "Particles", "Function words (は, が, を, に, で, etc.) that mark grammatical relationships in Japanese sentences.", "grammar"),
+        ("demo-concept-particles-00000000000000001", "Particles", "Function words (は, が, を, に, で, etc.) that mark grammatical relationships in Japanese sentences.", "definition"),
     ];
     for (id, name, desc, ctype) in &jpn_concepts {
         conn.execute(
@@ -240,7 +240,7 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ("demo-concept-caesar-000000000000000001", "Julius Caesar", "Roman general and statesman who played a critical role in the transformation of the Roman Republic into the Roman Empire.", "person"),
         ("demo-concept-republic-00000000000000001", "Roman Republic", "The period of ancient Roman civilization characterized by a republican form of government (509–27 BC).", "topic"),
         ("demo-concept-augustus-000000000000000001", "Augustus", "First Roman Emperor, born Octavian. Transformed the Republic into the Principate while maintaining republican facades.", "person"),
-        ("demo-concept-senate-0000000000000000001", "Roman Senate", "The governing body of the Roman Republic that gradually lost power to military strongmen during the late Republic.", "institution"),
+        ("demo-concept-senate-0000000000000000001", "Roman Senate", "The governing body of the Roman Republic that gradually lost power to military strongmen during the late Republic.", "custom"),
     ];
     for (id, name, desc, ctype) in &rome_concepts {
         conn.execute(

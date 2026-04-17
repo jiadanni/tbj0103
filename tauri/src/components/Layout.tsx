@@ -35,6 +35,7 @@ const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
 const WebCaptureView = React.lazy(() => import("../views/WebCaptureView"));
 const FlashcardReviewView = React.lazy(() => import("../views/FlashcardReviewView"));
 const LearningPathView = React.lazy(() => import("../views/LearningPathView"));
+const LogsView = React.lazy(() => import("../views/LogsView"));
 import type { Workspace, PaneId } from "../stores/workspaceStore";
 import type { ChatSession } from "../stores/chatStore";
 
@@ -1219,6 +1220,7 @@ function AppRoutes() {
       <Route path="/learning" element={<LearningPathView />} />
       <Route path="/history" element={<HistoryView />} />
       <Route path="/memory" element={<MemoryView />} />
+      <Route path="/logs" element={<LogsView />} />
       <Route path="/preferences" element={<PreferencesView />} />
       
       {/* Legacy redirects */}

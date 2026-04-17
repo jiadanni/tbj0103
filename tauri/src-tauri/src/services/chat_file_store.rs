@@ -1300,6 +1300,110 @@ pub fn parse_claude_projects(
         .collect())
 }
 
+/// Lightweight preview of a Claude Desktop conversation for the UI picker.
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaudeConversationPreview {
+    pub uuid: String,
+    pub name: String,
+    pub message_count: usize,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Parse `conversations.json` and return lightweight previews (no message content).
+pub fn preview_claude_conversations(bytes: &[u8]) -> Result<Vec<ClaudeConversationPreview>, String> {
+    let conversations: Vec<ClaudeConversation> =
+        serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude Desktop JSON: {e}"))?;
+
+    Ok(conversations
+        .into_iter()
+        .filter(|c| !c.chat_messages.is_empty())
+        .map(|c| {
+            let msg_count = c.chat_messages.len();
+            ClaudeConversationPreview {
+                uuid: c.uuid,
+                name: c.name,
+                message_count: msg_count,
+                created_at: c.created_at,
+                updated_at: c.updated_at,
+            }
+        })
+        .collect())
+}
+
+/// Parse a Claude Desktop `conversations.json`, filtering to only the given UUIDs.
+/// If `selected_ids` is empty, parses all.
+pub fn parse_claude_conversations_filtered(
+    bytes: &[u8],
+    selected_ids: &[String],
+) -> Result<Vec<ChatFileData>, String> {
+    if selected_ids.is_empty() {
+        return parse_claude_conversations(bytes);
+    }
+
+    let conversations: Vec<ClaudeConversation> =
+        serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude Desktop JSON: {e}"))?;
+
+    let id_set: std::collections::HashSet<&str> =
+        selected_ids.iter().map(|s| s.as_str()).collect();
+
+    let mut results = Vec::new();
+
+    for conv in &conversations {
+        if !id_set.contains(conv.uuid.as_str()) {
+            continue;
+        }
+        if conv.chat_messages.is_empty() {
+            continue;
+        }
+
+        let messages: Vec<ChatFileMessage> = conv
+            .chat_messages
+            .iter()
+            .filter_map(|msg| {
+                let role = match msg.sender.as_str() {
+                    "human" => "user",
+                    "assistant" => "assistant",
+                    _ => return None,
+                };
+                let content = extract_claude_message_content(msg);
+                if content.is_empty() {
+                    return None;
+                }
+                Some(ChatFileMessage {
+                    id: msg.uuid.clone(),
+                    role: role.to_string(),
+                    content,
+                    model: if role == "assistant" {
+                        Some("claude".to_string())
+                    } else {
+                        None
+                    },
+                    tokens_used: None,
+                    duration_ms: None,
+                    timestamp: msg.created_at.clone(),
+                })
+            })
+            .collect();
+
+        if messages.is_empty() {
+            continue;
+        }
+
+        results.push(ChatFileData {
+            id: conv.uuid.clone(),
+            title: conv.name.clone(),
+            model: "claude".to_string(),
+            system_prompt: String::new(),
+            created_at: conv.created_at.clone(),
+            updated_at: conv.updated_at.clone(),
+            messages,
+        });
+    }
+
+    Ok(results)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

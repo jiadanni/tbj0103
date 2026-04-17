@@ -17,6 +17,7 @@ pub mod graph;
 pub mod knowledge_graph;
 pub mod learning_goal;
 pub mod llamacpp;
+pub mod log;
 pub mod mcp;
 pub mod memory;
 pub mod mlx;

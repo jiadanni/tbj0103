@@ -16,6 +16,7 @@ import { TopicChips } from "../components/TopicChips";
 import { WorkspaceMigrationBanner } from "../components/WorkspaceMigrationBanner";
 import ChatMessageBubble from "../components/ChatMessageBubble";
 import ConvertChatModal, { type ConvertKind } from "../components/ConvertChatModal";
+import CompactMenuSelect from "../components/CompactMenuSelect";
 import { useScopedChat, useScopedProjects, useScopedWorkspace, useWorkspacePane } from "../lib/workspacePane";
 import {
   buildChatSuggestionRow,
@@ -1552,11 +1553,11 @@ export default function ChatView() {
   const sidebarWidth = useSettingsStore((state) => state.sidebarWidth);
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
   const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
-  const composerSelectClassName = "h-10 w-full appearance-none rounded-full border border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.9)] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] outline-none transition-all hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] focus:border-[rgba(var(--accent-color-rgb),0.42)] focus:bg-[rgba(var(--accent-color-rgb),0.06)]";
+
   const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] transition-all";
   const composerToggleInactiveClass = "border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.78)] hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] hover:text-white";
   const composerToggleActiveClass = "border-[rgba(var(--accent-color-rgb),0.34)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]";
-  const composerUtilitySelectClassName = "h-9 appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 pl-3.5 pr-9 text-xs font-semibold text-[var(--text-secondary)] shadow-sm outline-none transition-all hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)] focus:border-[var(--accent-color)]";
+
   const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.54)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.2)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
 
   const [input, setInput] = useState("");
@@ -1948,6 +1949,38 @@ export default function ChatView() {
   // Grounded chat (RAG) state
   const [groundedEnabled, setGroundedEnabled] = useState(false);
   const [groundedTopK, setGroundedTopK] = useState(5);
+
+  // Map model_id to display name from global labels or priority list
+  const modelDisplayName = useCallback((modelId: string) => {
+    if (modelLabels[modelId]) { return modelLabels[modelId]; }
+    const found = aiModelList.find((m) => m.model_id === modelId);
+    return found ? found.name : modelId;
+  }, [modelLabels, aiModelList]);
+
+  const modelPickerLabel = (modelId: string) => {
+    return modelDisplayName(modelId);
+  };
+
+  const modelPickerOptionsFormatted = useMemo(() => {
+    return availableModels.map((id) => ({ value: id, label: modelDisplayName(id) }));
+  }, [availableModels, modelDisplayName]);
+
+  const topKOptions = useMemo(() => [3, 5, 8, 10].map((v) => ({ value: v.toString(), label: `Top ${v}` })), []);
+
+  const compareModelAOptions = useMemo(() => {
+    if (compareModels.length > 0) {
+      return compareModels.map((m) => ({ value: m.name, label: `A: ${modelDisplayName(m.name)}` }));
+    }
+    return [{ value: compareModelA, label: compareModelA ? `A: ${modelDisplayName(compareModelA)}` : "Model A" }];
+  }, [compareModels, compareModelA, modelDisplayName]);
+
+  const compareModelBOptions = useMemo(() => {
+    if (compareModels.length > 0) {
+      return compareModels.map((m) => ({ value: m.name, label: `B: ${modelDisplayName(m.name)}` }));
+    }
+    return [{ value: compareModelB, label: compareModelB ? `B: ${modelDisplayName(compareModelB)}` : "Model B" }];
+  }, [compareModels, compareModelB, modelDisplayName]);
+
   const [processedDocCount, setProcessedDocCount] = useState(0);
   const [messageSources, setMessageSources] = useState<Record<string, SearchResult[]>>({});
   const [expandedSources, setExpandedSources] = useState<string | null>(null);
@@ -2051,10 +2084,12 @@ export default function ChatView() {
     ),
     [aiModelList, quickSearchModels, selectedModel]
   );
+  /*
   const modelPickerOptions = useMemo(
     () => availableModels,
     [availableModels]
   );
+  */
   // uses granular selector from above
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
@@ -3422,17 +3457,6 @@ export default function ChatView() {
     (activeTopicSignature?.domain_tags.length ?? 0) > 0 || composerSuggestionRows.length > 0;
   const showComposerHeader = hasComposerHeader && !isComposerHeaderCollapsed;
 
-  // Map model_id to display name from global labels or priority list
-  const modelDisplayName = (modelId: string) => {
-    if (modelLabels[modelId]) { return modelLabels[modelId]; }
-    const found = aiModelList.find((m) => m.model_id === modelId);
-    return found ? found.name : modelId;
-  };
-
-  const modelPickerLabel = (modelId: string) => {
-    return modelDisplayName(modelId);
-  };
-
   const persistedUserMessageWithFallback = (optimistic: Message, persisted: Message): Message => ({
     ...optimistic,
     ...persisted,
@@ -3695,10 +3719,10 @@ export default function ChatView() {
                   {/* Input / composer area */}
                   <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-5"}`}>
                     <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[rgba(255,255,255,0.04)] bg-[rgba(14,16,20,0.58)] ${showComposerHeader ? "p-3" : "p-1.5"} shadow-[0_30px_90px_-46px_rgba(0,0,0,0.95)] backdrop-blur-[24px]`}>
-                      <div className="flex flex-col gap-3.5 min-w-0">
+                      <div className="flex flex-col gap-2 min-w-0">
                         {showComposerHeader && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
                           <div className="px-1 pt-1">
-                            <div className="px-1.5 pb-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
+                            <div className="px-1.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
                               General
                             </div>
                             <TopicChips
@@ -3736,51 +3760,19 @@ export default function ChatView() {
                           <div className="flex flex-col gap-3 min-w-0">
                             {/* Tool buttons row (icon-only) - moved above input */}
                             <div className="flex items-center gap-1.5 px-1">
-                              {/* Gemma3 model picker icon-only */}
-                              <div className="relative" data-active-model-menu>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (modelPickerOptions.length === 0) { return; }
-                                    setIsModelSendMenuOpen(false);
-                                    setIsModelPickerOpen((open) => !open);
+                              {/* Gemma3 model picker */}
+                              <div className="w-[180px]">
+                                <CompactMenuSelect
+                                  label="Model"
+                                  value={selectedModel || ""}
+                                  options={modelPickerOptionsFormatted}
+                                  onChange={async (modelId) => {
+                                    setSelectedModel(modelId);
+                                    await persistModelChoice(modelId);
                                   }}
-                                  disabled={modelPickerOptions.length === 0}
-                                  className={`${composerIconOnlyButtonClass}`}
-                                  title="Active model"
-                                  aria-haspopup="menu"
-                                  aria-expanded={isModelPickerOpen}
-                                >
-                                  <ChevronDown size={14} strokeWidth={2.2} />
-                                </button>
-                                {isModelPickerOpen && modelPickerOptions.length > 0 && (
-                                  <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
-                                    <div className="max-h-72 overflow-y-auto">
-                                      {modelPickerOptions.map((modelId) => {
-                                        const isSelected = modelId === selectedModel;
-                                        return (
-                                          <button
-                                            key={modelId}
-                                            type="button"
-                                            onClick={async () => {
-                                              setSelectedModel(modelId);
-                                              setIsModelPickerOpen(false);
-                                              await persistModelChoice(modelId);
-                                            }}
-                                            className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${isSelected
-                                                ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                                                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                                              }`}
-                                            title={modelPickerLabel(modelId)}
-                                          >
-                                            <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
-                                            {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
+                                  buttonClassName="text-[12px] h-9 px-3 bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.07)]"
+                                  menuClassName="text-[12px]"
+                                />
                               </div>
 
                               {/* Compare button icon-only */}
@@ -3970,16 +3962,15 @@ export default function ChatView() {
 
                           {/* Top-K picker (only when grounded is on) */}
                           {groundedEnabled && (
-                            <div className="relative">
-                              <select
-                                value={groundedTopK}
-                                onChange={(e) => setGroundedTopK(Number(e.target.value))}
-                                className={composerUtilitySelectClassName}
-                                title="Document chunks to retrieve"
-                              >
-                                {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
-                              </select>
-                              <ChevronDown size={14} strokeWidth={2.2} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.46)]" />
+                            <div className="w-24">
+                              <CompactMenuSelect
+                                label="Top-K"
+                                value={groundedTopK.toString()}
+                                options={topKOptions}
+                                onChange={(val) => setGroundedTopK(Number(val))}
+                                buttonClassName="text-[11px] h-9 px-3.5 bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.07)]"
+                                menuClassName="text-[11px]"
+                              />
                             </div>
                           )}
 
@@ -4070,42 +4061,34 @@ export default function ChatView() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-color)] px-1 pt-0.5">
-                        <div className="relative max-w-[220px]">
-                          <select
+                        <div className="w-[180px]">
+                          <CompactMenuSelect
+                            label="Compare Model A"
                             value={compareModelA}
-                            onChange={(e) => {
-                              setCompareModelA(e.target.value);
-                              saveCompareA(e.target.value);
-                              persistSetting("compare_model_a", e.target.value);
+                            options={compareModelAOptions}
+                            onChange={(val) => {
+                              setCompareModelA(val);
+                              saveCompareA(val);
+                              void persistSetting("compare_model_a", val);
                             }}
-                            className={`${composerSelectClassName} max-w-[220px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
-                            title="Compare model A"
-                          >
-                            {compareModels.length > 0
-                              ? compareModels.map((m) => <option key={m.name} value={m.name}>A: {modelDisplayName(m.name)}</option>)
-                              : <option value={compareModelA}>{compareModelA ? `A: ${modelDisplayName(compareModelA)}` : "Model A"}</option>
-                            }
-                          </select>
-                          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                            buttonClassName="text-[12px] h-9 bg-[var(--bg-primary)] px-3 shadow-none border-[var(--border-color)]"
+                            menuClassName="text-[12px]"
+                          />
                         </div>
 
-                        <div className="relative max-w-[220px]">
-                          <select
+                        <div className="w-[180px]">
+                          <CompactMenuSelect
+                            label="Compare Model B"
                             value={compareModelB}
-                            onChange={(e) => {
-                              setCompareModelB(e.target.value);
-                              saveCompareB(e.target.value);
-                              persistSetting("compare_model_b", e.target.value);
+                            options={compareModelBOptions}
+                            onChange={(val) => {
+                              setCompareModelB(val);
+                              saveCompareB(val);
+                              void persistSetting("compare_model_b", val);
                             }}
-                            className={`${composerSelectClassName} max-w-[220px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
-                            title="Compare model B"
-                          >
-                            {compareModels.length > 0
-                              ? compareModels.map((m) => <option key={m.name} value={m.name}>B: {modelDisplayName(m.name)}</option>)
-                              : <option value={compareModelB}>{compareModelB ? `B: ${modelDisplayName(compareModelB)}` : "Model B"}</option>
-                            }
-                          </select>
-                          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                            buttonClassName="text-[12px] h-9 bg-[var(--bg-primary)] px-3 shadow-none border-[var(--border-color)]"
+                            menuClassName="text-[12px]"
+                          />
                         </div>
 
                         <button
