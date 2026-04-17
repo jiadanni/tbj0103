@@ -596,6 +596,150 @@ pub fn import_gemini_takeout(
     }))
 }
 
+/// Import a Claude Desktop export folder containing conversations.json and
+/// optionally projects.json. Since the Claude export does not link conversations
+/// to projects, all conversations go into a single workspace. Projects from
+/// projects.json are created as empty project containers within that workspace.
+#[tauri::command]
+pub fn import_claude_desktop(
+    folder_path: String,
+    chats_dir_state: State<ChatsDirState>,
+    crypto: State<ChatCryptoState>,
+    db_state: State<DbState>,
+) -> Result<serde_json::Value, String> {
+    let conn = db_state.0.get().map_err(|e| e.to_string())?;
+    let folder = std::path::Path::new(&folder_path);
+    if !folder.is_dir() {
+        return Err(format!("{} is not a directory", folder_path));
+    }
+
+    // Find conversations.json
+    let conv_path = folder.join("conversations.json");
+    if !conv_path.exists() {
+        return Err(
+            "Could not find 'conversations.json' in the selected folder.".to_string(),
+        );
+    }
+
+    let conv_bytes =
+        std::fs::read(&conv_path).map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+    let chat_data_list = chat_file_store::parse_claude_conversations(&conv_bytes)?;
+    if chat_data_list.is_empty() {
+        return Err("No conversations with messages found in the Claude Desktop export.".to_string());
+    }
+
+    let workspace_name = "Claude Desktop".to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Get or create workspace
+    let existing_workspace_id = conn
+        .query_row(
+            "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
+            rusqlite::params!["claude desktop"],
+            |row| row.get::<_, String>(0),
+        )
+        .ok();
+
+    let workspace_id = if let Some(id) = existing_workspace_id {
+        id
+    } else {
+        let new_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
+             VALUES (?1, ?2, '', '', '{}', ?3, ?3)",
+            rusqlite::params![new_id, workspace_name, now],
+        )
+        .map_err(|e| e.to_string())?;
+        new_id
+    };
+
+    // Import projects from projects.json if present
+    let mut projects_created = 0usize;
+    let projects_path = folder.join("projects.json");
+    let mut project_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
+    if projects_path.exists() {
+        if let Ok(proj_bytes) = std::fs::read(&projects_path) {
+            if let Ok(projects) = chat_file_store::parse_claude_projects(&proj_bytes) {
+                for (proj_uuid, proj_name, proj_description, proj_prompt) in &projects {
+                    let normalized = proj_name.trim();
+                    let existing_project_id = conn
+                        .query_row(
+                            "SELECT id FROM projects WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) LIMIT 1",
+                            rusqlite::params![workspace_id, normalized],
+                            |row| row.get::<_, String>(0),
+                        )
+                        .ok();
+
+                    let project_id = if let Some(id) = existing_project_id {
+                        id
+                    } else {
+                        let id = uuid::Uuid::new_v4().to_string();
+                        conn.execute(
+                            "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
+                             VALUES (?1, ?2, ?3, ?4, ?5, '#007AFF', 'folder', ?6, ?6)",
+                            rusqlite::params![id, workspace_id, proj_name, proj_description, proj_prompt, now],
+                        )
+                        .map_err(|e| e.to_string())?;
+                        projects_created += 1;
+                        id
+                    };
+                    project_map.insert(proj_uuid.clone(), project_id);
+                }
+            }
+        }
+    }
+
+    // Import conversations (no project link — Claude export doesn't have one)
+    let mut session_ids = Vec::new();
+    let mut errors = Vec::new();
+
+    for data in &chat_data_list {
+        // Check for duplicate by Claude UUID
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM chat_sessions WHERE id = ?1",
+                rusqlite::params![data.id],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+
+        if exists {
+            continue;
+        }
+
+        match chat_file_store::import_chat_data(&conn, data, &workspace_id, "") {
+            Ok(sid) => session_ids.push(sid),
+            Err(e) => errors.push(format!("{}: {e}", data.title)),
+        }
+    }
+
+    // Sync to disk
+    let pass = crypto.0.lock().ok().and_then(|g| g.clone());
+    for id in &session_ids {
+        let _ =
+            chat_file_store::write_session_file(&conn, &chats_dir_state.0, id, pass.as_deref());
+    }
+
+    if session_ids.is_empty() {
+        return Err(
+            "Claude Desktop import found conversations, but none contained importable messages."
+                .to_string(),
+        );
+    }
+
+    Ok(serde_json::json!({
+        "imported": session_ids.len(),
+        "skipped": chat_data_list.len() - session_ids.len() - errors.len(),
+        "workspace_id": workspace_id,
+        "workspace_name": workspace_name,
+        "projects_created": projects_created,
+        "errors": errors.len(),
+        "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
+    }))
+}
+
 
 /// Sync every session in the DB to the chats directory.
 /// Useful after a cold start to ensure files are up to date.

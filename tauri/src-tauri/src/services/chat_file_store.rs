@@ -1078,6 +1078,228 @@ fn create_session_from_messages(messages: Vec<ChatFileMessage>) -> ChatFileData 
 }
 
 
+// ── Claude Desktop JSON parser ───────────────────────────────────────────────
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct ClaudeConversation {
+    uuid: String,
+    name: String,
+    #[serde(default)]
+    summary: Option<String>,
+    created_at: String,
+    updated_at: String,
+    #[serde(default)]
+    chat_messages: Vec<ClaudeChatMessage>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct ClaudeChatMessage {
+    uuid: String,
+    text: String,
+    sender: String, // "human" or "assistant"
+    #[serde(default)]
+    content: Vec<ClaudeContentBlock>,
+    created_at: String,
+    #[serde(default)]
+    attachments: Vec<ClaudeAttachment>,
+    #[serde(default)]
+    files: Vec<serde_json::Value>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct ClaudeContentBlock {
+    #[serde(rename = "type")]
+    block_type: String,
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    thinking: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    input: Option<serde_json::Value>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct ClaudeAttachment {
+    #[serde(default)]
+    file_name: Option<String>,
+    #[serde(default)]
+    extracted_content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeProject {
+    uuid: String,
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    prompt_template: Option<String>,
+    created_at: String,
+    #[serde(default)]
+    docs: Vec<ClaudeProjectDoc>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct ClaudeProjectDoc {
+    uuid: String,
+    filename: String,
+    content: String,
+}
+
+/// Extract message content from a Claude Desktop chat message.
+/// Prefers structured `content` blocks; falls back to `text` field.
+fn extract_claude_message_content(msg: &ClaudeChatMessage) -> String {
+    if msg.content.is_empty() {
+        // Add attachment content if available
+        let mut text = msg.text.clone();
+        for att in &msg.attachments {
+            if let (Some(name), Some(content)) = (&att.file_name, &att.extracted_content) {
+                if !content.is_empty() {
+                    text.push_str(&format!("\n\n---\n📎 {name}\n{content}"));
+                }
+            }
+        }
+        return text;
+    }
+
+    let mut parts: Vec<String> = Vec::new();
+
+    for block in &msg.content {
+        match block.block_type.as_str() {
+            "text" => {
+                if let Some(ref t) = block.text {
+                    if !t.is_empty() {
+                        parts.push(t.clone());
+                    }
+                }
+            }
+            "thinking" => {
+                if let Some(ref t) = block.thinking {
+                    if !t.is_empty() {
+                        parts.push(format!("<think>\n{}\n</think>", t.trim()));
+                    }
+                }
+            }
+            "tool_use" => {
+                if let Some(ref name) = block.name {
+                    let input_str = block
+                        .input
+                        .as_ref()
+                        .map(|v| serde_json::to_string_pretty(v).unwrap_or_default())
+                        .unwrap_or_default();
+                    if !input_str.is_empty() {
+                        parts.push(format!("🔧 Tool: {name}\n```json\n{input_str}\n```"));
+                    }
+                }
+            }
+            // tool_result, token_budget — skip or ignore
+            _ => {}
+        }
+    }
+
+    // Append attachment content
+    for att in &msg.attachments {
+        if let (Some(name), Some(content)) = (&att.file_name, &att.extracted_content) {
+            if !content.is_empty() {
+                parts.push(format!("---\n📎 {name}\n{content}"));
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        // Fall back to text field
+        msg.text.clone()
+    } else {
+        parts.join("\n\n")
+    }
+}
+
+/// Parse a Claude Desktop `conversations.json` into a Vec of `ChatFileData`.
+pub fn parse_claude_conversations(bytes: &[u8]) -> Result<Vec<ChatFileData>, String> {
+    let conversations: Vec<ClaudeConversation> =
+        serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude Desktop JSON: {e}"))?;
+
+    let mut results = Vec::new();
+
+    for conv in &conversations {
+        if conv.chat_messages.is_empty() {
+            continue;
+        }
+
+        let messages: Vec<ChatFileMessage> = conv
+            .chat_messages
+            .iter()
+            .filter_map(|msg| {
+                let role = match msg.sender.as_str() {
+                    "human" => "user",
+                    "assistant" => "assistant",
+                    _ => return None,
+                };
+                let content = extract_claude_message_content(msg);
+                if content.is_empty() {
+                    return None;
+                }
+                Some(ChatFileMessage {
+                    id: msg.uuid.clone(),
+                    role: role.to_string(),
+                    content,
+                    model: if role == "assistant" {
+                        Some("claude".to_string())
+                    } else {
+                        None
+                    },
+                    tokens_used: None,
+                    duration_ms: None,
+                    timestamp: msg.created_at.clone(),
+                })
+            })
+            .collect();
+
+        if messages.is_empty() {
+            continue;
+        }
+
+        results.push(ChatFileData {
+            id: conv.uuid.clone(),
+            title: conv.name.clone(),
+            model: "claude".to_string(),
+            system_prompt: String::new(),
+            created_at: conv.created_at.clone(),
+            updated_at: conv.updated_at.clone(),
+            messages,
+        });
+    }
+
+    Ok(results)
+}
+
+/// Parse a Claude Desktop `projects.json` into a map of project UUID -> (name, description, system_prompt).
+pub fn parse_claude_projects(
+    bytes: &[u8],
+) -> Result<Vec<(String, String, String, String)>, String> {
+    let projects: Vec<ClaudeProject> =
+        serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude projects JSON: {e}"))?;
+
+    Ok(projects
+        .into_iter()
+        .map(|p| {
+            (
+                p.uuid,
+                p.name,
+                p.description.unwrap_or_default(),
+                p.prompt_template.unwrap_or_default(),
+            )
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -662,6 +662,16 @@ export const api = {
         workspace_id: string;
         workspace_name: string;
       }>("import_gemini_takeout", { folderPath }),
+    importClaudeDesktop: (folderPath: string) =>
+      invoke<{
+        imported: number;
+        skipped: number;
+        workspace_id: string;
+        workspace_name: string;
+        projects_created: number;
+        errors: number;
+        error_messages: string[];
+      }>("import_claude_desktop", { folderPath }),
   },
 
   security: {
