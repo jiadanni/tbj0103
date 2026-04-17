@@ -1,11 +1,10 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy } from "lucide-react";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink } from "lucide-react";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
-import { readTextFile } from "@tauri-apps/plugin-fs";
 import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
@@ -24,8 +23,6 @@ import {
   mergeComposerInput,
   type ComposerSuggestion,
 } from "../lib/composerSuggestions";
-import { resolveModelDisplayName } from "../lib/modelDisplayName";
-import { getModelGroupMeta } from "../lib/modelGroups";
 import { resolveChatTitle } from "../lib/chatTitles";
 import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
 import { SelectionToolbar } from "../components/SelectionToolbar";
@@ -42,70 +39,6 @@ function clampSessionSidebarWidth(width: number, isSplitPane = false) {
   const maxWidth = isSplitPane ? MAX_SPLIT_SESSION_SIDEBAR_WIDTH : MAX_SESSION_SIDEBAR_WIDTH;
 
   return Math.max(minWidth, Math.min(width, maxWidth));
-}
-
-function splitAttachmentIntoExcerpts(content: string) {
-  const normalized = content.replace(/\r\n/g, "\n").trim();
-  if (!normalized) { return []; }
-
-  const paragraphs = normalized
-    .split(/\n{2,}/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  const segments = paragraphs.length > 0 ? paragraphs : [normalized];
-  return segments.flatMap((segment) => {
-    if (segment.length <= 1200) { return [segment]; }
-    const chunkSize = 1200;
-    const overlap = 200;
-    const chunks: string[] = [];
-    for (let start = 0; start < segment.length; start += chunkSize - overlap) {
-      chunks.push(segment.slice(start, start + chunkSize).trim());
-      if (start + chunkSize >= segment.length) { break; }
-    }
-    return chunks;
-  });
-}
-
-function buildAttachmentContext(query: string, attachments: Array<{ title: string; content: string }>) {
-  const queryTerms = Array.from(new Set(
-    query
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((term) => term.length >= 3),
-  ));
-  const excerpts: string[] = [];
-
-  for (const attachment of attachments.slice(0, 4)) {
-    const rankedExcerpts = splitAttachmentIntoExcerpts(attachment.content)
-      .map((excerpt) => {
-        const haystack = excerpt.toLowerCase();
-        const score = queryTerms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
-        return { excerpt, score };
-      })
-      .sort((left, right) => {
-        if (right.score !== left.score) { return right.score - left.score; }
-        return left.excerpt.length - right.excerpt.length;
-      })
-      .slice(0, 2)
-      .map(({ excerpt }) => excerpt);
-
-    if (rankedExcerpts.length === 0) { continue; }
-
-    excerpts.push(
-      `Attachment: ${attachment.title}\n` +
-      rankedExcerpts.map((excerpt, index) => `[${index + 1}] ${excerpt}`).join("\n\n"),
-    );
-  }
-
-  if (excerpts.length === 0) { return null; }
-
-  return [
-    "Use the attached source material below when it is relevant to the user request.",
-    "Cite the attachment title when you rely on it.",
-    "",
-    excerpts.join("\n\n"),
-  ].join("\n");
 }
 
 interface ConfirmDialogState {
@@ -141,7 +74,6 @@ interface SessionItemProps {
   setRenameTitle: (title: string) => void;
   openSession: (session: ChatSession) => void;
   toggleSelect: (id: string) => void;
-  onSessionClick: (id: string, modifiers: { shift: boolean; meta: boolean; ctrl: boolean }) => void;
   openContextMenu: (event: ReactMouseEvent, session: ChatSession) => void;
   renameSession: (id: string) => void;
 }
@@ -200,7 +132,7 @@ function SessionItem({
   session, activeChatId, selectMode, isSelected, renamingId, renameTitle,
   depth = 0,
   setRenamingId, setRenameTitle, openSession,
-  toggleSelect, onSessionClick, openContextMenu,
+  toggleSelect, openContextMenu,
   renameSession,
 }: SessionItemProps) {
   const isSplitPane = useWorkspacePane() !== null;
@@ -226,20 +158,12 @@ function SessionItem({
         e.dataTransfer.effectAllowed = "move";
       }}
       onContextMenu={(e) => openContextMenu(e, session)}
-      onClick={(e) => {
-        if (e.shiftKey || e.metaKey || e.ctrlKey) {
-          onSessionClick(session.id, { shift: e.shiftKey, meta: e.metaKey, ctrl: e.ctrlKey });
-        } else if (selectMode) {
-          toggleSelect(session.id);
-        } else {
-          openSession(session);
-        }
-      }}
-      className={`group flex min-w-0 select-none items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${isSelected
-        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-        : isActive
+      onClick={() => selectMode ? toggleSelect(session.id) : openSession(session)}
+      className={`group flex min-w-0 items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${isSelected
           ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          : isActive
+            ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
         }`}
       style={{ paddingLeft: `${12 + depth * 20}px` }}
     >
@@ -247,8 +171,8 @@ function SessionItem({
         <button
           onClick={(e) => { e.stopPropagation(); toggleSelect(session.id); }}
           className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${isSelected
-            ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
-            : "border-[var(--text-muted)] text-transparent"
+              ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+              : "border-[var(--text-muted)] text-transparent"
             }`}
         >
           <Check size={10} />
@@ -325,21 +249,16 @@ function SessionSidebar({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const lastSelectedIdRef = useRef<string | null>(null);
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
   const [moveMenuOpen, setMoveMenuOpen] = useState(false);
-  const [bulkFolderMoveOpen, setBulkFolderMoveOpen] = useState(false);
   const [_bulkMoveWorkspaceId, setBulkMoveWorkspaceId] = useState<string | null>(null);
   const [bulkActionPending, setBulkActionPending] = useState<"move" | "delete" | null>(null);
   const [projectRenamingId, setProjectRenamingId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState("");
   const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
   const [ctxMoveOpen, setCtxMoveOpen] = useState(false);
-  const [ctxFolderMoveOpen, setCtxFolderMoveOpen] = useState(false);
   const [_ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
   const [ctxProjectMoveWorkspaceId, setCtxProjectMoveWorkspaceId] = useState<string | null>(null);
-  const [folderMoveShowCreate, setFolderMoveShowCreate] = useState(false);
-  const [folderMoveNewName, setFolderMoveNewName] = useState("");
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [showNewWorkspaceInput, setShowNewWorkspaceInput] = useState(false);
   const [workspaceMoveQuery, setWorkspaceMoveQuery] = useState("");
@@ -381,40 +300,6 @@ function SessionSidebar({
       ungrouped.push(session);
     }
   });
-
-  // Flat ordered list mirroring display order: ungrouped then per-project sessions
-  const flatOrderedSessionIds: string[] = [
-    ...ungrouped.map((s) => s.id),
-    ...projects.flatMap((p) => (byProject[p.id] ?? []).map((s) => s.id)),
-  ];
-
-  function handleSessionClick(id: string, modifiers: { shift: boolean; meta: boolean; ctrl: boolean }) {
-    if (modifiers.shift && lastSelectedIdRef.current) {
-      // Range select from last selected to current
-      const anchorIdx = flatOrderedSessionIds.indexOf(lastSelectedIdRef.current);
-      const targetIdx = flatOrderedSessionIds.indexOf(id);
-      if (anchorIdx !== -1 && targetIdx !== -1) {
-        const lo = Math.min(anchorIdx, targetIdx);
-        const hi = Math.max(anchorIdx, targetIdx);
-        const rangeIds = flatOrderedSessionIds.slice(lo, hi + 1);
-        setSelectMode(true);
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          for (const sid of rangeIds) { next.add(sid); }
-          return next;
-        });
-        return;
-      }
-    }
-    // Cmd/Ctrl+click: toggle individual item
-    setSelectMode(true);
-    lastSelectedIdRef.current = id;
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) { next.delete(id); } else { next.add(id); }
-      return next;
-    });
-  }
 
   const shouldShowWorkspaceSearch = workspaces.length > 12;
   const normalizedWorkspaceMoveQuery = workspaceMoveQuery.trim().toLowerCase();
@@ -484,14 +369,12 @@ function SessionSidebar({
               isSelected={selectedIds.has(session.id)}
               selectMode={selectMode}
               toggleSelect={(id) => {
-                lastSelectedIdRef.current = id;
                 setSelectedIds((prev) => {
                   const next = new Set(prev);
                   if (next.has(id)) { next.delete(id); } else { next.add(id); }
                   return next;
                 });
               }}
-              onSessionClick={handleSessionClick}
               openContextMenu={(event, targetSession) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -517,19 +400,14 @@ function SessionSidebar({
     setSelectMode(false);
     setSelectedIds(new Set());
     setSelectedProjectIds(new Set());
-    lastSelectedIdRef.current = null;
     setMoveMenuOpen(false);
-    setBulkFolderMoveOpen(false);
     setBulkMoveWorkspaceId(null);
     setDragOverProjectId(null);
     setCtxMoveOpen(false);
-    setCtxFolderMoveOpen(false);
     setCtxMoveWorkspaceId(null);
     setCtxProjectMoveWorkspaceId(null);
     setShowNewWorkspaceInput(false);
     setNewWorkspaceName("");
-    setFolderMoveShowCreate(false);
-    setFolderMoveNewName("");
     setWorkspaceProjectFlyout(null);
   }
 
@@ -563,7 +441,6 @@ function SessionSidebar({
 
   function renderSessionMoveSubmenu(
     onSelect: (workspaceId: string, projectId: string | null) => void,
-    flipUp = false,
   ) {
     function handleCreateWorkspace() {
       const name = newWorkspaceName.trim();
@@ -583,7 +460,7 @@ function SessionSidebar({
     }
 
     return (
-      <div className={`absolute left-full z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg ${flipUp ? "bottom-0" : "top-0"}`}>
+      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
         <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
           {shouldShowWorkspaceSearch && !showNewWorkspaceInput && (
             <div className="px-2 pb-2">
@@ -653,107 +530,7 @@ function SessionSidebar({
             );
           })}
           {filteredWorkspaces.length === 0 && (
-            normalizedWorkspaceMoveQuery ? (
-              <button
-                onClick={() => {
-                  const name = workspaceMoveQuery.trim();
-                  setWorkspaceMoveQuery("");
-                  void createWorkspaceForMove(name)
-                    .then((workspace) => onSelect(workspace.id, null))
-                    .catch((error) => {
-                      const description = error instanceof Error
-                        ? error.message
-                        : typeof error === "string" && error.trim()
-                          ? error
-                          : "Failed to create workspace.";
-                      showAlertDialog("Create workspace failed", description, "danger");
-                    });
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                <Plus size={11} /> Create &ldquo;{workspaceMoveQuery.trim()}&rdquo;
-              </button>
-            ) : (
-              <p className="px-3 py-2 text-xs text-[var(--text-muted)]">No matching workspaces.</p>
-            )
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  function renderFolderMoveSubmenu(
-    currentProjectId: string | null,
-    workspaceId: string,
-    onSelect: (projectId: string | null) => void,
-  ) {
-    async function handleCreateFolderAndMove() {
-      const name = folderMoveNewName.trim();
-      if (!name) { return; }
-      setFolderMoveShowCreate(false);
-      setFolderMoveNewName("");
-      try {
-        const newProject = await api.project.create(workspaceId, name);
-        const refreshedProjects = await api.project.list(workspaceId);
-        useWorkspaceStore.getState().setProjectsForWorkspace(workspaceId, refreshedProjects);
-        onSelect(newProject.id);
-      } catch (error) {
-        const description = error instanceof Error ? error.message : "Failed to create folder.";
-        showAlertDialog("Create folder failed", description, "danger");
-      }
-    }
-
-    const isAtRoot = !currentProjectId;
-    return (
-      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
-        <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
-          <button
-            onClick={() => onSelect(null)}
-            disabled={isAtRoot}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <MessageSquare size={11} />
-            <span className="truncate flex-1">No folder{isAtRoot ? " (Current)" : ""}</span>
-          </button>
-          {projects.length > 0 && <div className="my-1 border-t border-[var(--border-color)]" />}
-          {projects.map((project) => {
-            const isCurrent = project.id === currentProjectId;
-            return (
-              <button
-                key={project.id}
-                onClick={() => onSelect(project.id)}
-                disabled={isCurrent}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Folder size={11} style={project.color ? { color: project.color } : undefined} />
-                <span className="truncate flex-1">
-                  {project.name}{isCurrent ? " (Current)" : ""}
-                </span>
-              </button>
-            );
-          })}
-          <div className="my-1 border-t border-[var(--border-color)]" />
-          {folderMoveShowCreate ? (
-            <form
-              onSubmit={(e) => { e.preventDefault(); void handleCreateFolderAndMove(); }}
-              className="px-2 py-1"
-            >
-              <input
-                autoFocus
-                value={folderMoveNewName}
-                onChange={(e) => setFolderMoveNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Escape") { setFolderMoveShowCreate(false); setFolderMoveNewName(""); } }}
-                placeholder="Folder name"
-                className="w-full rounded border border-[var(--border-color)] bg-[var(--bg-input)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-              />
-            </form>
-          ) : (
-            <button
-              onClick={() => setFolderMoveShowCreate(true)}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-            >
-              <Plus size={11} /> Create folder...
-            </button>
+            <p className="px-3 py-2 text-xs text-[var(--text-muted)]">No matching workspaces.</p>
           )}
         </div>
       </div>
@@ -763,7 +540,6 @@ function SessionSidebar({
   function renderProjectWorkspaceMoveSubmenu(
     project: Project,
     onSelect: (workspaceId: string) => void,
-    flipUp = false,
   ) {
     function handleCreateWorkspace() {
       const name = newWorkspaceName.trim();
@@ -785,7 +561,7 @@ function SessionSidebar({
     }
 
     return (
-      <div className={`absolute left-full z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg ${flipUp ? "bottom-0" : "top-0"}`}>
+      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
         <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
           {shouldShowWorkspaceSearch && !showNewWorkspaceInput && (
             <div className="px-2 pb-2">
@@ -837,31 +613,7 @@ function SessionSidebar({
             );
           })}
           {filteredWorkspaces.length === 0 && (
-            normalizedWorkspaceMoveQuery ? (
-              <button
-                onClick={() => {
-                  const name = workspaceMoveQuery.trim();
-                  setWorkspaceMoveQuery("");
-                  setCtxProjectMoveWorkspaceId(null);
-                  setCtxMenu(null);
-                  void createWorkspaceForMove(name)
-                    .then((workspace) => moveProjectToWorkspace(project, workspace.id))
-                    .catch((error) => {
-                      const description = error instanceof Error
-                        ? error.message
-                        : typeof error === "string" && error.trim()
-                          ? error
-                          : "Failed to move to new workspace.";
-                      showAlertDialog("Move to new workspace failed", description, "danger");
-                    });
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                <Plus size={11} /> Create &ldquo;{workspaceMoveQuery.trim()}&rdquo;
-              </button>
-            ) : (
-              <p className="px-3 py-2 text-xs text-[var(--text-muted)]">No matching workspaces.</p>
-            )
+            <p className="px-3 py-2 text-xs text-[var(--text-muted)]">No matching workspaces.</p>
           )}
         </div>
       </div>
@@ -1085,96 +837,11 @@ function SessionSidebar({
                         );
                       })}
                       {filteredWorkspaces.length === 0 && (
-                        normalizedWorkspaceMoveQuery ? (
-                          <button
-                            onClick={() => {
-                              const name = workspaceMoveQuery.trim();
-                              setWorkspaceMoveQuery("");
-                              setMoveMenuOpen(false);
-                              void createWorkspaceForMove(name)
-                                .then((workspace) => {
-                                  setBulkActionPending("move");
-                                  void moveSessionsToTarget(Array.from(selectedIds), workspace.id, null).then(() => {
-                                    resetSelectionState();
-                                  }).finally(() => {
-                                    setBulkActionPending(null);
-                                  });
-                                })
-                                .catch((error) => {
-                                  const description = error instanceof Error
-                                    ? error.message
-                                    : typeof error === "string" && error.trim()
-                                      ? error
-                                      : "Failed to create workspace.";
-                                  showAlertDialog("Create workspace failed", description, "danger");
-                                });
-                            }}
-                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                          >
-                            <Plus size={11} /> Create &ldquo;{workspaceMoveQuery.trim()}&rdquo;
-                          </button>
-                        ) : (
-                          <p className="px-3 py-2 text-xs text-[var(--text-muted)]">No matching workspaces.</p>
-                        )
+                        <p className="px-3 py-2 text-xs text-[var(--text-muted)]">No matching workspaces.</p>
                       )}
                     </div>
                   </div>
                 )}
-              </div>
-              <div className="relative">
-                <button
-                  onClick={() => { setBulkFolderMoveOpen((v) => !v); setMoveMenuOpen(false); }}
-                  disabled={selectedIds.size === 0 || bulkActionPending !== null}
-                  className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
-                  title="Move selected chats to a folder"
-                >
-                  <Folder size={12} />
-                  To folder
-                </button>
-                {bulkFolderMoveOpen && bulkActionPending === null && (() => {
-                  const bulkWorkspaceId = sidebarSessions.find((s) => selectedIds.has(s.id))?.workspace_id;
-                  return (
-                  <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
-                    <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
-                      <button
-                        onClick={() => {
-                          if (!bulkWorkspaceId) { return; }
-                          setBulkFolderMoveOpen(false);
-                          setBulkActionPending("move");
-                          void moveSessionsToTarget(Array.from(selectedIds), bulkWorkspaceId, null).then(() => {
-                            resetSelectionState();
-                          }).finally(() => {
-                            setBulkActionPending(null);
-                          });
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      >
-                        <MessageSquare size={11} /> No folder
-                      </button>
-                      {projects.length > 0 && <div className="my-1 border-t border-[var(--border-color)]" />}
-                      {projects.map((project) => (
-                        <button
-                          key={project.id}
-                          onClick={() => {
-                            if (!bulkWorkspaceId) { return; }
-                            setBulkFolderMoveOpen(false);
-                            setBulkActionPending("move");
-                            void moveSessionsToTarget(Array.from(selectedIds), bulkWorkspaceId, project.id).then(() => {
-                              resetSelectionState();
-                            }).finally(() => {
-                              setBulkActionPending(null);
-                            });
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                        >
-                          <Folder size={11} style={project.color ? { color: project.color } : undefined} />
-                          <span className="truncate">{project.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  );
-                })()}
               </div>
               <button
                 onClick={() => {
@@ -1326,10 +993,10 @@ function SessionSidebar({
                         setExpanded((prev) => ({ ...prev, [project.id]: !isOpen }));
                       }}
                       className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${dragOverProjectId === project.id
-                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
-                        : selectedProjectIds.has(project.id)
-                          ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                          ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
+                          : selectedProjectIds.has(project.id)
+                            ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                         }`}
                     >
                       {selectMode && (
@@ -1339,8 +1006,8 @@ function SessionSidebar({
                             toggleProjectSelection(project.id);
                           }}
                           className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${selectedProjectIds.has(project.id)
-                            ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
-                            : "border-[var(--text-muted)] text-transparent"
+                              ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+                              : "border-[var(--text-muted)] text-transparent"
                             }`}
                         >
                           <Check size={10} />
@@ -1390,14 +1057,12 @@ function SessionSidebar({
                               isSelected={selectedIds.has(session.id)}
                               selectMode={selectMode}
                               toggleSelect={(id) => {
-                                lastSelectedIdRef.current = id;
                                 setSelectedIds((prev) => {
                                   const next = new Set(prev);
                                   if (next.has(id)) { next.delete(id); } else { next.add(id); }
                                   return next;
                                 });
                               }}
-                              onSessionClick={handleSessionClick}
                               openContextMenu={(event, targetSession) => {
                                 event.preventDefault();
                                 event.stopPropagation();
@@ -1472,15 +1137,6 @@ function SessionSidebar({
                 </button>
                 <button
                   onClick={() => {
-                    void window.navigator.clipboard.writeText(ctxMenu.session.title || "New Chat");
-                    setCtxMenu(null);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                >
-                  <Copy size={11} /> Copy chat name
-                </button>
-                <button
-                  onClick={() => {
                     const currentMessages = useChatStore.getState().messages;
                     if (canRefreshSessionTitle(ctxMenu.session, currentMessages)) {
                       void refreshSessionTitle(ctxMenu.session);
@@ -1489,8 +1145,8 @@ function SessionSidebar({
                   }}
                   disabled={!canRefreshSessionTitle(ctxMenu.session, useChatStore.getState().messages)}
                   className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs ${canRefreshSessionTitle(ctxMenu.session, useChatStore.getState().messages)
-                    ? "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                    : "cursor-not-allowed text-[var(--text-muted)] opacity-40"
+                      ? "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      : "cursor-not-allowed text-[var(--text-muted)] opacity-40"
                     }`}
                 >
                   <RefreshCw size={11} /> Refresh chat name
@@ -1546,38 +1202,7 @@ function SessionSidebar({
                 <div className="my-1 border-t border-[var(--border-color)]" />
                 <div
                   className="relative"
-                  onMouseEnter={() => { setCtxFolderMoveOpen(true); setCtxMoveOpen(false); }}
-                  onMouseLeave={() => { setCtxFolderMoveOpen(false); setFolderMoveShowCreate(false); setFolderMoveNewName(""); }}
-                >
-                  <button
-                    onClick={() => setCtxFolderMoveOpen((v) => !v)}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                  >
-                    <Folder size={11} />
-                    <span className="truncate flex-1">Move to folder</span>
-                    <ChevronRight size={11} />
-                  </button>
-                  {ctxFolderMoveOpen && renderFolderMoveSubmenu(
-                    ctxMenu.session.project_id || null,
-                    ctxMenu.session.workspace_id,
-                    (targetProjectId) => {
-                      void moveSessionsToTarget([ctxMenu.session.id], ctxMenu.session.workspace_id, targetProjectId).catch((error: unknown) => {
-                        const description = error instanceof Error
-                          ? error.message
-                          : typeof error === "string" && error.trim()
-                            ? error
-                            : "Failed to move chat.";
-                        console.error("Failed to move chat:", error);
-                        showAlertDialog("Move failed", description, "danger");
-                      });
-                      setCtxFolderMoveOpen(false);
-                      setCtxMenu(null);
-                    },
-                  )}
-                </div>
-                <div
-                  className="relative"
-                  onMouseEnter={() => { setCtxMoveOpen(true); setCtxFolderMoveOpen(false); }}
+                  onMouseEnter={() => setCtxMoveOpen(true)}
                   onMouseLeave={() => { setCtxMoveOpen(false); setCtxMoveWorkspaceId(null); }}
                 >
                   <button
@@ -1585,7 +1210,7 @@ function SessionSidebar({
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                   >
                     <MoveRight size={11} />
-                    <span className="truncate flex-1">Move to workspace</span>
+                    <span className="truncate flex-1">Move to</span>
                     <ChevronRight size={11} />
                   </button>
                   {ctxMoveOpen && renderSessionMoveSubmenu((targetWorkspaceId, targetProjectId) => {
@@ -1601,7 +1226,7 @@ function SessionSidebar({
                     setCtxMoveWorkspaceId(null);
                     setCtxMoveOpen(false);
                     setCtxMenu(null);
-                  }, ctxMenu.y > window.innerHeight * 0.55)}
+                  })}
                 </div>
                 <div className="my-1 border-t border-[var(--border-color)]" />
                 <button
@@ -1655,7 +1280,7 @@ function SessionSidebar({
                       setCtxProjectMoveWorkspaceId(null);
                       setCtxMenu(null);
                       void moveProjectToWorkspace(project, targetWorkspaceId);
-                    }, ctxMenu.y > window.innerHeight * 0.55);
+                    });
                   })()}
                 </div>
                 <button
@@ -1860,8 +1485,8 @@ function StreamingBubble({
   return (
     <div className="flex flex-col gap-1 items-start px-4 pb-4">
       <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${chatMessageStyle === "flat"
-        ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]"
-        : ""
+          ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]"
+          : ""
         }`}>
         <p ref={textRef} className="whitespace-pre-wrap" />
         <span className="streaming-cursor" />
@@ -1910,7 +1535,6 @@ export default function ChatView() {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const projects = useScopedProjects();
   const preferredModel = useSettingsStore((s) => s.preferredModel);
-  const draftModel = useSettingsStore((s) => s.draftModel);
   const setPreferredModel = useSettingsStore((s) => s.setPreferredModel);
   const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
   const savedCompareA = useSettingsStore((s) => s.compareModelA);
@@ -1922,10 +1546,6 @@ export default function ChatView() {
   const skipLinkConfirm = useSettingsStore((s) => s.skipLinkConfirm);
   const setSkipLinkConfirm = useSettingsStore((s) => s.setSkipLinkConfirm);
   const showGenInfo = useSettingsStore((s) => s.showGenInfo);
-  const showGenInfoModel = useSettingsStore((s) => s.showGenInfoModel);
-  const showGenInfoTokenCount = useSettingsStore((s) => s.showGenInfoTokenCount);
-  const showGenInfoDuration = useSettingsStore((s) => s.showGenInfoDuration);
-  const showGenInfoSpeed = useSettingsStore((s) => s.showGenInfoSpeed);
   const scrollToTopOnSend = useSettingsStore((s) => s.scrollToTopOnSend);
   const chatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
@@ -1933,14 +1553,13 @@ export default function ChatView() {
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
   const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
   const composerSelectClassName = "h-10 w-full appearance-none rounded-full border border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.9)] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] outline-none transition-all hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] focus:border-[rgba(var(--accent-color-rgb),0.42)] focus:bg-[rgba(var(--accent-color-rgb),0.06)]";
-  const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all";
-  const composerToggleInactiveClass = "border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.78)] hover:border-[rgba(255,255,255,0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white";
+  const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] transition-all";
+  const composerToggleInactiveClass = "border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.78)] hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] hover:text-white";
   const composerToggleActiveClass = "border-[rgba(var(--accent-color-rgb),0.34)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]";
-  const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-transparent bg-[rgba(255,255,255,0.04)] text-[rgba(255,255,255,0.54)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
+  const composerUtilitySelectClassName = "h-9 appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/75 pl-3.5 pr-9 text-xs font-semibold text-[var(--text-secondary)] shadow-sm outline-none transition-all hover:border-[var(--accent-color)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)] focus:border-[var(--accent-color)]";
+  const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.54)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.2)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
 
   const [input, setInput] = useState("");
-  const [isPolishingPrompt, setIsPolishingPrompt] = useState(false);
-  const [polishUndoInput, setPolishUndoInput] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [scopedSessions, setScopedSessions] = useState<ChatSession[]>([]);
   const [sidebarSessions, setSidebarSessions] = useState<ChatSession[]>([]);
@@ -1948,19 +1567,14 @@ export default function ChatView() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [ollamaModelStatus, setOllamaModelStatus] = useState<"idle" | "available" | "empty" | "unreachable">("idle");
   const [aiModelList, setAiModelList] = useState<AiModel[]>([]);
-  const [messageVariations, setMessageVariations] = useState<Map<string, Message[]>>(new Map());
-  const [variationIndex, setVariationIndex] = useState<Map<string, number>>(new Map());
-  const [redoPickerOpenForId, setRedoPickerOpenForId] = useState<string | null>(null);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [isModelSendMenuOpen, setIsModelSendMenuOpen] = useState(false);
-  const [activeTierPickerIdx, setActiveTierPickerIdx] = useState<number | null>(null);
   type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
   const [activeContextSources, setActiveContextSources] = useState<Record<string, ContextSources>>({});
   const [loadedSessionScopeKey, setLoadedSessionScopeKey] = useState<string | null>(null);
   const [sessionSidebarDragActive, setSessionSidebarDragActive] = useState(false);
   const syncedSessionModelRef = useRef<{ sessionId: string | null; modelName: string }>({ sessionId: null, modelName: "" });
   const chatViewRef = useRef<HTMLDivElement | null>(null);
-  const emptyStatePrivacyMenuRef = useRef<HTMLDivElement | null>(null);
   const streamUnlistenRef = useRef<(() => void) | null>(null);
   const refineUnlistenRef = useRef<(() => void) | null>(null);
   const handledLocationActionKeyRef = useRef<string | null>(null);
@@ -2328,13 +1942,14 @@ export default function ChatView() {
   const [compareResponseB, setCompareResponseB] = useState("");
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
-  const [isEmptyStatePrivacyMenuOpen, setIsEmptyStatePrivacyMenuOpen] = useState(false);
+  const [emptyStatePrivacyMode, setEmptyStatePrivacyMode] = useState<"standard" | "incognito" | "exclude">("standard");
   const [compareModels, setCompareModels] = useState<OllamaModel[]>([]);
 
-  const [attachedSources, setAttachedSources] = useState<Array<{ id: string; title: string; content: string }>>([]);
-  const [isAttachingFiles, setIsAttachingFiles] = useState(false);
-  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
-  const [messageSources] = useState<Record<string, SearchResult[]>>({});
+  // Grounded chat (RAG) state
+  const [groundedEnabled, setGroundedEnabled] = useState(false);
+  const [groundedTopK, setGroundedTopK] = useState(5);
+  const [processedDocCount, setProcessedDocCount] = useState(0);
+  const [messageSources, setMessageSources] = useState<Record<string, SearchResult[]>>({});
   const [expandedSources, setExpandedSources] = useState<string | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
 
@@ -2429,18 +2044,6 @@ export default function ChatView() {
   const pendingNewSessionRef = useRef<Promise<ChatSession | null> | null>(null);
   const incognitoSessionIdsRef = useRef<Set<string>>(new Set());
 
-  const resizeAndFocusComposer = useCallback((cursorPosition?: number) => {
-    requestAnimationFrame(() => {
-      const el = inputRef.current;
-      if (!el) { return; }
-      el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-      el.focus();
-      const nextCursorPosition = cursorPosition ?? el.value.length;
-      el.setSelectionRange(nextCursorPosition, nextCursorPosition);
-    });
-  }, []);
-
   const activeMessages = activeChatMessages;
   const pinnedQuickSendModels = useMemo(
     () => quickSearchModels.filter((modelId) =>
@@ -2452,38 +2055,6 @@ export default function ChatView() {
     () => availableModels,
     [availableModels]
   );
-  const groupedModelPickerOptions = useMemo(() => {
-    const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
-
-    modelPickerOptions.forEach((modelId) => {
-      const provider = aiModelList.find((model) => model.model_id === modelId)?.provider;
-      const meta = getModelGroupMeta(provider);
-      const existing = groups.get(meta.key);
-      if (existing) {
-        existing.modelIds.push(modelId);
-        return;
-      }
-      groups.set(meta.key, { ...meta, modelIds: [modelId] });
-    });
-
-    return Array.from(groups.values()).sort((a, b) => a.order - b.order);
-  }, [aiModelList, modelPickerOptions]);
-  const groupedPinnedQuickSendModels = useMemo(() => {
-    const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
-
-    pinnedQuickSendModels.forEach((modelId) => {
-      const provider = aiModelList.find((model) => model.model_id === modelId)?.provider;
-      const meta = getModelGroupMeta(provider);
-      const existing = groups.get(meta.key);
-      if (existing) {
-        existing.modelIds.push(modelId);
-        return;
-      }
-      groups.set(meta.key, { ...meta, modelIds: [modelId] });
-    });
-
-    return Array.from(groups.values()).sort((a, b) => a.order - b.order);
-  }, [aiModelList, pinnedQuickSendModels]);
   // uses granular selector from above
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
@@ -2533,10 +2104,13 @@ export default function ChatView() {
       const newText = input.trim() ? `${input}\n\n${pendingPromptText}` : pendingPromptText;
       setInput(newText);
       setPendingPromptText(null);
-      resizeAndFocusComposer(newText.length);
-      window.getSelection()?.removeAllRanges();
+      // Wait for React to update the state before focusing
+      setTimeout(() => {
+        inputRef.current?.focus();
+        window.getSelection()?.removeAllRanges();
+      }, 0);
     }
-  }, [pendingPromptText, input, resizeAndFocusComposer, setPendingPromptText]);
+  }, [pendingPromptText, input, setPendingPromptText]);
 
   useEffect(() => {
     if (!isModelSendMenuOpen) { return; }
@@ -2562,51 +2136,6 @@ export default function ChatView() {
   }, [isModelSendMenuOpen]);
 
   useEffect(() => {
-    if (!isAttachmentMenuOpen) { return; }
-
-    function handleClick(event: MouseEvent) {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-attachment-menu]")) { return; }
-      setIsAttachmentMenuOpen(false);
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setIsAttachmentMenuOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [isAttachmentMenuOpen]);
-
-  useEffect(() => {
-    if (!isEmptyStatePrivacyMenuOpen) { return; }
-
-    function handleClick(event: MouseEvent) {
-      if (emptyStatePrivacyMenuRef.current?.contains(event.target as Node)) { return; }
-      setIsEmptyStatePrivacyMenuOpen(false);
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setIsEmptyStatePrivacyMenuOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [isEmptyStatePrivacyMenuOpen]);
-
-  useEffect(() => {
     if (!isModelPickerOpen) { return; }
 
     function handleClick(event: MouseEvent) {
@@ -2628,44 +2157,6 @@ export default function ChatView() {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [isModelPickerOpen]);
-
-  useEffect(() => {
-    if (activeTierPickerIdx === null) { return; }
-    function handleClick(e: MouseEvent) {
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-tier-picker]")) { setActiveTierPickerIdx(null); }
-    }
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === "Escape") { setActiveTierPickerIdx(null); }
-    }
-    document.addEventListener("click", handleClick);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("click", handleClick);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [activeTierPickerIdx]);
-
-  useEffect(() => {
-    if (!redoPickerOpenForId) { return; }
-
-    function handleClick(event: MouseEvent) {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-redo-picker]")) { return; }
-      setRedoPickerOpenForId(null);
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") { setRedoPickerOpenForId(null); }
-    }
-
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [redoPickerOpenForId]);
 
   useEffect(() => {
     if (!effectiveWorkspaceId) {
@@ -2752,9 +2243,13 @@ export default function ChatView() {
     }
   }
 
+  // Load processed doc count for grounded chat indicator
   useEffect(() => {
-    setAttachedSources([]);
-  }, [effectiveWorkspaceId, activeChatId]);
+    if (!effectiveWorkspaceId) { setProcessedDocCount(0); return; }
+    api.document.list(effectiveWorkspaceId).then((docs) => {
+      setProcessedDocCount(docs.filter((d) => d.is_processed).length);
+    }).catch(() => setProcessedDocCount(0));
+  }, [effectiveWorkspaceId]);
 
   // Load sessions (scoped to active project, or unscoped when none selected)
   useEffect(() => {
@@ -2910,9 +2405,6 @@ export default function ChatView() {
   // Load messages when session changes
   useEffect(() => {
     if (!activeChatId || hasLoadedActiveMessages || !activeSessionWorkspaceId) { return; }
-    setMessageVariations(new Map());
-    setVariationIndex(new Map());
-    setRedoPickerOpenForId(null);
     api.chat.getMessages(activeSessionWorkspaceId, activeChatId)
       .then((msgs) => setMessages(activeChatId, msgs))
       .catch((error) => {
@@ -2952,11 +2444,6 @@ export default function ChatView() {
       }
 
       setAiModelList(aiModels);
-      aiModels.forEach((model) => {
-        if (model.name && useSettingsStore.getState().modelLabels[model.model_id] !== model.name) {
-          useSettingsStore.getState().setModelLabel(model.model_id, model.name);
-        }
-      });
 
       const enabledModels = aiModels
         .filter((model) => model.enabled)
@@ -3073,7 +2560,6 @@ export default function ChatView() {
       sessions,
       useChatStore.getState().messages,
       effectiveWorkspaceId,
-      privacy,
     );
     if (localUnusedSession) {
       return localUnusedSession;
@@ -3084,7 +2570,6 @@ export default function ChatView() {
       workspaceSessions,
       useChatStore.getState().messages,
       effectiveWorkspaceId,
-      privacy,
     );
     if (unusedSession) {
       return unusedSession;
@@ -3240,106 +2725,37 @@ export default function ChatView() {
     await sendMessageWithModel(selectedModel);
   }
 
-  async function handleAttachFiles() {
-    if (!effectiveWorkspaceId || isAttachingFiles || isStreaming) { return; }
-
-    setIsAttachingFiles(true);
-    try {
-      const paths = await openDialog({
-        multiple: true,
-        filters: [{ name: "Documents", extensions: ["txt", "md", "json", "csv"] }],
-      }) as string[] | null;
-      if (!paths || paths.length === 0) { return; }
-
-      const uploaded = await Promise.all(paths.map(async (path) => {
-        const content = await readTextFile(path);
-        const filename = path.split("/").pop() ?? path;
-        const fileType = filename.split(".").pop() ?? "txt";
-        const source = await api.source.create({
-          workspace_id: effectiveWorkspaceId,
-          source_type: "document",
-          title: filename,
-          filename,
-          file_type: fileType,
-          file_size: content.length,
-          content,
-        });
-        void api.source.process(source.id).catch(() => {});
-        return {
-          id: source.id,
-          title: source.title,
-          content: source.content || content,
-        };
-      }));
-
-      setAttachedSources((prev) => {
-        const next = [...prev];
-        for (const source of uploaded) {
-          if (next.some((item) => item.id === source.id)) { continue; }
-          next.push(source);
-        }
-        return next;
-      });
-      resizeAndFocusComposer();
-    } catch (error) {
-      const description = error instanceof Error ? error.message : "Aetherium could not attach those files.";
-      openAlertDialog("Attachment failed", description, "danger");
-    } finally {
-      setIsAttachingFiles(false);
-    }
-  }
-
-  function handleAttachImage() {
-    setIsAttachmentMenuOpen(false);
-    openAlertDialog(
-      "Image attachments are not available yet",
-      "This model can be marked for vision, but chat transport still sends text-only messages. Native image attachment support needs provider-level multimodal payloads before this menu item can be enabled.",
-      "default",
-    );
-  }
-
-  async function polishComposerPrompt() {
-    const originalInput = input;
-    const trimmedInput = originalInput.trim();
-    const polishModel = draftModel || selectedModel || preferredModel;
-
-    if (!trimmedInput || isStreaming || isPolishingPrompt || !polishModel) { return; }
-
-    setIsPolishingPrompt(true);
-    try {
-      const polished = await api.ollama.polishPrompt(polishModel, originalInput, ollamaUrl);
-      if (inputRef.current?.value !== originalInput) {
-        return;
-      }
-
-      const nextInput = polished.trim();
-      if (!nextInput || nextInput === trimmedInput) {
-        resizeAndFocusComposer();
-        return;
-      }
-
-      setPolishUndoInput(originalInput);
-      setInput(nextInput);
-      resizeAndFocusComposer(nextInput.length);
-    } catch (error) {
-      const description = error instanceof Error ? error.message : "Aetherium could not polish that prompt.";
-      openAlertDialog("Prompt polish failed", description, "danger");
-    } finally {
-      setIsPolishingPrompt(false);
-    }
-  }
-
-  function undoPolishedPrompt() {
-    if (polishUndoInput === null || isPolishingPrompt || isStreaming) { return; }
-    setInput(polishUndoInput);
-    resizeAndFocusComposer(polishUndoInput.length);
-    setPolishUndoInput(null);
-  }
-
   function maybeExtractFlashcards(responseText: string, sessionId: string, modelId: string) {
     const { autoGenerateFlashcards } = useSettingsStore.getState();
     if (!autoGenerateFlashcards || !effectiveWorkspaceId || responseText.length < 100) { return; }
     api.flashcard.extractFromContent(effectiveWorkspaceId, responseText, "chat", modelId, sessionId, ollamaUrl || undefined)
+      .catch(() => { });
+  }
+
+  const [flashcardGeneratingId, setFlashcardGeneratingId] = useState<string | null>(null);
+
+  async function handleGenerateFlashcards(msgId: string, content: string) {
+    if (!effectiveWorkspaceId || !selectedModel || content.length < 50) { return; }
+    setFlashcardGeneratingId(msgId);
+    try {
+      const cards = await api.flashcard.extractFromContent(
+        effectiveWorkspaceId, content, "chat", selectedModel, currentSessionId || undefined, ollamaUrl || undefined
+      );
+      if (cards.length > 0) {
+        await message(`Generated ${cards.length} flashcard${cards.length !== 1 ? "s" : ""} from this response.`, { title: "Flashcards" });
+      } else {
+        await message("No flashcards could be extracted from this response.", { title: "Flashcards" });
+      }
+    } catch {
+      await message("Failed to generate flashcards. Make sure Ollama is running.", { title: "Error" });
+    } finally {
+      setFlashcardGeneratingId(null);
+    }
+  }
+
+  function maybeExtractConcepts(text: string, sourceId: string) {
+    if (!effectiveWorkspaceId || text.length < 40) { return; }
+    api.graph.extractConcepts(effectiveWorkspaceId, text, "chat_message", sourceId)
       .catch(() => { });
   }
 
@@ -3383,6 +2799,7 @@ export default function ChatView() {
 
     const userMsg = await api.chat.addMessage(effectiveWorkspaceId, sid, "user", userContent);
     updateMessage(sid, persistedUserMessageWithFallback(optimisticUserMsg, userMsg));
+    maybeExtractConcepts(userContent, userMsg.id);
 
     const history = (useChatStore.getState().messages[sid] ?? []).map((m) => ({
       role: m.role,
@@ -3390,15 +2807,32 @@ export default function ChatView() {
     }));
 
     let finalUserContent = userContent;
-    const attachmentContext = buildAttachmentContext(userContent, attachedSources);
-    if (attachmentContext) {
-      finalUserContent =
-        `${attachmentContext}\n\n` +
-        `User request: ${userContent}`;
+    if (groundedEnabled && effectiveProjectId) {
+      try {
+        const keywordResults = await api.search.keyword(userContent, effectiveWorkspaceId, effectiveProjectId);
+        const chunkResults = keywordResults.filter((r) => r.result_type === "document_chunk").slice(0, groundedTopK);
+        if (chunkResults.length > 0) {
+          const contextParts = chunkResults.map((r, i) => `[${i + 1}] **${r.title}**: ${r.excerpt}`);
+          finalUserContent =
+            `You have access to the following document excerpts:\n\n` +
+            contextParts.join("\n\n") +
+            `\n\nUsing the above context where relevant, answer: ${userContent}\n\n` +
+            `Cite sources as [1], [2], etc. when referencing specific content.`;
+          setMessageSources((prev) => ({ ...prev, [optimisticUserMsg.id]: chunkResults }));
+        }
+      } catch {
+        // grounded search failures are non-critical
+      }
     }
 
-    if (attachedSources.length > 0) {
-      setAttachedSources([]);
+    if (optimisticUserMsg.id !== userMsg.id) {
+      setMessageSources((prev) => {
+        const pending = prev[optimisticUserMsg.id];
+        if (!pending) { return prev; }
+        const next = { ...prev, [userMsg.id]: pending };
+        delete next[optimisticUserMsg.id];
+        return next;
+      });
     }
 
     history.push({ role: "user", content: finalUserContent });
@@ -3414,7 +2848,7 @@ export default function ChatView() {
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
-              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
+              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); maybeExtractConcepts(assembled, persisted.id); })
               .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(modelId, `web_${oneOffWebProviderKey}`, tokensUsed).catch(() => { });
@@ -3443,7 +2877,7 @@ export default function ChatView() {
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
-              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
+              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); maybeExtractConcepts(assembled, persisted.id); })
               .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(modelId, "llamacpp", tokensUsed).catch(() => { });
@@ -3472,7 +2906,7 @@ export default function ChatView() {
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
-              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
+              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); maybeExtractConcepts(assembled, persisted.id); })
               .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(modelId, "mlx", tokensUsed).catch(() => { });
@@ -3501,7 +2935,7 @@ export default function ChatView() {
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
-              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
+              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); maybeExtractConcepts(assembled, persisted.id); })
               .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(modelId, "ollama", tokensUsed).catch(() => { });
@@ -3823,18 +3257,6 @@ export default function ChatView() {
     setEditingMessageId(null);
     const idx = activeMessages.findIndex((m) => m.id === msgId);
     if (idx < 0) { return; }
-
-    if (idx < activeMessages.length - 1) {
-      if (!await openConfirmDialog({
-        title: "Edit Message?",
-        description: "Editing this message will delete all subsequent messages in this conversation. This cannot be undone.",
-        confirmLabel: "Edit Message",
-        tone: "danger",
-      })) {
-        return;
-      }
-    }
-
     const trimmedMessages = activeMessages.slice(0, idx);
     setMessages(activeChatId, trimmedMessages);
     setInput("");
@@ -3852,6 +3274,7 @@ export default function ChatView() {
 
     const userMsg = await api.chat.addMessage(effectiveWorkspaceId, activeChatId, "user", editContent.trim());
     updateMessage(activeChatId, persistedUserMessageWithFallback(optimisticUserMsg, userMsg));
+    maybeExtractConcepts(editContent.trim(), userMsg.id);
 
     const history = trimmedMessages.map((m) => ({ role: m.role, content: m.content }));
     history.push({ role: "user", content: editContent.trim() });
@@ -3866,7 +3289,7 @@ export default function ChatView() {
           clearStreamListener();
           const assembled = useChatStore.getState().streamingContent;
           api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
-            .then((persisted) => updateMessage(sid, persisted))
+            .then((persisted) => { updateMessage(sid, persisted); maybeExtractConcepts(assembled, persisted.id); })
             .catch(() => { });
           if (tokensUsed && tokensUsed > 0) {
             api.aiModel.recordTokenUsage(selectedModel, "ollama", tokensUsed).catch(() => { });
@@ -3886,45 +3309,14 @@ export default function ChatView() {
     }
   }
 
-  async function redoMessage(msgId: string, modelId: string) {
+  async function _redoMessage(msgId: string) {
     if (!activeChatId || isStreaming || !effectiveWorkspaceId) { return; }
     const idx = activeMessages.findIndex((m) => m.id === msgId);
     if (idx < 0) { return; }
-
-    if (idx < activeMessages.length - 1) {
-      if (!await openConfirmDialog({
-        title: "Regenerate Message?",
-        description: "Redoing this message will delete all subsequent messages in this conversation. This cannot be undone.",
-        confirmLabel: "Regenerate",
-        tone: "danger",
-      })) {
-        return;
-      }
-      // Clear variation state for deleted messages and the redo'd message since history changes
-      const deletedIds = activeMessages.slice(idx + 1).map((m) => m.id);
-      setMessageVariations((prev) => {
-        const next = new Map(prev);
-        deletedIds.forEach((id) => next.delete(id));
-        next.delete(msgId);
-        return next;
-      });
-      setVariationIndex((prev) => {
-        const next = new Map(prev);
-        deletedIds.forEach((id) => next.delete(id));
-        next.delete(msgId);
-        return next;
-      });
-    }
-
-    // Capture original message as variation 0 before overwriting
-    const existingVariations = messageVariations.get(msgId) ?? [];
-    const originalMsg = activeMessages[idx];
-    if (existingVariations.length === 0) {
-      setMessageVariations((prev) => new Map(prev).set(msgId, [originalMsg]));
-    }
-
     const trimmedMessages = activeMessages.slice(0, idx);
     setMessages(activeChatId, trimmedMessages);
+
+    const _history = trimmedMessages.map((m) => ({ role: m.role, content: m.content }));
 
     setIsStreaming(true);
     try {
@@ -3932,44 +3324,29 @@ export default function ChatView() {
       clearStreamListener();
       const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
         if (done) {
-          finalizeStream(sid, modelId, tokensUsed, durationMs);
+          finalizeStream(sid, selectedModel, tokensUsed, durationMs);
           setIsStreaming(false);
           clearStreamListener();
           const assembled = useChatStore.getState().streamingContent;
-          api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, modelId, tokensUsed, durationMs)
-            .then((persisted) => {
-              updateMessage(sid, persisted);
-              setMessageVariations((prev) => {
-                const existing: Message[] = prev.get(msgId) ?? [];
-                const updated = [...existing, persisted];
-                setVariationIndex((vi) => new Map(vi).set(msgId, updated.length - 1));
-                return new Map(prev).set(msgId, updated);
-              });
-            })
+          api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
+            .then((persisted) => { updateMessage(sid, persisted); maybeExtractConcepts(assembled, persisted.id); })
             .catch(() => { });
           if (tokensUsed && tokensUsed > 0) {
-            api.aiModel.recordTokenUsage(modelId, "ollama", tokensUsed).catch(() => { });
+            api.aiModel.recordTokenUsage(selectedModel, "ollama", tokensUsed).catch(() => { });
           }
         } else {
           appendStreamChunk(sid, chunk);
         }
       });
       streamUnlistenRef.current = unlisten;
-      await api.ollama.sendMessage(sid, modelId, trimmedMessages.map((m) => ({ role: m.role, content: m.content })), true, ollamaUrl || undefined);
+      await api.ollama.sendMessage(sid, selectedModel, trimmedMessages.map((m) => ({ role: m.role, content: m.content })), true, ollamaUrl || undefined);
     } catch (err) {
       clearStreamListener();
       setIsStreaming(false);
       const errMsg = err instanceof Error ? err.message : String(err);
       appendStreamChunk(activeChatId, `\n\n⚠️ Error: ${errMsg}`);
-      finalizeStream(activeChatId, modelId);
+      finalizeStream(activeChatId, selectedModel);
     }
-  }
-
-  function handleVariationChange(msgId: string, newIndex: number) {
-    const vars = messageVariations.get(msgId);
-    if (!vars || newIndex < 0 || newIndex >= vars.length) { return; }
-    setVariationIndex((prev) => new Map(prev).set(msgId, newIndex));
-    if (activeChatId) { updateMessage(activeChatId, vars[newIndex]); }
   }
 
   // Load models for comparison mode
@@ -4016,23 +3393,16 @@ export default function ChatView() {
   const activeProject = projects.find((p) => p.id === effectiveProjectId) ?? null;
   const activeWorkspace = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId) ?? null;
 
-  // Bucket enabled models into Fast / Balanced / Powerful tiers
+  // Compute next-priority enabled model for "Try better model" button
   const enabledModels = aiModelList.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
-  const tierSize = Math.ceil(enabledModels.length / 3);
-  const modelTiers = [
-    enabledModels.slice(0, tierSize),
-    enabledModels.slice(tierSize, tierSize * 2),
-    enabledModels.slice(tierSize * 2),
-  ].filter((tier) => tier.length > 0);
-  const activeTierIdx = modelTiers.findIndex((tier) =>
-    tier.some((m) => m.model_id === selectedModel)
-  );
+  const currentModelIdx = enabledModels.findIndex((m) => m.model_id === selectedModel);
+  const nextModel = currentModelIdx >= 0 && currentModelIdx < enabledModels.length - 1 ? enabledModels[currentModelIdx + 1] : null;
   const composerSuggestionRows = useMemo(() => {
     const suggestionContext = {
       workspaceName: activeWorkspace?.name ?? null,
       projectName: activeProject?.name ?? null,
       topicSignature: activeTopicSignature,
-      processedDocCount: attachedSources.length,
+      processedDocCount,
       activeMessages,
       followUps,
     };
@@ -4043,7 +3413,7 @@ export default function ChatView() {
     activeWorkspace,
     activeProject,
     activeTopicSignature,
-    attachedSources.length,
+    processedDocCount,
     activeMessages,
     followUps,
   ]);
@@ -4053,8 +3423,11 @@ export default function ChatView() {
   const showComposerHeader = hasComposerHeader && !isComposerHeaderCollapsed;
 
   // Map model_id to display name from global labels or priority list
-  const modelDisplayName = (modelId: string) => resolveModelDisplayName(modelId, modelLabels, aiModelList);
-  const selectedModelSupportsVision = !!aiModelList.find((model) => model.model_id === selectedModel)?.role_tags?.includes("vision");
+  const modelDisplayName = (modelId: string) => {
+    if (modelLabels[modelId]) { return modelLabels[modelId]; }
+    const found = aiModelList.find((m) => m.model_id === modelId);
+    return found ? found.name : modelId;
+  };
 
   const modelPickerLabel = (modelId: string) => {
     return modelDisplayName(modelId);
@@ -4135,71 +3508,54 @@ export default function ChatView() {
               {!activeChatId ? (
                 <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center">
                   <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
-                  <p className="text-[var(--text-muted)] text-sm">Select a chat or start a new one</p>
-                  <div
-                    ref={emptyStatePrivacyMenuRef}
-                    className="relative flex flex-wrap justify-center gap-2"
-                  >
-                    <div className="flex overflow-hidden rounded-lg border border-[rgba(var(--accent-color-rgb),0.26)] bg-[var(--accent-color)] text-white shadow-[0_18px_40px_-26px_rgba(var(--accent-color-rgb),0.9)]">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsEmptyStatePrivacyMenuOpen(false);
-                          void createNewSession();
-                        }}
-                        className="px-4 py-2 text-sm transition-opacity hover:opacity-90"
-                      >
-                        Start a new chat
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Choose new chat privacy mode"
-                        aria-haspopup="menu"
-                        aria-expanded={isEmptyStatePrivacyMenuOpen}
-                        onClick={() => setIsEmptyStatePrivacyMenuOpen((open) => !open)}
-                        className="flex items-center justify-center border-l border-white/15 px-3 transition-colors hover:bg-white/10"
-                      >
-                        <ChevronDown size={14} className={`transition-transform ${isEmptyStatePrivacyMenuOpen ? "rotate-180" : ""}`} />
-                      </button>
+                  <p className="text-[var(--text-muted)] text-sm">Select a conversation or start a new one</p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <button
+                      onClick={() => createNewSession({
+                        isIncognito: emptyStatePrivacyMode === "incognito",
+                        excludeFromAnalytics: emptyStatePrivacyMode === "exclude",
+                      })}
+                      className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
+                    >
+                      Start a new chat
+                    </button>
+                  </div>
+                  <div className="w-full max-w-xs rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3 text-left">
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                        <input
+                          type="radio"
+                          name="empty-state-privacy"
+                          checked={emptyStatePrivacyMode === "incognito"}
+                          onChange={() => setEmptyStatePrivacyMode("incognito")}
+                          className="accent-[var(--accent-color)]"
+                        />
+                        <Ghost size={14} className="text-purple-400" />
+                        Incognito
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                        <input
+                          type="radio"
+                          name="empty-state-privacy"
+                          checked={emptyStatePrivacyMode === "exclude"}
+                          onChange={() => setEmptyStatePrivacyMode("exclude")}
+                          className="accent-[var(--accent-color)]"
+                        />
+                        <Shield size={14} className="text-sky-400" />
+                        Exclude from analytics
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                        <input
+                          type="radio"
+                          name="empty-state-privacy"
+                          checked={emptyStatePrivacyMode === "standard"}
+                          onChange={() => setEmptyStatePrivacyMode("standard")}
+                          className="accent-[var(--accent-color)]"
+                        />
+                        <MessageSquare size={14} className="text-[var(--text-muted)]" />
+                        Standard
+                      </label>
                     </div>
-                    {isEmptyStatePrivacyMenuOpen && (
-                      <div
-                        role="menu"
-                        aria-label="New chat privacy options"
-                        className="absolute top-full z-20 mt-2 w-full min-w-[240px] max-w-xs overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 text-left shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]"
-                      >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setIsEmptyStatePrivacyMenuOpen(false);
-                            void createNewSession({ isIncognito: true });
-                          }}
-                          className="flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
-                        >
-                          <Ghost size={14} className="mt-0.5 shrink-0 text-purple-400" />
-                          <span className="min-w-0">
-                            <span className="block text-sm font-medium text-[var(--text-primary)]">Incognito</span>
-                            <span className="block text-xs text-[var(--text-secondary)]">Starts a chat that stays private.</span>
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setIsEmptyStatePrivacyMenuOpen(false);
-                            void createNewSession({ excludeFromAnalytics: true });
-                          }}
-                          className="flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
-                        >
-                          <Shield size={14} className="mt-0.5 shrink-0 text-sky-400" />
-                          <span className="min-w-0">
-                            <span className="block text-sm font-medium text-[var(--text-primary)]">Exclude from analytics</span>
-                            <span className="block text-xs text-[var(--text-secondary)]">Starts a chat without analytics collection.</span>
-                          </span>
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </div>
               ) : (
@@ -4231,8 +3587,8 @@ export default function ChatView() {
                         onClick={() => { if (canRefreshActiveSessionTitle) { refreshSessionTitle(activeSession); } }}
                         disabled={!canRefreshActiveSessionTitle}
                         className={`p-1.5 rounded-lg text-[var(--text-muted)] transition-colors ${canRefreshActiveSessionTitle
-                          ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
-                          : "cursor-not-allowed opacity-40"
+                            ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
+                            : "cursor-not-allowed opacity-40"
                           }`}
                         title={canRefreshActiveSessionTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"}
                       >
@@ -4272,6 +3628,14 @@ export default function ChatView() {
                     </div>
                   )}
 
+                  {/* Grounded mode warning if no processed docs */}
+                  {groundedEnabled && processedDocCount === 0 && effectiveProjectId && (
+                    <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-500 flex items-center gap-1.5">
+                      <FileText size={12} />
+                      No processed documents. Upload and process docs in the Document Browser.
+                    </div>
+                  )}
+
                   {/* Messages */}
                   <div className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
                     <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
@@ -4301,26 +3665,15 @@ export default function ChatView() {
                               expandedSources={expandedSources}
                               contextSources={i === activeMessages.length - 1 && currentSessionId ? activeContextSources[currentSessionId] ?? null : null}
                               markdownComponents={markdownComponents}
-                              variations={messageVariations.get(msg.id)}
-                              currentVariationIndex={variationIndex.get(msg.id)}
-                              redoPickerOpen={redoPickerOpenForId === msg.id}
-                              availableModels={availableModels}
-                              aiModelList={aiModelList}
-                              selectedModel={selectedModel}
-                              showGenInfoModel={showGenInfoModel}
-                              showGenInfoTokenCount={showGenInfoTokenCount}
-                              showGenInfoDuration={showGenInfoDuration}
-                              showGenInfoSpeed={showGenInfoSpeed}
                               onCopy={handleCopyMessage}
                               onStartEdit={handleStartEditing}
                               onSubmitEdit={submitEdit}
                               onSetEditContent={setEditContent}
                               onCancelEdit={handleCancelEdit}
-                              onRedoWithModel={(id, model) => { setRedoPickerOpenForId(null); redoMessage(id, model); }}
-                              onToggleRedoPicker={(id) => setRedoPickerOpenForId((prev) => prev === id ? null : id)}
-                              onVariationChange={handleVariationChange}
                               onToggleThought={handleToggleThought}
                               onToggleSources={handleToggleSources}
+                              onGenerateFlashcards={handleGenerateFlashcards}
+                              flashcardGeneratingId={flashcardGeneratingId}
                             />
                           </div>
                         )}
@@ -4340,12 +3693,12 @@ export default function ChatView() {
                   )}
 
                   {/* Input / composer area */}
-                  <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-3 pt-2 sm:px-5"}`}>
-                    <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[rgba(255,255,255,0.10)] bg-[rgba(14,16,20,0.58)] ${showComposerHeader ? "p-2.5" : "p-1.5"} shadow-[0_30px_90px_-46px_rgba(0,0,0,0.95)] backdrop-blur-[24px]`}>
-                      <div className="flex flex-col gap-2 min-w-0">
+                  <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-5"}`}>
+                    <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[rgba(255,255,255,0.04)] bg-[rgba(14,16,20,0.58)] ${showComposerHeader ? "p-3" : "p-1.5"} shadow-[0_30px_90px_-46px_rgba(0,0,0,0.95)] backdrop-blur-[24px]`}>
+                      <div className="flex flex-col gap-3.5 min-w-0">
                         {showComposerHeader && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
-                          <div className="px-1 pt-0.5">
-                            <div className="px-1.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
+                          <div className="px-1 pt-1">
+                            <div className="px-1.5 pb-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
                               General
                             </div>
                             <TopicChips
@@ -4361,27 +3714,29 @@ export default function ChatView() {
                             disabled={isStreaming}
                             disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
                             onSuggestionClick={handleComposerSuggestion}
-                            onToggleCollapse={() => setIsComposerHeaderCollapsed((c) => !c)}
                           />
                         )}
 
-                        {hasComposerHeader && !showComposerHeader && (
-                          <div className="flex justify-end px-1">
+                        {hasComposerHeader && (
+                          <div className={`flex justify-end ${showComposerHeader ? "-mt-1 px-1 pb-0.5" : "px-1"}`}>
                             <button
                               type="button"
                               onClick={() => setIsComposerHeaderCollapsed((collapsed) => !collapsed)}
-                              className="flex h-7 w-7 items-center justify-center rounded-full bg-[rgba(255,255,255,0.04)] text-[rgba(255,255,255,0.42)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
-                              aria-label="Show suggestions"
-                              title="Show suggestions"
+                              className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.42)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white"
+                              aria-label={showComposerHeader ? "Hide suggestions" : "Show suggestions"}
+                              aria-expanded={showComposerHeader}
+                              title={showComposerHeader ? "Hide suggestions" : "Show suggestions"}
                             >
-                              <ChevronDown size={13} />
+                              {showComposerHeader ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                             </button>
                           </div>
                         )}
 
-                        {/* Tool buttons row */}
-                        <div className={`flex flex-wrap items-center gap-1.5 px-1 ${showComposerHeader ? "border-t border-[rgba(255,255,255,0.06)] pt-2" : ""}`}>
-                              {/* Active model picker */}
+                        <div className={`${showComposerHeader ? "rounded-[24px] border border-[rgba(255,255,255,0.06)] bg-[rgba(7,9,12,0.72)] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_22px_52px_-34px_rgba(0,0,0,0.95)]" : "rounded-[24px] border border-transparent bg-transparent p-1 shadow-none"} transition-all focus-within:border-[rgba(255,255,255,0.1)] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_22px_52px_-34px_rgba(0,0,0,0.95)]`}>
+                          <div className="flex flex-col gap-3 min-w-0">
+                            {/* Tool buttons row (icon-only) - moved above input */}
+                            <div className="flex items-center gap-1.5 px-1">
+                              {/* Gemma3 model picker icon-only */}
                               <div className="relative" data-active-model-menu>
                                 <button
                                   type="button"
@@ -4391,51 +3746,38 @@ export default function ChatView() {
                                     setIsModelPickerOpen((open) => !open);
                                   }}
                                   disabled={modelPickerOptions.length === 0}
-                                  className={`inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.18)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.88)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40`}
-                                  title={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
-                                  aria-label={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
+                                  className={`${composerIconOnlyButtonClass}`}
+                                  title="Active model"
                                   aria-haspopup="menu"
                                   aria-expanded={isModelPickerOpen}
                                 >
-                                  <span className="min-w-0 truncate">
-                                    {selectedModel ? modelPickerLabel(selectedModel) : "Select model"}
-                                  </span>
                                   <ChevronDown size={14} strokeWidth={2.2} />
                                 </button>
                                 {isModelPickerOpen && modelPickerOptions.length > 0 && (
                                   <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
                                     <div className="max-h-72 overflow-y-auto">
-                                      {groupedModelPickerOptions.map((group) => (
-                                        <div key={group.key} className="pb-1 last:pb-0">
-                                          {groupedModelPickerOptions.length > 1 && (
-                                            <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                                              {group.label}
-                                            </div>
-                                          )}
-                                          {group.modelIds.map((modelId) => {
-                                            const isSelected = modelId === selectedModel;
-                                            return (
-                                              <button
-                                                key={modelId}
-                                                type="button"
-                                                onClick={async () => {
-                                                  setSelectedModel(modelId);
-                                                  setIsModelPickerOpen(false);
-                                                  await persistModelChoice(modelId);
-                                                }}
-                                                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${isSelected
-                                                  ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                                                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                                                  }`}
-                                                title={modelPickerLabel(modelId)}
-                                              >
-                                                <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
-                                                {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      ))}
+                                      {modelPickerOptions.map((modelId) => {
+                                        const isSelected = modelId === selectedModel;
+                                        return (
+                                          <button
+                                            key={modelId}
+                                            type="button"
+                                            onClick={async () => {
+                                              setSelectedModel(modelId);
+                                              setIsModelPickerOpen(false);
+                                              await persistModelChoice(modelId);
+                                            }}
+                                            className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${isSelected
+                                                ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
+                                                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                              }`}
+                                            title={modelPickerLabel(modelId)}
+                                          >
+                                            <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
+                                            {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
+                                          </button>
+                                        );
+                                      })}
                                     </div>
                                   </div>
                                 )}
@@ -4450,54 +3792,19 @@ export default function ChatView() {
                                 <SplitSquareHorizontal size={13} />
                               </button>
 
-                              {/* Attachment menu */}
-                              <div className="relative" data-attachment-menu>
-                                <button
-                                  type="button"
-                                  onClick={() => setIsAttachmentMenuOpen((open) => !open)}
-                                  disabled={!effectiveWorkspaceId || isStreaming}
-                                  title={attachedSources.length > 0 ? `Attached ${attachedSources.length} file${attachedSources.length === 1 ? "" : "s"}` : "Attach to this message"}
-                                  aria-label="Open attachment menu"
-                                  aria-haspopup="menu"
-                                  aria-expanded={isAttachmentMenuOpen}
-                                  className={`relative ${composerIconOnlyButtonClass} ${attachedSources.length > 0 || isAttachmentMenuOpen ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
-                                >
-                                  {isAttachingFiles ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />}
-                                  {attachedSources.length > 0 && (
-                                    <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
-                                      {attachedSources.length > 9 ? "9+" : attachedSources.length}
-                                    </span>
-                                  )}
-                                </button>
-                                {isAttachmentMenuOpen && (
-                                  <div className="absolute bottom-full left-0 z-20 mb-2 min-w-[188px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setIsAttachmentMenuOpen(false);
-                                        void handleAttachFiles();
-                                      }}
-                                      disabled={isAttachingFiles}
-                                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-                                      role="menuitem"
-                                    >
-                                      <Paperclip size={15} />
-                                      <span>Attach file</span>
-                                    </button>
-                                    {selectedModelSupportsVision && (
-                                      <button
-                                        type="button"
-                                        onClick={handleAttachImage}
-                                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                                        role="menuitem"
-                                      >
-                                        <Image size={15} />
-                                        <span>Attach image</span>
-                                      </button>
-                                    )}
-                                  </div>
+                              {/* Docs button icon-only */}
+                              <button
+                                onClick={() => setGroundedEnabled((v) => !v)}
+                                title={groundedEnabled ? `Grounded ON (${processedDocCount} docs)` : "Grounded mode — use your documents as context (RAG)"}
+                                className={`relative ${composerIconOnlyButtonClass} ${groundedEnabled ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
+                              >
+                                <BookOpen size={13} />
+                                {groundedEnabled && processedDocCount > 0 && (
+                                  <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                                    {processedDocCount > 9 ? "9+" : processedDocCount}
+                                  </span>
                                 )}
-                              </div>
+                              </button>
 
                               {/* Queue button icon-only */}
                               <button
@@ -4515,56 +3822,28 @@ export default function ChatView() {
                                   ) : null;
                                 })()}
                               </button>
-
-                              <button
-                                type="button"
-                                onClick={() => { void polishComposerPrompt(); }}
-                                disabled={!input.trim() || isStreaming || isPolishingPrompt || !(draftModel || selectedModel || preferredModel)}
-                                title={isPolishingPrompt ? "Polishing prompt…" : "Polish prompt with a smaller model"}
-                                aria-label={isPolishingPrompt ? "Polishing prompt" : "Polish prompt"}
-                                className={`${composerIconOnlyButtonClass} ${isPolishingPrompt ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
-                              >
-                                {isPolishingPrompt ? <Loader2 size={13} className="animate-spin" /> : <Pencil size={13} />}
-                              </button>
-
-                              {polishUndoInput !== null && (
-                                <button
-                                  type="button"
-                                  onClick={undoPolishedPrompt}
-                                  disabled={isStreaming || isPolishingPrompt}
-                                  title="Undo prompt polish"
-                                  aria-label="Undo prompt polish"
-                                  className={composerIconOnlyButtonClass}
-                                >
-                                  <ArrowLeft size={13} />
-                                </button>
-                              )}
                             </div>
 
-	                        {/* Textarea */}
-	                        <div className="flex items-end gap-2.5 rounded-2xl bg-[rgba(255,255,255,0.03)] px-1.5 py-1">
+                            {/* Textarea with gradient border wrapper */}
+                            <div className="rounded-[20px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.035)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors focus-within:border-[rgba(var(--accent-color-rgb),0.18)] focus-within:bg-[rgba(255,255,255,0.05)]">
+                              <div className="flex items-end gap-2.5">
                                 <textarea
                                   ref={inputRef}
                                   value={input}
-                                  onChange={(e) => {
-                                    setInput(e.target.value);
-                                    if (polishUndoInput !== null) {
-                                      setPolishUndoInput(null);
-                                    }
-                                  }}
+                                  onChange={(e) => setInput(e.target.value)}
                                   onKeyDown={handleKeyDown}
                                   disabled={isStreaming}
                                   placeholder={
-                                    isStreaming
-                                      ? "Waiting for response…"
-                                      : !selectedModel
-                                        ? ollamaModelStatus === "unreachable"
-                                          ? "Ollama is unavailable — start it or enable auto-start in Preferences > AI"
-                                          : "No models available — install one via ollama pull"
-                                        : activeMessages.length > 0
-                                          ? "Message this thread…"
-                                          : "Start a new thread…"
-                                  }
+                                isStreaming
+                                  ? "Waiting for response…"
+                                  : !selectedModel
+                                    ? ollamaModelStatus === "unreachable"
+                                      ? "Ollama is unavailable — start it or enable auto-start in Preferences > AI"
+                                      : "No models available — install one via ollama pull"
+                                    : activeMessages.length > 0
+                                      ? "Message this thread…"
+                                      : "Start a new thread…"
+                              }
                                   rows={1}
                                   className="flex-1 appearance-none resize-none border-0 bg-transparent px-5 py-3 text-[15px] font-medium leading-6 tracking-[0.01em] text-[rgba(255,255,255,0.94)] placeholder:text-[rgba(255,255,255,0.26)] shadow-none outline-none ring-0 transition-colors max-h-40 overflow-y-auto focus:border-0 focus:shadow-none focus:ring-0"
                                   style={{ minHeight: 56 }}
@@ -4578,20 +3857,9 @@ export default function ChatView() {
                                   <button
                                     onClick={() => {
                                       if (activeChatId) {
-                                        setIsStreaming(false);
                                         api.ollama.stopStream(activeChatId).catch(() => { });
                                         api.llamacpp.stopStream(activeChatId).catch(() => { });
                                         api.webAI.stopStream(activeChatId).catch(() => { });
-                                        if (lastUserMessage) {
-                                          setInput(lastUserMessage);
-                                          requestAnimationFrame(() => {
-                                            if (inputRef.current) {
-                                              inputRef.current.style.height = "auto";
-                                              inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 160) + "px";
-                                              inputRef.current.focus();
-                                            }
-                                          });
-                                        }
                                       }
                                     }}
                                     className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-red-500 text-white shadow-[0_12px_30px_-18px_rgba(239,68,68,0.65)] transition-opacity hover:opacity-90"
@@ -4609,182 +3877,114 @@ export default function ChatView() {
                                         }}
                                         disabled={!input.trim() || !selectedModel}
                                         className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.18)] bg-[rgba(var(--accent-color-rgb),0.1)] text-[rgba(255,255,255,0.72)] shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
-                                          }`}
-                                        title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
-                                      >
-                                        <ArrowUpCircle size={19} strokeWidth={2.2} />
-                                      </button>
-                                      {pinnedQuickSendModels.length > 0 && (
-                                        <>
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setIsModelPickerOpen(false);
-                                              setIsModelSendMenuOpen((open) => !open);
-                                            }}
-                                            disabled={!input.trim() || isStreaming}
-                                            className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.18)] border-l-white/10 bg-[rgba(var(--accent-color-rgb),0.1)] text-white shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
-                                            title="Send with another pinned model"
-                                            aria-label="Send with another pinned model"
-                                            aria-haspopup="menu"
-                                            aria-expanded={isModelSendMenuOpen}
-                                          >
-                                            <ChevronDown size={14} strokeWidth={2.2} />
-                                          </button>
-                                          {isModelSendMenuOpen && (
-                                            <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
-                                              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                                                Send With
-                                              </div>
-                                              {groupedPinnedQuickSendModels.map((group) => (
-                                                <div key={group.key} className="pb-1 last:pb-0">
-                                                  {groupedPinnedQuickSendModels.length > 1 && (
-                                                    <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                                                      {group.label}
-                                                    </div>
-                                                  )}
-                                                  {group.modelIds.map((modelId) => (
-                                                    <button
-                                                      key={modelId}
-                                                      type="button"
-                                                      onClick={async () => {
-                                                        setIsModelSendMenuOpen(false);
-                                                        await sendMessageWithModel(modelId);
-                                                      }}
-                                                      disabled={!input.trim() || isStreaming}
-                                                      title={`Send with ${modelPickerLabel(modelId)}`}
-                                                      className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-                                                    >
-                                                      <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
-                                                      <Globe size={14} className="shrink-0 text-[var(--text-muted)]" />
-                                                    </button>
-                                                  ))}
-                                                </div>
-                                              ))}
-                                            </div>
-                                          )}
-                                        </>
-                                      )}
-                                    </div>
-                                    <button
-                                      onClick={async () => {
-                                        if (!input.trim() || !effectiveWorkspaceId || !selectedModel) { return; }
-                                        const ensuredSession = await ensureSessionForChat(selectedModel);
-                                        if (!ensuredSession) { return; }
-                                        await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
-                                          modelName: selectedModel,
-                                          sessionId: ensuredSession.sessionId,
-                                          processAt: new Date(Date.now() + 60_000).toISOString(),
-                                        });
-                                        setInput("");
-                                      }}
-                                      disabled={!input.trim() || !selectedModel}
-                                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.58)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
-                                      title="Schedule for background processing"
-                                    >
-                                      <Clock size={14} strokeWidth={2.2} />
-                                    </button>
-                                  </div>
-	                                )}
-	                        </div>
-
-                          {attachedSources.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
-                              {attachedSources.map((source) => (
-                                <span
-                                  key={source.id}
-                                  className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(var(--accent-color-rgb),0.22)] bg-[rgba(var(--accent-color-rgb),0.1)] px-3 py-1 text-[11px] font-medium text-[rgba(255,255,255,0.82)]"
-                                >
-                                  <FileText size={11} />
-                                  <span className="max-w-44 truncate">{source.title}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setAttachedSources((prev) => prev.filter((item) => item.id !== source.id))}
-                                    className="rounded-full text-[rgba(255,255,255,0.55)] transition-colors hover:text-white"
-                                    title={`Remove ${source.title}`}
-                                    aria-label={`Remove ${source.title}`}
+                                        }`}
+                                    title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
                                   >
-                                    <X size={11} />
+                                    <ArrowUpCircle size={19} strokeWidth={2.2} />
                                   </button>
-                                </span>
-                              ))}
-                            </div>
-                          )}
-
-	                        {/* ── Composer tool row ─────────────────────────────────────── */}
-	                        <div className="flex items-center gap-2.5 px-1 pt-1 flex-wrap">
-                          {/* ── Model tier picker ── */}
-                          {modelTiers.length >= 2 && (() => {
-                            const tierMeta = [
-                              { label: "Fast",     color: "#34d399", ring: "rgba(52,211,153,0.5)"  },
-                              { label: "Balanced", color: "#fbbf24", ring: "rgba(251,191,36,0.5)"  },
-                              { label: "Powerful", color: "#fb7185", ring: "rgba(251,113,133,0.5)" },
-                            ];
-                            return (
-                              <div className="flex items-center gap-1" data-tier-picker>
-                                {modelTiers.map((tier, idx) => {
-                                  const meta = tierMeta[idx];
-                                  const isActiveTier = idx === activeTierIdx;
-                                  const isOpen = activeTierPickerIdx === idx;
-                                  const byFamily = tier.reduce<Record<string, AiModel[]>>((acc, m) => {
-                                    const fam = m.provider || "Other";
-                                    (acc[fam] ??= []).push(m);
-                                    return acc;
-                                  }, {});
-                                  return (
-                                    <div key={idx} className="relative" data-tier-picker>
+                                  {pinnedQuickSendModels.length > 0 && (
+                                    <>
                                       <button
-                                        onClick={() => setActiveTierPickerIdx(isOpen ? null : idx)}
-                                        title={meta.label}
-                                        style={{
-                                          backgroundColor: meta.color,
-                                          boxShadow: isActiveTier
-                                            ? `0 0 0 2px rgba(255,255,255,0.10), 0 0 0 3.5px ${meta.ring}`
-                                            : "none",
-                                          opacity: isActiveTier ? 1 : 0.4,
+                                        type="button"
+                                        onClick={() => {
+                                          setIsModelPickerOpen(false);
+                                          setIsModelSendMenuOpen((open) => !open);
                                         }}
-                                        className="h-2.5 w-2.5 rounded-full transition-all hover:opacity-100"
-                                      />
-                                      {isOpen && (
-                                        <div className="absolute left-0 bottom-full z-20 mb-3 w-[200px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
-                                          <div className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[rgba(255,255,255,0.3)]">
-                                            {meta.label}
+                                        disabled={!input.trim() || isStreaming}
+                                        className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.18)] border-l-white/10 bg-[rgba(var(--accent-color-rgb),0.1)] text-white shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                        title="Send with another pinned model"
+                                        aria-label="Send with another pinned model"
+                                        aria-haspopup="menu"
+                                        aria-expanded={isModelSendMenuOpen}
+                                      >
+                                        <ChevronDown size={14} strokeWidth={2.2} />
+                                      </button>
+                                      {isModelSendMenuOpen && (
+                                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                                          <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                                            Send With
                                           </div>
-                                          {Object.entries(byFamily).map(([family, models]) => (
-                                            <div key={family}>
-                                              {Object.keys(byFamily).length > 1 && (
-                                                <div className="px-2 py-0.5 text-[10px] font-medium text-[rgba(255,255,255,0.25)]">{family}</div>
-                                              )}
-                                              {models.map((m) => (
-                                                <button
-                                                  key={m.model_id}
-                                                  onClick={() => {
-                                                    setSelectedModel(m.model_id);
-                                                    persistModelChoice(m.model_id);
-                                                    setActiveTierPickerIdx(null);
-                                                  }}
-                                                  className={`w-full rounded-xl px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-[rgba(255,255,255,0.06)] ${
-                                                    m.model_id === selectedModel
-                                                      ? "font-semibold text-white"
-                                                      : "text-[rgba(255,255,255,0.72)]"
-                                                  }`}
-                                                >
-                                                  {modelDisplayName(m.model_id)}
-                                                </button>
-                                              ))}
-                                            </div>
+                                          {pinnedQuickSendModels.map((modelId) => (
+                                            <button
+                                              key={modelId}
+                                              type="button"
+                                              onClick={async () => {
+                                                setIsModelSendMenuOpen(false);
+                                                await sendMessageWithModel(modelId);
+                                              }}
+                                              disabled={!input.trim() || isStreaming}
+                                              title={`Send with ${modelPickerLabel(modelId)}`}
+                                              className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                                            >
+                                              <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
+                                              <Globe size={14} className="shrink-0 text-[var(--text-muted)]" />
+                                            </button>
                                           ))}
                                         </div>
                                       )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })()}
+                                    </>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={async () => {
+                                    if (!input.trim() || !effectiveWorkspaceId || !selectedModel) { return; }
+                                    const ensuredSession = await ensureSessionForChat(selectedModel);
+                                    if (!ensuredSession) { return; }
+                                    await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
+                                      modelName: selectedModel,
+                                      sessionId: ensuredSession.sessionId,
+                                      processAt: new Date(Date.now() + 60_000).toISOString(),
+                                    });
+                                    setInput("");
+                                  }}
+                                  disabled={!input.trim() || !selectedModel}
+                                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.58)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                    title="Schedule for background processing"
+                                  >
+                                    <Clock size={14} strokeWidth={2.2} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
 
-	                          {sessionTokensUsed > 0 && (
-                            <div className="ml-auto flex h-10 items-center gap-2 rounded-full border border-transparent bg-[rgba(255,255,255,0.04)] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.74)]">
+                        {/* ── Composer tool row ─────────────────────────────────────── */}
+                        <div className="flex items-center gap-2.5 border-t border-[rgba(255,255,255,0.06)] px-1 pt-2.5 flex-wrap">
+                          {/* Try better model button */}
+                          {nextModel && !isStreaming && activeMessages.length > 0 && (
+                            <button
+                              onClick={() => {
+                                setSelectedModel(nextModel.model_id);
+                                persistModelChoice(nextModel.model_id);
+                                if (lastUserMessage) { setInput(lastUserMessage); }
+                              }}
+                              title={`Try ${modelDisplayName(nextModel.model_id)}`}
+                              className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
+                            >
+                              <ArrowUpCircle size={13} />
+                              <span>Try better</span>
+                            </button>
+                          )}
+
+                          {/* Top-K picker (only when grounded is on) */}
+                          {groundedEnabled && (
+                            <div className="relative">
+                              <select
+                                value={groundedTopK}
+                                onChange={(e) => setGroundedTopK(Number(e.target.value))}
+                                className={composerUtilitySelectClassName}
+                                title="Document chunks to retrieve"
+                              >
+                                {[3, 5, 8, 10].map((v) => <option key={v} value={v}>Top {v}</option>)}
+                              </select>
+                              <ChevronDown size={14} strokeWidth={2.2} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.46)]" />
+                            </div>
+                          )}
+
+                          {sessionTokensUsed > 0 && (
+                            <div className="ml-auto flex h-10 items-center gap-2 rounded-full border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.74)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)]">
                               <span className="text-[rgba(255,255,255,0.42)]">Tokens</span>
                               <span className="font-mono text-[rgba(255,255,255,0.95)]">
                                 {sessionTokensUsed >= 1000 ? `${(sessionTokensUsed / 1000).toFixed(1)}k` : sessionTokensUsed}
@@ -5005,8 +4205,8 @@ export default function ChatView() {
                     <div
                       key={t.id}
                       className={`rounded-lg border text-[11px] ${t.status === "processing" ? "border-yellow-500/30 bg-yellow-500/5" :
-                        t.status === "done" ? "border-green-500/20 bg-[var(--bg-primary)]" :
-                          "border-[var(--border-color)] bg-[var(--bg-primary)]"
+                          t.status === "done" ? "border-green-500/20 bg-[var(--bg-primary)]" :
+                            "border-[var(--border-color)] bg-[var(--bg-primary)]"
                         }`}
                     >
                       <div className="p-2">
@@ -5058,8 +4258,8 @@ export default function ChatView() {
           >
             <div className="flex items-start gap-3">
               <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${confirmDialog.tone === "danger"
-                ? "bg-red-500/12 text-red-400"
-                : "bg-[var(--accent-color)]/12 text-[var(--accent-color)]"
+                  ? "bg-red-500/12 text-red-400"
+                  : "bg-[var(--accent-color)]/12 text-[var(--accent-color)]"
                 }`}>
                 {confirmDialog.tone === "danger" ? <Trash2 size={18} /> : <MessageSquare size={18} />}
               </div>
