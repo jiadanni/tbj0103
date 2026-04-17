@@ -21,9 +21,9 @@ export default function ComposerSuggestionRows({
   if (visibleRows.length === 0) {return null;}
 
   return (
-    <div className="px-1.5 pt-1 pb-0.5 space-y-3">
+    <div className="px-1.5 pt-1 pb-0.5 space-y-1.5">
       {visibleRows.map((row, rowIndex) => (
-        <div key={row.id} className="flex flex-col gap-2">
+        <div key={row.id} className="flex flex-col gap-1.5">
           <div className="px-1.5 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
             {row.label}
           </div>
@@ -38,7 +38,7 @@ export default function ComposerSuggestionRows({
                   type="button"
                   disabled={isDisabled}
                   onClick={() => onSuggestionClick(suggestion)}
-                  className={`inline-flex items-center rounded-full border px-3.5 py-2 text-left text-[12px] font-semibold leading-none tracking-[0.01em] transition-all duration-150 ${
+                  className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-left text-[12px] font-semibold leading-none tracking-[0.01em] transition-all duration-150 ${
                     isImmediate
                       ? "border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] text-[rgba(255,255,255,0.94)] hover:border-[rgba(255,255,255,0.22)] hover:bg-[rgba(255,255,255,0.08)]"
                       : "border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.8)] hover:border-[rgba(255,255,255,0.16)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white"

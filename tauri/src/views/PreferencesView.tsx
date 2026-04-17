@@ -1094,8 +1094,8 @@ export default function PreferencesView() {
                           const demoWorkspaceId = await api.demo.activate();
                           setDemo(true, demoWorkspaceId);
                           window.location.reload();
-                        } catch {
-                          await message("Failed to activate demo mode.", { title: "Error", kind: "error" });
+                        } catch (e) {
+                          await message(`Failed to activate demo mode.\n${e}`, { title: "Error", kind: "error" });
                         }
                       }}
                       className="rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"

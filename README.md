@@ -18,6 +18,7 @@ Aetherium combines conversational AI, source-grounded research, bidirectional kn
 | **Platform** | macOS 14+ only | macOS, Windows, Linux |
 | **Storage** | SwiftData (Core Data) | SQLite via `rusqlite` |
 | **Entry point** | `Sources/Aetherium/` | `tauri/` |
+| **Backends** | Ollama | Ollama, MLX, Llama.cpp |
 | **Status** | Feature-complete | **Active production target** |
 
 The Tauri port is the primary development target and receives all new features.
@@ -29,10 +30,12 @@ The Tauri port is the primary development target and receives all new features.
 ## Features
 
 ### AI Chat with Source Grounding
-- Converse with local Ollama models (llama3, qwen2.5, etc.)
+- Converse with local Ollama, **MLX**, and **Llama.cpp** models
 - **Source-grounded responses** with automatic citations (RAG)
 - **Artifacts**: Side-by-side rendering of generated code, diagrams, and markdown documents
 - **Dual-model comparison**: Benchmark different models against the same prompt
+- **Multi-pane Workspaces**: Split-view support for working on different chats or documents side-by-side
+- **Model Context Protocol (MCP)**: Dynamic tool and resource integration for AI models via external servers
 - **Chat-to-Note / Chat-to-Document conversion**: One-click export of a session to a summarized note or document, with LLM-based concept extraction that auto-populates the knowledge graph via `[[wiki-links]]`
 - Chat session history with rename / soft-delete; Recycle Bin for restoration
 - **History view**: Dedicated browser for all past sessions, grouped by date (Today / Yesterday / Last 7 days / Older) with instant search
@@ -55,6 +58,7 @@ The Tauri port is the primary development target and receives all new features.
 - **Git-based Sync**: Automatic background synchronization to private Git repositories via SSH
 - **Automated Backups**: Configurable local database backups with version history
 - **Data Portability**: Import from LM Studio, Google Gemini, and export to Markdown, PDF, or Obsidian Vaults
+- **Topic-based Routing**: Automatic workspace selection based on message content via Topic Signatures
 
 ### Full-Text & Semantic Search
 - **Command Palette (Cmd+K)**: Instant global search across all content
@@ -70,6 +74,12 @@ The Tauri port is the primary development target and receives all new features.
 - **SM-2 Algorithm**: Optimized review scheduling for long-term retention
 - Card generation from documents or concept nodes
 - Full keyboard-driven review interface
+
+### Privacy & Security
+- **Local-first**: All data, embeddings, and inference remain on your machine
+- **PIN Protection**: Optional application lock with PIN
+- **Biometric Security**: macOS Touch ID support (Tauri/Swift)
+- **Encryption**: Optional database encryption for sensitive chat history
 
 ## Getting Started
 
@@ -117,21 +127,22 @@ open Package.swift   # opens in Xcode
 
 ### Global
 - `Cmd+K` - Command palette
-- `Cmd+N` - New project
-- `Cmd+Shift+N` - New chat
+- `Cmd+Shift+K` - Quick Search
+- `Cmd+N` - New chat
+- `Cmd+Shift+N` - New note
 - `Cmd+S` - Save
 - `Cmd+Q` - Quit
 
 ### Navigation
 - `Cmd+1` - Dashboard
 - `Cmd+2` - Chat
-- `Cmd+3` - History
-- `Cmd+4` - Daily Notes
-- `Cmd+5` - Documents
+- `Cmd+3` - Notes
+- `Cmd+4` - Documents
+- `Cmd+5` - Web Captures
 - `Cmd+6` - Knowledge Graph
-- `Cmd+7` - Flashcard Review
-- `Cmd+8` - Learning Paths
-- `Cmd+9` - Recycle Bin
+- `Cmd+7` - History
+- `Cmd+8` - Logs
+- `Cmd+9` - Preferences
 
 ## Architecture (Tauri Target)
 
@@ -164,7 +175,9 @@ tauri/
 | `concept_nodes` | Nodes in the bidirectional knowledge graph |
 | `daily_notes` | Chronological learning logs |
 | `learning_cards` | Spaced-repetition items (SM-2) |
-| `uploaded_documents` | Vectorized sources for RAG |
+| `sources` | Unified storage for Documents and Web Captures |
+| `mcp_servers` | Configured AI Model Context Protocol servers |
+| `settings` | Global application preferences |
 
 ## Contributing
 

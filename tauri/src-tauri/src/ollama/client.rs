@@ -248,7 +248,7 @@ impl OllamaClient {
     ) {
         let severity = Self::severity(path, duration, false, false, ctx);
         let fields = Self::summary_fields(ctx, method, path, Some(duration), Some(status), extras);
-        crate::logging::stderr(format!(
+        crate::logging::log_info("ollama", format!(
             "[AETHERIUM -> OLLAMA][{}] {}",
             severity,
             fields.join(" ")
@@ -268,14 +268,14 @@ impl OllamaClient {
         let mut extra_parts = extras.to_vec();
         extra_parts.push(("error", error.to_string()));
         let fields = Self::summary_fields(ctx, method, path, Some(duration), None, &extra_parts);
-        crate::logging::stderr(format!("[AETHERIUM -> OLLAMA][ERR] {}", fields.join(" ")));
+        crate::logging::log_error("ollama", format!("[AETHERIUM -> OLLAMA][ERR] {}", fields.join(" ")));
     }
 
     #[cfg(debug_assertions)]
     fn log_cache_event(&self, path: &str, ctx: &RequestContext, cache_status: &str) {
         let extras = [("cache", cache_status.to_string())];
         let fields = Self::summary_fields(ctx, "GET", path, None, None, &extras);
-        crate::logging::stderr(format!(
+        crate::logging::log_debug("ollama", format!(
             "[AETHERIUM -> OLLAMA][CACHE] {}",
             fields.join(" ")
         ));

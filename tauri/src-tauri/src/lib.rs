@@ -149,6 +149,9 @@ pub fn run() {
 
             drop(conn);
 
+            // Initialize persistent logging with the DB pool
+            crate::logging::init_pool(pool.clone());
+
             app.manage(db::DbState(pool));
             app.manage(commands::chat_file::ChatsDirState(chats_dir));
             app.manage(commands::chat_file::ChatCryptoState(
@@ -533,6 +536,7 @@ pub fn run() {
             commands::chat_file::import_lmstudio_folder,
             commands::chat_file::import_gemini_takeout,
             commands::chat_file::import_claude_desktop,
+            commands::chat_file::preview_claude_desktop,
             // Web AI (Playwright bridge)
             commands::web_ai::send_web_message,
             // Topic signatures
@@ -550,11 +554,16 @@ pub fn run() {
             commands::quick_search::query_quick_search,
             commands::quick_search::open_quick_search_result,
             commands::quick_search::mark_main_window_ready,
+            // Log commands
+            commands::log::get_logs,
+            commands::log::get_log_sources,
+            commands::log::clear_logs,
+            commands::log::log_frontend_event,
         ])
         .run(tauri::generate_context!());
 
     if let Err(err) = run_result {
-        crate::logging::stderr(format!("error while running tauri application: {err}"));
+        crate::logging::log_error("app", format!("error while running tauri application: {err}"));
     }
 }
 

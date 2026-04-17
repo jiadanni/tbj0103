@@ -47,6 +47,7 @@ vi.mock("@/lib/api", () => ({
       listLinks: mocks.listLinks,
       createConcept: vi.fn(),
       deleteConcept: vi.fn(),
+      getLearningPath: vi.fn().mockResolvedValue([]),
     },
     knowledge: {
       analyzeWorkspace: vi.fn(),

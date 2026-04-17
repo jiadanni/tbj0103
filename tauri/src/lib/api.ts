@@ -371,6 +371,15 @@ export interface GitSyncStatus {
   last_error: string;
 }
 
+export interface LogEntry {
+  id: number;
+  timestamp: string;
+  level: string;
+  source: string;
+  message: string;
+  metadata: string;
+}
+
 export interface SecurityStatus {
   pin_enabled: boolean;
   pin_lock_enabled: boolean;
@@ -646,23 +655,7 @@ export const api = {
     importFromJson: (path: string, workspaceId: string, projectId?: string | null, passphrase?: string) =>
       invoke<ChatSession>("import_chat_from_json", { path, workspaceId, projectId: projectId ?? null, passphrase }),
     syncAll: () => invoke<number>("sync_all_chats_to_files"),
-    importLmStudioFolder: (folderPath: string) =>
-      invoke<{
-        imported: number;
-        workspace_id: string;
-        workspace_name: string;
-        projects_created: number;
-        errors: number;
-        error_messages: string[];
-      }>("import_lmstudio_folder", { folderPath }),
-    importGeminiTakeout: (folderPath: string) =>
-      invoke<{
-        imported_sessions: number;
-        imported_messages: number;
-        workspace_id: string;
-        workspace_name: string;
-      }>("import_gemini_takeout", { folderPath }),
-    importClaudeDesktop: (folderPath: string) =>
+    importLmStudioFolder: (folderPath: string, workspaceName?: string) =>
       invoke<{
         imported: number;
         skipped: number;
@@ -671,7 +664,30 @@ export const api = {
         projects_created: number;
         errors: number;
         error_messages: string[];
-      }>("import_claude_desktop", { folderPath }),
+      }>("import_lmstudio_folder", { folderPath, workspaceName: workspaceName ?? null }),
+    importGeminiTakeout: (folderPath: string, workspaceName?: string) =>
+      invoke<{
+        imported_sessions: number;
+        imported_messages: number;
+        workspace_id: string;
+        workspace_name: string;
+      }>("import_gemini_takeout", { folderPath, workspaceName: workspaceName ?? null }),
+    importClaudeDesktop: (folderPath: string, workspaceName?: string, selectedIds?: string[]) =>
+      invoke<{
+        imported: number;
+        skipped: number;
+        workspace_id: string;
+        workspace_name: string;
+        projects_created: number;
+        errors: number;
+        error_messages: string[];
+      }>("import_claude_desktop", { folderPath, workspaceName: workspaceName ?? null, selectedIds: selectedIds ?? null }),
+    previewClaudeDesktop: (folderPath: string) =>
+      invoke<{
+        conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string }[];
+        total: number;
+        projects: string[];
+      }>("preview_claude_desktop", { folderPath }),
   },
 
   security: {
@@ -1210,6 +1226,15 @@ export const api = {
     configure: (remoteUrl: string, enabled: boolean) =>
       invoke<void>("configure_git_sync", { remoteUrl, enabled }),
     triggerSync: () => invoke<GitSyncStatus>("trigger_git_sync"),
+  },
+
+  logs: {
+    get: (opts?: { level?: string; source?: string; search?: string; before?: string; after?: string; limit?: number; offset?: number }) =>
+      invoke<LogEntry[]>("get_logs", { req: opts ?? {} }),
+    getSources: () => invoke<string[]>("get_log_sources"),
+    clear: (before?: string) => invoke<number>("clear_logs", { before }),
+    logFrontendEvent: (level: string, source: string, message: string, metadata?: string) =>
+      invoke<void>("log_frontend_event", { req: { level, source, message, metadata } }),
   },
 };
 

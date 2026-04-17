@@ -313,6 +313,7 @@ pub fn import_chat_from_json(
 #[tauri::command]
 pub fn import_lmstudio_folder(
     folder_path: String,
+    workspace_name: Option<String>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
@@ -323,12 +324,14 @@ pub fn import_lmstudio_folder(
         return Err(format!("{} is not a directory", folder_path));
     }
 
-    // Root folder name becomes the workspace name.
-    let workspace_name = folder
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("Imported Chats")
-        .to_string();
+    // Use override name if provided, otherwise root folder name.
+    let workspace_name = workspace_name.unwrap_or_else(|| {
+        folder
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Imported Chats")
+            .to_string()
+    });
 
     // Discover all conversation files with their subfolder names
     let conversations = chat_file_store::discover_lmstudio_conversations(folder)?;
@@ -355,6 +358,7 @@ pub fn import_lmstudio_folder(
 
     let mut session_ids = Vec::new();
     let mut errors = Vec::new();
+    let mut skipped = 0usize;
 
     for conv in &conversations {
         match std::fs::read(&conv.path) {
@@ -399,6 +403,18 @@ pub fn import_lmstudio_folder(
                         project_id
                     };
 
+                    // Skip duplicate: same title + created_at in same workspace/project
+                    let duplicate: bool = conn.query_row(
+                        "SELECT 1 FROM chat_sessions WHERE workspace_id = ?1 AND project_id = ?2 AND title = ?3 AND created_at = ?4 AND is_imported = 1 LIMIT 1",
+                        rusqlite::params![workspace_id, project_id, data.title, data.created_at],
+                        |_| Ok(true),
+                    ).unwrap_or(false);
+
+                    if duplicate {
+                        skipped += 1;
+                        continue;
+                    }
+
                     match chat_file_store::import_chat_data(
                         &conn,
                         &data,
@@ -421,7 +437,7 @@ pub fn import_lmstudio_folder(
         let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, id, pass.as_deref());
     }
 
-    if session_ids.is_empty() {
+    if session_ids.is_empty() && skipped == 0 {
         if created_workspace {
             if let Some(workspace_id) = workspace_id.as_ref() {
                 let _ = conn.execute(
@@ -452,6 +468,7 @@ pub fn import_lmstudio_folder(
 
     Ok(serde_json::json!({
         "imported": session_ids.len(),
+        "skipped": skipped,
         "workspace_id": workspace_id.unwrap_or_default(),
         "workspace_name": workspace_name,
         "projects_created": project_map.len(),
@@ -465,6 +482,7 @@ pub fn import_lmstudio_folder(
 #[tauri::command]
 pub fn import_gemini_takeout(
     folder_path: String,
+    workspace_name: Option<String>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
@@ -507,13 +525,13 @@ pub fn import_gemini_takeout(
         return Err("No Gemini conversations found in the selected HTML file.".to_string());
     }
 
-    let workspace_name = "Gemini Apps".to_string();
+    let workspace_name = workspace_name.unwrap_or_else(|| "Gemini Apps".to_string());
     let now = chrono::Utc::now().to_rfc3339();
 
     let existing_workspace_id = conn
         .query_row(
             "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
-            rusqlite::params!["gemini apps"],
+            rusqlite::params![workspace_name.trim()],
             |row| row.get::<_, String>(0),
         )
         .ok();
@@ -596,13 +614,64 @@ pub fn import_gemini_takeout(
     }))
 }
 
+/// Preview a Claude Desktop export folder — returns conversation metadata
+/// without importing anything. Use this to let the user select which
+/// conversations to import before calling `import_claude_desktop`.
+#[tauri::command]
+pub fn preview_claude_desktop(
+    folder_path: String,
+) -> Result<serde_json::Value, String> {
+    let folder = std::path::Path::new(&folder_path);
+    if !folder.is_dir() {
+        return Err(format!("{} is not a directory", folder_path));
+    }
+
+    let conv_path = folder.join("conversations.json");
+    if !conv_path.exists() {
+        return Err(
+            "Could not find 'conversations.json' in the selected folder.".to_string(),
+        );
+    }
+
+    let conv_bytes =
+        std::fs::read(&conv_path).map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+    let previews = chat_file_store::preview_claude_conversations(&conv_bytes)?;
+
+    // Check for projects.json
+    let projects_path = folder.join("projects.json");
+    let project_names: Vec<String> = if projects_path.exists() {
+        if let Ok(proj_bytes) = std::fs::read(&projects_path) {
+            chat_file_store::parse_claude_projects(&proj_bytes)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(_, name, _, _)| name)
+                .collect()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    Ok(serde_json::json!({
+        "conversations": previews,
+        "total": previews.len(),
+        "projects": project_names,
+    }))
+}
+
 /// Import a Claude Desktop export folder containing conversations.json and
 /// optionally projects.json. Since the Claude export does not link conversations
 /// to projects, all conversations go into a single workspace. Projects from
 /// projects.json are created as empty project containers within that workspace.
+///
+/// If `selected_ids` is provided, only the conversations with matching UUIDs
+/// are imported. Use `preview_claude_desktop` first to get the list.
 #[tauri::command]
 pub fn import_claude_desktop(
     folder_path: String,
+    workspace_name: Option<String>,
+    selected_ids: Option<Vec<String>>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
@@ -623,19 +692,22 @@ pub fn import_claude_desktop(
 
     let conv_bytes =
         std::fs::read(&conv_path).map_err(|e| format!("Failed to read conversations.json: {e}"))?;
-    let chat_data_list = chat_file_store::parse_claude_conversations(&conv_bytes)?;
+    let chat_data_list = chat_file_store::parse_claude_conversations_filtered(
+        &conv_bytes,
+        selected_ids.as_deref().unwrap_or(&[]),
+    )?;
     if chat_data_list.is_empty() {
         return Err("No conversations with messages found in the Claude Desktop export.".to_string());
     }
 
-    let workspace_name = "Claude Desktop".to_string();
+    let workspace_name = workspace_name.unwrap_or_else(|| "Claude Desktop".to_string());
     let now = chrono::Utc::now().to_rfc3339();
 
     // Get or create workspace
     let existing_workspace_id = conn
         .query_row(
             "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
-            rusqlite::params!["claude desktop"],
+            rusqlite::params![workspace_name.trim()],
             |row| row.get::<_, String>(0),
         )
         .ok();

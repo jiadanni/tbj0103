@@ -99,3 +99,4 @@ conversations-mac/
 *.rej
 .claude/settings.local.json
 tauri/.claude/settings.local.json
+Samples/

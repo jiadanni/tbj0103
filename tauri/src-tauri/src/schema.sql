@@ -899,3 +899,17 @@ CREATE INDEX IF NOT EXISTS idx_concept_mentions_source ON concept_mentions(sourc
 CREATE INDEX IF NOT EXISTS idx_thought_queue_status ON thought_queue(workspace_id, status, process_at);
 CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(workspace_id, is_active, scope);
 CREATE INDEX IF NOT EXISTS idx_conv_summaries_session ON conversation_summaries(session_id);
+
+-- Application logs (persistent, queryable log entries)
+CREATE TABLE IF NOT EXISTS app_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    level TEXT NOT NULL DEFAULT 'info'
+        CHECK(level IN ('debug', 'info', 'warn', 'error')),
+    source TEXT NOT NULL DEFAULT 'backend',
+    message TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_logs_timestamp ON app_logs(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs(level, timestamp DESC);

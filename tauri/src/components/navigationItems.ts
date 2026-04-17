@@ -7,6 +7,7 @@ import {
   History,
   MessageSquare,
   Network,
+  ScrollText,
 } from "lucide-react";
 
 export interface NavigationItem {
@@ -23,6 +24,7 @@ export const PRIMARY_NAV_ITEMS: NavigationItem[] = [
   { path: "/webcapture", icon: Globe, label: "Web Captures" },
   { path: "/graph", icon: Network, label: "Knowledge" },
   { path: "/history", icon: History, label: "History" },
+  { path: "/logs", icon: ScrollText, label: "Logs" },
 ];
 export type ChatSubView = "chat" | "compare" | "sessions";
 export type NotesSubView = "notes" | "daily";
