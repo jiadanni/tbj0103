@@ -1300,6 +1300,76 @@ pub fn parse_claude_projects(
         .collect())
 }
 
+/// Return lightweight project previews from `projects.json`.
+pub fn preview_claude_projects(bytes: &[u8]) -> Result<Vec<ClaudeProjectPreview>, String> {
+    let projects: Vec<ClaudeProject> =
+        serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude projects JSON: {e}"))?;
+
+    Ok(projects
+        .into_iter()
+        .map(|p| ClaudeProjectPreview {
+            uuid: p.uuid,
+            name: p.name,
+            description: p.description.unwrap_or_default(),
+            has_prompt: p.prompt_template.as_ref().map_or(false, |s| !s.is_empty()),
+            doc_count: p.docs.len(),
+        })
+        .collect())
+}
+
+/// Deserialize `memories.json` and build previews, resolving project UUIDs to
+/// names using the provided `projects.json` bytes (if available).
+pub fn preview_claude_memories(
+    mem_bytes: &[u8],
+    project_bytes: Option<&[u8]>,
+) -> Result<ClaudeMemoryPreview, String> {
+    #[derive(Deserialize)]
+    struct ClaudeMemoryAccount {
+        #[serde(default)]
+        conversations_memory: String,
+        #[serde(default)]
+        project_memories: std::collections::HashMap<String, String>,
+    }
+
+    let accounts: Vec<ClaudeMemoryAccount> =
+        serde_json::from_slice(mem_bytes).map_err(|e| format!("Invalid memories JSON: {e}"))?;
+
+    let account = accounts.into_iter().next().unwrap_or(ClaudeMemoryAccount {
+        conversations_memory: String::new(),
+        project_memories: std::collections::HashMap::new(),
+    });
+
+    // Build UUID → name map from projects.json
+    let name_map: std::collections::HashMap<String, String> = project_bytes
+        .and_then(|b| serde_json::from_slice::<Vec<ClaudeProject>>(b).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| (p.uuid, p.name))
+        .collect();
+
+    let project_memories: Vec<ClaudeProjectMemoryPreview> = account
+        .project_memories
+        .into_iter()
+        .filter(|(_, mem)| !mem.trim().is_empty())
+        .map(|(uuid, memory)| {
+            let project_name = name_map
+                .get(&uuid)
+                .cloned()
+                .unwrap_or_else(|| format!("Unknown project ({uuid})"));
+            ClaudeProjectMemoryPreview {
+                project_uuid: uuid,
+                project_name,
+                memory,
+            }
+        })
+        .collect();
+
+    Ok(ClaudeMemoryPreview {
+        conversations_memory: account.conversations_memory,
+        project_memories,
+    })
+}
+
 /// Lightweight preview of a Claude Desktop conversation for the UI picker.
 #[derive(Debug, Clone, Serialize)]
 pub struct ClaudeConversationPreview {
