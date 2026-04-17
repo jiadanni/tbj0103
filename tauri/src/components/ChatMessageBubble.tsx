@@ -1,7 +1,7 @@
 import React, { useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, Copy, Pencil, RotateCcw, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, BookOpen } from "lucide-react";
+import { Check, Copy, Pencil, RotateCcw, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, BookOpen, Sparkles, Loader } from "lucide-react";
 import type { Message } from "../stores/chatStore";
 import type { AiModel, SearchResult } from "../lib/api";
 import ContextIndicator from "./ContextIndicator";
@@ -53,10 +53,10 @@ export interface ChatMessageBubbleProps {
   chatMessageStyle: string;
   expandChatToWindowWidth: boolean;
   showGenInfo: boolean;
-  showGenInfoModel: boolean;
-  showGenInfoTokenCount: boolean;
-  showGenInfoDuration: boolean;
-  showGenInfoSpeed: boolean;
+  showGenInfoModel?: boolean;
+  showGenInfoTokenCount?: boolean;
+  showGenInfoDuration?: boolean;
+  showGenInfoSpeed?: boolean;
   editingMessageId: string | null;
   editContent: string;
   copiedMessageId: string | null;
@@ -68,20 +68,22 @@ export interface ChatMessageBubbleProps {
   markdownComponents: any;
   variations?: Message[];
   currentVariationIndex?: number;
-  redoPickerOpen: boolean;
-  availableModels: string[];
-  aiModelList: AiModel[];
-  selectedModel: string;
+  redoPickerOpen?: boolean;
+  availableModels?: string[];
+  aiModelList?: AiModel[];
+  selectedModel?: string;
   onCopy: (msgId: string, content: string) => void;
   onStartEdit: (msgId: string, content: string) => void;
   onSubmitEdit: (msgId: string) => void;
   onSetEditContent: (content: string) => void;
   onCancelEdit: () => void;
-  onRedoWithModel: (msgId: string, modelId: string) => void;
-  onToggleRedoPicker: (msgId: string) => void;
-  onVariationChange: (msgId: string, newIndex: number) => void;
+  onRedoWithModel?: (msgId: string, modelId: string) => void;
+  onToggleRedoPicker?: (msgId: string) => void;
+  onVariationChange?: (msgId: string, newIndex: number) => void;
   onToggleThought: (msgId: string) => void;
   onToggleSources: (msgId: string) => void;
+  onGenerateFlashcards?: (msgId: string, content: string) => void;
+  flashcardGeneratingId?: string | null;
 }
 
 const ChatMessageBubble = React.memo(function ChatMessageBubble({
@@ -119,6 +121,8 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   onVariationChange,
   onToggleThought,
   onToggleSources,
+  onGenerateFlashcards,
+  flashcardGeneratingId,
 }: ChatMessageBubbleProps) {
   const displayMsg = (variations && currentVariationIndex !== undefined)
     ? (variations[currentVariationIndex] ?? msg)
@@ -221,8 +225,8 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                 {varCount > 1 && (
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border-color)]">
                     <button
-                      onClick={() => onVariationChange(msg.id, varIdx - 1)}
-                      disabled={varIdx === 0 || isStreaming}
+                      onClick={() => onVariationChange?.(msg.id, varIdx - 1)}
+                      disabled={varIdx === 0 || isStreaming || !onVariationChange}
                       className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] disabled:opacity-30 transition-colors"
                       title="Previous variation"
                     >
@@ -237,8 +241,8 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                       )}
                     </div>
                     <button
-                      onClick={() => onVariationChange(msg.id, varIdx + 1)}
-                      disabled={varIdx >= varCount - 1 || isStreaming}
+                      onClick={() => onVariationChange?.(msg.id, varIdx + 1)}
+                      disabled={varIdx >= varCount - 1 || isStreaming || !onVariationChange}
                       className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] disabled:opacity-30 transition-colors"
                       title="Next variation"
                     >
@@ -268,37 +272,37 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                 <Pencil size={11} />
               </button>
             )}
-            {msg.role === "assistant" && !isStreaming && (
+            {msg.role === "assistant" && !isStreaming && onRedoWithModel && (
               <div className="relative flex items-center" data-redo-picker="true">
                 <button
-                  onClick={() => onRedoWithModel(msg.id, selectedModel)}
+                  onClick={() => onRedoWithModel?.(msg.id, selectedModel ?? "")}
                   className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                  title={`Redo with ${selectedModel}`}
+                  title={`Redo with ${selectedModel ?? "default"}`}
                 >
                   <RotateCcw size={11} />
                 </button>
                 <button
-                  onClick={() => onToggleRedoPicker(msg.id)}
+                  onClick={() => onToggleRedoPicker?.(msg.id)}
                   className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
                   title="Redo with different model"
                 >
                   <ChevronDown size={10} />
                 </button>
-                {redoPickerOpen && (
+                {redoPickerOpen && availableModels && (
                   <div className="absolute bottom-full right-0 z-30 mb-1.5 w-[200px] overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-[0_16px_40px_-16px_rgba(15,23,42,0.7)]">
                     <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
                       Regenerate with
                     </div>
                     <div className="max-h-48 overflow-y-auto">
-                      {availableModels.map((modelId) => {
-                        const modelMeta = aiModelList.find((m) => m.model_id === modelId);
-                        const modelName = modelMeta?.name ?? modelId;
-                        const isCurrent = modelId === selectedModel;
-                        return (
-                          <button
-                            key={modelId}
-                            type="button"
-                            onClick={() => onRedoWithModel(msg.id, modelId)}
+                        {availableModels.map((modelId) => {
+                          const modelMeta = aiModelList?.find((m) => m.model_id === modelId);
+                          const modelName = modelMeta?.name ?? modelId;
+                          const isCurrent = modelId === selectedModel;
+                          return (
+                            <button
+                              key={modelId}
+                              type="button"
+                              onClick={() => onRedoWithModel?.(msg.id, modelId)}
                             className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] transition-colors ${
                               isCurrent
                                 ? "bg-[rgba(var(--accent-color-rgb),0.10)] text-[var(--text-primary)]"
@@ -314,6 +318,16 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                   </div>
                 )}
               </div>
+            )}
+            {msg.role === "assistant" && !isStreaming && onGenerateFlashcards && (
+              <button
+                onClick={() => onGenerateFlashcards(msg.id, displayMsg.content)}
+                disabled={flashcardGeneratingId === msg.id}
+                className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors disabled:opacity-50"
+                title="Generate flashcards"
+              >
+                {flashcardGeneratingId === msg.id ? <Loader size={11} className="animate-spin" /> : <Sparkles size={11} />}
+              </button>
             )}
           </div>
           <div className={`flex items-center gap-2 text-[11px] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>

@@ -18,6 +18,7 @@ import BackupSettingsSection from "./BackupSettingsSection";
 import ImportSettingsSection from "./ImportSettingsSection";
 import { MOD_KEY, isLinux, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
+import { useAiModelSync } from "../hooks/useAiModelSync";
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
@@ -150,7 +151,6 @@ export default function PreferencesView() {
   const setSettingsNavLayout = useSettingsStore((state) => state.setSettingsNavLayout);
   const autoGenerateFlashcards = useSettingsStore((state) => state.autoGenerateFlashcards);
   const setAutoGenerateFlashcards = useSettingsStore((state) => state.setAutoGenerateFlashcards);
-  const modelLabels = useSettingsStore((state) => state.modelLabels);
   const showGenInfo = useSettingsStore((state) => state.showGenInfo);
   const setShowGenInfo = useSettingsStore((state) => state.setShowGenInfo);
   const scrollToTopOnSend = useSettingsStore((state) => state.scrollToTopOnSend);
@@ -210,7 +210,6 @@ export default function PreferencesView() {
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const saveNoticeTimeoutRef = useRef<number | null>(null);
   const ollamaModelsRequestRef = useRef(0);
-  const syncingManagedOllamaModelsRef = useRef(false);
 
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
   const [modelSpeedStats, setModelSpeedStats] = useState<Record<string, ModelSpeedStat>>({});
@@ -380,51 +379,12 @@ export default function PreferencesView() {
     }).catch(() => {});
   }
 
-  useEffect(() => {
-    if (ollamaModelsLoading || syncingManagedOllamaModelsRef.current) {
-      return;
-    }
-
-    const managedOllamaIds = new Set(
-      aiModels
-        .filter((model) => model.provider === "ollama")
-        .map((model) => model.model_id)
-    );
-    const missingModels = nonEmbeddingOllamaModels.filter((model) => !managedOllamaIds.has(model.name));
-
-    if (missingModels.length === 0) {
-      return;
-    }
-
-    const existingOllamaPriorities = aiModels
-      .filter((model) => model.provider === "ollama")
-      .map((model) => model.priority);
-    const startPriority = existingOllamaPriorities.length > 0
-      ? Math.max(...existingOllamaPriorities) + 1
-      : 0;
-
-    syncingManagedOllamaModelsRef.current = true;
-    Promise.allSettled(
-      missingModels.map((model, index) => {
-        const customLabel = modelLabels[model.name]?.trim();
-        const defaultName = customLabel || model.name;
-        return api.aiModel.add(defaultName, model.name, {
-          provider: "ollama",
-          enabled: true,
-          priority: startPriority + index,
-        });
-      })
-    )
-      .then((results) => {
-        if (results.some((result) => result.status === "fulfilled")) {
-          loadAiModels();
-          incrementModelRefreshCounter();
-        }
-      })
-      .finally(() => {
-        syncingManagedOllamaModelsRef.current = false;
-      });
-  }, [aiModels, incrementModelRefreshCounter, modelLabels, nonEmbeddingOllamaModels, ollamaModelsLoading]);
+  useAiModelSync(
+    aiModels,
+    ollamaModels,
+    ollamaModelsLoading,
+    loadAiModels
+  );
 
   function toggleQuickSearchModel(modelId: string) {
     if (!dbSettings) {return;}

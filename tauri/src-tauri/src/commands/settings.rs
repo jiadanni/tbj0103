@@ -59,7 +59,7 @@ impl Default for Settings {
             backup_enabled: true,
             touch_id_enabled: false,
             pin_lock_enabled: false,
-            auto_lock_minutes: 15,
+            auto_lock_minutes: 0,
             theme: "system".to_string(),
             accent_color: "#007AFF".to_string(),
             font_size: 16,

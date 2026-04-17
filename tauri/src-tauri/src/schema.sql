@@ -381,7 +381,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('touch_id_enabled', 'false'),
     ('pin_lock_enabled', 'false'),
     ('pin_passcode_hash', ''),
-    ('auto_lock_minutes', '15'),
+    ('auto_lock_minutes', '0'),
     ('theme', '"system"'),
     ('accent_color', '"#007AFF"'),
     ('font_size', '14'),
