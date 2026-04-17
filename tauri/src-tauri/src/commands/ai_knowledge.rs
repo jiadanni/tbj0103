@@ -45,42 +45,104 @@ struct WorkspaceContentSnapshot {
 
 const GENERIC_CONCEPTS: &[&str] = &[
     "algorithm",
+    "approach",
+    "architecture",
     "artifact",
     "attribute",
     "bug",
+    "category",
+    "challenge",
     "code",
+    "component",
+    "concept",
+    "concepts",
     "condition",
+    "configuration",
     "constraint",
+    "context",
     "data",
+    "design",
     "details",
+    "element",
     "error",
     "evaluation",
+    "event",
     "example",
+    "factor",
+    "feature",
+    "framework",
     "function",
     "functions",
+    "idea",
     "implementation",
+    "information",
     "input",
+    "issue",
+    "item",
+    "level",
+    "logic",
+    "mechanism",
     "method",
     "methods",
+    "model",
+    "module",
+    "note",
+    "object",
+    "operation",
+    "optimization",
+    "option",
     "output",
+    "overview",
+    "parameter",
+    "part",
+    "pattern",
     "phase",
+    "point",
+    "practice",
+    "principle",
+    "problem",
+    "procedure",
     "process",
     "programming",
+    "property",
     "question",
     "questions",
+    "reference",
+    "requirement",
+    "resource",
     "result",
     "results",
+    "review",
+    "rule",
+    "scenario",
+    "section",
+    "service",
+    "setup",
+    "solution",
+    "state",
     "step",
     "steps",
+    "strategy",
+    "structure",
+    "summary",
     "system",
     "task",
     "tasks",
+    "technique",
+    "term",
     "test",
     "tests",
+    "thing",
+    "tool",
     "topic",
     "topics",
+    "type",
+    "update",
+    "value",
     "variable",
     "variables",
+    "version",
+    "workflow",
 ];
 
 fn is_specific_concept(name: &str) -> bool {
@@ -91,7 +153,44 @@ fn is_specific_concept(name: &str) -> bool {
     if GENERIC_CONCEPTS.contains(&lower.as_str()) {
         return false;
     }
+    // Reject multi-word names where every word is generic
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    if words.len() > 1 && words.iter().all(|w| GENERIC_CONCEPTS.contains(w)) {
+        return false;
+    }
+    // Reject vague heading-style names
+    let vague_prefixes = [
+        "key ", "main ", "basic ", "common ", "general ", "important ",
+        "various ", "other ", "additional ", "core ", "fundamental ",
+    ];
+    for prefix in &vague_prefixes {
+        if lower.starts_with(prefix) {
+            return false;
+        }
+    }
+    let vague_suffixes = [
+        " overview", " summary", " basics", " details", " concepts",
+        " ideas", " topics", " notes", " items", " things",
+    ];
+    for suffix in &vague_suffixes {
+        if lower.ends_with(suffix) {
+            return false;
+        }
+    }
     true
+}
+
+/// Normalize a concept name for deduplication: lowercase, collapse whitespace,
+/// strip trailing 's' for simple plural handling.
+fn normalize_concept_name(name: &str) -> String {
+    let lower = name.trim().to_lowercase();
+    let collapsed: String = lower.split_whitespace().collect::<Vec<_>>().join(" ");
+    // Simple singular form — strip trailing 's' if word is > 4 chars
+    if collapsed.len() > 4 && collapsed.ends_with('s') && !collapsed.ends_with("ss") {
+        collapsed[..collapsed.len() - 1].to_string()
+    } else {
+        collapsed
+    }
 }
 
 fn repair_truncated_json_object(input: &str) -> Option<String> {
@@ -157,7 +256,7 @@ fn repair_truncated_json_object(input: &str) -> Option<String> {
     Some(repaired)
 }
 
-/// Collect recent workspace content (notes, daily notes, chat messages, docs, web) capped at ~16 000 chars.
+/// Collect recent workspace content (notes, daily notes, chat messages, docs, web) capped at ~24 000 chars.
 fn gather_workspace_content(
     conn: &rusqlite::Connection,
     workspace_id: &str,
@@ -165,7 +264,7 @@ fn gather_workspace_content(
     let mut parts: Vec<String> = Vec::new();
     let mut total_len = 0usize;
     let mut source_items = 0usize;
-    const CAP: usize = 16_000;
+    const CAP: usize = 24_000;
 
     fn safe_truncate(s: &str, max_chars: usize) -> &str {
         match s.char_indices().nth(max_chars) {
@@ -232,7 +331,7 @@ fn gather_workspace_content(
             "SELECT m.content FROM messages m \
              JOIN chat_sessions cs ON m.session_id = cs.id \
              WHERE cs.workspace_id = ?1 AND m.role = 'user' AND cs.is_incognito = 0 AND cs.exclude_from_analytics = 0 AND cs.is_deleted = 0 \
-             ORDER BY m.created_at DESC LIMIT 40",
+             ORDER BY m.created_at DESC LIMIT 60",
         ) {
             let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
                 let content: String = row.get(0)?;
@@ -240,7 +339,7 @@ fn gather_workspace_content(
             }).map(|rows| {
                 for content in rows.flatten() {
                     if total_len >= CAP { return; }
-                    let snippet = safe_truncate(&content, 200);
+                    let snippet = safe_truncate(&content, 500);
                     let entry = format!("Message: {}\n", snippet);
                     total_len += entry.len();
                     parts.push(entry);
@@ -317,23 +416,28 @@ pub async fn analyze_workspace(
         .map(|t| format!(" Focus especially on concepts related to: {t}."))
         .unwrap_or_default();
 
-    let content = if snapshot.text.len() > 15_000 {
-        &snapshot.text[..15_000]
+    let content = if snapshot.text.len() > 22_000 {
+        &snapshot.text[..22_000]
     } else {
         &snapshot.text
     };
 
     let prompt = format!(
-        "You are a knowledge graph assistant. Analyze this learning content and organize it like a textbook.{focus}\n\n\
-        Content:\n{content}\n\n\
-        Respond with ONLY raw JSON:\n\
-        {{\"chapters\":[{{\"name\":\"...\",\"description\":\"...\",\"sections\":[{{\"name\":\"...\",\"description\":\"...\",\"concepts\":[{{\"name\":\"...\",\"description\":\"...\",\"type\":\"definition\"}}]}}]}}],\"relationships\":[{{\"source\":\"exact concept name\",\"target\":\"exact concept name\",\"type\":\"prerequisite\",\"description\":\"why\"}}]}}\n\n\
-        Rules:\n\
-        - 2-4 chapters, 2-3 sections per chapter, 3-6 concepts per section\n\
-        - concept type: topic, definition, technology, insight, question, resource\n\
-        - relationship type: related, prerequisite, supports, contradicts, example\n\
-        - source/target MUST be the exact concept name as listed in the hierarchy above\n\
-        - No markdown, only raw JSON",
+        "You are a knowledge graph assistant helping a learner build a personal knowledge base. \
+Analyze the content below and extract SPECIFIC, NAMED concepts — not generic categories.{focus}\n\n\
+Content:\n{content}\n\n\
+Respond with ONLY raw JSON:\n\
+{{\"chapters\":[{{\"name\":\"...\",\"description\":\"...\",\"sections\":[{{\"name\":\"...\",\"description\":\"...\",\"concepts\":[{{\"name\":\"...\",\"description\":\"one clear sentence\",\"type\":\"definition\"}}]}}]}}],\"relationships\":[{{\"source\":\"exact concept name\",\"target\":\"exact concept name\",\"type\":\"prerequisite\",\"description\":\"why\"}}]}}\n\n\
+Rules:\n\
+- 2-4 chapters, 2-3 sections per chapter, 3-6 concepts per section\n\
+- concept type: topic, definition, technology, insight, question, resource\n\
+- relationship type: related, prerequisite, supports, contradicts, example\n\
+- source/target MUST be the exact concept name as listed in the hierarchy\n\
+- Every concept MUST be specific and named: use proper nouns, library names, theorem names, algorithm names, named techniques, or domain-specific terms\n\
+- NEVER use vague concepts like \"Key Ideas\", \"Best Practices\", \"Common Patterns\", \"Important Concepts\", \"Overview\", \"Summary\"\n\
+- Prefer concrete terms over abstractions: \"Binary Search Tree\" not \"Data Structure\", \"React Hooks\" not \"Framework Feature\"\n\
+- Each description should define the concept in one clear sentence, not just restate the name\n\
+- No markdown, only raw JSON",
         focus = focus_clause,
         content = content,
     );
@@ -428,28 +532,39 @@ pub async fn analyze_workspace(
     let mut name_to_id: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
 
-    // Load existing concepts into name_to_id map (lowercase key)
+    // Load existing concepts into name_to_id map (normalized key + aliases)
     if let Ok(mut stmt) =
-        conn.prepare("SELECT id, LOWER(name) FROM concept_nodes WHERE workspace_id = ?1")
+        conn.prepare("SELECT id, name, aliases FROM concept_nodes WHERE workspace_id = ?1")
     {
         let _ = stmt
             .query_map(rusqlite::params![req.workspace_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
             })
             .map(|rows| {
-                for (id, lower_name) in rows.flatten() {
-                    name_to_id.insert(lower_name, id);
+                for (id, name, aliases_json) in rows.flatten() {
+                    name_to_id.insert(name.to_lowercase(), id.clone());
+                    name_to_id.insert(normalize_concept_name(&name), id.clone());
+                    if let Ok(aliases) = serde_json::from_str::<Vec<String>>(&aliases_json) {
+                        for alias in aliases {
+                            name_to_id.insert(alias.to_lowercase(), id.clone());
+                            name_to_id.insert(normalize_concept_name(&alias), id.clone());
+                        }
+                    }
                 }
             });
     }
 
-    // Fuzzy name lookup: exact match first, then substring fallback
+    // Fuzzy name lookup: exact → normalized → substring fallback
     fn fuzzy_lookup(
         name_to_id: &std::collections::HashMap<String, String>,
         query: &str,
     ) -> Option<String> {
         let q = query.trim().to_lowercase();
         if let Some(id) = name_to_id.get(&q) {
+            return Some(id.clone());
+        }
+        let normalized = normalize_concept_name(query);
+        if let Some(id) = name_to_id.get(&normalized) {
             return Some(id.clone());
         }
         name_to_id
@@ -459,7 +574,8 @@ pub async fn analyze_workspace(
             .map(|(_, v)| v.clone())
     }
 
-    // Upsert helper: returns existing id or inserts new node
+    // Upsert helper: returns existing id or inserts new node.
+    // Checks both exact lowercase and normalized (plural-collapsed) forms.
     let upsert_node = |name: &str,
                        description: &str,
                        concept_type: &str,
@@ -473,6 +589,12 @@ pub async fn analyze_workspace(
         if let Some(existing_id) = name_to_id.get(&lower) {
             return Some(existing_id.clone());
         }
+        let normalized = normalize_concept_name(name);
+        if let Some(existing_id) = name_to_id.get(&normalized).cloned() {
+            // Store the new spelling as an alias lookup
+            name_to_id.insert(lower, existing_id.clone());
+            return Some(existing_id);
+        }
         let id = uuid::Uuid::new_v4().to_string();
         let result = conn.execute(
             "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level) \
@@ -481,6 +603,7 @@ pub async fn analyze_workspace(
         );
         if result.is_ok() {
             name_to_id.insert(lower, id.clone());
+            name_to_id.insert(normalized, id.clone());
             Some(id)
         } else {
             None

@@ -3,6 +3,8 @@ use crate::models::knowledge_graph::{
     ConceptLink, ConceptNode, CreateConceptRequest, CreateLinkRequest, GraphStatistics,
     HierarchyLevel,
 };
+use crate::services::concept_extractor;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 fn row_to_concept(row: &rusqlite::Row) -> rusqlite::Result<ConceptNode> {
@@ -385,4 +387,218 @@ pub fn get_learning_path(
     items.truncate(5);
 
     Ok(items)
+}
+
+// ---------------------------------------------------------------------------
+// Real-time concept extraction from arbitrary text
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct ExtractConceptsRequest {
+    pub workspace_id: String,
+    pub text: String,
+    pub source_type: String,
+    pub source_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExtractConceptsResult {
+    pub created: Vec<String>,
+    pub existing: Vec<String>,
+    pub mentions_recorded: usize,
+}
+
+/// Stopwords that the heuristic extractor might pick up as Title-Case phrases
+/// but are too generic to be useful concepts.
+const EXTRACTION_STOPWORDS: &[&str] = &[
+    "the",
+    "this",
+    "that",
+    "with",
+    "from",
+    "have",
+    "will",
+    "would",
+    "should",
+    "could",
+    "about",
+    "there",
+    "these",
+    "those",
+    "what",
+    "when",
+    "where",
+    "which",
+    "other",
+    "some",
+    "more",
+    "also",
+    "here",
+    "just",
+    "like",
+    "then",
+    "than",
+    "each",
+    "every",
+    "does",
+    "been",
+    "being",
+    "into",
+    "over",
+    "only",
+    "very",
+    "after",
+    "before",
+    "between",
+    "through",
+    "under",
+    "above",
+    "below",
+    // generic CS/learning noise
+    "code",
+    "data",
+    "test",
+    "step",
+    "task",
+    "note",
+    "item",
+    "part",
+    "type",
+    "file",
+    "list",
+    "name",
+    "info",
+    "text",
+    "help",
+    "main",
+    "work",
+    "user",
+    "next",
+];
+
+fn is_meaningful_concept(name: &str) -> bool {
+    let lower = name.trim().to_lowercase();
+    if lower.chars().count() < 4 {
+        return false;
+    }
+    // Reject single stopwords
+    if EXTRACTION_STOPWORDS.contains(&lower.as_str()) {
+        return false;
+    }
+    // Reject if every word in a multi-word phrase is a stopword
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    if words.len() > 1 && words.iter().all(|w| EXTRACTION_STOPWORDS.contains(w)) {
+        return false;
+    }
+    true
+}
+
+/// Extract concepts from text using heuristic patterns ([[wiki-links]], CamelCase,
+/// Title Case phrases), upsert them as concept_nodes, and record concept_mentions.
+/// This is designed to be called after saving chat messages or notes.
+#[tauri::command]
+pub fn extract_and_link_concepts(
+    state: State<DbState>,
+    req: ExtractConceptsRequest,
+) -> Result<ExtractConceptsResult, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+
+    let candidates = concept_extractor::extract_concepts(&req.text);
+    let meaningful: Vec<String> = candidates
+        .into_iter()
+        .filter(|c| is_meaningful_concept(c))
+        .collect();
+
+    if meaningful.is_empty() {
+        return Ok(ExtractConceptsResult {
+            created: vec![],
+            existing: vec![],
+            mentions_recorded: 0,
+        });
+    }
+
+    // Load existing concepts for this workspace (lowercase name -> id)
+    let mut existing_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    // Also index aliases
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT id, LOWER(name), aliases FROM concept_nodes WHERE workspace_id = ?1")
+    {
+        let _ = stmt
+            .query_map(rusqlite::params![req.workspace_id], |row| {
+                let id: String = row.get(0)?;
+                let lower_name: String = row.get(1)?;
+                let aliases_json: String = row.get(2)?;
+                Ok((id, lower_name, aliases_json))
+            })
+            .map(|rows| {
+                for (id, lower_name, aliases_json) in rows.flatten() {
+                    existing_map.insert(lower_name, id.clone());
+                    if let Ok(aliases) = serde_json::from_str::<Vec<String>>(&aliases_json) {
+                        for alias in aliases {
+                            existing_map.insert(alias.to_lowercase(), id.clone());
+                        }
+                    }
+                }
+            });
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut created: Vec<String> = Vec::new();
+    let mut existing: Vec<String> = Vec::new();
+    let mut mentions_recorded = 0usize;
+
+    for name in &meaningful {
+        let lower = name.to_lowercase();
+        let concept_id = if let Some(id) = existing_map.get(&lower) {
+            existing.push(name.clone());
+            // Bump review_count as a lightweight signal of relevance
+            let _ = conn.execute(
+                "UPDATE concept_nodes SET review_count = review_count + 1, updated_at = ?1 WHERE id = ?2",
+                rusqlite::params![now, id],
+            );
+            id.clone()
+        } else {
+            // Create new concept node
+            let id = uuid::Uuid::new_v4().to_string();
+            let result = conn.execute(
+                "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level) \
+                 VALUES (?1, ?2, ?3, '', 'topic', '[]', '[]', '[]', 0.0, 0.0, 1, ?4, ?4, 'concept')",
+                rusqlite::params![id, req.workspace_id, name.trim(), now],
+            );
+            if result.is_ok() {
+                existing_map.insert(lower, id.clone());
+                created.push(name.clone());
+                id
+            } else {
+                continue;
+            }
+        };
+
+        // Record the mention
+        let mention_id = uuid::Uuid::new_v4().to_string();
+        if conn
+            .execute(
+                "INSERT INTO concept_mentions (id, concept_id, source_type, source_id, context, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    mention_id,
+                    concept_id,
+                    req.source_type,
+                    req.source_id,
+                    &req.text[..req.text.len().min(200)],
+                    now
+                ],
+            )
+            .is_ok()
+        {
+            mentions_recorded += 1;
+        }
+    }
+
+    Ok(ExtractConceptsResult {
+        created,
+        existing,
+        mentions_recorded,
+    })
 }

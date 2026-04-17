@@ -685,6 +685,11 @@ export const api = {
     deleteLink: (id: string) => invoke<void>("delete_concept_link", { id }),
     getStats: (workspaceId: string) => invoke<GraphStatistics>("get_graph_stats", { workspaceId }),
     getLearningPath: (workspaceId: string) => invoke<LearningPathItem[]>("get_learning_path", { workspaceId }),
+    extractConcepts: (workspaceId: string, text: string, sourceType: string, sourceId: string) =>
+      invoke<{ created: string[]; existing: string[]; mentions_recorded: number }>(
+        "extract_and_link_concepts",
+        { req: { workspace_id: workspaceId, text, source_type: sourceType, source_id: sourceId } },
+      ),
   },
 
   learningGoal: {
