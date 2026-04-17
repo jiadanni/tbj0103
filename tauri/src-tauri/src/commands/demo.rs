@@ -6,14 +6,14 @@ use tauri::State;
 /// All demo data uses hardcoded IDs so it can be cleanly removed on deactivate.
 
 const DEMO_WS_AI: &str = "demo-workspace-ai-ml-000000000000000";
-const DEMO_WS_JPN: &str = "demo-workspace-japanese-00000000000";
+const DEMO_WS_MUSIC: &str = "demo-workspace-music-theory-0000000";
 const DEMO_WS_ROME: &str = "demo-workspace-rome-000000000000000";
 
-const DEMO_WORKSPACE_IDS: [&str; 3] = [DEMO_WS_AI, DEMO_WS_JPN, DEMO_WS_ROME];
+const DEMO_WORKSPACE_IDS: [&str; 3] = [DEMO_WS_AI, DEMO_WS_MUSIC, DEMO_WS_ROME];
 
 const DEMO_PROJECT_AI: &str = "demo-project-transformers-000000000000";
-const DEMO_PROJECT_JPN_GRAMMAR: &str = "demo-project-jpn-grammar-00000000000";
-const DEMO_PROJECT_JPN_KANJI: &str = "demo-project-jpn-kanji-0000000000000";
+const DEMO_PROJECT_MUSIC_HARMONY: &str = "demo-project-music-harmony-000000000";
+const DEMO_PROJECT_MUSIC_RHYTHM: &str = "demo-project-music-rhythm-0000000000";
 const DEMO_PROJECT_ROME: &str = "demo-project-rome-0000000000000000000";
 
 #[tauri::command]
@@ -111,65 +111,66 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
-    // ── Workspace 2: Japanese Language Learning ────────────────────────
+    // ── Workspace 2: Music Theory ────────────────────────────────────
     conn.execute(
-        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '🇯🇵 Japanese Language', ?2, ?3)",
-        rusqlite::params![DEMO_WS_JPN, now, now],
+        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '🎵 Music Theory', ?2, ?3)",
+        rusqlite::params![DEMO_WS_MUSIC, now, now],
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Grammar (JLPT N4)', 'Core grammar patterns for JLPT N4 level', '#34C759', 'text.book.closed', ?3, ?4)",
-        rusqlite::params![DEMO_PROJECT_JPN_GRAMMAR, DEMO_WS_JPN, now, now],
+        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Harmony & Chords', 'Understanding chord construction, inversions, and progressions', '#34C759', 'music.note.list', ?3, ?4)",
+        rusqlite::params![DEMO_PROJECT_MUSIC_HARMONY, DEMO_WS_MUSIC, now, now],
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Kanji Study', 'Learning kanji readings, meanings, and stroke order', '#AF52DE', 'character', ?3, ?4)",
-        rusqlite::params![DEMO_PROJECT_JPN_KANJI, DEMO_WS_JPN, now, now],
+        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Rhythm & Meter', 'Time signatures, subdivisions, and rhythmic patterns', '#AF52DE', 'metronome', ?3, ?4)",
+        rusqlite::params![DEMO_PROJECT_MUSIC_RHYTHM, DEMO_WS_MUSIC, now, now],
     ).map_err(|e| e.to_string())?;
 
-    // Chat: Japanese grammar
-    let session_jpn = "demo-chat-session-jpn-grammar-000001";
+    // Chat: chord progressions
+    let session_music = "demo-chat-session-music-harmony-00001";
     conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'て-form and its uses', '', ?4, ?5)",
-        rusqlite::params![session_jpn, DEMO_WS_JPN, DEMO_PROJECT_JPN_GRAMMAR, now, now],
+        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'How do chord progressions work?', '', ?4, ?5)",
+        rusqlite::params![session_music, DEMO_WS_MUSIC, DEMO_PROJECT_MUSIC_HARMONY, now, now],
     ).map_err(|e| e.to_string())?;
 
-    let jpn_msgs: Vec<(&str, &str)> = vec![
-        ("user", "Can you explain the て-form (te-form) in Japanese and when to use it?"),
-        ("assistant", "The **て-form** (te-form) is one of the most versatile conjugations in Japanese. It's formed differently depending on the verb group:\n\n**Group 1 (五段/godan) rules:**\n- う・つ・る → って (買う → 買って)\n- む・ぶ・ぬ → んで (読む → 読んで)\n- く → いて (書く → 書いて)\n- ぐ → いで (泳ぐ → 泳いで)\n- す → して (話す → 話して)\n\n**Group 2 (一段/ichidan):** drop る, add て (食べる → 食べて)\n\n**Irregular:** する → して, 来る → 来て\n\nKey uses include:\n1. **Connecting actions** — 朝起きて、顔を洗って、朝ごはんを食べた (I woke up, washed my face, and ate breakfast)\n2. **Requesting** — て + ください → 見てください (Please look)\n3. **Progressive** — て + いる → 食べている (I am eating)\n4. **Permission** — て + もいい → 行ってもいいですか (May I go?)\n\nSee [[Te-form]] and [[Verb Conjugation]] for the full pattern tables."),
-        ("user", "What about the ている form specifically? I keep confusing ongoing actions with resultant states."),
-        ("assistant", "Great question — this is a common source of confusion! [[ている Form]] has two main meanings:\n\n**1. Ongoing action (progressive):**\n- 食べている → I am eating (right now)\n- 勉強している → I am studying\n\n**2. Resultant state:**\n- 結婚している → I am married (not \"I am marrying\")\n- 知っている → I know (not \"I am knowing\")\n- 住んでいる → I live in... (state, not action)\n\n**The key distinction:** verbs that describe *instantaneous* changes (死ぬ, 結婚する, 座る) tend to express a **resultant state**, while verbs describing *durative* activities (食べる, 走る, 読む) express **ongoing actions**.\n\nA helpful test: if the action can't logically be \"in progress\" (you can't be *in the process of* dying continuously), it's probably a resultant state."),
+    let music_msgs: Vec<(&str, &str)> = vec![
+        ("user", "Can you explain how chord progressions work and why some sound more natural than others?"),
+        ("assistant", "Chord progressions are sequences of chords built from the notes of a [[Major Scale]]. In any major key, each scale degree produces a chord with a specific quality:\n\n| Degree | Chord | Quality | Function |\n|--------|-------|---------|----------|\n| I | C | Major | Tonic (home) |\n| ii | Dm | Minor | Subdominant |\n| iii | Em | Minor | Tonic substitute |\n| IV | F | Major | Subdominant |\n| V | G | Major | Dominant (tension) |\n| vi | Am | Minor | Tonic substitute |\n| vii° | Bdim | Diminished | Dominant |\n\nProgressions sound natural when they follow the **circle of fifths** resolution pattern: tension (V) resolves to rest (I). The most common progression in Western music is **I → V → vi → IV** (C → G → Am → F) — it appears in hundreds of pop songs.\n\nThe reason V → I feels so satisfying is the [[Tritone]] between the 3rd and 7th of the dominant chord (B and F in G7), which resolves by half-step in opposite directions to the root and 3rd of the tonic (C and E)."),
+        ("user", "What makes minor keys sound different from major keys?"),
+        ("assistant", "The difference comes down to [[Intervals]] — specifically the 3rd, 6th, and 7th scale degrees:\n\n- **Major scale:** W-W-H-W-W-W-H (bright, happy)\n- **Natural minor:** W-H-W-W-H-W-W (darker, melancholic)\n\nThe key emotional difference is the **minor 3rd** interval (3 half-steps instead of 4). This single change transforms the character of every chord built on the scale.\n\nMinor keys also have variants:\n- **Harmonic minor** — raises the 7th to create a strong V → i resolution (that distinctive \"classical\" sound)\n- **Melodic minor** — raises both 6th and 7th ascending, natural descending\n\nIn practice, composers mix all three freely. A piece in A minor might use G# (harmonic) in cadences but G natural in passing melodies. The [[Circle of Fifths]] shows that every major key has a **relative minor** that shares all the same notes — C major and A minor use the same white keys."),
     ];
-    for (role, content) in &jpn_msgs {
+    for (role, content) in &music_msgs {
         let mid = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![mid, session_jpn, role, content, now],
+            rusqlite::params![mid, session_music, role, content, now],
         ).map_err(|e| e.to_string())?;
     }
 
-    // Concepts for Japanese workspace
-    let jpn_concepts: Vec<(&str, &str, &str, &str)> = vec![
-        ("demo-concept-teform-000000000000000001", "Te-form", "The て conjugation — the most versatile verb form in Japanese, used for connecting clauses, requests, progressive, and permission.", "definition"),
-        ("demo-concept-teiru-0000000000000000001", "ている Form", "Te-form + いる: expresses ongoing actions (progressive) or resultant states depending on verb type.", "definition"),
-        ("demo-concept-verbconj-00000000000000001", "Verb Conjugation", "Japanese verbs conjugate into multiple forms (dictionary, masu, te, ta, nai, etc.) based on three groups: godan, ichidan, and irregular.", "definition"),
-        ("demo-concept-kanji-n4-0000000000000001", "JLPT N4 Kanji", "Approximately 300 kanji required for the JLPT N4 level, building on the 100 kanji from N5.", "topic"),
-        ("demo-concept-particles-00000000000000001", "Particles", "Function words (は, が, を, に, で, etc.) that mark grammatical relationships in Japanese sentences.", "definition"),
+    // Concepts for Music Theory workspace
+    let music_concepts: Vec<(&str, &str, &str, &str)> = vec![
+        ("demo-concept-major-scale-0000000000001", "Major Scale", "The foundational seven-note scale (W-W-H-W-W-W-H) from which chords, intervals, and keys are derived.", "definition"),
+        ("demo-concept-intervals-00000000000000001", "Intervals", "The distance between two pitches, measured in half-steps. Intervals determine chord quality and melodic character.", "definition"),
+        ("demo-concept-circle-fifths-000000000001", "Circle of Fifths", "A visual diagram showing the relationship between the 12 chromatic pitches and their key signatures.", "topic"),
+        ("demo-concept-tritone-000000000000000001", "Tritone", "An interval of three whole steps (6 half-steps), historically called diabolus in musica. Drives dominant-to-tonic resolution.", "definition"),
+        ("demo-concept-cadence-000000000000000001", "Cadence", "A chord progression that signals the end of a musical phrase. Common types: authentic (V-I), plagal (IV-I), deceptive (V-vi), half (any-V).", "definition"),
     ];
-    for (id, name, desc, ctype) in &jpn_concepts {
+    for (id, name, desc, ctype) in &music_concepts {
         conn.execute(
             "INSERT OR IGNORE INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, '[]', '[]', '[]', 0, 0, 0, ?6, ?7)",
-            rusqlite::params![id, DEMO_WS_JPN, name, desc, ctype, now, now],
+            rusqlite::params![id, DEMO_WS_MUSIC, name, desc, ctype, now, now],
         ).map_err(|e| e.to_string())?;
     }
 
-    let jpn_links: Vec<(&str, &str, &str)> = vec![
-        ("demo-concept-teform-000000000000000001", "demo-concept-verbconj-00000000000000001", "part_of"),
-        ("demo-concept-teiru-0000000000000000001", "demo-concept-teform-000000000000000001", "extends"),
-        ("demo-concept-particles-00000000000000001", "demo-concept-verbconj-00000000000000001", "related"),
+    let music_links: Vec<(&str, &str, &str)> = vec![
+        ("demo-concept-intervals-00000000000000001", "demo-concept-major-scale-0000000000001", "part_of"),
+        ("demo-concept-tritone-000000000000000001", "demo-concept-intervals-00000000000000001", "related"),
+        ("demo-concept-circle-fifths-000000000001", "demo-concept-major-scale-0000000000001", "related"),
+        ("demo-concept-cadence-000000000000000001", "demo-concept-tritone-000000000000000001", "related"),
     ];
-    for (src, tgt, ltype) in &jpn_links {
+    for (src, tgt, ltype) in &music_links {
         let lid = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT OR IGNORE INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at) VALUES (?1, ?2, ?3, ?4, 0.8, '', ?5)",
@@ -177,29 +178,29 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
-    // Flashcards for Japanese workspace
-    let jpn_cards: Vec<(&str, &str)> = vec![
-        ("What is the te-form of 読む (yomu, to read)?", "読んで (yonde) — む ending verbs change to んで."),
-        ("食べている — ongoing action or resultant state?", "Ongoing action: 'I am eating.' 食べる is a durative verb, so ている expresses an action in progress."),
-        ("結婚している means…?", "'I am married' (resultant state) — not 'I am marrying.' 結婚する is instantaneous, so ている expresses the resulting state."),
-        ("What particle marks the direct object?", "を (wo/o) — e.g. 本を読む (hon wo yomu, read a book)."),
+    // Flashcards for Music Theory workspace
+    let music_cards: Vec<(&str, &str)> = vec![
+        ("What interval is a tritone?", "Three whole steps (6 half-steps) — e.g. C to F#. It divides the octave exactly in half and creates the tension that drives V-I resolution."),
+        ("What are the chord qualities in a major key (I through vii)?", "I=Major, ii=minor, iii=minor, IV=Major, V=Major, vi=minor, vii°=diminished."),
+        ("What is a perfect cadence?", "V → I (or V7 → I). The strongest resolution in tonal music, signaling the definitive end of a phrase."),
+        ("What is the relative minor of C major?", "A minor — it shares all the same notes (white keys) but starts on A, giving it a different tonal center and character."),
     ];
-    for (front, back) in &jpn_cards {
+    for (front, back) in &music_cards {
         let cid = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, ease_factor, interval, repetitions, next_review_date, created_at) VALUES (?1, ?2, ?3, ?4, 'ai_generated', 2.5, 1, 0, ?5, ?6)",
-            rusqlite::params![cid, DEMO_WS_JPN, front, back, today, now],
+            rusqlite::params![cid, DEMO_WS_MUSIC, front, back, today, now],
         ).map_err(|e| e.to_string())?;
     }
 
-    // Daily notes for Japanese workspace (past 3 days)
+    // Daily notes for Music Theory workspace (past 3 days)
     for days_ago in 0..3i64 {
         let date = (chrono::Utc::now() - chrono::Duration::days(days_ago)).format("%Y-%m-%d").to_string();
         let dnid = uuid::Uuid::new_v4().to_string();
-        let content = format!("## Daily Note — {date}\n\nPracticed て-form conjugation today. Getting faster at the godan verb rules but still tripping on ぐ → いで.\n\n- Drilled 20 flashcards (vocab + kanji)\n- Chat session on ている progressive vs resultant states\n- Added concept links between Te-form → Verb Conjugation");
+        let content = format!("## Daily Note — {date}\n\nWorked through chord progressions in C major today. The I-V-vi-IV pattern finally clicked.\n\n- Analyzed 3 pop songs for their chord progressions\n- Reviewed flashcards on intervals and cadences\n- Added concept links between Tritone and Cadence");
         conn.execute(
             "INSERT OR IGNORE INTO daily_notes (id, workspace_id, date, content, mood, productivity, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 7, 8, ?5, ?6)",
-            rusqlite::params![dnid, DEMO_WS_JPN, date, content, now, now],
+            rusqlite::params![dnid, DEMO_WS_MUSIC, date, content, now, now],
         ).map_err(|e| e.to_string())?;
     }
 
