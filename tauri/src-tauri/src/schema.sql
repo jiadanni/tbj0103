@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     name TEXT NOT NULL DEFAULT 'My Workspace',
     description TEXT NOT NULL DEFAULT '',
     prompt_instructions TEXT NOT NULL DEFAULT '',
-    topic_signature TEXT NOT NULL DEFAULT '{}',
+    topic_signature TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(topic_signature)),
     signature_updated_at TEXT,
     is_hidden INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -75,8 +75,8 @@ CREATE TABLE IF NOT EXISTS learning_goals (
     progress REAL NOT NULL DEFAULT 0.0 CHECK(progress >= 0.0 AND progress <= 1.0),
     is_completed INTEGER NOT NULL DEFAULT 0,
     due_date TEXT,
-    prerequisite_ids TEXT NOT NULL DEFAULT '[]',
-    related_chat_ids TEXT NOT NULL DEFAULT '[]',
+    prerequisite_ids TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(prerequisite_ids)),
+    related_chat_ids TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(related_chat_ids)),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -88,9 +88,9 @@ CREATE TABLE IF NOT EXISTS concept_nodes (
     concept_description TEXT NOT NULL DEFAULT '',
     concept_type TEXT NOT NULL DEFAULT 'topic'
         CHECK(concept_type IN ('topic','person','technology','definition','question','insight','resource','custom')),
-    tags TEXT NOT NULL DEFAULT '[]',
-    aliases TEXT NOT NULL DEFAULT '[]',
-    references_json TEXT NOT NULL DEFAULT '[]',
+    tags TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tags)),
+    aliases TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(aliases)),
+    references_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(references_json)),
     x_position REAL NOT NULL DEFAULT 0.0,
     y_position REAL NOT NULL DEFAULT 0.0,
     review_count INTEGER NOT NULL DEFAULT 0,
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS note_templates (
     content TEXT NOT NULL DEFAULT '',
     icon TEXT NOT NULL DEFAULT 'doc',
     is_built_in INTEGER NOT NULL DEFAULT 0,
-    variables TEXT NOT NULL DEFAULT '[]',
+    variables TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(variables)),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -288,7 +288,7 @@ CREATE TABLE IF NOT EXISTS project_notes (
     content TEXT NOT NULL DEFAULT '',
     note_type TEXT NOT NULL DEFAULT 'manual'
         CHECK(note_type IN ('manual','ai_generated','quiz')),
-    tags TEXT NOT NULL DEFAULT '[]',
+    tags TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tags)),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -348,7 +348,7 @@ CREATE TABLE IF NOT EXISTS ai_models (
     name TEXT NOT NULL,
     model_id TEXT NOT NULL,
     provider TEXT NOT NULL DEFAULT 'ollama',
-    role_tags TEXT NOT NULL DEFAULT '[]',
+    role_tags TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(role_tags)),
     priority INTEGER NOT NULL DEFAULT 0,
     is_paid INTEGER NOT NULL DEFAULT 0,
     enabled INTEGER NOT NULL DEFAULT 1,
@@ -415,7 +415,7 @@ CREATE TABLE IF NOT EXISTS conversation_summaries (
     summary_type TEXT NOT NULL DEFAULT 'rolling'
         CHECK(summary_type IN ('rolling', 'final', 'segment')),
     content TEXT NOT NULL,
-    key_topics TEXT NOT NULL DEFAULT '[]',
+    key_topics TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(key_topics)),
     message_range_start INTEGER NOT NULL,
     message_range_end INTEGER NOT NULL,
     token_count INTEGER NOT NULL DEFAULT 0,
@@ -436,7 +436,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
     language TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    tags TEXT NOT NULL DEFAULT '[]',
+    tags TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tags)),
     is_pinned INTEGER NOT NULL DEFAULT 0,
     version INTEGER NOT NULL DEFAULT 1,
     parent_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL,
@@ -469,7 +469,7 @@ CREATE TABLE IF NOT EXISTS context_snapshots (
     assembled_context TEXT NOT NULL,
     token_budget INTEGER NOT NULL,
     tokens_used INTEGER NOT NULL,
-    sources_json TEXT NOT NULL DEFAULT '{}',
+    sources_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(sources_json)),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -540,8 +540,20 @@ AFTER INSERT ON chat_sessions BEGIN
     WHERE NEW.is_deleted = 0;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_chat_sessions_au
-AFTER UPDATE ON chat_sessions BEGIN
+DROP TRIGGER IF EXISTS quick_search_chat_sessions_ad;
+CREATE TRIGGER quick_search_chat_sessions_ad
+AFTER DELETE ON chat_sessions BEGIN
+    DELETE FROM quick_search_documents
+    WHERE doc_id = 'session:' || OLD.id
+       OR (session_id = OLD.id AND kind IN ('message', 'artifact', 'summary'));
+END;
+
+DROP TRIGGER IF EXISTS quick_search_chat_sessions_au;
+CREATE TRIGGER quick_search_chat_sessions_au
+AFTER UPDATE ON chat_sessions
+FOR EACH ROW
+WHEN (OLD.title != NEW.title OR OLD.is_deleted != NEW.is_deleted OR OLD.project_id != NEW.project_id)
+BEGIN
     DELETE FROM quick_search_documents
     WHERE doc_id = 'session:' || OLD.id
        OR (session_id = OLD.id AND kind IN ('message', 'artifact', 'summary'));
@@ -628,13 +640,6 @@ AFTER UPDATE ON chat_sessions BEGIN
       AND NEW.is_deleted = 0;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_chat_sessions_ad
-AFTER DELETE ON chat_sessions BEGIN
-    DELETE FROM quick_search_documents
-    WHERE doc_id = 'session:' || OLD.id
-       OR (session_id = OLD.id AND kind IN ('message', 'artifact', 'summary'));
-END;
-
 CREATE TRIGGER IF NOT EXISTS quick_search_messages_ai
 AFTER INSERT ON messages BEGIN
     INSERT OR REPLACE INTO quick_search_documents (
@@ -661,8 +666,12 @@ AFTER INSERT ON messages BEGIN
       AND cs.is_deleted = 0;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_messages_au
-AFTER UPDATE ON messages BEGIN
+DROP TRIGGER IF EXISTS quick_search_messages_au;
+CREATE TRIGGER quick_search_messages_au
+AFTER UPDATE ON messages
+FOR EACH ROW
+WHEN (OLD.content != NEW.content OR OLD.role != NEW.role)
+BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'message:' || OLD.id;
     INSERT OR REPLACE INTO quick_search_documents (
         doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
@@ -717,8 +726,12 @@ AFTER INSERT ON artifacts BEGIN
     LEFT JOIN chat_sessions cs ON cs.id = NEW.session_id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_artifacts_au
-AFTER UPDATE ON artifacts BEGIN
+DROP TRIGGER IF EXISTS quick_search_artifacts_au;
+CREATE TRIGGER quick_search_artifacts_au
+AFTER UPDATE ON artifacts
+FOR EACH ROW
+WHEN (OLD.content != NEW.content OR OLD.title != NEW.title OR OLD.description != NEW.description)
+BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'artifact:' || OLD.id;
     INSERT OR REPLACE INTO quick_search_documents (
         doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
@@ -774,8 +787,12 @@ AFTER INSERT ON memories BEGIN
     );
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_memories_au
-AFTER UPDATE ON memories BEGIN
+DROP TRIGGER IF EXISTS quick_search_memories_au;
+CREATE TRIGGER quick_search_memories_au
+AFTER UPDATE ON memories
+FOR EACH ROW
+WHEN (OLD.content != NEW.content OR OLD.memory_type != NEW.memory_type OR OLD.scope != NEW.scope)
+BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'memory:' || OLD.id;
     INSERT OR REPLACE INTO quick_search_documents (
         doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
@@ -829,8 +846,12 @@ AFTER INSERT ON conversation_summaries BEGIN
       AND cs.is_deleted = 0;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_summaries_au
-AFTER UPDATE ON conversation_summaries BEGIN
+DROP TRIGGER IF EXISTS quick_search_summaries_au;
+CREATE TRIGGER quick_search_summaries_au
+AFTER UPDATE ON conversation_summaries
+FOR EACH ROW
+WHEN (OLD.content != NEW.content OR OLD.summary_type != NEW.summary_type)
+BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'summary:' || OLD.id;
     INSERT OR REPLACE INTO quick_search_documents (
         doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
@@ -898,7 +919,20 @@ CREATE INDEX IF NOT EXISTS idx_quick_search_documents_workspace ON quick_search_
 CREATE INDEX IF NOT EXISTS idx_concept_mentions_source ON concept_mentions(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_thought_queue_status ON thought_queue(workspace_id, status, process_at);
 CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(workspace_id, is_active, scope);
-CREATE INDEX IF NOT EXISTS idx_conv_summaries_session ON conversation_summaries(session_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_parent ON chat_sessions(parent_session_id);
+CREATE INDEX IF NOT EXISTS idx_note_templates_workspace ON note_templates(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_learning_paths_workspace ON learning_paths(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_path_milestones_path ON path_milestones(path_id);
+CREATE INDEX IF NOT EXISTS idx_calendar_alarms_workspace ON calendar_alarms(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_thought_queue_session ON thought_queue(session_id);
+CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_id);
+CREATE INDEX IF NOT EXISTS idx_memories_source_session ON memories(source_session_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_message ON artifacts(message_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_parent ON artifacts(parent_artifact_id);
+CREATE INDEX IF NOT EXISTS idx_context_snapshots_session ON context_snapshots(session_id);
+CREATE INDEX IF NOT EXISTS idx_quick_search_project_session ON quick_search_documents(project_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_active ON chat_sessions(workspace_id, is_pinned, updated_at DESC) WHERE is_deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_sources_unprocessed ON sources(workspace_id) WHERE is_processed = 0;
 
 -- Application logs (persistent, queryable log entries)
 CREATE TABLE IF NOT EXISTS app_logs (

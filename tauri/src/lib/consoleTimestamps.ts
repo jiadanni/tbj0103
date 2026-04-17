@@ -39,7 +39,11 @@ export function installConsoleTimestamps(): void {
       if (forwardToBackend && forwardFn && (method === "warn" || method === "error")) {
         try {
           const msg = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
-          forwardFn(LEVEL_MAP[method], "frontend", msg);
+          
+          // Filter out noisy HMR failure messages from being persisted to backend
+          if (!msg.includes("[hmr]")) {
+            forwardFn(LEVEL_MAP[method], "frontend", msg);
+          }
         } catch {
           // never throw from logging
         }

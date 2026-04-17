@@ -154,6 +154,12 @@ export default function App() {
           if (cancelled) {return;}
         }
 
+        // Detect if we are in demo mode from existing workspaces
+        const demoWs = finalWorkspaces.find(ws => ws.id.startsWith("demo-"));
+        if (demoWs) {
+          useWorkspaceStore.getState().setDemo(true, demoWs.id);
+        }
+
         setWorkspaces(finalWorkspaces);
 
         if (settings.auto_start_ollama) {

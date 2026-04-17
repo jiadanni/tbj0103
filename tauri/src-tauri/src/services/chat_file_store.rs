@@ -1310,6 +1310,31 @@ pub struct ClaudeConversationPreview {
     pub updated_at: String,
 }
 
+/// Lightweight preview of a Claude Desktop project for the UI picker.
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaudeProjectPreview {
+    pub uuid: String,
+    pub name: String,
+    pub description: String,
+    pub has_prompt: bool,
+    pub doc_count: usize,
+}
+
+/// Preview of Claude Desktop memories.
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaudeMemoryPreview {
+    pub conversations_memory: String,
+    pub project_memories: Vec<ClaudeProjectMemoryPreview>,
+}
+
+/// A single project memory entry for preview.
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaudeProjectMemoryPreview {
+    pub project_uuid: String,
+    pub project_name: String,
+    pub memory: String,
+}
+
 /// Parse `conversations.json` and return lightweight previews (no message content).
 pub fn preview_claude_conversations(bytes: &[u8]) -> Result<Vec<ClaudeConversationPreview>, String> {
     let conversations: Vec<ClaudeConversation> =
