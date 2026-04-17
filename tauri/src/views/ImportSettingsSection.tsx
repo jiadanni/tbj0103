@@ -57,6 +57,7 @@ export default function ImportSettingsSection() {
   const [claudeProjects, setClaudeProjects] = useState<string[]>([]);
   const [claudeSelected, setClaudeSelected] = useState<Set<string>>(new Set());
   const [claudeScanning, setClaudeScanning] = useState(false);
+  const [importingClaudeProjects, setImportingClaudeProjects] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function importFromLmStudio() {
@@ -137,23 +138,24 @@ export default function ImportSettingsSection() {
 
     try {
       const selected = await open({
-        directory: true,
+        directory: false,
         multiple: false,
-        title: "Select Google Takeout folder (containing Gemini Apps)",
+        title: "Select Gemini My Activity.html file",
+        filters: [{ name: "HTML", extensions: ["html", "htm"] }],
       });
-      const folderPath = Array.isArray(selected) ? selected[0] : selected;
-      if (!folderPath) {return;}
+      const filePath = Array.isArray(selected) ? selected[0] : selected;
+      if (!filePath) {return;}
 
       const defaultName = "Gemini Apps";
       const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces);
       if (!resolvedName) {return;}
 
       const result = await api.chatFile.importGeminiTakeout(
-        folderPath,
+        filePath,
         resolvedName !== defaultName ? resolvedName : undefined,
       );
       if (result.imported_sessions < 1) {
-        throw new Error("Gemini import completed without importing any conversations. Ensure the folder contains 'My Activity.html'.");
+        throw new Error("Gemini import completed without importing any conversations.");
       }
 
       const [freshWorkspaces, importedProjects, firstSession] = await Promise.all([
@@ -189,6 +191,45 @@ export default function ImportSettingsSection() {
     }
   }
 
+  async function importClaudeProjects() {
+    setError(null);
+    setImportingClaudeProjects(true);
+
+    try {
+      const selected = await open({
+        directory: false,
+        multiple: false,
+        title: "Select Claude Desktop projects.json file",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      const filePath = Array.isArray(selected) ? selected[0] : selected;
+      if (!filePath) { return; }
+
+      const result = await api.chatFile.importClaudeProjects(filePath);
+
+      const freshWorkspaces = await api.workspace.list();
+      setWorkspaces(freshWorkspaces);
+
+      const lines = [
+        `${result.created} workspace${result.created === 1 ? "" : "s"} created from Claude projects.`,
+      ];
+      if (result.skipped > 0) {
+        lines.push(`${result.skipped} skipped (workspace with same name already exists).`);
+      }
+
+      await message(lines.join("\n"), {
+        title: "Claude projects imported",
+        kind: "info",
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Claude projects import failed";
+      setError(msg);
+      await message(msg, { title: "Claude projects import failed", kind: "error" });
+    } finally {
+      setImportingClaudeProjects(false);
+    }
+  }
+
   const scanClaudeDesktop = useCallback(async () => {
     setError(null);
     setClaudeScanning(true);
@@ -198,19 +239,20 @@ export default function ImportSettingsSection() {
 
     try {
       const selected = await open({
-        directory: true,
+        directory: false,
         multiple: false,
-        title: "Select Claude Desktop export folder (containing conversations.json)",
+        title: "Select Claude Desktop conversations.json file",
+        filters: [{ name: "JSON", extensions: ["json"] }],
       });
-      const folderPath = Array.isArray(selected) ? selected[0] : selected;
-      if (!folderPath) { return; }
+      const filePath = Array.isArray(selected) ? selected[0] : selected;
+      if (!filePath) { return; }
 
-      const result = await api.chatFile.previewClaudeDesktop(folderPath);
+      const result = await api.chatFile.previewClaudeDesktop(filePath);
       if (result.total < 1) {
         throw new Error("No conversations with messages found in the Claude Desktop export.");
       }
 
-      setClaudeFolder(folderPath);
+      setClaudeFolder(filePath);
       setClaudePreviews(result.conversations);
       setClaudeProjects(result.projects);
       // Select all by default
@@ -354,10 +396,33 @@ export default function ImportSettingsSection() {
               <div>
                 <div className="flex items-center gap-2">
                   <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import from Claude Desktop</h2>
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Claude Projects as Workspaces</h2>
                 </div>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Pick the folder containing your Claude Desktop export (<code>conversations.json</code> and optionally <code>projects.json</code>). Conversations are listed for selection before import.
+                  Pick your Claude Desktop <code>projects.json</code> file. Each project becomes a separate workspace with its description and prompt instructions.
+                </p>
+              </div>
+
+              <button
+                onClick={() => void importClaudeProjects()}
+                disabled={importingClaudeProjects}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+              >
+                {importingClaudeProjects ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+                {importingClaudeProjects ? "Importing..." : "Import Projects"}
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <FolderInput size={16} className="text-[var(--accent-color)]" />
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Claude Desktop Conversations</h2>
+                </div>
+                <p className="mt-2 text-xs text-[var(--text-muted)]">
+                  Pick your Claude Desktop <code>conversations.json</code> file. Conversations are listed for selection before import.
                 </p>
               </div>
 

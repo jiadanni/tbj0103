@@ -4,10 +4,11 @@
  * Manual creation available as secondary option.
  */
 import { useEffect, useState } from "react";
-import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2, ChevronDown } from "lucide-react";
+import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2 } from "lucide-react";
 import { api, type LearningCard, type ReviewStats } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace } from "../lib/workspacePane";
+import CompactMenuSelect from "../components/CompactMenuSelect";
 
 const QUALITY_LABELS = [
   { q: 0, label: "Blackout",   color: "text-red-500",    bg: "bg-red-500/10 hover:bg-red-500/20" },
@@ -158,26 +159,20 @@ export default function FlashcardReviewView() {
             className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors"
           />
           <div className="flex gap-1.5">
-            <div className="relative min-w-0 flex-1">
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="h-8 w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-2.5 pr-8 text-[11px] text-[var(--text-secondary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
-              >
-                {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-            </div>
-            <div className="relative w-16">
-              <select
-                value={cardCount}
-                onChange={(e) => setCardCount(Number(e.target.value))}
-                className="h-8 w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-2.5 pr-7 text-[11px] text-[var(--text-secondary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
-              >
-                {[3, 5, 8, 10, 15, 20].map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-              <ChevronDown size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-            </div>
+            <CompactMenuSelect
+              label="AI Model"
+              value={selectedModel}
+              options={availableModels.map((m) => ({ value: m, label: m }))}
+              onChange={(val) => setSelectedModel(val)}
+              widthClassName="min-w-0 flex-1"
+            />
+            <CompactMenuSelect
+              label="Count"
+              value={cardCount.toString()}
+              options={[3, 5, 8, 10, 15, 20].map((n) => ({ value: n.toString(), label: n.toString() }))}
+              onChange={(val) => setCardCount(Number(val))}
+              widthClassName="w-16"
+            />
           </div>
           <button
             onClick={generateCards}

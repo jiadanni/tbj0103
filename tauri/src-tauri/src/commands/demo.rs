@@ -2,7 +2,7 @@ use crate::db::DbState;
 use tauri::State;
 
 /// Demo mode: seeds temporary workspaces with sample data.
-/// Each workspace showcases a different subject area.
+/// Each workspace showcases a different subject area with rich content.
 /// All demo data uses hardcoded IDs so it can be cleanly removed on deactivate.
 
 const DEMO_WS_AI: &str = "demo-workspace-ai-ml-000000000000000";
@@ -12,9 +12,11 @@ const DEMO_WS_ROME: &str = "demo-workspace-rome-000000000000000";
 const DEMO_WORKSPACE_IDS: [&str; 3] = [DEMO_WS_AI, DEMO_WS_MUSIC, DEMO_WS_ROME];
 
 const DEMO_PROJECT_AI: &str = "demo-project-transformers-000000000000";
+const DEMO_PROJECT_AI_LLMS: &str = "demo-project-ai-llms-00000000000000";
 const DEMO_PROJECT_MUSIC_HARMONY: &str = "demo-project-music-harmony-000000000";
 const DEMO_PROJECT_MUSIC_RHYTHM: &str = "demo-project-music-rhythm-0000000000";
 const DEMO_PROJECT_ROME: &str = "demo-project-rome-0000000000000000000";
+const DEMO_PROJECT_ROME_MILITARY: &str = "demo-project-rome-military-00000000000";
 
 #[tauri::command]
 pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
@@ -38,33 +40,63 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         rusqlite::params![DEMO_PROJECT_AI, DEMO_WS_AI, now, now],
     ).map_err(|e| e.to_string())?;
 
-    // Chat: self-attention
-    let session_ai = "demo-chat-session-transformers-00001";
     conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'What is Self-Attention?', '', ?4, ?5)",
-        rusqlite::params![session_ai, DEMO_WS_AI, DEMO_PROJECT_AI, now, now],
+        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Large Language Models', 'Practical applications and fine-tuning of LLMs', '#5AC8FA', 'rectangle.stack.fill', ?3, ?4)",
+        rusqlite::params![DEMO_PROJECT_AI_LLMS, DEMO_WS_AI, now, now],
     ).map_err(|e| e.to_string())?;
 
-    let ai_msgs: Vec<(&str, &str)> = vec![
+    // Chat: self-attention
+    let session_ai_1 = "demo-chat-session-transformers-00001";
+    conn.execute(
+        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'What is Self-Attention?', '', ?4, ?5)",
+        rusqlite::params![session_ai_1, DEMO_WS_AI, DEMO_PROJECT_AI, now, now],
+    ).map_err(|e| e.to_string())?;
+
+    let ai_msgs_1: Vec<(&str, &str)> = vec![
         ("user", "Can you explain how self-attention works in transformers?"),
-        ("assistant", "Self-attention allows each token in a sequence to attend to every other token, computing relevance scores (called attention weights). \n\nFor each token, we compute three vectors: **Query (Q)**, **Key (K)**, and **Value (V)**. The attention score between token i and token j is computed as:\n\n```\nAttention(Q,K,V) = softmax(QK^T / √d_k) × V\n```\n\nThe scaling factor `√d_k` prevents vanishing gradients in longer sequences. This mechanism is what allows transformers to capture long-range dependencies that RNNs struggled with. See [[Attention Mechanism]] and [[Query Key Value]] for more depth."),
+        ("assistant", "Self-attention allows each token in a sequence to attend to every other token, computing relevance scores (called attention weights).\n\nFor each token, we compute three vectors: **Query (Q)**, **Key (K)**, and **Value (V)**. The attention score between token i and token j is computed as:\n\n```\nAttention(Q,K,V) = softmax(QK^T / √d_k) × V\n```\n\nThe scaling factor `√d_k` prevents vanishing gradients. This mechanism captures long-range dependencies that RNNs struggled with. See [[Attention Mechanism]] and [[Query Key Value]] for more depth."),
         ("user", "How does multi-head attention differ?"),
-        ("assistant", "[[Multi-Head Attention]] runs multiple attention operations in parallel — typically 8 or 16 heads — each with different learned projections. Each head can specialize: one might focus on syntactic relationships, another on semantic similarity.\n\nThe outputs of all heads are concatenated and projected back to the model dimension:\n\n```\nMultiHead(Q,K,V) = Concat(head₁,...,headₕ)W^O\n```\n\nThis dramatically increases the model's representational power without multiplying compute proportionally."),
+        ("assistant", "[[Multi-Head Attention]] runs multiple attention operations in parallel — typically 8 or 16 heads — each with different learned projections. Each head can specialize in different aspects of the sequence.\n\nThe outputs of all heads are concatenated:\n\n```\nMultiHead(Q,K,V) = Concat(head₁,...,headₕ)W^O\n```\n\nThis dramatically increases representational power without proportionally multiplying compute."),
     ];
-    for (role, content) in &ai_msgs {
+    for (role, content) in &ai_msgs_1 {
         let mid = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![mid, session_ai, role, content, now],
+            rusqlite::params![mid, session_ai_1, role, content, now],
         ).map_err(|e| e.to_string())?;
     }
 
-    // Concepts for AI workspace
+    // Chat: scaling laws
+    let session_ai_2 = "demo-chat-session-ai-scaling-00001";
+    conn.execute(
+        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'Scaling Laws and Emergent Abilities', '', ?4, ?5)",
+        rusqlite::params![session_ai_2, DEMO_WS_AI, DEMO_PROJECT_AI_LLMS, now, now],
+    ).map_err(|e| e.to_string())?;
+
+    let ai_msgs_2: Vec<(&str, &str)> = vec![
+        ("user", "What are scaling laws in deep learning?"),
+        ("assistant", "[[Scaling Laws]] describe how model performance improves predictably as we increase model size, data size, and compute. Key findings:\n\n1. **Power-law relationships** — Performance ∝ N^(-α) where N is parameters/data and α ≈ 0.07-0.1\n2. **Compute-optimal** — For fixed compute budget, optimal model size is ~20x smaller than data tokens\n3. **Transfer enabled** — Large models display [[Emergent Abilities]] — tasks solvable at scale that fail at small scale"),
+        ("user", "Give examples of emergent abilities."),
+        ("assistant", "[[Emergent Abilities]] are capabilities that only appear above certain model scales:\n\n- **In-context learning** — Models can learn from examples in context without parameter updates\n- **Chain-of-thought reasoning** — Solving multi-step problems by working through intermediate steps\n- **Instruction following** — Understanding and executing diverse instructions without task-specific training\n- **Few-shot generalization** — Solving novel problems with just 1-2 examples\n\nThese abilities weren't explicitly designed; they emerge from scale and are hard to predict beforehand."),
+    ];
+    for (role, content) in &ai_msgs_2 {
+        let mid = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![mid, session_ai_2, role, content, now],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Concepts for AI workspace — expanded
     let ai_concepts: Vec<(&str, &str, &str, &str)> = vec![
-        ("demo-concept-attention-0000000000001", "Attention Mechanism", "The core mechanism in transformers that computes weighted relevance between sequence elements.", "technology"),
-        ("demo-concept-transformer-000000000001", "Transformer", "A neural network architecture based entirely on attention mechanisms, without recurrence.", "technology"),
-        ("demo-concept-qkv-00000000000000000001", "Query Key Value", "The three projection matrices used in attention: Q (what to look for), K (what to match), V (what to retrieve).", "definition"),
-        ("demo-concept-mlh-00000000000000000001", "Multi-Head Attention", "Running multiple attention operations in parallel with different learned projections.", "technology"),
+        ("demo-concept-attention-0000000000001", "Attention Mechanism", "Core mechanism computing weighted relevance between sequence elements.", "technology"),
+        ("demo-concept-transformer-000000000001", "Transformer", "Architecture based entirely on attention mechanisms, without recurrence.", "technology"),
+        ("demo-concept-qkv-00000000000000000001", "Query Key Value", "Three matrices used in attention: Q (what to find), K (what to match), V (what to retrieve).", "definition"),
+        ("demo-concept-mlh-00000000000000000001", "Multi-Head Attention", "Parallel attention operations with different learned projections.", "technology"),
+        ("demo-concept-scaling-laws-000000000001", "Scaling Laws", "Predictable performance improvements with increased model/data size following power laws.", "resource"),
+        ("demo-concept-emergent-abilities-001", "Emergent Abilities", "Capabilities appearing only above certain model scales: in-context learning, chain-of-thought, instruction following.", "insight"),
+        ("demo-concept-llm-finetuning-0000001", "LLM Fine-tuning", "Adapting pre-trained models to specific tasks via continued training on domain data.", "definition"),
+        ("demo-concept-tokenization-00000000001", "Tokenization", "Breaking text into tokens (words/subwords) as the input unit for transformers.", "definition"),
     ];
     for (id, name, desc, ctype) in &ai_concepts {
         conn.execute(
@@ -78,6 +110,10 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ("demo-concept-attention-0000000000001", "demo-concept-transformer-000000000001", "supports"),
         ("demo-concept-qkv-00000000000000000001", "demo-concept-attention-0000000000001", "part_of"),
         ("demo-concept-mlh-00000000000000000001", "demo-concept-attention-0000000000001", "related"),
+        ("demo-concept-scaling-laws-000000000001", "demo-concept-transformer-000000000001", "supports"),
+        ("demo-concept-emergent-abilities-001", "demo-concept-scaling-laws-000000000001", "example"),
+        ("demo-concept-llm-finetuning-0000001", "demo-concept-transformer-000000000001", "supports"),
+        ("demo-concept-tokenization-00000000001", "demo-concept-llm-finetuning-0000001", "prerequisite"),
     ];
     for (src, tgt, ltype) in &ai_links {
         let lid = uuid::Uuid::new_v4().to_string();
@@ -87,10 +123,16 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
-    // Flashcards for AI workspace
+    // Flashcards for AI workspace — expanded
     let ai_cards: Vec<(&str, &str)> = vec![
-        ("What does Q, K, V stand for in attention?", "Query, Key, Value — Q is what you're looking for, K is what available items advertise, V is what you actually retrieve."),
-        ("What is the scaling factor in attention and why?", "√d_k — prevents the dot products from growing too large in high-dimensional spaces, which would push the softmax into regions with tiny gradients."),
+        ("What does Q, K, V stand for in attention?", "Query, Key, Value — Q asks 'what to look for', K advertises 'what I am', V states 'what I contain'."),
+        ("What is the scaling factor in attention and why?", "√d_k — prevents dot products from growing too large in high dimensions, keeping softmax gradients stable."),
+        ("What are scaling laws?", "Empirical observation that performance improves predictably as N^(-α) where N is model/data size and α ≈ 0.07-0.1."),
+        ("Name three emergent abilities in LLMs.", "In-context learning, chain-of-thought reasoning, instruction following. These appear only above certain scales."),
+        ("What is the compute-optimal model size?", "For fixed compute, optimal model size is ~20x smaller than data tokens. Violates early intuitions about model vs data trade-offs."),
+        ("What is tokenization?", "Process of breaking text into atomic units (tokens) that transformers process. Can be characters, words, or subwords."),
+        ("Explain multi-head attention.", "Running N parallel attention heads with different projections, then concatenating. Each head specializes in different patterns."),
+        ("What is fine-tuning?", "Continuing training of a pre-trained model on domain-specific data with low learning rates to adapt to new tasks."),
     ];
     for (front, back) in &ai_cards {
         let cid = uuid::Uuid::new_v4().to_string();
@@ -100,13 +142,19 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
-    // Daily notes for AI workspace (past 3 days)
-    for days_ago in 0..3i64 {
+    // Daily notes for AI workspace (past 7 days)
+    for days_ago in 0..7i64 {
         let date = (chrono::Utc::now() - chrono::Duration::days(days_ago)).format("%Y-%m-%d").to_string();
         let dnid = uuid::Uuid::new_v4().to_string();
-        let content = format!("## Daily Note — {date}\n\nLearned about transformer architectures today. Key insight: attention is all you need.\n\n- Read 2 papers on self-attention\n- Reviewed flashcards\n- Created concept links between QKV and Attention Mechanism");
+        let content = if days_ago == 0 {
+            format!("## Daily Note — {date}\n\nFinished scaling laws reading. The compute-optimal tradeoffs are counterintuitive.\n\n- Read Chinchilla paper on compute allocation\n- Explored emergent abilities across model sizes\n- Connected scaling laws to fine-tuning strategy")
+        } else if days_ago == 1 {
+            format!("## Daily Note — {date}\n\nDeep dive into transformer architectures. Multi-head attention finally makes sense.\n\n- Traced through self-attention math step-by-step\n- Compared RNN vs Transformer on long sequences\n- Created concept links from QKV → Attention → Transformer")
+        } else {
+            format!("## Daily Note — {date}\n\nReviewed fundamental concepts and practiced flashcards.\n\n- Drilled transformer basics\n- Reviewed tokenization and embeddings\n- Updated concept graph with new insights")
+        };
         conn.execute(
-            "INSERT OR IGNORE INTO daily_notes (id, workspace_id, date, content, mood, productivity, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 8, 7, ?5, ?6)",
+            "INSERT OR IGNORE INTO daily_notes (id, workspace_id, date, content, mood, productivity, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 8, 8, ?5, ?6)",
             rusqlite::params![dnid, DEMO_WS_AI, date, content, now, now],
         ).map_err(|e| e.to_string())?;
     }
@@ -128,33 +176,58 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
     ).map_err(|e| e.to_string())?;
 
     // Chat: chord progressions
-    let session_music = "demo-chat-session-music-harmony-00001";
+    let session_music_1 = "demo-chat-session-music-harmony-00001";
     conn.execute(
         "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'How do chord progressions work?', '', ?4, ?5)",
-        rusqlite::params![session_music, DEMO_WS_MUSIC, DEMO_PROJECT_MUSIC_HARMONY, now, now],
+        rusqlite::params![session_music_1, DEMO_WS_MUSIC, DEMO_PROJECT_MUSIC_HARMONY, now, now],
     ).map_err(|e| e.to_string())?;
 
-    let music_msgs: Vec<(&str, &str)> = vec![
-        ("user", "Can you explain how chord progressions work and why some sound more natural than others?"),
-        ("assistant", "Chord progressions are sequences of chords built from the notes of a [[Major Scale]]. In any major key, each scale degree produces a chord with a specific quality:\n\n| Degree | Chord | Quality | Function |\n|--------|-------|---------|----------|\n| I | C | Major | Tonic (home) |\n| ii | Dm | Minor | Subdominant |\n| iii | Em | Minor | Tonic substitute |\n| IV | F | Major | Subdominant |\n| V | G | Major | Dominant (tension) |\n| vi | Am | Minor | Tonic substitute |\n| vii° | Bdim | Diminished | Dominant |\n\nProgressions sound natural when they follow the **circle of fifths** resolution pattern: tension (V) resolves to rest (I). The most common progression in Western music is **I → V → vi → IV** (C → G → Am → F) — it appears in hundreds of pop songs.\n\nThe reason V → I feels so satisfying is the [[Tritone]] between the 3rd and 7th of the dominant chord (B and F in G7), which resolves by half-step in opposite directions to the root and 3rd of the tonic (C and E)."),
-        ("user", "What makes minor keys sound different from major keys?"),
-        ("assistant", "The difference comes down to [[Intervals]] — specifically the 3rd, 6th, and 7th scale degrees:\n\n- **Major scale:** W-W-H-W-W-W-H (bright, happy)\n- **Natural minor:** W-H-W-W-H-W-W (darker, melancholic)\n\nThe key emotional difference is the **minor 3rd** interval (3 half-steps instead of 4). This single change transforms the character of every chord built on the scale.\n\nMinor keys also have variants:\n- **Harmonic minor** — raises the 7th to create a strong V → i resolution (that distinctive \"classical\" sound)\n- **Melodic minor** — raises both 6th and 7th ascending, natural descending\n\nIn practice, composers mix all three freely. A piece in A minor might use G# (harmonic) in cadences but G natural in passing melodies. The [[Circle of Fifths]] shows that every major key has a **relative minor** that shares all the same notes — C major and A minor use the same white keys."),
+    let music_msgs_1: Vec<(&str, &str)> = vec![
+        ("user", "Can you explain how chord progressions work and why some sound more natural?"),
+        ("assistant", "[[Chord Progressions]] are sequences built from [[Major Scale]] degrees. In C major:\n\n| Degree | Chord | Quality |\n|--------|-------|----------|\n| I | C | Major |\n| ii | Dm | minor |\n| iii | Em | minor |\n| IV | F | Major |\n| V | G | Major |\n| vi | Am | minor |\n| vii° | Bdim | diminished |\n\nProgressions sound natural following the **circle of fifths**: tension (V) resolves to rest (I). The most common is **I → V → vi → IV** (C → G → Am → F), found in hundreds of songs.\n\nThe [[Tritone]] between V and I creates satisfying tension/resolution."),
+        ("user", "What makes minor keys different from major?"),
+        ("assistant", "Key differences in [[Minor Scale]] vs major:\n\n- **Major scale:** W-W-H-W-W-W-H (bright, major 3rd)\n- **Minor scale:** W-H-W-W-H-W-W (dark, minor 3rd)\n\nThe **minor 3rd** transforms every chord. Minor keys also have variants:\n- **Harmonic minor** — raises 7th for strong V→i\n- **Melodic minor** — raises 6th & 7th ascending only\n\nComposers mix all three freely. [[Circle of Fifths]] shows every major key has a **relative minor** using same notes but different root."),
     ];
-    for (role, content) in &music_msgs {
+    for (role, content) in &music_msgs_1 {
         let mid = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![mid, session_music, role, content, now],
+            rusqlite::params![mid, session_music_1, role, content, now],
         ).map_err(|e| e.to_string())?;
     }
 
-    // Concepts for Music Theory workspace
+    // Chat: rhythm and time
+    let session_music_2 = "demo-chat-session-music-rhythm-00001";
+    conn.execute(
+        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'Understanding Time Signatures', '', ?4, ?5)",
+        rusqlite::params![session_music_2, DEMO_WS_MUSIC, DEMO_PROJECT_MUSIC_RHYTHM, now, now],
+    ).map_err(|e| e.to_string())?;
+
+    let music_msgs_2: Vec<(&str, &str)> = vec![
+        ("user", "What does 4/4 time signature mean?"),
+        ("assistant", "In 4/4 ([[Time Signature]]):\n\n- **First number (4)** = 4 beats per measure\n- **Second number (4)** = quarter note gets the beat\n\n4/4 is \"common time\" — the most used signature in Western music. A measure has 4 quarter-note beats. At 120 BPM, each beat is 0.5 seconds.\n\nOther common signatures: 3/4 (waltz), 6/8 (compound duple), 7/8 (odd meter)."),
+        ("user", "How are polyrhythms created?"),
+        ("assistant", "[[Polyrhythms]] layer different rhythmic patterns simultaneously — creating tension and complexity:\n\n- **3 against 2** — 3 notes in one hand over 2 in the other\n- **4 against 3** — common in jazz and modern drums\n- **5 against 4** — creates shifting accents\n\n[[Syncopation]] emphasizes offbeats, creating \"swing\" feel. The brain naturally gravitates toward simpler ratios — 1:1 and 2:1 feel stable, while 3:2 feels unstable and interesting."),
+    ];
+    for (role, content) in &music_msgs_2 {
+        let mid = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![mid, session_music_2, role, content, now],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Concepts for Music Theory workspace — expanded
     let music_concepts: Vec<(&str, &str, &str, &str)> = vec![
-        ("demo-concept-major-scale-0000000000001", "Major Scale", "The foundational seven-note scale (W-W-H-W-W-W-H) from which chords, intervals, and keys are derived.", "definition"),
-        ("demo-concept-intervals-00000000000000001", "Intervals", "The distance between two pitches, measured in half-steps. Intervals determine chord quality and melodic character.", "definition"),
-        ("demo-concept-circle-fifths-000000000001", "Circle of Fifths", "A visual diagram showing the relationship between the 12 chromatic pitches and their key signatures.", "topic"),
-        ("demo-concept-tritone-000000000000000001", "Tritone", "An interval of three whole steps (6 half-steps), historically called diabolus in musica. Drives dominant-to-tonic resolution.", "definition"),
-        ("demo-concept-cadence-000000000000000001", "Cadence", "A chord progression that signals the end of a musical phrase. Common types: authentic (V-I), plagal (IV-I), deceptive (V-vi), half (any-V).", "definition"),
+        ("demo-concept-major-scale-0000000000001", "Major Scale", "Seven-note scale (W-W-H-W-W-W-H) foundational for chords, intervals, and keys.", "definition"),
+        ("demo-concept-intervals-00000000000000001", "Intervals", "Distance between pitches in half-steps. Determine chord quality and melodic character.", "definition"),
+        ("demo-concept-circle-fifths-000000000001", "Circle of Fifths", "Diagram showing relationships between 12 pitches and their key signatures.", "topic"),
+        ("demo-concept-tritone-000000000000000001", "Tritone", "3 whole steps (6 half-steps) — drives dominant-to-tonic resolution.", "definition"),
+        ("demo-concept-cadence-000000000000000001", "Cadence", "Chord progression signaling phrase end. Types: authentic (V-I), plagal (IV-I), deceptive (V-vi).", "definition"),
+        ("demo-concept-time-signature-000000000001", "Time Signature", "Indicates beats per measure and which note gets the beat (e.g., 4/4, 3/4, 6/8).", "definition"),
+        ("demo-concept-polyrhythm-00000000000001", "Polyrhythm", "Layering different rhythmic patterns creating tension: 3:2, 4:3, 5:4.", "resource"),
+        ("demo-concept-syncopation-00000000000001", "Syncopation", "Emphasizing offbeats creating swing, jazz feel, and rhythmic interest.", "definition"),
+        ("demo-concept-chord-progression-00000001", "Chord Progression", "Sequence of chords following circle of fifths: I→V→vi→IV most common.", "topic"),
     ];
     for (id, name, desc, ctype) in &music_concepts {
         conn.execute(
@@ -169,6 +242,10 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ("demo-concept-tritone-000000000000000001", "demo-concept-intervals-00000000000000001", "related"),
         ("demo-concept-circle-fifths-000000000001", "demo-concept-major-scale-0000000000001", "related"),
         ("demo-concept-cadence-000000000000000001", "demo-concept-tritone-000000000000000001", "related"),
+        ("demo-concept-chord-progression-00000001", "demo-concept-circle-fifths-000000000001", "supports"),
+        ("demo-concept-time-signature-000000000001", "demo-concept-polyrhythm-00000000000001", "prerequisite"),
+        ("demo-concept-syncopation-00000000000001", "demo-concept-time-signature-000000000001", "supports"),
+        ("demo-concept-polyrhythm-00000000000001", "demo-concept-syncopation-00000000000001", "related"),
     ];
     for (src, tgt, ltype) in &music_links {
         let lid = uuid::Uuid::new_v4().to_string();
@@ -178,12 +255,16 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
-    // Flashcards for Music Theory workspace
+    // Flashcards for Music Theory workspace — expanded
     let music_cards: Vec<(&str, &str)> = vec![
-        ("What interval is a tritone?", "Three whole steps (6 half-steps) — e.g. C to F#. It divides the octave exactly in half and creates the tension that drives V-I resolution."),
-        ("What are the chord qualities in a major key (I through vii)?", "I=Major, ii=minor, iii=minor, IV=Major, V=Major, vi=minor, vii°=diminished."),
-        ("What is a perfect cadence?", "V → I (or V7 → I). The strongest resolution in tonal music, signaling the definitive end of a phrase."),
-        ("What is the relative minor of C major?", "A minor — it shares all the same notes (white keys) but starts on A, giving it a different tonal center and character."),
+        ("What interval is a tritone?", "Three whole steps (6 half-steps) — e.g. C to F#. Divides octave exactly in half, drives V-I resolution."),
+        ("What are chord qualities in a major key?", "I=Major, ii=minor, iii=minor, IV=Major, V=Major, vi=minor, vii°=diminished."),
+        ("What is a perfect cadence?", "V → I (or V7 → I). Strongest resolution, signaling definitive phrase end."),
+        ("What is the relative minor of C major?", "A minor — same white keys but starts on A, giving different tonal center."),
+        ("What does 4/4 time signature mean?", "4 beats per measure, quarter note gets the beat. Most common signature in Western music."),
+        ("Define polyrhythm.", "Layering different rhythmic patterns: 3:2, 4:3, etc. Creates tension through metric conflict."),
+        ("What is syncopation?", "Emphasizing offbeats or unexpected rhythmic placement, creating swing and rhythmic interest."),
+        ("What is the most common chord progression?", "I→V→vi→IV (C→G→Am→F). Appears in hundreds of pop songs because of its satisfying arc."),
     ];
     for (front, back) in &music_cards {
         let cid = uuid::Uuid::new_v4().to_string();
@@ -193,13 +274,19 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
-    // Daily notes for Music Theory workspace (past 3 days)
-    for days_ago in 0..3i64 {
+    // Daily notes for Music Theory workspace (past 7 days)
+    for days_ago in 0..7i64 {
         let date = (chrono::Utc::now() - chrono::Duration::days(days_ago)).format("%Y-%m-%d").to_string();
         let dnid = uuid::Uuid::new_v4().to_string();
-        let content = format!("## Daily Note — {date}\n\nWorked through chord progressions in C major today. The I-V-vi-IV pattern finally clicked.\n\n- Analyzed 3 pop songs for their chord progressions\n- Reviewed flashcards on intervals and cadences\n- Added concept links between Tritone and Cadence");
+        let content = if days_ago == 0 {
+            format!("## Daily Note — {date}\n\nPolyrhythms blew my mind today. 3:2 creates such interesting tension.\n\n- Analyzed drum patterns with polyrhythmic layers\n- Listened to progressive rock with unusual meters\n- Created concept links between syncopation and polyrhythm")
+        } else if days_ago == 2 {
+            format!("## Daily Note — {date}\n\nWorked through chord progressions in C major. I-V-vi-IV pattern finally clicked.\n\n- Analyzed 5 pop songs for their chord progressions\n- Reviewed flashcards on intervals and cadences\n- Added concept links between Tritone and Cadence")
+        } else {
+            format!("## Daily Note — {date}\n\nContinuing music theory journey. Practiced time signatures and rhythm exercises.\n\n- Drilled uncommon time signatures (5/4, 7/8)\n- Worked on transcription skills\n- Reviewed theory fundamentals")
+        };
         conn.execute(
-            "INSERT OR IGNORE INTO daily_notes (id, workspace_id, date, content, mood, productivity, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 7, 8, ?5, ?6)",
+            "INSERT OR IGNORE INTO daily_notes (id, workspace_id, date, content, mood, productivity, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 8, 8, ?5, ?6)",
             rusqlite::params![dnid, DEMO_WS_MUSIC, date, content, now, now],
         ).map_err(|e| e.to_string())?;
     }
@@ -215,33 +302,64 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         rusqlite::params![DEMO_PROJECT_ROME, DEMO_WS_ROME, now, now],
     ).map_err(|e| e.to_string())?;
 
-    // Chat: Roman Republic
-    let session_rome = "demo-chat-session-rome-republic-00001";
     conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'Fall of the Roman Republic', '', ?4, ?5)",
-        rusqlite::params![session_rome, DEMO_WS_ROME, DEMO_PROJECT_ROME, now, now],
+        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Roman Military', 'Legions, tactics, and military organization of Rome', '#FF3B30', 'shield.fill', ?3, ?4)",
+        rusqlite::params![DEMO_PROJECT_ROME_MILITARY, DEMO_WS_ROME, now, now],
     ).map_err(|e| e.to_string())?;
 
-    let rome_msgs: Vec<(&str, &str)> = vec![
+    // Chat: Roman Republic fall
+    let session_rome_1 = "demo-chat-session-rome-republic-00001";
+    conn.execute(
+        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'Fall of the Roman Republic', '', ?4, ?5)",
+        rusqlite::params![session_rome_1, DEMO_WS_ROME, DEMO_PROJECT_ROME, now, now],
+    ).map_err(|e| e.to_string())?;
+
+    let rome_msgs_1: Vec<(&str, &str)> = vec![
         ("user", "What caused the fall of the Roman Republic?"),
-        ("assistant", "The fall of the Roman Republic was a gradual process driven by several interconnected crises:\n\n1. **Land reform conflicts** — The Gracchi brothers' attempts at reform (133–121 BC) exposed deep class tensions.\n2. **Military loyalty shift** — After Marius's army reforms, soldiers became loyal to their generals rather than the state.\n3. **Civil wars** — Sulla's march on Rome (88 BC) set the precedent for using military force in politics.\n4. **The First Triumvirate** — [[Julius Caesar]], Pompey, and Crassus formed an informal power-sharing alliance that undermined Senate authority.\n5. **Caesar's dictatorship** — After crossing the Rubicon (49 BC), Caesar's concentration of power led to his assassination in 44 BC.\n6. **Final collapse** — The Second Triumvirate and Octavian's defeat of Antony at Actium (31 BC) ended the [[Roman Republic]], replaced by the Principate under Augustus.\n\nThe Republic didn't fall in a day — it was death by a thousand cuts over roughly a century."),
-        ("user", "How did Caesar's assassination actually accelerate the end of the Republic?"),
-        ("assistant", "Ironically, the conspirators (the Liberatores) believed killing Caesar would restore the Republic. Instead it had the opposite effect:\n\n- **Power vacuum** — Caesar's death created chaos, not freedom. The Senate couldn't reassert control.\n- **Public outrage** — Mark Antony's funeral speech turned popular opinion against the assassins.\n- **Octavian's rise** — Caesar's adopted heir was only 18 but proved a brilliant political operator. He used Caesar's name, wealth, and veterans to build his own power base.\n- **More civil wars** — The next 13 years saw continuous warfare: Octavian vs Antony vs the assassins.\n- **Permanent autocracy** — Octavian (now Augustus) learned from Caesar's mistake: he kept republican forms while holding absolute power. The Senate still met, elections still happened — but real power was his alone.\n\nThe assassination proved that the Republic's institutions were already too hollowed out to function without a strongman."),
+        ("assistant", "The fall was gradual, driven by interconnected crises:\n\n1. **Land reform conflicts** — [[Gracchi brothers]] (133–121 BC) exposed class tensions\n2. **Military loyalty shift** — After [[Marius]]'s reforms, soldiers became loyal to generals, not the state\n3. **Civil wars** — [[Sulla]]'s march on Rome (88 BC) set precedent for military force in politics\n4. **First Triumvirate** — [[Julius Caesar]], Pompey, Crassus undermined Senate authority\n5. **Dictatorship** — Caesar's concentration of power led to assassination (44 BC)\n6. **Collapse** — Second Triumvirate and Octavian's victory at Actium (31 BC) ended the Republic\n\nIt was death by a thousand cuts over ~100 years."),
+        ("user", "How did Caesar's assassination accelerate the end?"),
+        ("assistant", "Ironically, the Liberatores thought killing Caesar would restore the Republic:\n\n- **Power vacuum** — Led to chaos, not freedom. Senate couldn't reassert control\n- **Public outrage** — Antony's funeral speech turned opinion against assassins\n- **[[Octavian]]'s rise** — Caesar's 18-year-old heir was brilliant. Used Caesar's name, wealth, veterans to build power\n- **More civil wars** — Next 13 years: Octavian vs Antony vs assassins\n- **Permanent autocracy** — Octavian (Augustus) kept republican forms while holding absolute power\n\nThe assassination proved the Republic's institutions were too hollowed to function without a strongman."),
     ];
-    for (role, content) in &rome_msgs {
+    for (role, content) in &rome_msgs_1 {
         let mid = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![mid, session_rome, role, content, now],
+            rusqlite::params![mid, session_rome_1, role, content, now],
         ).map_err(|e| e.to_string())?;
     }
 
-    // Concepts for Rome workspace
+    // Chat: Roman military
+    let session_rome_2 = "demo-chat-session-rome-military-00001";
+    conn.execute(
+        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'Roman Legions and Military Organization', '', ?4, ?5)",
+        rusqlite::params![session_rome_2, DEMO_WS_ROME, DEMO_PROJECT_ROME_MILITARY, now, now],
+    ).map_err(|e| e.to_string())?;
+
+    let rome_msgs_2: Vec<(&str, &str)> = vec![
+        ("user", "What was the structure of a Roman legion?"),
+        ("assistant", "[[Roman Legion]] organization (typical ~5,000 troops):\n\n- **Legion (〰️)** — ~5,500 men under a [[Legate]] (senatorial commander)\n- **Cohort** — ~480 men under a [[Prefect]], 10 per legion\n- **Maniple** — ~120-200 men under a [[Centurion]], 2-3 per cohort\n- **Century** — ~80 men under a [[Centurion]] (confusing name — actually smaller unit!)\n- **Contubernium** — 8 soldiers sharing tent\n\nCenturions were career officers (non-commissioned), the backbone of Roman military discipline and professionalism."),
+        ("user", "What made Roman tactics superior to barbarian forces?"),
+        ("assistant", "Roman advantages in [[Tactics]] and [[Discipline]]:\n\n1. **Formation discipline** — Tight formations (testudo, phalanx variants) vs individual combat\n2. **Centurion command** — Professional NCOs enforced discipline; barbarian warband leaders couldn't control troops from distance\n3. **Standardized weapons** — Romans used uniform equipment; barbarians used diverse weapons\n4. **Fortifications** — Romans built camps/forts methodically; barbarians relied on ambush tactics\n5. **Logistics** — Roman supply lines supported sustained campaigns; barbarian raids lasted weeks\n6. **Training** — Years of drill vs seasonal warriors. Well-trained soldier beats brave amateur\n\nOver time, barbarians adopted Roman tactics, bridging the gap."),
+    ];
+    for (role, content) in &rome_msgs_2 {
+        let mid = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![mid, session_rome_2, role, content, now],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Concepts for Rome workspace — expanded
     let rome_concepts: Vec<(&str, &str, &str, &str)> = vec![
-        ("demo-concept-caesar-000000000000000001", "Julius Caesar", "Roman general and statesman who played a critical role in the transformation of the Roman Republic into the Roman Empire.", "person"),
-        ("demo-concept-republic-00000000000000001", "Roman Republic", "The period of ancient Roman civilization characterized by a republican form of government (509–27 BC).", "topic"),
-        ("demo-concept-augustus-000000000000000001", "Augustus", "First Roman Emperor, born Octavian. Transformed the Republic into the Principate while maintaining republican facades.", "person"),
-        ("demo-concept-senate-0000000000000000001", "Roman Senate", "The governing body of the Roman Republic that gradually lost power to military strongmen during the late Republic.", "custom"),
+        ("demo-concept-caesar-000000000000000001", "Julius Caesar", "General and statesman who transformed Roman Republic into Empire.", "person"),
+        ("demo-concept-republic-00000000000000001", "Roman Republic", "Ancient Roman civilization (509–27 BC) with republican government.", "topic"),
+        ("demo-concept-augustus-000000000000000001", "Augustus", "First Roman Emperor (Octavian). Maintained republican facades while holding absolute power.", "person"),
+        ("demo-concept-senate-0000000000000000001", "Roman Senate", "Governing body gradually losing power to military strongmen in late Republic.", "custom"),
+        ("demo-concept-legion-000000000000000001", "Roman Legion", "Military unit (~5,500 troops) organized into cohorts, maniples, centuries, contubernium.", "resource"),
+        ("demo-concept-centurion-0000000000000001", "Centurion", "Professional military officer commanding century (~80 troops). Backbone of Roman discipline.", "definition"),
+        ("demo-concept-marius-00000000000000001", "Gaius Marius", "Military reformer who professionalized legions and shifted loyalty from state to general.", "person"),
+        ("demo-concept-cicero-00000000000000001", "Cicero", "Orator and statesman who opposed [[Caesar]] and [[Mark Antony]] in final Republic crisis.", "person"),
+        ("demo-concept-tacitus-00000000000000001", "Tacitus", "Historian documenting Roman-Germanic conflicts and military tactics.", "person"),
     ];
     for (id, name, desc, ctype) in &rome_concepts {
         conn.execute(
@@ -253,8 +371,12 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
 
     let rome_links: Vec<(&str, &str, &str)> = vec![
         ("demo-concept-caesar-000000000000000001", "demo-concept-republic-00000000000000001", "related"),
-        ("demo-concept-augustus-000000000000000001", "demo-concept-caesar-000000000000000001", "succeeded"),
+        ("demo-concept-augustus-000000000000000001", "demo-concept-caesar-000000000000000001", "supports"),
         ("demo-concept-senate-0000000000000000001", "demo-concept-republic-00000000000000001", "part_of"),
+        ("demo-concept-marius-00000000000000001", "demo-concept-legion-000000000000000001", "supports"),
+        ("demo-concept-centurion-0000000000000001", "demo-concept-legion-000000000000000001", "part_of"),
+        ("demo-concept-cicero-00000000000000001", "demo-concept-caesar-000000000000000001", "contradicts"),
+        ("demo-concept-tacitus-00000000000000001", "demo-concept-legion-000000000000000001", "related"),
     ];
     for (src, tgt, ltype) in &rome_links {
         let lid = uuid::Uuid::new_v4().to_string();
@@ -264,10 +386,16 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
-    // Flashcards for Rome workspace
+    // Flashcards for Rome workspace — expanded
     let rome_cards: Vec<(&str, &str)> = vec![
-        ("What ended the Roman Republic?", "The series of civil wars culminating in Augustus (Octavian) becoming the first Emperor in 27 BC after defeating Antony at Actium."),
-        ("When did Caesar cross the Rubicon?", "49 BC — this act of bringing his army into Italy proper was an act of war against the Roman state and triggered civil war with Pompey."),
+        ("What ended the Roman Republic?", "Civil wars culminating in Augustus defeating Antony at Actium (31 BC), becoming first Emperor (27 BC)."),
+        ("When did Caesar cross the Rubicon?", "49 BC. Bringing his army past Rome's pomerium was act of war, triggering civil war with Pompey."),
+        ("What was Marius's military reform?", "Professionalized legions by recruiting poor citizens and paying them. Soldiers became loyal to generals, destabilizing the state."),
+        ("Describe a Roman legion.", "~5,500 troops organized: 10 cohorts, each with maniples/centuries. Centurions (professional NCOs) enforced discipline."),
+        ("What is a centurion?", "Professional military officer commanding century (~80 troops). The backbone of Roman military organization and discipline."),
+        ("Why were Roman tactics superior?", "Formation discipline, centurion command, standardized weapons, fortifications, logistics, and years of training vs seasonal warriors."),
+        ("What did Augustus accomplish?", "Ended civil wars, became first Emperor. Kept republican institutions as cover while consolidating absolute power."),
+        ("Name three figures in the Republic's fall.", "Julius Caesar, Octavian (Augustus), Pompey, Marius, Cicero, Antony. All played roles in the ~100 year decline."),
     ];
     for (front, back) in &rome_cards {
         let cid = uuid::Uuid::new_v4().to_string();
@@ -277,13 +405,19 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
-    // Daily notes for Rome workspace (past 4 days)
-    for days_ago in 0..4i64 {
+    // Daily notes for Rome workspace (past 7 days)
+    for days_ago in 0..7i64 {
         let date = (chrono::Utc::now() - chrono::Duration::days(days_ago)).format("%Y-%m-%d").to_string();
         let dnid = uuid::Uuid::new_v4().to_string();
-        let content = format!("## Daily Note — {date}\n\nDeep dive into late Republican politics. The parallels between institutional decay then and now are striking.\n\n- Mapped out the timeline from Gracchi to Augustus\n- Added concept links between Caesar → Republic → Senate\n- Reviewed flashcards on key dates");
+        let content = if days_ago == 0 {
+            format!("## Daily Note — {date}\n\nRoman military organization is fascinating. Centurions were essentially NCOs running the machine.\n\n- Researched legion structure from primary sources\n- Compared Roman vs barbarian tactics\n- Built out Roman military concept map")
+        } else if days_ago == 3 {
+            format!("## Daily Note — {date}\n\nDeep dive into late Republican politics and institutional decay.\n\n- Mapped timeline from Gracchi to Augustus\n- Added concept links between Caesar → Republic → Senate\n- Reviewed flashcards on key figures and dates\n- Connected military reforms (Marius) to political instability")
+        } else {
+            format!("## Daily Note — {date}\n\nContinuing study of Rome's political transformation.\n\n- Read about Octavian's rise and elimination of rivals\n- Reviewed Augustus's consolidation of power\n- Updated notes on civil war period")
+        };
         conn.execute(
-            "INSERT OR IGNORE INTO daily_notes (id, workspace_id, date, content, mood, productivity, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 9, 8, ?5, ?6)",
+            "INSERT OR IGNORE INTO daily_notes (id, workspace_id, date, content, mood, productivity, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 9, 9, ?5, ?6)",
             rusqlite::params![dnid, DEMO_WS_ROME, date, content, now, now],
         ).map_err(|e| e.to_string())?;
     }

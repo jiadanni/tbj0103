@@ -16,6 +16,7 @@ import { type NavigationPresentation, useWorkspaceStore } from "../stores/worksp
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import ImportSettingsSection from "./ImportSettingsSection";
+import CompactMenuSelect from "../components/CompactMenuSelect";
 import { MOD_KEY, isLinux, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
 import { useAiModelSync } from "../hooks/useAiModelSync";
@@ -146,7 +147,6 @@ function getModelFitMeta(modelFit: ModelFit): {
 }
 
 export default function PreferencesView() {
-  const pillSelectClassName = "h-10 w-full appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-3 pr-9 text-sm text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]";
   const settingsNavLayout = useSettingsStore((state) => state.settingsNavLayout);
   const setSettingsNavLayout = useSettingsStore((state) => state.setSettingsNavLayout);
   const autoGenerateFlashcards = useSettingsStore((state) => state.autoGenerateFlashcards);
@@ -612,32 +612,23 @@ export default function PreferencesView() {
       {showAddModel && (
         <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 space-y-2">
           <div className="relative">
-            <select
+            <CompactMenuSelect
+              label="Model"
               value={newModelId}
-              onChange={(e) => {
-                setNewModelId(e.target.value);
+              options={[
+                { value: "", label: "Select model..." },
+                ...nonEmbeddingOllamaModels.map((m) => ({ value: m.name, label: m.name, group: "Ollama" })),
+                ...(isMac && mlxModels.length > 0 ? mlxModels.map((m) => ({ value: `mlx:${m}`, label: m, group: "MLX" })) : []),
+                ...llamacppModels.map((p) => ({ value: `llamacpp:${p}`, label: p.split("/").pop() || p, group: "llama.cpp (GGUF)" })),
+              ]}
+              onChange={(val) => {
+                setNewModelId(val);
                 if (!newModelName) {
-                  setNewModelName(e.target.value);
+                  setNewModelName(val.startsWith("mlx:") || val.startsWith("llamacpp:") ? val.split(":").pop() || val : val);
                 }
               }}
-              className="h-9 w-full appearance-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] pl-3 pr-9 text-xs text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--accent-color)] focus:border-[var(--accent-color)]"
-            >
-              <option value="">Select model...</option>
-              <optgroup label="Ollama">
-                {nonEmbeddingOllamaModels.map((m) => <option key={`ollama-${m.name}`} value={m.name}>{m.name}</option>)}
-              </optgroup>
-              {isMac && mlxModels.length > 0 && (
-                <optgroup label="MLX">
-                  {mlxModels.map((m) => <option key={`mlx-${m}`} value={`mlx:${m}`}>{m}</option>)}
-                </optgroup>
-              )}
-              {llamacppModels.length > 0 && (
-                <optgroup label="llama.cpp (GGUF)">
-                  {llamacppModels.map((p) => <option key={`llamacpp-${p}`} value={`llamacpp:${p}`}>{p.split("/").pop()}</option>)}
-                </optgroup>
-              )}
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+              widthClassName="w-full"
+            />
           </div>
           <input
             value={newModelName}
@@ -1080,7 +1071,30 @@ export default function PreferencesView() {
                   />
                 </div>
 
-                {!isDemoMode && (
+                {isDemoMode ? (
+                  <div className="flex items-center justify-between py-1">
+                    <div>
+                      <p className="text-sm text-[var(--text-secondary)]">Disable Demo Mode</p>
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                        Exit demo and return to your regular workspaces. All demo data will be deleted.
+                      </p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await api.demo.deactivate();
+                          setDemo(false);
+                          window.location.reload();
+                        } catch (e) {
+                          await message(`Failed to disable demo mode.\n${e}`, { title: "Error", kind: "error" });
+                        }
+                      }}
+                      className="rounded-lg border border-red-500/50 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 transition-colors hover:border-red-500 hover:bg-red-500/10"
+                    >
+                      Disable Demo
+                    </button>
+                  </div>
+                ) : (
                   <div className="flex items-center justify-between py-1">
                     <div>
                       <p className="text-sm text-[var(--text-secondary)]">Launch Demo Mode</p>
@@ -1746,17 +1760,16 @@ export default function PreferencesView() {
                     Choose whether the draft and refine models run one after the other or at the same time.
                   </p>
                 </div>
-                <div className="relative">
-                  <select
-                    value={dbSettings.dual_model_execution_mode}
-                    onChange={(e) => set("dual_model_execution_mode", e.target.value as AppSettings["dual_model_execution_mode"])}
-                    className={pillSelectClassName}
-                  >
-                    <option value="serial">Serial: draft, then refine</option>
-                    <option value="parallel">Parallel: draft and refine together</option>
-                  </select>
-                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                </div>
+                <CompactMenuSelect
+                  label="Execution"
+                  value={dbSettings.dual_model_execution_mode}
+                  options={[
+                    { value: "serial", label: "Serial: draft, then refine" },
+                    { value: "parallel", label: "Parallel: draft and refine together" },
+                  ]}
+                  onChange={(val) => set("dual_model_execution_mode", val as AppSettings["dual_model_execution_mode"])}
+                  widthClassName="w-full"
+                />
                 <p className="text-[10px] text-[var(--text-muted)]">
                   Serial is steadier and uses one Ollama generation at a time. Parallel feels faster overall, but can use more compute and memory.
                 </p>
