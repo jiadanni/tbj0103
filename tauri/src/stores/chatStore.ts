@@ -8,6 +8,7 @@ export interface Message {
   model_name?: string;
   tokens_used?: number;
   duration_ms?: number;
+  variant_group_id?: string | null;
   created_at: string;
 }
 
@@ -35,6 +36,8 @@ interface ChatStore {
   activeChatId: string | null;
   sessions: ChatSession[];
   messages: Record<string, Message[]>;
+  messageVariants: Record<string, Message[]>; // variants by variant_group_id
+  selectedVariantIndex: Record<string, number>; // selected variant index by message_id
   streamingSessionId: string | null;
   streamingContent: string;
   // Pending prompt from text selection
@@ -54,6 +57,10 @@ interface ChatStore {
   appendStreamChunk: (sessionId: string, chunk: string) => void;
   finalizeStream: (sessionId: string, modelName?: string, tokensUsed?: number, durationMs?: number) => void;
   setPendingPromptText: (text: string | null) => void;
+  // Message variants
+  setMessageVariants: (messageId: string, variants: Message[]) => void;
+  selectVariant: (messageId: string, index: number) => void;
+  addMessageVariant: (newMessage: Message) => void;
   // Refine (large model second pass)
   appendRefineChunk: (sessionId: string, chunk: string) => void;
   finalizeRefine: (sessionId: string, modelName?: string) => void;
@@ -63,6 +70,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   activeChatId: null,
   sessions: [],
   messages: {},
+  messageVariants: {},
+  selectedVariantIndex: {},
   streamingSessionId: null,
   streamingContent: "",
   pendingPromptText: null,
@@ -118,6 +127,32 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
   setPendingPromptText: (pendingPromptText) => set({ pendingPromptText }),
+  setMessageVariants: (messageId, variants) =>
+    set((s) => ({
+      messageVariants: { ...s.messageVariants, [messageId]: variants },
+      selectedVariantIndex: { ...s.selectedVariantIndex, [messageId]: 0 },
+    })),
+  selectVariant: (messageId, index) =>
+    set((s) => ({
+      selectedVariantIndex: { ...s.selectedVariantIndex, [messageId]: index },
+    })),
+  addMessageVariant: (newMessage) => {
+    set((s) => {
+      const groupId = newMessage.variant_group_id;
+      if (!groupId) return s;
+      const existing = s.messageVariants[groupId] ?? [];
+      return {
+        messageVariants: {
+          ...s.messageVariants,
+          [groupId]: [newMessage, ...existing],
+        },
+        selectedVariantIndex: {
+          ...s.selectedVariantIndex,
+          [newMessage.id]: 0,
+        },
+      };
+    });
+  },
   appendRefineChunk: (sessionId, chunk) =>
     set((s) => ({ refiningSessionId: sessionId, refineContent: s.refineContent + chunk })),
   finalizeRefine: (sessionId, modelName) => {

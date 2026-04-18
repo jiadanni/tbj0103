@@ -575,12 +575,13 @@ pub fn add_message(state: State<DbState>, req: AddMessageRequest) -> Result<Mess
         model_name: req.model_name,
         tokens_used: req.tokens_used,
         duration_ms: req.duration_ms,
+        variant_group_id: None,
         created_at: chrono::Utc::now().to_rfc3339(),
     };
     let role_str = msg.role.to_string();
     conn.execute(
-        "INSERT INTO messages (id, session_id, role, content, model_name, tokens_used, duration_ms, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO messages (id, session_id, role, content, model_name, tokens_used, duration_ms, variant_group_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             msg.id,
             msg.session_id,
@@ -589,6 +590,7 @@ pub fn add_message(state: State<DbState>, req: AddMessageRequest) -> Result<Mess
             msg.model_name,
             msg.tokens_used,
             msg.duration_ms,
+            msg.variant_group_id,
             msg.created_at
         ],
     )
@@ -614,7 +616,7 @@ pub fn get_messages(
     let offset = offset.unwrap_or(0).max(0);
     let mut stmt = conn
         .prepare(
-            "SELECT id, session_id, role, content, model_name, tokens_used, duration_ms, created_at
+            "SELECT id, session_id, role, content, model_name, tokens_used, duration_ms, variant_group_id, created_at
          FROM messages WHERE session_id = ?1 ORDER BY created_at ASC
          LIMIT ?2 OFFSET ?3",
         )
@@ -631,7 +633,8 @@ pub fn get_messages(
                 model_name: row.get(4)?,
                 tokens_used: row.get(5)?,
                 duration_ms: row.get(6)?,
-                created_at: row.get(7)?,
+                variant_group_id: row.get(7)?,
+                created_at: row.get(8)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -736,4 +739,169 @@ pub fn get_recent_sessions(
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn refresh_message(
+    state: State<DbState>,
+    session_id: String,
+    message_id: String,
+    model_id: String,
+) -> Result<Message, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+
+    // Fetch the original message to refresh
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, session_id, role, content, model_name, tokens_used, duration_ms, variant_group_id, created_at
+             FROM messages WHERE id = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let original_msg = stmt
+        .query_row(rusqlite::params![message_id], |row| {
+            let role_str: String = row.get(2)?;
+            let role = role_str.parse::<MessageRole>().unwrap_or(MessageRole::User);
+            Ok(Message {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                role,
+                content: row.get(3)?,
+                model_name: row.get(4)?,
+                tokens_used: row.get(5)?,
+                duration_ms: row.get(6)?,
+                variant_group_id: row.get(7)?,
+                created_at: row.get(8)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    // Only assistant messages can be refreshed
+    if original_msg.role != MessageRole::Assistant {
+        return Err("Only assistant messages can be refreshed".to_string());
+    }
+
+    // Determine variant group ID
+    let variant_group_id = if let Some(existing_group) = original_msg.variant_group_id {
+        existing_group
+    } else {
+        // First refresh - create new group ID and link the original message
+        let new_group_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "UPDATE messages SET variant_group_id = ?1 WHERE id = ?2",
+            rusqlite::params![&new_group_id, &original_msg.id],
+        )
+        .map_err(|e| e.to_string())?;
+        new_group_id
+    };
+
+    // Create the new variant message
+    let new_msg = Message {
+        id: uuid::Uuid::new_v4().to_string(),
+        session_id: session_id.clone(),
+        role: MessageRole::Assistant,
+        content: String::new(), // Will be filled by streaming
+        model_name: Some(model_id),
+        tokens_used: None,
+        duration_ms: None,
+        variant_group_id: Some(variant_group_id),
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    // Insert the new message with the variant group ID
+    conn.execute(
+        "INSERT INTO messages (id, session_id, role, content, model_name, tokens_used, duration_ms, variant_group_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![
+            new_msg.id,
+            new_msg.session_id,
+            new_msg.role.to_string(),
+            new_msg.content,
+            new_msg.model_name,
+            new_msg.tokens_used,
+            new_msg.duration_ms,
+            new_msg.variant_group_id,
+            new_msg.created_at
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(new_msg)
+}
+
+#[tauri::command]
+pub fn get_message_variants(
+    state: State<DbState>,
+    message_id: String,
+) -> Result<Vec<Message>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+
+    // First, fetch the message to check if it's part of a variant group
+    let mut stmt = conn
+        .prepare("SELECT variant_group_id FROM messages WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
+
+    let variant_group_id: Option<String> = stmt
+        .query_row(rusqlite::params![message_id], |row| row.get(0))
+        .ok();
+
+    if let Some(group_id) = variant_group_id {
+        // Fetch all messages in this variant group, sorted by created_at DESC (most recent first)
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, session_id, role, content, model_name, tokens_used, duration_ms, variant_group_id, created_at
+                 FROM messages WHERE variant_group_id = ?1
+                 ORDER BY created_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![group_id], |row| {
+                let role_str: String = row.get(2)?;
+                let role = role_str.parse::<MessageRole>().unwrap_or(MessageRole::User);
+                Ok(Message {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    role,
+                    content: row.get(3)?,
+                    model_name: row.get(4)?,
+                    tokens_used: row.get(5)?,
+                    duration_ms: row.get(6)?,
+                    variant_group_id: row.get(7)?,
+                    created_at: row.get(8)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    } else {
+        // No variants - return just this message
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, session_id, role, content, model_name, tokens_used, duration_ms, variant_group_id, created_at
+                 FROM messages WHERE id = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let msg = stmt
+            .query_row(rusqlite::params![message_id], |row| {
+                let role_str: String = row.get(2)?;
+                let role = role_str.parse::<MessageRole>().unwrap_or(MessageRole::User);
+                Ok(Message {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    role,
+                    content: row.get(3)?,
+                    model_name: row.get(4)?,
+                    tokens_used: row.get(5)?,
+                    duration_ms: row.get(6)?,
+                    variant_group_id: row.get(7)?,
+                    created_at: row.get(8)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        Ok(vec![msg])
+    }
 }

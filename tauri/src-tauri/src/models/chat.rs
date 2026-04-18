@@ -61,6 +61,7 @@ pub struct Message {
     pub model_name: Option<String>,
     pub tokens_used: Option<i64>,
     pub duration_ms: Option<i64>,
+    pub variant_group_id: Option<String>,
     pub created_at: String,
 }
 
@@ -147,6 +148,7 @@ impl Message {
             content: content.into(),
             model_name: None,
             tokens_used: None,
+            variant_group_id: None,
             duration_ms: None,
             created_at: chrono::Utc::now().to_rfc3339(),
         }

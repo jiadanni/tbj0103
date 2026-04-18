@@ -232,8 +232,20 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                     >
                       <ChevronLeft size={13} />
                     </button>
-                    <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-                      <span>{varIdx + 1} / {varCount}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1 items-center">
+                        {Array.from({ length: varCount }).map((_, i) => (
+                          <span
+                            key={i}
+                            className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                              i === varIdx
+                                ? "bg-[var(--accent-color)]"
+                                : "bg-[var(--border-color)] opacity-40"
+                            }`}
+                            title={i === varIdx ? "Current variant" : "Other variant"}
+                          />
+                        ))}
+                      </div>
                       {displayMsg.model_name && (
                         <span className="px-1.5 py-0.5 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] font-medium text-[10px]">
                           {displayMsg.model_name}

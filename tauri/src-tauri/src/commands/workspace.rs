@@ -1,5 +1,5 @@
 use crate::db::DbState;
-use crate::models::workspace::{CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace};
+use crate::models::workspace::{CreateSubWorkspaceRequest, CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace};
 use crate::services::chat_file_store;
 use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
 use tauri::State;
@@ -15,8 +15,24 @@ pub fn create_workspace(
     let sig_json = serde_json::to_string(&ws.topic_signature).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        rusqlite::params![ws.id, ws.name, ws.description, ws.prompt_instructions, sig_json, ws.signature_updated_at, ws.is_hidden as i64, ws.created_at, ws.updated_at],
+        "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        rusqlite::params![ws.id, ws.name, ws.description, ws.prompt_instructions, sig_json, ws.signature_updated_at, ws.is_hidden as i64, ws.created_at, ws.updated_at, ws.parent_workspace_id, ws.icon],
+    ).map_err(|e| e.to_string())?;
+    Ok(ws)
+}
+
+#[tauri::command]
+pub fn create_sub_workspace(
+    state: State<DbState>,
+    req: CreateSubWorkspaceRequest,
+) -> Result<Workspace, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let mut ws = Workspace::new(req.name, req.description.unwrap_or_default());
+    ws.parent_workspace_id = Some(req.parent_id);
+    let sig_json = serde_json::to_string(&ws.topic_signature).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        rusqlite::params![ws.id, ws.name, ws.description, ws.prompt_instructions, sig_json, ws.signature_updated_at, ws.is_hidden as i64, ws.created_at, ws.updated_at, ws.parent_workspace_id, ws.icon],
     ).map_err(|e| e.to_string())?;
     Ok(ws)
 }
@@ -25,7 +41,7 @@ pub fn create_workspace(
 pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at
+        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon
          FROM workspaces
          WHERE is_hidden = 0
          ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
@@ -45,6 +61,76 @@ pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> 
                 is_hidden: is_hidden != 0,
                 created_at: row.get(7)?,
                 updated_at: row.get(8)?,
+                parent_workspace_id: row.get(9)?,
+                icon: row.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn list_root_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon
+         FROM workspaces
+         WHERE is_hidden = 0 AND parent_workspace_id IS NULL
+         ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt
+        .query_map([], |row| {
+            let sig_json: String = row.get(4)?;
+            let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
+            let is_hidden: i64 = row.get(6)?;
+            Ok(Workspace {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                prompt_instructions: row.get(3)?,
+                topic_signature,
+                signature_updated_at: row.get(5)?,
+                is_hidden: is_hidden != 0,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+                parent_workspace_id: row.get(9)?,
+                icon: row.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn list_child_workspaces(state: State<DbState>, parent_id: String) -> Result<Vec<Workspace>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon
+         FROM workspaces
+         WHERE is_hidden = 0 AND parent_workspace_id = ?1
+         ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt
+        .query_map(rusqlite::params![parent_id], |row| {
+            let sig_json: String = row.get(4)?;
+            let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
+            let is_hidden: i64 = row.get(6)?;
+            Ok(Workspace {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                prompt_instructions: row.get(3)?,
+                topic_signature,
+                signature_updated_at: row.get(5)?,
+                is_hidden: is_hidden != 0,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+                parent_workspace_id: row.get(9)?,
+                icon: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -57,7 +143,7 @@ pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> 
 pub fn list_hidden_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at
+        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon
          FROM workspaces
          WHERE is_hidden = 1
          ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
@@ -77,6 +163,8 @@ pub fn list_hidden_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, S
                 is_hidden: is_hidden != 0,
                 created_at: row.get(7)?,
                 updated_at: row.get(8)?,
+                parent_workspace_id: row.get(9)?,
+                icon: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -89,7 +177,7 @@ pub fn list_hidden_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, S
 pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspace>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at FROM workspaces WHERE id = ?1",
+        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon FROM workspaces WHERE id = ?1",
         rusqlite::params![id],
         |row| {
             let sig_json: String = row.get(4)?;
@@ -105,6 +193,8 @@ pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspa
                 is_hidden: is_hidden != 0,
                 created_at: row.get(7)?,
                 updated_at: row.get(8)?,
+                parent_workspace_id: row.get(9)?,
+                icon: row.get(10)?,
             })
         },
     );
@@ -207,6 +297,165 @@ pub fn delete_workspace(state: State<DbState>, id: String) -> Result<(), String>
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn update_workspace_icon(
+    state: State<DbState>,
+    id: String,
+    icon: String,
+) -> Result<(), String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE workspaces SET icon = ?, updated_at = datetime('now') WHERE id = ?",
+        rusqlite::params![icon, id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn recommend_workspace_icon(
+    workspace_name: String,
+    workspace_description: String,
+) -> Result<String, String> {
+    use crate::ollama::client::{OllamaClient, OllamaMessage};
+    use tokio::time::timeout;
+    use std::time::Duration;
+    
+    // Try AI recommendation first (2 second timeout)
+    let ai_result = timeout(
+        Duration::from_secs(2),
+        try_ai_icon_recommendation(&workspace_name, &workspace_description)
+    ).await;
+    
+    if let Ok(Ok(icon)) = ai_result {
+        return Ok(icon);
+    }
+    
+    // Fall back to keyword-based recommendation
+    Ok(fallback_icon_recommendation(&workspace_name, &workspace_description))
+}
+
+async fn try_ai_icon_recommendation(workspace_name: &str, workspace_description: &str) -> Result<String, String> {
+    use crate::ollama::client::{OllamaClient, OllamaMessage};
+    
+    let client = OllamaClient::new(None)?;
+    let prompt = format!(
+        "Workspace: {} - {}. Recommend ONE lucide-react icon name only. Examples: code, brain, palette, book-open, terminal, briefcase. Just the icon name.",
+        workspace_name, workspace_description
+    );
+    
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+    
+    let response = client.send_message("workspace_icon", "mistral", messages).await?;
+    
+    let icon_name = response
+        .trim()
+        .split_whitespace()
+        .next()
+        .unwrap_or("folder")
+        .trim_matches(|c: char| !c.is_alphanumeric() && c != '-')
+        .to_lowercase();
+    
+    if !icon_name.is_empty() && icon_name.len() <= 30 && icon_name.chars().all(|c| c.is_alphanumeric() || c == '-') {
+        Ok(icon_name)
+    } else {
+        Err("Invalid icon name".to_string())
+    }
+}
+
+/// Fallback icon recommendation when Ollama is unavailable.
+/// Uses simple keyword matching to suggest appropriate icons.
+fn fallback_icon_recommendation(workspace_name: &str, workspace_description: &str) -> String {
+    let input = format!("{} {}", workspace_name, workspace_description).to_lowercase();
+    
+    if regex::Regex::new(r"(python|code|programming|dev|javascript|typescript|rust|golang|js|ts|java|kotlin)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "code".to_string();
+    }
+    if regex::Regex::new(r"(learn|education|study|course|tutorial|training|books?)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "book-open".to_string();
+    }
+    if regex::Regex::new(r"(security|crypto|privacy|encrypt|safe)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "shield".to_string();
+    }
+    if regex::Regex::new(r"music").unwrap().is_match(&input) {
+        return "music".to_string();
+    }
+    if regex::Regex::new(r"(health|medical|fitness|wellness|doctor)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "heart".to_string();
+    }
+    if regex::Regex::new(r"(business|work|job|startup|career|enterprise)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "briefcase".to_string();
+    }
+    if regex::Regex::new(r"(design|art|creative|visual|ui|ux|graphics)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "palette".to_string();
+    }
+    if regex::Regex::new(r"(data|database|sql|analytics|bigdata)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "database".to_string();
+    }
+    if regex::Regex::new(r"(web|website|frontend|backend|api|rest|http)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "globe".to_string();
+    }
+    if regex::Regex::new(r"(system|devops|docker|container|kubernetes|infra)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "zap".to_string();
+    }
+    if regex::Regex::new(r"(ml|ai|machine.?learning|neural|deep.?learning|nlp|gpt)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "brain".to_string();
+    }
+    if regex::Regex::new(r"(linux|bash|shell|terminal|cli|command)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "terminal".to_string();
+    }
+    if regex::Regex::new(r"(math|engineering|physics|science|equation)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "square-root".to_string();
+    }
+    if regex::Regex::new(r"(write|blog|article|content|documentation|wiki)")
+        .unwrap()
+        .is_match(&input)
+    {
+        return "pen".to_string();
+    }
+    
+    "folder".to_string()
 }
 
 #[cfg(test)]

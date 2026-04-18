@@ -363,6 +363,7 @@ export interface AppSettings {
   show_gen_info_speed: boolean;
   show_gen_info_model: boolean;
   demo_dismissed: boolean;
+  memory_enabled: boolean;
 }
 
 export interface GitSyncStatus {
@@ -585,11 +586,16 @@ export const api = {
   
   workspace: {
     create: (name: string, description?: string) => invoke<Workspace>("create_workspace", { req: { name, description } }),
+    createSub: (parentId: string, name: string, description?: string) => invoke<Workspace>("create_sub_workspace", { req: { parent_id: parentId, name, description } }),
     list: () => invoke<Workspace[]>("list_workspaces"),
+    listRoots: () => invoke<Workspace[]>("list_root_workspaces"),
+    listChildren: (parentId: string) => invoke<Workspace[]>("list_child_workspaces", { parentId }),
     listHidden: () => invoke<Workspace[]>("list_hidden_workspaces"),
     get: (id: string) => invoke<Workspace | null>("get_workspace", { id }),
     update: (id: string, name: string, description?: string, promptInstructions?: string) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions } }),
     delete: (id: string) => invoke<void>("delete_workspace", { id }),
+    updateIcon: (id: string, icon: string) => invoke<void>("update_workspace_icon", { id, icon }),
+    recommendIcon: (workspaceName: string, workspaceDescription: string) => invoke<string>("recommend_workspace_icon", { workspace_name: workspaceName, workspace_description: workspaceDescription }),
     hide: (id: string) => invoke<void>("hide_workspace", { id }),
     unhide: (id: string) => invoke<void>("unhide_workspace", { id }),
   },
@@ -634,6 +640,10 @@ export const api = {
     addMessage: (workspaceId: string, sessionId: string, role: "user" | "assistant", content: string, modelName?: string, tokensUsed?: number, durationMs?: number) =>
       invoke<Message>("add_message", { req: { workspace_id: workspaceId, session_id: sessionId, role, content, model_name: modelName, tokens_used: tokensUsed, duration_ms: durationMs } }),
     getMessages: (workspaceId: string, sessionId: string, limit?: number, offset?: number) => invoke<Message[]>("get_messages", { sessionId, limit, offset }),
+    refreshMessage: (sessionId: string, messageId: string, modelId: string) =>
+      invoke<Message>("refresh_message", { sessionId, messageId, modelId }),
+    getMessageVariants: (messageId: string) =>
+      invoke<Message[]>("get_message_variants", { messageId }),
     getTokenUsageByDate: (workspaceId: string, days?: number) =>
       invoke<{ day: string; total_tokens: number }[]>("get_token_usage_by_date", { workspaceId, days }),
     touchSessionAccessed: (sessionId: string) =>

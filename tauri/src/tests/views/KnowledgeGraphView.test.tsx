@@ -94,6 +94,8 @@ describe("KnowledgeGraphView", () => {
           is_hidden: false,
           created_at: "2026-04-01T10:00:00Z",
           updated_at: "2026-04-06T10:00:00Z",
+          parent_workspace_id: null,
+    icon: ""
         },
       ],
       activeWorkspaceId: "ws-1",

@@ -9,8 +9,10 @@ CREATE TABLE IF NOT EXISTS workspaces (
     topic_signature TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(topic_signature)),
     signature_updated_at TEXT,
     is_hidden INTEGER NOT NULL DEFAULT 0,
+    icon TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    parent_workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -405,7 +407,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('prompt_instructions', '""'),
     ('hide_native_menu', 'false'),
     ('switch_workspace_to_chat', 'false'),
-    ('demo_dismissed', 'false');
+    ('demo_dismissed', 'false'),
+    ('memory_enabled', 'true');
 
 -- Conversation summaries
 CREATE TABLE IF NOT EXISTS conversation_summaries (
@@ -947,3 +950,7 @@ CREATE TABLE IF NOT EXISTS app_logs (
 
 CREATE INDEX IF NOT EXISTS idx_app_logs_timestamp ON app_logs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs(level, timestamp DESC);
+
+-- Message variants support (v31)
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS variant_group_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_messages_variant_group ON messages(variant_group_id) WHERE variant_group_id IS NOT NULL;

@@ -54,6 +54,7 @@ pub async fn process_auto_memory_extraction(
                         model_name: Some("".to_string()),
                         tokens_used: None,
                         duration_ms: None,
+                        variant_group_id: None,
                         created_at: "".to_string(),
                     })
                 })
