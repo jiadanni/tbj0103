@@ -40,7 +40,7 @@ pub struct CreateWorkspaceRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateSubWorkspaceRequest {
+pub struct CreateChildWorkspaceRequest {
     pub parent_id: String,
     pub name: String,
     pub description: Option<String>,

@@ -79,6 +79,7 @@ import Layout from "@/components/Layout";
 const INITIAL = {
   workspaces: [],
   activeWorkspaceId: null,
+  activeParentWorkspaceId: null,
   activeProjectId: null,
   projects: [],
   isDemoMode: false,
@@ -267,6 +268,93 @@ describe("Layout", () => {
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
   });
 
+  it("selecting a root workspace activates its first child workspace", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "root-1", name: "Parent One", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "" },
+        { id: "child-1", name: "Child One", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "" },
+        { id: "root-2", name: "Parent Two", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "" },
+      ],
+      activeWorkspaceId: "root-2",
+      activeParentWorkspaceId: "root-2",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByText("Parent One"));
+
+    const state = useWorkspaceStore.getState();
+    expect(state.activeWorkspaceId).toBe("child-1");
+    expect(state.activeParentWorkspaceId).toBe("root-1");
+  });
+
+  it("renders child workspace tabs for the active parent and allows switching between them", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "root-1", name: "Parent", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "" },
+        { id: "child-1", name: "Alpha", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "" },
+        { id: "child-2", name: "Beta", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "" },
+      ],
+      activeWorkspaceId: "child-1",
+      activeParentWorkspaceId: "root-1",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Beta"));
+    expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("child-2");
+  });
+
+  it("creates a child workspace from the sub-workspace tab bar", async () => {
+    vi.spyOn(window, "prompt").mockReturnValue("Gamma");
+    const createChildSpy = vi.spyOn(api.workspace, "createChild").mockResolvedValue({
+      id: "child-3",
+      name: "Gamma",
+      description: "",
+      prompt_instructions: "",
+      topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false },
+      signature_updated_at: null,
+      is_hidden: false,
+      created_at: "",
+      updated_at: "",
+      parent_workspace_id: "root-1",
+      icon: "",
+    });
+
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "root-1", name: "Parent", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "" },
+        { id: "child-1", name: "Alpha", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "" },
+      ],
+      activeWorkspaceId: "child-1",
+      activeParentWorkspaceId: "root-1",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTitle("New Sub-workspace"));
+
+    await waitFor(() => {
+      expect(createChildSpy).toHaveBeenCalledWith("root-1", "Gamma");
+      expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("child-3");
+    });
+  });
+
   it("renders the global History button in the titlebar on standard routes", () => {
     render(
       <MemoryRouter initialEntries={["/project"]}>
@@ -382,9 +470,10 @@ describe("Layout", () => {
     useWorkspaceStore.setState({
       workspaces: [
         { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "" },
-        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "" },
+        { id: "ws-1-child", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "ws-1", icon: "" },
       ],
-      activeWorkspaceId: "ws-1",
+      activeWorkspaceId: "ws-1-child",
+      activeParentWorkspaceId: "ws-1",
       workspaceNavigation: "top-dropdown",
     });
 
@@ -394,13 +483,13 @@ describe("Layout", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole("button", { name: "Workspace: Agentic" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Workspace: Agentic / Rust" })).toBeInTheDocument();
     expect(document.querySelector("[data-workspace-tab-strip]")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Workspace: Agentic" }));
-    fireEvent.click(screen.getByRole("option", { name: "Rust" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace: Agentic / Rust" }));
+    fireEvent.click(screen.getByRole("option", { name: "Agentic" }));
 
-    expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
+    expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-1-child");
   });
 
   it("renders split workspace navigation in the shared titlebar while keeping titlebar actions", () => {

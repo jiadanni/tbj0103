@@ -168,6 +168,67 @@ function findFallbackWorkspaceId(
     ?? null;
 }
 
+function normalizeWorkspaceSelection(
+  workspaces: Workspace[],
+  preferredWorkspaceId: string | null,
+  preferredParentWorkspaceId?: string | null,
+): { workspaceId: string | null; parentWorkspaceId: string | null } {
+  if (workspaces.length === 0) {
+    return {
+      workspaceId: preferredWorkspaceId,
+      parentWorkspaceId: preferredParentWorkspaceId ?? preferredWorkspaceId,
+    };
+  }
+
+  let workspaceId = preferredWorkspaceId && workspaces.some((workspace) => workspace.id === preferredWorkspaceId)
+    ? preferredWorkspaceId
+    : null;
+
+  if (!workspaceId && preferredParentWorkspaceId) {
+    workspaceId = workspaces.find((workspace) => workspace.parent_workspace_id === preferredParentWorkspaceId)?.id
+      ?? (workspaces.some((workspace) => workspace.id === preferredParentWorkspaceId) ? preferredParentWorkspaceId : null);
+  }
+
+  workspaceId = findFallbackWorkspaceId(workspaces, workspaceId);
+  if (!workspaceId) {
+    return { workspaceId: null, parentWorkspaceId: null };
+  }
+
+  const workspace = workspaces.find((item) => item.id === workspaceId);
+  if (!workspace) {
+    return { workspaceId, parentWorkspaceId: null };
+  }
+
+  if (workspace.parent_workspace_id) {
+    return {
+      workspaceId: workspace.id,
+      parentWorkspaceId: workspace.parent_workspace_id,
+    };
+  }
+
+  const childWorkspace = workspaces.find((item) => item.parent_workspace_id === workspace.id);
+  if (childWorkspace) {
+    return {
+      workspaceId: childWorkspace.id,
+      parentWorkspaceId: workspace.id,
+    };
+  }
+
+  return {
+    workspaceId: workspace.id,
+    parentWorkspaceId: workspace.id,
+  };
+}
+
+function normalizePaneWorkspaceId(
+  workspaces: Workspace[],
+  preferredWorkspaceId: string | null,
+  excludeWorkspaceId?: string | null,
+) {
+  const fallbackWorkspaceId = findFallbackWorkspaceId(workspaces, preferredWorkspaceId, excludeWorkspaceId);
+  return normalizeWorkspaceSelection(workspaces, fallbackWorkspaceId).workspaceId;
+}
+
 function hasProjectId(projects: Project[], projectId: string | null) {
   return !!projectId && projects.some((project) => project.id === projectId);
 }
@@ -299,12 +360,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         filteredWorkspaces = workspaces.filter(ws => ws.id.startsWith("demo-"));
       }
       const sortedWorkspaces = sortWorkspaces(filteredWorkspaces, state.workspaceSortOrder);
-      const activeWorkspaceId = findFallbackWorkspaceId(sortedWorkspaces, state.activeWorkspaceId);
-      const primaryWorkspaceId = findFallbackWorkspaceId(
+      const activeSelection = normalizeWorkspaceSelection(
+        sortedWorkspaces,
+        state.activeWorkspaceId,
+        state.activeParentWorkspaceId,
+      );
+      const activeWorkspaceId = activeSelection.workspaceId;
+      const primaryWorkspaceId = normalizePaneWorkspaceId(
         sortedWorkspaces,
         state.panes.primary.workspaceId ?? activeWorkspaceId,
       );
-      const secondaryWorkspaceId = findFallbackWorkspaceId(
+      const secondaryWorkspaceId = normalizePaneWorkspaceId(
         sortedWorkspaces,
         state.panes.secondary.workspaceId,
         primaryWorkspaceId,
@@ -335,14 +401,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       }
 
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
-      const resolvedActiveWs = sortedWorkspaces.find((ws) => ws.id === activeWorkspaceId);
-      const activeParentWorkspaceId =
-        resolvedActiveWs?.parent_workspace_id ??
-        (resolvedActiveWs && !resolvedActiveWs.parent_workspace_id ? resolvedActiveWs.id : state.activeParentWorkspaceId);
       return {
         workspaces: sortedWorkspaces,
         activeWorkspaceId,
-        activeParentWorkspaceId,
+        activeParentWorkspaceId: activeSelection.parentWorkspaceId,
         activeProjectId: activeWorkspaceChanged ? null : state.activeProjectId,
         panes,
         projectsByWorkspace: Object.fromEntries(
@@ -353,15 +415,20 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       };
     }),
     setActiveWorkspaceId: (activeWorkspaceId) => set((state) => {
-      const workspaceChanged = activeWorkspaceId !== state.activeWorkspaceId;
+      const nextSelection = normalizeWorkspaceSelection(
+        state.workspaces,
+        activeWorkspaceId,
+        state.activeParentWorkspaceId,
+      );
+      const workspaceChanged = nextSelection.workspaceId !== state.activeWorkspaceId;
       const panes = {
         ...state.panes,
         primary: {
           ...state.panes.primary,
-          workspaceId: activeWorkspaceId,
-          projectId: activeWorkspaceId === state.panes.primary.workspaceId ? state.panes.primary.projectId : null,
-          chatSessionId: activeWorkspaceId === state.panes.primary.workspaceId ? state.panes.primary.chatSessionId : null,
-          noteSelection: activeWorkspaceId === state.panes.primary.workspaceId ? state.panes.primary.noteSelection : null,
+          workspaceId: nextSelection.workspaceId,
+          projectId: nextSelection.workspaceId === state.panes.primary.workspaceId ? state.panes.primary.projectId : null,
+          chatSessionId: nextSelection.workspaceId === state.panes.primary.workspaceId ? state.panes.primary.chatSessionId : null,
+          noteSelection: nextSelection.workspaceId === state.panes.primary.workspaceId ? state.panes.primary.noteSelection : null,
         },
       };
       if (workspaceChanged) {
@@ -369,7 +436,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       }
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
       return {
-        activeWorkspaceId,
+        activeWorkspaceId: nextSelection.workspaceId,
+        activeParentWorkspaceId: nextSelection.parentWorkspaceId,
         activeProjectId: workspaceChanged ? null : state.activeProjectId,
         panes,
       };
@@ -434,7 +502,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         },
       };
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
-      return { isDemoMode, activeWorkspaceId: nextWorkspaceId, panes };
+      return { isDemoMode, activeWorkspaceId: nextWorkspaceId, activeParentWorkspaceId: nextWorkspaceId, panes };
     }),
     addWorkspace: (ws) => set((s) => {
       if (s.isDemoMode && !ws.id.startsWith("demo-")) {
@@ -555,11 +623,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       return { splitMode: true, panes };
     }),
     exitSplitMode: () => set((state) => {
-      const activeWorkspaceId = state.panes.primary.workspaceId ?? state.activeWorkspaceId;
+      const nextSelection = normalizeWorkspaceSelection(
+        state.workspaces,
+        state.panes.primary.workspaceId ?? state.activeWorkspaceId,
+        state.activeParentWorkspaceId,
+      );
+      const activeWorkspaceId = nextSelection.workspaceId;
       const activeProjectId = state.panes.primary.projectId ?? state.activeProjectId;
       useChatStore.getState().setActiveChatId(state.panes.primary.chatSessionId ?? null);
       persistSplitLayout({ splitMode: false, splitSizes: state.splitSizes, activePaneId: "primary", panes: state.panes });
-      return { splitMode: false, activePaneId: "primary", activeWorkspaceId, activeProjectId };
+      return {
+        splitMode: false,
+        activePaneId: "primary",
+        activeWorkspaceId,
+        activeParentWorkspaceId: nextSelection.parentWorkspaceId,
+        activeProjectId,
+      };
     }),
     toggleSplitMode: () => {
       const { splitMode, exitSplitMode, enterSplitMode } = get();
@@ -578,12 +657,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       return { activePaneId };
     }),
     setPaneWorkspace: (paneId, workspaceId) => set((state) => {
+      const nextWorkspaceId = normalizePaneWorkspaceId(
+        state.workspaces,
+        workspaceId,
+        paneId === "secondary" ? state.panes.primary.workspaceId : undefined,
+      );
       const nextPane = {
         ...state.panes[paneId],
-        workspaceId,
-        projectId: workspaceId === state.panes[paneId].workspaceId ? state.panes[paneId].projectId : null,
-        chatSessionId: workspaceId === state.panes[paneId].workspaceId ? state.panes[paneId].chatSessionId : null,
-        noteSelection: workspaceId === state.panes[paneId].workspaceId ? state.panes[paneId].noteSelection : null,
+        workspaceId: nextWorkspaceId,
+        projectId: nextWorkspaceId === state.panes[paneId].workspaceId ? state.panes[paneId].projectId : null,
+        chatSessionId: nextWorkspaceId === state.panes[paneId].workspaceId ? state.panes[paneId].chatSessionId : null,
+        noteSelection: nextWorkspaceId === state.panes[paneId].workspaceId ? state.panes[paneId].noteSelection : null,
       };
       const panes = { ...state.panes, [paneId]: nextPane };
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });

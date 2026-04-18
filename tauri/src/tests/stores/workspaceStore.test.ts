@@ -6,6 +6,7 @@ import { useChatStore } from "@/stores/chatStore";
 const INITIAL = {
   workspaces: [],
   activeWorkspaceId: null,
+  activeParentWorkspaceId: null,
   activeProjectId: null,
   projects: [],
   isDemoMode: false,
@@ -284,6 +285,26 @@ describe("dismissMigrationSuggestion", () => {
 // ─── independent setters ───────────────────────────────────────────────────
 
 describe("workspace/project selection", () => {
+  it("setActiveWorkspaceId resolves a root workspace to its first child and tracks the active parent", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        makeWorkspace({ id: "root-1", name: "Root" }),
+        makeWorkspace({ id: "child-1", name: "Child", parent_workspace_id: "root-1" }),
+      ],
+      panes: {
+        primary: { workspaceId: null, projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: null, projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    useWorkspaceStore.getState().setActiveWorkspaceId("root-1");
+
+    const state = useWorkspaceStore.getState();
+    expect(state.activeWorkspaceId).toBe("child-1");
+    expect(state.activeParentWorkspaceId).toBe("root-1");
+    expect(state.panes.primary.workspaceId).toBe("child-1");
+  });
+
   it("setActiveWorkspaceId clears activeProjectId and activeChatId when the workspace changes", () => {
     useWorkspaceStore.setState({ activeWorkspaceId: "ws-1", activeProjectId: "p1" });
     useChatStore.setState({ activeChatId: "chat-1" });
@@ -369,6 +390,29 @@ describe("workspace/project selection", () => {
     expect(state.activeProjectId).toBeNull();
     expect(state.panes.primary.projectId).toBeNull();
     expect(state.panes.secondary.projectId).toBeNull();
+  });
+
+  it("setWorkspaces preserves the active parent and falls back to a sibling child when the active child disappears", () => {
+    useWorkspaceStore.setState({
+      activeWorkspaceId: "child-a",
+      activeParentWorkspaceId: "root-1",
+      panes: {
+        primary: { workspaceId: "child-a", projectId: null, view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-2", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    useWorkspaceStore.getState().setWorkspaces([
+      makeWorkspace({ id: "root-1", name: "Root" }),
+      makeWorkspace({ id: "child-b", name: "Child B", parent_workspace_id: "root-1" }),
+      makeWorkspace({ id: "ws-2", name: "Other" }),
+    ]);
+
+    const state = useWorkspaceStore.getState();
+    expect(state.activeWorkspaceId).toBe("child-b");
+    expect(state.activeParentWorkspaceId).toBe("root-1");
+    expect(state.panes.primary.workspaceId).toBe("child-b");
+    expect(state.panes.primary.chatSessionId).toBeNull();
   });
 });
 
