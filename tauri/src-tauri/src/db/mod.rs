@@ -67,16 +67,17 @@ pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>>
     // WAL mode first; foreign keys enabled AFTER migrations
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;
 
-    // Create all tables (idempotent for new installs)
-    conn.execute_batch(include_str!("../schema.sql"))?;
-
     create_migrations_table(&conn)?;
 
     if is_fresh_database {
+        // Fresh databases can take the full current schema as-is.
+        conn.execute_batch(include_str!("../schema.sql"))?;
         seed_all_migrations(&conn)?;
     } else {
-        // Apply any pending schema migrations for existing databases.
+        // Existing databases must migrate first so schema-level indexes do not
+        // reference columns that are added by later migrations.
         run_migrations(&conn)?;
+        conn.execute_batch(include_str!("../schema.sql"))?;
     }
 
     // Now enforce foreign keys for normal operation
