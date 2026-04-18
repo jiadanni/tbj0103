@@ -216,6 +216,38 @@ npm run tauri dev
 - Do **not** add "Co-authored-by: Claude" or similar AI attribution to commits.
 - Do **not** force-push to `develop` or `main`.
 
+### Commit Message Quality
+
+**Problem:** Large commits (20+ files, 1000+ lines) with vague titles hide actual scope and make history hard to understand.
+**Examples of incomplete messages:**
+- "add quick search workflow and related app updates" (hides FTS indexing, keyboard shortcuts, schema changes)
+- "improve local inference preferences and chat workflow" (hides hardware detection, model sizing, system specs)
+- "remove plugin preferences entry" (hides IPC observability, SQL standardization, backup refactor, theme normalization)
+
+**Standard format:**
+```
+feat: [concise title describing main change]
+
+[1-2 sentence summary of why this matters]
+
+System/Area 1:
+- Technical detail
+- Technical detail
+
+System/Area 2:
+- Technical detail
+- Technical detail
+```
+
+**Guidelines:**
+- **Title (first line):** Concise, under 70 chars. Describe what changed, not what was attempted.
+- **Body:** Organize by system/feature. Use bullet points for implementation details.
+- **Scope:** For multi-feature commits (20+ files), document ALL features, not just the primary one.
+- **Avoid:** "updates", "improvements", "fixes" without context. Vague titles force future readers to examine diffs.
+- **When in doubt:** If `git diff --stat` shows changes across 10+ files, your commit message should reflect that breadth.
+
+**Why this matters:** Future developers (or future-you) need to understand commits without reading code. Incomplete messages block understanding and make blame/bisect harder.
+
 ---
 
 ## Testing
