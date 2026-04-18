@@ -277,12 +277,16 @@ struct CommandPaletteModifier: ViewModifier {
                         Color.black.opacity(0.3)
                             .ignoresSafeArea()
                             .onTapGesture {
-                                isShowingPalette = false
+                                DispatchQueue.main.async {
+                                    isShowingPalette = false
+                                }
                             }
 
                         CommandPaletteView(onNavigate: onNavigate)
                             .onExitCommand {
-                                isShowingPalette = false
+                                DispatchQueue.main.async {
+                                    isShowingPalette = false
+                                }
                             }
                     }
                 }
@@ -291,7 +295,9 @@ struct CommandPaletteModifier: ViewModifier {
                 // Register Cmd+K shortcut
                 NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                     if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "k" {
-                        isShowingPalette.toggle()
+                        DispatchQueue.main.async {
+                            isShowingPalette.toggle()
+                        }
                         return nil // Consume the event
                     }
                     return event

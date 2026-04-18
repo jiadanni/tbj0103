@@ -7,6 +7,8 @@ enum ModelProvider {
     case openAI
     case anthropic
     case perplexity
+    case lms
+    case mlx
 }
 
 struct ModelConfiguration: Codable, Identifiable {
@@ -37,8 +39,11 @@ class ModelOrchestrator: ObservableObject {
     @Published var currentModel: ModelConfiguration
     @Published var isProcessing: Bool = false
     @Published var lastError: Error?
+    @Published var availableLocalModels: [ModelConfiguration] = []
 
     private let ollamaService: OllamaService
+    private let lmsService: LMStudioService
+    private let mlxService: MLXService
     private let localContextWindow: Int = 8192
     private let logger = Logger(subsystem: "com.aetherium.app", category: "ModelOrchestrator")
 
@@ -48,11 +53,15 @@ class ModelOrchestrator: ObservableObject {
 
     init() {
         self.ollamaService = OllamaService()
+        self.lmsService = LMStudioService()
+        self.mlxService = MLXService()
         self.currentModel = ModelConfiguration.fromPreferred()
     }
 
     init(ollamaService: OllamaService) {
         self.ollamaService = ollamaService
+        self.lmsService = LMStudioService()
+        self.mlxService = MLXService()
         self.currentModel = ModelConfiguration.fromPreferred()
     }
 
@@ -148,13 +157,41 @@ class ModelOrchestrator: ObservableObject {
     }
 
     func checkLocalModelsAvailability() async {
+        var aggregated: [ModelConfiguration] = []
+
+        // Ollama models
         do {
-            let available = try await ollamaService.fetchAvailableModels()
-            logger.info("Available Ollama models: \(available.map { $0.name })")
+            let ollamaModels = try await ollamaService.fetchAvailableModels()
+            let mapped = ollamaModels.map { m in
+                ModelConfiguration(id: UUID(), name: m.name, provider: "ollama", contextWindow: 8192, isLocal: true, displayName: m.name)
+            }
+            aggregated.append(contentsOf: mapped)
+            logger.info("Available Ollama models: \(mapped.map { $0.name })")
         } catch {
-            lastError = error
-            logger.error("Failed to fetch Ollama models: \(error)")
+            logger.warning("Failed to fetch Ollama models: \(error)")
         }
+
+        // LM Studio
+        if await lmsService.checkAvailability() {
+            let lms = await lmsService.fetchAvailableModels()
+            aggregated.append(contentsOf: lms)
+            logger.info("Available LM Studio models: \(lms.map { $0.name })")
+        }
+
+        // MLX
+        if await mlxService.checkAvailability() {
+            let mlx = await mlxService.fetchAvailableModels()
+            aggregated.append(contentsOf: mlx)
+            logger.info("Available MLX models: \(mlx.map { $0.name })")
+        }
+
+        DispatchQueue.main.async {
+            self.availableLocalModels = aggregated
+        }
+    }
+
+    func refreshLocalModels() async {
+        await checkLocalModelsAvailability()
     }
 }
 

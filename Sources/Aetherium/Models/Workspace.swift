@@ -12,6 +12,8 @@ final class Workspace {
     @Relationship(deleteRule: .cascade) var learningGoals: [LearningGoal]
     @Relationship(deleteRule: .cascade) var projects: [Project] = []
     @Relationship(deleteRule: .cascade) var sources: [ProjectSource] = []
+    @Relationship(deleteRule: .cascade) var dailyNotes: [DailyNote] = []
+    @Relationship(deleteRule: .cascade) var learningCards: [LearningCard] = []
     @Relationship(deleteRule: .cascade) var concepts: [ConceptNode] = []
     @Relationship(deleteRule: .cascade) var directChatSessions: [ChatSession] = []
 
@@ -30,6 +32,8 @@ final class Workspace {
         self.learningGoals = []
         self.projects = []
         self.sources = []
+        self.dailyNotes = []
+        self.learningCards = []
         self.directChatSessions = []
     }
 

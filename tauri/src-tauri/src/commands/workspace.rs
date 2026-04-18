@@ -319,7 +319,6 @@ pub async fn recommend_workspace_icon(
     workspace_name: String,
     workspace_description: String,
 ) -> Result<String, String> {
-    use crate::ollama::client::{OllamaClient, OllamaMessage};
     use tokio::time::timeout;
     use std::time::Duration;
     
