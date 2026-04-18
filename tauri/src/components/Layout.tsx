@@ -43,6 +43,54 @@ type WorkspaceDialogState =
   | { kind: "last-workspace" }
   | { kind: "delete"; workspace: Workspace };
 
+function getWorkspaceChildren(workspaces: Workspace[], parentWorkspaceId: string) {
+  return workspaces.filter((workspace) => workspace.parent_workspace_id === parentWorkspaceId);
+}
+
+function getWorkspaceOptionLabel(workspace: Workspace, workspaces: Workspace[]) {
+  if (!workspace.parent_workspace_id) {
+    return workspace.name;
+  }
+
+  const parentWorkspace = workspaces.find((item) => item.id === workspace.parent_workspace_id);
+  return parentWorkspace ? `${parentWorkspace.name} / ${workspace.name}` : workspace.name;
+}
+
+function resolveWorkspaceSelection(workspaces: Workspace[], workspaceId: string | null) {
+  if (!workspaceId) {
+    return { workspaceId: null, parentWorkspaceId: null };
+  }
+
+  const workspace = workspaces.find((item) => item.id === workspaceId);
+  if (!workspace) {
+    return { workspaceId, parentWorkspaceId: workspaceId };
+  }
+
+  if (workspace.parent_workspace_id) {
+    return {
+      workspaceId: workspace.id,
+      parentWorkspaceId: workspace.parent_workspace_id,
+    };
+  }
+
+  const children = getWorkspaceChildren(workspaces, workspace.id);
+  if (children.length > 0) {
+    return {
+      workspaceId: children[0].id,
+      parentWorkspaceId: workspace.id,
+    };
+  }
+
+  return {
+    workspaceId: workspace.id,
+    parentWorkspaceId: workspace.id,
+  };
+}
+
+function resolvePaneWorkspaceSelection(workspaces: Workspace[], workspaceId: string | null) {
+  return resolveWorkspaceSelection(workspaces, workspaceId).workspaceId;
+}
+
 function handleHorizontalWheel(event: React.WheelEvent<HTMLDivElement>) {
   const element = event.currentTarget;
   if (element.scrollWidth <= element.clientWidth) {return;}
@@ -86,10 +134,12 @@ function WorkspaceNavigationTabs({
   onContextMenu?: (workspace: Workspace, x: number, y: number) => void;
   paneId?: PaneId;
 }) {
+  const allWorkspaces = useWorkspaceStore((state) => state.workspaces);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
   const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuWorkspaces = allWorkspaces;
 
   useEffect(() => {
     if (!menuOpen) {return;}
@@ -221,7 +271,7 @@ function WorkspaceNavigationTabs({
             aria-label={paneId ? `Workspace menu ${paneId}` : "Workspace menu"}
             className="absolute right-0 top-full z-[100] mt-1 flex max-h-80 min-w-[220px] flex-col overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-xl backdrop-blur-xl"
           >
-            {workspaces.map((workspace) => {
+            {menuWorkspaces.map((workspace) => {
               const isActive = workspace.id === activeWorkspaceId;
 
               return (
@@ -240,7 +290,7 @@ function WorkspaceNavigationTabs({
                       : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                   }`}
                 >
-                  <span className="truncate">{workspace.name}</span>
+                  <span className="truncate">{getWorkspaceOptionLabel(workspace, allWorkspaces)}</span>
                 </button>
               );
             })}
@@ -261,7 +311,7 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
 
   function selectWorkspace(workspaceId: string) {
     setActivePaneId(paneId);
-    setPaneWorkspace(paneId, workspaceId);
+    setPaneWorkspace(paneId, resolvePaneWorkspaceSelection(allWorkspaces, workspaceId));
   }
 
   return (
@@ -339,7 +389,7 @@ function SplitTitlebarWorkspaceDropdown({ paneId }: { paneId: PaneId }) {
   const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
   const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
   const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
-  const workspaceOptions = workspaces.map((workspace) => ({ value: workspace.id, label: workspace.name }));
+  const workspaceOptions = workspaces.map((workspace) => ({ value: workspace.id, label: getWorkspaceOptionLabel(workspace, workspaces) }));
   const selectedWorkspaceId = workspaceOptions.some((workspace) => workspace.value === paneWorkspaceId)
     ? paneWorkspaceId ?? workspaceOptions[0]?.value ?? ""
     : workspaceOptions[0]?.value ?? "";
@@ -351,7 +401,7 @@ function SplitTitlebarWorkspaceDropdown({ paneId }: { paneId: PaneId }) {
       options={workspaceOptions}
       onChange={(value) => {
         setActivePaneId(paneId);
-        setPaneWorkspace(paneId, value);
+        setPaneWorkspace(paneId, resolvePaneWorkspaceSelection(workspaces, value));
       }}
       widthClassName="w-full min-w-0"
       buttonClassName="h-8 bg-[var(--bg-primary)]/80"
@@ -367,7 +417,10 @@ function SingleTitlebarWorkspaceDropdown({
   onChange: (workspaceId: string) => void;
 }) {
   const workspaces = useWorkspaceStore((state) => state.workspaces);
-  const workspaceOptions = workspaces.map((workspace) => ({ value: workspace.id, label: workspace.name }));
+  const workspaceOptions = workspaces.map((workspace) => ({
+    value: workspace.id,
+    label: getWorkspaceOptionLabel(workspace, workspaces),
+  }));
   const selectedWorkspaceId = workspaceOptions.some((workspace) => workspace.value === activeWorkspaceId)
     ? activeWorkspaceId ?? workspaceOptions[0]?.value ?? ""
     : workspaceOptions[0]?.value ?? "";
@@ -696,33 +749,23 @@ function WorkspaceTabBar({
   }
 
   function activateWorkspace(workspaceId: string) {
-    const isChanged = workspaceId !== activeWorkspaceId;
-    // When selecting a root workspace, check if it has children; if so, auto-select first child
-    const children = workspaces.filter((ws) => ws.parent_workspace_id === workspaceId);
-    if (children.length > 0) {
-      setActiveParentWorkspaceId(workspaceId);
-      setActiveWorkspaceId(children[0].id);
-      if (isChanged && switchWorkspaceToChat) { navigate("/chat"); }
-    } else {
-      setActiveParentWorkspaceId(workspaceId);
-      setActiveWorkspaceId(workspaceId);
-      if (isChanged && switchWorkspaceToChat) { navigate("/chat"); }
-    }
+    const { workspaceId: nextWorkspaceId, parentWorkspaceId } = resolveWorkspaceSelection(workspaces, workspaceId);
+    const isChanged = nextWorkspaceId !== activeWorkspaceId;
+    setActiveParentWorkspaceId(parentWorkspaceId);
+    setActiveWorkspaceId(nextWorkspaceId);
+    if (isChanged && switchWorkspaceToChat) { navigate("/chat"); }
     setContextMenu(null);
   }
 
   function activateSubWorkspace(workspaceId: string) {
-    const isChanged = workspaceId !== activeWorkspaceId;
-    setActiveWorkspaceId(workspaceId);
-    if (isChanged && switchWorkspaceToChat) { navigate("/chat"); }
-    setContextMenu(null);
+    activateWorkspace(workspaceId);
   }
 
   async function createSubWorkspace() {
     if (!activeParentWorkspaceId) { return; }
     const name = window.prompt("Sub-workspace name")?.trim();
     if (!name) { return; }
-    const ws = await api.workspace.createSub(activeParentWorkspaceId, name);
+    const ws = await api.workspace.createChild(activeParentWorkspaceId, name);
     addWorkspace(ws);
     activateSubWorkspace(ws.id);
   }
@@ -754,11 +797,8 @@ function WorkspaceTabBar({
       return;
     }
     await api.workspace.delete(workspace.id);
-    const remaining = workspaces.filter((item) => item.id !== workspace.id);
+    const remaining = await api.workspace.list();
     setWorkspaces(remaining);
-    if (activeWorkspaceId === workspace.id) {
-      setActiveWorkspaceId(remaining[0]?.id ?? null);
-    }
     setContextMenu(null);
   }
 

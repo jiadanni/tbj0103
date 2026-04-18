@@ -586,7 +586,7 @@ export const api = {
   
   workspace: {
     create: (name: string, description?: string) => invoke<Workspace>("create_workspace", { req: { name, description } }),
-    createSub: (parentId: string, name: string, description?: string) => invoke<Workspace>("create_sub_workspace", { req: { parent_id: parentId, name, description } }),
+    createChild: (parentId: string, name: string, description?: string) => invoke<Workspace>("create_child_workspace", { req: { parent_id: parentId, name, description } }),
     list: () => invoke<Workspace[]>("list_workspaces"),
     listRoots: () => invoke<Workspace[]>("list_root_workspaces"),
     listChildren: (parentId: string) => invoke<Workspace[]>("list_child_workspaces", { parentId }),

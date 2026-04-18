@@ -1,5 +1,5 @@
 use crate::db::DbState;
-use crate::models::workspace::{CreateSubWorkspaceRequest, CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace};
+use crate::models::workspace::{CreateChildWorkspaceRequest, CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace};
 use crate::services::chat_file_store;
 use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
 use tauri::State;
@@ -22,9 +22,9 @@ pub fn create_workspace(
 }
 
 #[tauri::command]
-pub fn create_sub_workspace(
+pub fn create_child_workspace(
     state: State<DbState>,
-    req: CreateSubWorkspaceRequest,
+    req: CreateChildWorkspaceRequest,
 ) -> Result<Workspace, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut ws = Workspace::new(req.name, req.description.unwrap_or_default());

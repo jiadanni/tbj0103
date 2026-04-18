@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Plus, Trash2, Pencil, Check, X, LayoutGrid,
+  Plus, Trash2, Pencil, Check, X, LayoutGrid, CornerDownRight,
   MessageSquare, FileText, Globe, Brain, CreditCard,
   Database, Sparkles, Save, Loader2
 } from "lucide-react";
@@ -21,7 +21,15 @@ type WorkspaceDialogState =
   | { kind: "delete"; workspace: Workspace };
 
 export default function WorkspaceSettingsView() {
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, setWorkspaces } = useWorkspaceStore();
+  const {
+    workspaces,
+    activeWorkspaceId,
+    activeParentWorkspaceId,
+    setActiveWorkspaceId,
+    setActiveParentWorkspaceId,
+    addWorkspace,
+    setWorkspaces,
+  } = useWorkspaceStore();
   const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
   const navigate = useNavigate();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -31,6 +39,7 @@ export default function WorkspaceSettingsView() {
   const [newDescription, setNewDescription] = useState("");
   const [creating, setCreating] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [createParentId, setCreateParentId] = useState<string | null>(null);
   const [dialogState, setDialogState] = useState<WorkspaceDialogState | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
 
@@ -45,6 +54,32 @@ export default function WorkspaceSettingsView() {
   const selectedWorkspace = useMemo(() =>
     workspaces.find(w => w.id === selectedId),
   [workspaces, selectedId]);
+  const rootWorkspaces = useMemo(
+    () => workspaces.filter((workspace) => workspace.parent_workspace_id === null),
+    [workspaces]
+  );
+  const childWorkspacesByParent = useMemo(
+    () => Object.fromEntries(
+      rootWorkspaces.map((workspace) => [
+        workspace.id,
+        workspaces.filter((child) => child.parent_workspace_id === workspace.id),
+      ])
+    ) as Record<string, Workspace[]>,
+    [rootWorkspaces, workspaces]
+  );
+  const selectedParentWorkspace = useMemo(() => {
+    if (!selectedWorkspace) {
+      return null;
+    }
+
+    if (!selectedWorkspace.parent_workspace_id) {
+      return selectedWorkspace;
+    }
+
+    return workspaces.find((workspace) => workspace.id === selectedWorkspace.parent_workspace_id) ?? null;
+  }, [selectedWorkspace, workspaces]);
+  const selectedWorkspaceType = selectedWorkspace?.parent_workspace_id ? "Child Workspace" : selectedWorkspace ? "Root Workspace" : null;
+  const childCreateParentId = selectedWorkspace?.parent_workspace_id ?? selectedWorkspace?.id ?? null;
 
   useEffect(() => {
     if (!selectedId) {
@@ -92,17 +127,52 @@ export default function WorkspaceSettingsView() {
     }
   }
 
+  function resolveWorkspaceActivation(workspaceId: string) {
+    const workspace = workspaces.find((item) => item.id === workspaceId);
+    if (!workspace) {
+      return { workspaceId, parentWorkspaceId: workspaceId };
+    }
+
+    if (workspace.parent_workspace_id) {
+      return {
+        workspaceId: workspace.id,
+        parentWorkspaceId: workspace.parent_workspace_id,
+      };
+    }
+
+    const childWorkspace = childWorkspacesByParent[workspace.id]?.[0];
+    if (childWorkspace) {
+      return {
+        workspaceId: childWorkspace.id,
+        parentWorkspaceId: workspace.id,
+      };
+    }
+
+    return {
+      workspaceId: workspace.id,
+      parentWorkspaceId: workspace.id,
+    };
+  }
+
   function activateWorkspace(workspaceId: string) {
-    const isChanged = workspaceId !== activeWorkspaceId;
-    setActiveWorkspaceId(workspaceId);
+    const nextSelection = resolveWorkspaceActivation(workspaceId);
+    const isChanged = nextSelection.workspaceId !== activeWorkspaceId;
+    setActiveParentWorkspaceId(nextSelection.parentWorkspaceId);
+    setActiveWorkspaceId(nextSelection.workspaceId);
     if (isChanged && switchWorkspaceToChat) {
       navigate("/chat");
     }
   }
 
+  function openCreateForm(parentId: string | null = null) {
+    setCreateParentId(parentId);
+    setShowNew(true);
+  }
+
   function resetNewWorkspaceForm() {
     setNewName("");
     setNewDescription("");
+    setCreateParentId(null);
     setShowNew(false);
   }
 
@@ -111,8 +181,11 @@ export default function WorkspaceSettingsView() {
     setCreating(true);
     try {
       const trimmedDescription = newDescription.trim();
-      const ws = await api.workspace.create(newName.trim(), trimmedDescription || undefined);
+      const ws = createParentId
+        ? await api.workspace.createChild(createParentId, newName.trim(), trimmedDescription || undefined)
+        : await api.workspace.create(newName.trim(), trimmedDescription || undefined);
       addWorkspace(ws);
+      setSelectedId(ws.id);
       activateWorkspace(ws.id);
       resetNewWorkspaceForm();
     } finally {
@@ -132,15 +205,20 @@ export default function WorkspaceSettingsView() {
 
   async function performDeleteWorkspace(ws: Workspace) {
     await api.workspace.delete(ws.id);
-    const remaining = workspaces.filter((w) => w.id !== ws.id);
+    const remaining = await api.workspace.list();
     setWorkspaces(remaining);
-    if (activeWorkspaceId === ws.id) {
-      const nextWorkspaceId = remaining[0]?.id ?? null;
-      if (nextWorkspaceId) {
-        activateWorkspace(nextWorkspaceId);
-      } else {
-        setActiveWorkspaceId(null);
-      }
+
+    if (selectedId === ws.id) {
+      const siblingId = ws.parent_workspace_id
+        ? remaining.find((workspace) => workspace.parent_workspace_id === ws.parent_workspace_id)?.id
+        : null;
+      const promotedChildId = !ws.parent_workspace_id
+        ? workspaces
+            .filter((workspace) => workspace.parent_workspace_id === ws.id)
+            .map((workspace) => workspace.id)
+            .find((workspaceId) => remaining.some((workspace) => workspace.id === workspaceId))
+        : null;
+      setSelectedId(siblingId ?? ws.parent_workspace_id ?? promotedChildId ?? remaining[0]?.id ?? null);
     }
   }
 
@@ -162,10 +240,12 @@ export default function WorkspaceSettingsView() {
       <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-color)] shrink-0">
         <div>
           <h1 className="text-sm font-semibold text-[var(--text-primary)]">Workspaces</h1>
-          <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{workspaces.length} workspace{workspaces.length !== 1 ? "s" : ""}</p>
+          <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+            {rootWorkspaces.length} root workspace{rootWorkspaces.length !== 1 ? "s" : ""} · {workspaces.length - rootWorkspaces.length} child workspace{workspaces.length - rootWorkspaces.length !== 1 ? "s" : ""}
+          </p>
         </div>
         <button
-          onClick={() => setShowNew(true)}
+          onClick={() => openCreateForm(null)}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
         >
           <Plus size={12} /> New Workspace
@@ -176,6 +256,11 @@ export default function WorkspaceSettingsView() {
       {showNew && (
         <div className="flex flex-col gap-2 px-5 py-3 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] shrink-0">
           <div className="max-w-3xl w-full flex flex-col gap-2">
+          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+            {createParentId
+              ? `New Child Workspace in ${workspaces.find((workspace) => workspace.id === createParentId)?.name ?? "Parent Workspace"}`
+              : "New Root Workspace"}
+          </div>
           <input
             autoFocus
             value={newName}
@@ -184,7 +269,7 @@ export default function WorkspaceSettingsView() {
               if (e.key === "Enter") {createWorkspace();}
               if (e.key === "Escape") { resetNewWorkspaceForm(); }
             }}
-            placeholder="Workspace name…"
+            placeholder={createParentId ? "Child workspace name…" : "Workspace name…"}
             className="text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
           />
           <textarea
@@ -227,102 +312,219 @@ export default function WorkspaceSettingsView() {
                 <p className="text-sm">No workspaces yet.</p>
               </div>
             ) : (
-              workspaces.map((ws) => {
-                const isActive = ws.id === activeWorkspaceId;
+              rootWorkspaces.map((ws) => {
+                const children = childWorkspacesByParent[ws.id] ?? [];
+                const isActive = ws.id === activeWorkspaceId || ws.id === activeParentWorkspaceId;
                 const isSelected = ws.id === selectedId;
                 const isEditing = editingId === ws.id;
-                return (
-                  <div
-                    key={ws.id}
-                    onClick={() => setSelectedId(ws.id)}
-                    className={`rounded-xl border p-4 transition-all cursor-pointer group ${
-                      isSelected
-                        ? "border-[var(--accent-color)] bg-[var(--accent-color)]/5 ring-1 ring-[var(--accent-color)]/20"
-                        : "border-[var(--border-color)] bg-[var(--bg-elevated)] hover:border-[var(--border-color-hover)]"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      {/* Active indicator */}
-                      <div className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${isActive ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`} />
 
-                      <div className="flex-1 min-w-0">
-                        {isEditing ? (
-                          <div className="flex flex-col gap-1.5" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center gap-2">
-                              <input
-                                autoFocus
-                                value={editName}
-                                onChange={(e) => setEditName(e.target.value)}
+                return (
+                  <div key={ws.id} className="space-y-2">
+                    <div
+                      onClick={() => setSelectedId(ws.id)}
+                      className={`rounded-xl border p-4 transition-all cursor-pointer group ${
+                        isSelected
+                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/5 ring-1 ring-[var(--accent-color)]/20"
+                          : "border-[var(--border-color)] bg-[var(--bg-elevated)] hover:border-[var(--border-color-hover)]"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${isActive ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`} />
+
+                        <div className="flex-1 min-w-0">
+                          {isEditing ? (
+                            <div className="flex flex-col gap-1.5" onClick={e => e.stopPropagation()}>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  autoFocus
+                                  value={editName}
+                                  onChange={(e) => setEditName(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {renameWorkspace(ws.id);}
+                                    if (e.key === "Escape") {setEditingId(null);}
+                                  }}
+                                  placeholder="Workspace name…"
+                                  className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
+                                />
+                                <button onClick={() => renameWorkspace(ws.id)} className="text-[var(--accent-color)]">
+                                  <Check size={14} />
+                                </button>
+                                <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
+                                  <X size={14} />
+                                </button>
+                              </div>
+                              <textarea
+                                value={editDescription}
+                                onChange={(e) => setEditDescription(e.target.value)}
                                 onKeyDown={(e) => {
-                                  if (e.key === "Enter") {renameWorkspace(ws.id);}
                                   if (e.key === "Escape") {setEditingId(null);}
                                 }}
-                                placeholder="Workspace name…"
-                                className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
+                                placeholder="Optional description…"
+                                rows={2}
+                                className="resize-none text-xs bg-[var(--bg-input)] border border-[var(--border-color)] rounded px-2 py-1 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
                               />
-                              <button onClick={() => renameWorkspace(ws.id)} className="text-[var(--accent-color)]">
-                                <Check size={14} />
-                              </button>
-                              <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
-                                <X size={14} />
-                              </button>
                             </div>
-                            <textarea
-                              value={editDescription}
-                              onChange={(e) => setEditDescription(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Escape") {setEditingId(null);}
-                              }}
-                              placeholder="Optional description…"
-                              rows={2}
-                              className="resize-none text-xs bg-[var(--bg-input)] border border-[var(--border-color)] rounded px-2 py-1 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                            />
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-0.5">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-[var(--text-primary)] truncate">{ws.name}</span>
-                              {isActive && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium">
-                                  Active
-                                </span>
+                          ) : (
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-[var(--text-primary)] truncate">{ws.name}</span>
+                                {isActive && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium">
+                                    {ws.id === activeWorkspaceId ? "Active" : "Active Parent"}
+                                  </span>
+                                )}
+                                {children.length > 0 && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-hover)] text-[var(--text-secondary)] font-medium">
+                                    {children.length} child{children.length !== 1 ? "ren" : ""}
+                                  </span>
+                                )}
+                              </div>
+                              {ws.description && (
+                                <p className="text-[11px] text-[var(--text-muted)] line-clamp-1">{ws.description}</p>
                               )}
                             </div>
-                            {ws.description && (
-                              <p className="text-[11px] text-[var(--text-muted)] line-clamp-1">{ws.description}</p>
-                            )}
-                          </div>
-                        )}
-                        <p className="text-[10px] text-[var(--text-muted)]/60 mt-1">
-                          Created {formatDate(ws.created_at)}
-                        </p>
-                      </div>
+                          )}
+                          <p className="text-[10px] text-[var(--text-muted)]/60 mt-1">
+                            Created {formatDate(ws.created_at)}
+                          </p>
+                        </div>
 
-                      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                        {!isActive && (
+                        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                          {!isActive && (
+                            <button
+                              onClick={() => activateWorkspace(ws.id)}
+                              className="px-2 py-1 text-[11px] rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
+                            >
+                              Switch
+                            </button>
+                          )}
                           <button
-                            onClick={() => activateWorkspace(ws.id)}
-                            className="px-2 py-1 text-[11px] rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
+                            onClick={() => openCreateForm(ws.id)}
+                            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
+                            title="New child workspace"
                           >
-                            Switch
+                            <Plus size={13} />
                           </button>
-                        )}
-                        <button
-                          onClick={() => { setEditingId(ws.id); setEditName(ws.name); setEditDescription(ws.description ?? ""); }}
-                          className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
-                          title="Rename"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          onClick={() => deleteWorkspace(ws)}
-                          className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
-                          title="Delete workspace"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                          <button
+                            onClick={() => { setEditingId(ws.id); setEditName(ws.name); setEditDescription(ws.description ?? ""); }}
+                            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
+                            title="Rename"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => deleteWorkspace(ws)}
+                            className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
+                            title="Delete workspace"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </div>
                     </div>
+
+                    {children.length > 0 && (
+                      <div className="ml-5 border-l border-[var(--border-color)] pl-4 space-y-2">
+                        {children.map((child) => {
+                          const isChildActive = child.id === activeWorkspaceId;
+                          const isChildSelected = child.id === selectedId;
+                          const isChildEditing = editingId === child.id;
+
+                          return (
+                            <div
+                              key={child.id}
+                              onClick={() => setSelectedId(child.id)}
+                              className={`rounded-xl border p-3 transition-all cursor-pointer group ${
+                                isChildSelected
+                                  ? "border-[var(--accent-color)] bg-[var(--accent-color)]/5 ring-1 ring-[var(--accent-color)]/20"
+                                  : "border-[var(--border-color)] bg-[var(--bg-primary)] hover:border-[var(--border-color-hover)]"
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <CornerDownRight size={14} className={`mt-0.5 shrink-0 ${isChildActive ? "text-[var(--accent-color)]" : "text-[var(--text-muted)]"}`} />
+                                <div className="flex-1 min-w-0">
+                                  {isChildEditing ? (
+                                    <div className="flex flex-col gap-1.5" onClick={e => e.stopPropagation()}>
+                                      <div className="flex items-center gap-2">
+                                        <input
+                                          autoFocus
+                                          value={editName}
+                                          onChange={(e) => setEditName(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {renameWorkspace(child.id);}
+                                            if (e.key === "Escape") {setEditingId(null);}
+                                          }}
+                                          placeholder="Workspace name…"
+                                          className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
+                                        />
+                                        <button onClick={() => renameWorkspace(child.id)} className="text-[var(--accent-color)]">
+                                          <Check size={14} />
+                                        </button>
+                                        <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
+                                          <X size={14} />
+                                        </button>
+                                      </div>
+                                      <textarea
+                                        value={editDescription}
+                                        onChange={(e) => setEditDescription(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Escape") {setEditingId(null);}
+                                        }}
+                                        placeholder="Optional description…"
+                                        rows={2}
+                                        className="resize-none text-xs bg-[var(--bg-input)] border border-[var(--border-color)] rounded px-2 py-1 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col gap-0.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium text-[var(--text-primary)] truncate">{child.name}</span>
+                                        {isChildActive && (
+                                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium">
+                                            Active
+                                          </span>
+                                        )}
+                                      </div>
+                                      {child.description && (
+                                        <p className="text-[11px] text-[var(--text-muted)] line-clamp-1">{child.description}</p>
+                                      )}
+                                    </div>
+                                  )}
+                                  <p className="text-[10px] text-[var(--text-muted)]/60 mt-1">
+                                    Child of {ws.name}
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                  {!isChildActive && (
+                                    <button
+                                      onClick={() => activateWorkspace(child.id)}
+                                      className="px-2 py-1 text-[11px] rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
+                                    >
+                                      Switch
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => { setEditingId(child.id); setEditName(child.name); setEditDescription(child.description ?? ""); }}
+                                    className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
+                                    title="Rename"
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+                                  <button
+                                    onClick={() => deleteWorkspace(child)}
+                                    className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
+                                    title="Delete workspace"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -343,9 +545,42 @@ export default function WorkspaceSettingsView() {
                       Current Active Workspace
                     </span>
                   )}
+                  {selectedWorkspace.id !== activeWorkspaceId && selectedWorkspace.id === activeParentWorkspaceId && (
+                    <span className="px-2 py-0.5 rounded-md bg-[var(--bg-hover)] text-[var(--text-secondary)] text-xs font-semibold">
+                      Active Parent Workspace
+                    </span>
+                  )}
                 </div>
                 {selectedWorkspace.description && (
                   <p className="text-[var(--text-secondary)] text-sm max-w-2xl">{selectedWorkspace.description}</p>
+                )}
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                  {selectedWorkspaceType && (
+                    <span className="px-2 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)]">
+                      {selectedWorkspaceType}
+                    </span>
+                  )}
+                  {selectedWorkspace.parent_workspace_id && selectedParentWorkspace && (
+                    <span className="px-2 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)]">
+                      Parent: {selectedParentWorkspace.name}
+                    </span>
+                  )}
+                  {!selectedWorkspace.parent_workspace_id && (
+                    <span className="px-2 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)]">
+                      {(childWorkspacesByParent[selectedWorkspace.id] ?? []).length} child workspace{(childWorkspacesByParent[selectedWorkspace.id] ?? []).length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                {childCreateParentId && (
+                  <div>
+                    <button
+                      onClick={() => openCreateForm(childCreateParentId)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
+                    >
+                      <Plus size={12} />
+                      New Child Workspace
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -443,7 +678,7 @@ export default function WorkspaceSettingsView() {
       {/* Help text */}
       <div className="px-5 py-3 border-t border-[var(--border-color)] shrink-0">
         <p className="text-[11px] text-[var(--text-muted)]">
-          Workspaces isolate projects, notes, daily entries, and knowledge graphs. You can switch between them using the tab bar at the top.
+          Root workspaces group child workspaces. Child workspaces keep their own chats, notes, and knowledge data while still appearing under their parent in the main workspace navigation.
         </p>
       </div>
 
@@ -452,7 +687,11 @@ export default function WorkspaceSettingsView() {
           title={dialogState.kind === "delete" ? "Confirm Deletion" : "Cannot Delete Workspace"}
           description={
             dialogState.kind === "delete"
-              ? `Delete "${dialogState.workspace.name}" and all its projects, notes, and data? This cannot be undone.`
+              ? dialogState.workspace.parent_workspace_id
+                ? `Delete "${dialogState.workspace.name}" and all its projects, notes, and data? This cannot be undone.`
+                : (childWorkspacesByParent[dialogState.workspace.id] ?? []).length > 0
+                ? `Delete "${dialogState.workspace.name}"? Its child workspaces will be kept and promoted to root workspaces.`
+                : `Delete "${dialogState.workspace.name}" and all its projects, notes, and data? This cannot be undone.`
               : "You need at least one workspace in Aetherium."
           }
           confirmLabel={dialogState.kind === "delete" ? "Delete Workspace" : "OK"}
