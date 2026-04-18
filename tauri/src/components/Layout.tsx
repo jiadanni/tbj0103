@@ -139,7 +139,6 @@ function WorkspaceNavigationTabs({
   const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
   const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const menuWorkspaces = allWorkspaces;
 
   useEffect(() => {
     if (!menuOpen) {return;}
@@ -271,29 +270,49 @@ function WorkspaceNavigationTabs({
             aria-label={paneId ? `Workspace menu ${paneId}` : "Workspace menu"}
             className="absolute right-0 top-full z-[100] mt-1 flex max-h-80 min-w-[220px] flex-col overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-xl backdrop-blur-xl"
           >
-            {menuWorkspaces.map((workspace) => {
-              const isActive = workspace.id === activeWorkspaceId;
-
-              return (
-                <button
-                  key={`${paneId ? paneId + "-menu-" : "menu-"}${workspace.id}`}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={isActive}
-                  onClick={() => {
-                    onSelect(workspace.id);
-                    setMenuOpen(false);
-                  }}
-                  className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                    isActive
-                      ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                  }`}
-                >
-                  <span className="truncate">{getWorkspaceOptionLabel(workspace, allWorkspaces)}</span>
-                </button>
-              );
-            })}
+            {(() => {
+              const roots = allWorkspaces.filter((ws) => ws.parent_workspace_id === null);
+              return roots.map((root) => {
+                const children = allWorkspaces.filter((ws) => ws.parent_workspace_id === root.id);
+                const isRootActive = root.id === activeWorkspaceId;
+                return (
+                  <React.Fragment key={root.id}>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={isRootActive}
+                      onClick={() => { onSelect(root.id); setMenuOpen(false); }}
+                      className={`flex w-full items-center rounded-lg px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider transition-colors ${
+                        isRootActive
+                          ? "text-[var(--accent-color)]"
+                          : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                      }`}
+                    >
+                      <span className="truncate">{root.name}</span>
+                    </button>
+                    {children.map((child) => {
+                      const isActive = child.id === activeWorkspaceId;
+                      return (
+                        <button
+                          key={child.id}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={isActive}
+                          onClick={() => { onSelect(child.id); setMenuOpen(false); }}
+                          className={`flex w-full items-center rounded-lg py-2 pl-6 pr-3 text-left text-sm transition-colors ${
+                            isActive
+                              ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                              : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                          }`}
+                        >
+                          <span className="truncate">{child.name}</span>
+                        </button>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              });
+            })()}
           </div>
         )}
       </div>
@@ -384,12 +403,24 @@ function SubWorkspaceTabBar({
   );
 }
 
+function buildWorkspaceGroups(workspaces: Workspace[]) {
+  const roots = workspaces.filter((ws) => ws.parent_workspace_id === null);
+  return roots.map((root) => ({
+    label: root.name,
+    value: root.id,
+    options: workspaces
+      .filter((ws) => ws.parent_workspace_id === root.id)
+      .map((ws) => ({ value: ws.id, label: ws.name })),
+  }));
+}
+
 function SplitTitlebarWorkspaceDropdown({ paneId }: { paneId: PaneId }) {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
   const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
   const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
   const workspaceOptions = workspaces.map((workspace) => ({ value: workspace.id, label: getWorkspaceOptionLabel(workspace, workspaces) }));
+  const workspaceGroups = buildWorkspaceGroups(workspaces);
   const selectedWorkspaceId = workspaceOptions.some((workspace) => workspace.value === paneWorkspaceId)
     ? paneWorkspaceId ?? workspaceOptions[0]?.value ?? ""
     : workspaceOptions[0]?.value ?? "";
@@ -399,6 +430,7 @@ function SplitTitlebarWorkspaceDropdown({ paneId }: { paneId: PaneId }) {
       label={`Workspace ${paneId}`}
       value={selectedWorkspaceId}
       options={workspaceOptions}
+      groups={workspaceGroups}
       onChange={(value) => {
         setActivePaneId(paneId);
         setPaneWorkspace(paneId, resolvePaneWorkspaceSelection(workspaces, value));
@@ -421,6 +453,7 @@ function SingleTitlebarWorkspaceDropdown({
     value: workspace.id,
     label: getWorkspaceOptionLabel(workspace, workspaces),
   }));
+  const workspaceGroups = buildWorkspaceGroups(workspaces);
   const selectedWorkspaceId = workspaceOptions.some((workspace) => workspace.value === activeWorkspaceId)
     ? activeWorkspaceId ?? workspaceOptions[0]?.value ?? ""
     : workspaceOptions[0]?.value ?? "";
@@ -430,6 +463,7 @@ function SingleTitlebarWorkspaceDropdown({
       label="Workspace"
       value={selectedWorkspaceId}
       options={workspaceOptions}
+      groups={workspaceGroups}
       onChange={onChange}
       widthClassName="min-w-0 w-full max-w-[280px] sm:w-[240px]"
       buttonClassName="h-8 bg-[var(--bg-primary)]/80"

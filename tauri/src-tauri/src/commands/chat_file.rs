@@ -1068,12 +1068,60 @@ fn sync_all_to_files_internal(
     Ok(count)
 }
 
+/// Preview `projects.json` — returns project name, description, whether a custom
+/// prompt exists, and the first 300 chars of the prompt so the user can decide
+/// which projects to import before committing.
+#[tauri::command]
+pub fn preview_claude_projects_file(
+    file_path: String,
+) -> Result<serde_json::Value, String> {
+    let proj_file = std::path::Path::new(&file_path);
+    if !proj_file.is_file() {
+        return Err(format!("{} is not a file", file_path));
+    }
+
+    let bytes =
+        std::fs::read(proj_file).map_err(|e| format!("Failed to read projects.json: {e}"))?;
+
+    let projects = chat_file_store::parse_claude_projects(&bytes)?;
+    if projects.is_empty() {
+        return Err("No projects found in the selected file.".to_string());
+    }
+
+    let previews: Vec<serde_json::Value> = projects
+        .iter()
+        .map(|(uuid, name, description, prompt)| {
+            let prompt_preview = if prompt.trim().is_empty() {
+                None
+            } else {
+                let truncated: String = prompt.chars().take(300).collect();
+                let suffix = if prompt.chars().count() > 300 { "…" } else { "" };
+                Some(format!("{truncated}{suffix}"))
+            };
+            serde_json::json!({
+                "uuid": uuid,
+                "name": name,
+                "description": description,
+                "has_prompt": !prompt.trim().is_empty(),
+                "prompt_preview": prompt_preview,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let total = previews.len();
+    Ok(serde_json::json!({
+        "projects": previews,
+        "total": total,
+    }))
+}
+
 /// Import Claude Desktop `projects.json` — each project becomes a separate workspace.
 /// The project's `prompt_template` maps to `prompt_instructions` and `description` maps
 /// to the workspace description.
 #[tauri::command]
 pub fn import_claude_projects(
     file_path: String,
+    selected_ids: Option<Vec<String>>,
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
@@ -1089,11 +1137,19 @@ pub fn import_claude_projects(
         return Err("No projects found in the selected file.".to_string());
     }
 
+    let id_filter: Option<std::collections::HashSet<&str>> =
+        selected_ids.as_ref().map(|ids| ids.iter().map(|s| s.as_str()).collect());
+
     let now = chrono::Utc::now().to_rfc3339();
     let mut created = 0usize;
     let mut skipped = 0usize;
 
-    for (_proj_uuid, proj_name, proj_description, proj_prompt) in &projects {
+    for (proj_uuid, proj_name, proj_description, proj_prompt) in &projects {
+        if let Some(ref filter) = id_filter {
+            if !filter.contains(proj_uuid.as_str()) {
+                continue;
+            }
+        }
         let normalized = proj_name.trim();
         let exists: bool = conn
             .query_row(

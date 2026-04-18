@@ -300,6 +300,44 @@ pub fn delete_workspace(state: State<DbState>, id: String) -> Result<(), String>
 }
 
 #[tauri::command]
+pub fn set_workspace_parent(
+    state: State<DbState>,
+    id: String,
+    parent_id: Option<String>,
+) -> Result<(), String> {
+    if let Some(ref pid) = parent_id {
+        if *pid == id {
+            return Err("A workspace cannot be its own parent.".to_string());
+        }
+        // Prevent circular references: ensure the proposed parent is not itself a child of `id`
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let parent_of_parent: Option<String> = conn.query_row(
+            "SELECT parent_workspace_id FROM workspaces WHERE id = ?1",
+            rusqlite::params![pid],
+            |row| row.get(0),
+        ).unwrap_or(None);
+        if parent_of_parent.as_deref() == Some(&id) {
+            return Err("Cannot create a circular parent-child relationship.".to_string());
+        }
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE workspaces SET parent_workspace_id = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![pid, now, id],
+        )
+        .map_err(|e| e.to_string())?;
+    } else {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE workspaces SET parent_workspace_id = NULL, updated_at = ?1 WHERE id = ?2",
+            rusqlite::params![now, id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn update_workspace_icon(
     state: State<DbState>,
     id: String,

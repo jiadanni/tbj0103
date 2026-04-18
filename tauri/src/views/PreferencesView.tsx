@@ -8,6 +8,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
+import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB, type ModelFit } from "../lib/modelSizing";
 import { ACCENT_COLORS, THEMES, normalizeTheme } from "../lib/theme";
@@ -170,6 +171,7 @@ export default function PreferencesView() {
   const expandChatToWindowWidth = useSettingsStore((state) => state.expandChatToWindowWidth);
   const setExpandChatToWindowWidth = useSettingsStore((state) => state.setExpandChatToWindowWidth);
   const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
+  const modelLabels = useSettingsStore((state) => state.modelLabels);
   const location = useLocation();
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
@@ -718,6 +720,8 @@ export default function PreferencesView() {
                 const isBackgroundModel = dbSettings.background_model === m.model_id;
                 const providerMeta = getModelGroupMeta(m.provider);
                 const capabilityBadges = isOllamaModel ? ollamaMeta?.capabilities ?? [] : [];
+                const displayName = resolveModelDisplayName(m.model_id, modelLabels, aiModels);
+                const secondaryDisplayName = resolveModelSecondaryDisplayName(m.model_id, m.provider);
 
                 return (
                   <div key={m.id} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5">
@@ -779,7 +783,7 @@ export default function PreferencesView() {
                             <div className="group min-w-0">
                               <div className="flex min-w-0 items-center gap-2">
                                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${fitMeta.dotClassName}`} title={fitMeta.title} />
-                                <span className="truncate text-sm font-medium text-[var(--text-primary)]">{m.name}</span>
+                                <span className="truncate text-sm font-medium text-[var(--text-primary)]">{displayName}</span>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -788,7 +792,7 @@ export default function PreferencesView() {
                                   }}
                                   className="shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[var(--text-primary)]"
                                   title="Rename model"
-                                  aria-label={`Rename ${m.name}`}
+                                  aria-label={`Rename ${displayName}`}
                                 >
                                   <Pencil size={10} />
                                 </button>
@@ -799,7 +803,7 @@ export default function PreferencesView() {
                                     {providerMeta.label}
                                   </span>
                                 )}
-                                <span className="truncate">{m.model_id}</span>
+                                <span className="truncate">{secondaryDisplayName}</span>
                               </div>
                               {(metadataParts.length > 0 || fitMeta.label) && (
                                 <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-secondary)]">

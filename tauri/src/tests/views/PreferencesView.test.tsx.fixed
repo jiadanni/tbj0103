@@ -289,7 +289,8 @@ describe("PreferencesView", () => {
     expect(await screen.findByText("Ollama", { selector: "div" })).toBeInTheDocument();
     expect(screen.getByText("Web AI", { selector: "div" })).toBeInTheDocument();
     expect(screen.getByText("Gemma 4")).toBeInTheDocument();
-    expect(screen.getByText("ChatGPT (Web)")).toBeInTheDocument();
+    expect(screen.getByText("Browser Assistant A")).toBeInTheDocument();
+    expect(screen.getByText("browser-assistant-a")).toBeInTheDocument();
   });
 
   it("renders read-only capability badges for Ollama models", async () => {

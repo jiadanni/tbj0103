@@ -67,6 +67,13 @@ export default function ImportSettingsSection() {
   const [claudeImportMemories, setClaudeImportMemories] = useState(true);
   const [claudeScanning, setClaudeScanning] = useState(false);
   const [importingClaudeProjects, setImportingClaudeProjects] = useState(false);
+  const [projectsScanning, setProjectsScanning] = useState(false);
+  const [projectsFilePath, setProjectsFilePath] = useState<string | null>(null);
+  const [projectPreviews, setProjectPreviews] = useState<
+    { uuid: string; name: string; description: string; has_prompt: boolean; prompt_preview: string | null }[]
+  >([]);
+  const [selectedProjectImportIds, setSelectedProjectImportIds] = useState<Set<string>>(new Set());
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function importFromLmStudio() {
@@ -195,13 +202,13 @@ export default function ImportSettingsSection() {
       const selected = await open({
         directory: false,
         multiple: false,
-        title: "Select Gemini My Activity.html file",
+        title: "Select browser activity export HTML file",
         filters: [{ name: "HTML", extensions: ["html", "htm"] }],
       });
       const filePath = Array.isArray(selected) ? selected[0] : selected;
       if (!filePath) {return;}
 
-      const defaultName = "Gemini Apps";
+      const defaultName = "Imported Browser Chats";
       const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces);
       if (!resolvedName) {return;}
 
@@ -210,7 +217,7 @@ export default function ImportSettingsSection() {
         resolvedName !== defaultName ? resolvedName : undefined,
       );
       if (result.imported_sessions < 1) {
-        throw new Error("Gemini import completed without importing any conversations.");
+        throw new Error("The activity export completed without importing any conversations.");
       }
 
       const [freshWorkspaces, importedProjects, firstSession] = await Promise.all([
@@ -234,52 +241,87 @@ export default function ImportSettingsSection() {
       }
 
       await message(lines.join("\n"), {
-        title: "Gemini import complete",
+        title: "Activity import complete",
         kind: "info",
       });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Gemini import failed";
+      const msg = e instanceof Error ? e.message : "Activity import failed";
       setError(msg);
-      await message(msg, { title: "Gemini import failed", kind: "error" });
+      await message(msg, { title: "Activity import failed", kind: "error" });
     } finally {
       setImportingGemini(false);
     }
   }
 
-  async function importClaudeProjects() {
+  async function scanClaudeProjects() {
     setError(null);
-    setImportingClaudeProjects(true);
+    setProjectsScanning(true);
+    setProjectPreviews([]);
+    setProjectsFilePath(null);
+    setSelectedProjectImportIds(new Set());
+    setExpandedProjectId(null);
 
     try {
       const selected = await open({
         directory: false,
         multiple: false,
-        title: "Select Claude Desktop projects.json file",
+        title: "Select projects export JSON file",
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
       const filePath = Array.isArray(selected) ? selected[0] : selected;
       if (!filePath) { return; }
 
-      const result = await api.chatFile.importClaudeProjects(filePath);
+      const result = await api.chatFile.previewClaudeProjects(filePath);
+      if (result.total < 1) {
+        throw new Error("No projects were found in the selected export.");
+      }
+
+      setProjectsFilePath(filePath);
+      setProjectPreviews(result.projects);
+      // Select all by default
+      setSelectedProjectImportIds(new Set(result.projects.map((p) => p.uuid)));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Project export scan failed";
+      setError(msg);
+      await message(msg, { title: "Project export scan failed", kind: "error" });
+    } finally {
+      setProjectsScanning(false);
+    }
+  }
+
+  async function importClaudeProjects() {
+    if (!projectsFilePath || selectedProjectImportIds.size === 0) { return; }
+    setError(null);
+    setImportingClaudeProjects(true);
+
+    try {
+      const selectedIds = [...selectedProjectImportIds];
+      const result = await api.chatFile.importClaudeProjects(projectsFilePath, selectedIds);
 
       const freshWorkspaces = await api.workspace.list();
       setWorkspaces(freshWorkspaces);
 
+      // Clear preview state
+      setProjectsFilePath(null);
+      setProjectPreviews([]);
+      setSelectedProjectImportIds(new Set());
+      setExpandedProjectId(null);
+
       const lines = [
-        `${result.created} workspace${result.created === 1 ? "" : "s"} created from Claude projects.`,
+        `${result.created} workspace${result.created === 1 ? "" : "s"} created from the project export.`,
       ];
       if (result.skipped > 0) {
         lines.push(`${result.skipped} skipped (workspace with same name already exists).`);
       }
 
       await message(lines.join("\n"), {
-        title: "Claude projects imported",
+        title: "Project export imported",
         kind: "info",
       });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Claude projects import failed";
+      const msg = e instanceof Error ? e.message : "Project export import failed";
       setError(msg);
-      await message(msg, { title: "Claude projects import failed", kind: "error" });
+      await message(msg, { title: "Project export import failed", kind: "error" });
     } finally {
       setImportingClaudeProjects(false);
     }
@@ -297,7 +339,7 @@ export default function ImportSettingsSection() {
       const selected = await open({
         directory: false,
         multiple: false,
-        title: "Select Claude Desktop conversations.json file",
+        title: "Select conversations export JSON file",
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
       const filePath = Array.isArray(selected) ? selected[0] : selected;
@@ -305,7 +347,7 @@ export default function ImportSettingsSection() {
 
       const result = await api.chatFile.previewClaudeDesktop(filePath);
       if (result.total < 1) {
-        throw new Error("No conversations with messages found in the Claude Desktop export.");
+        throw new Error("No conversations with messages were found in the selected export.");
       }
 
       setClaudeFolder(filePath);
@@ -317,9 +359,9 @@ export default function ImportSettingsSection() {
       setClaudeSelectedProjects(new Set(result.projects.map((p) => p.uuid)));
       setClaudeImportMemories(result.memories != null);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Claude Desktop scan failed";
+      const msg = e instanceof Error ? e.message : "Conversation export scan failed";
       setError(msg);
-      await message(msg, { title: "Claude Desktop scan failed", kind: "error" });
+      await message(msg, { title: "Conversation export scan failed", kind: "error" });
     } finally {
       setClaudeScanning(false);
     }
@@ -331,7 +373,7 @@ export default function ImportSettingsSection() {
     setImportingClaude(true);
 
     try {
-      const defaultName = "Claude Desktop";
+      const defaultName = "Imported Conversations";
       const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces);
       if (!resolvedName) { return; }
 
@@ -345,7 +387,7 @@ export default function ImportSettingsSection() {
         claudeImportMemories,
       );
       if (result.imported < 1) {
-        throw new Error("Claude Desktop import completed without importing any conversations.");
+        throw new Error("The conversation export completed without importing any conversations.");
       }
 
       const [freshWorkspaces, importedProjects, firstSession] = await Promise.all([
@@ -387,13 +429,13 @@ export default function ImportSettingsSection() {
       }
 
       await message(lines.join("\n"), {
-        title: "Claude Desktop import complete",
+        title: "Conversation import complete",
         kind: result.errors > 0 ? "warning" : "info",
       });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Claude Desktop import failed";
+      const msg = e instanceof Error ? e.message : "Conversation import failed";
       setError(msg);
-      await message(msg, { title: "Claude Desktop import failed", kind: "error" });
+      await message(msg, { title: "Conversation import failed", kind: "error" });
     } finally {
       setImportingClaude(false);
     }
@@ -464,10 +506,10 @@ export default function ImportSettingsSection() {
               <div>
                 <div className="flex items-center gap-2">
                   <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import from Google Gemini</h2>
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Browser Activity Export</h2>
                 </div>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Pick your extracted Google Takeout folder. It will scan for <code>My Activity.html</code> and import all conversations into a &quot;Gemini Apps&quot; workspace.
+                  Pick an exported browser activity HTML file. Supported today: Google Takeout activity exports. It scans for <code>My Activity.html</code> content and imports conversations into a new workspace.
                 </p>
               </div>
 
@@ -477,7 +519,7 @@ export default function ImportSettingsSection() {
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
               >
                 {importingGemini ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {importingGemini ? "Importing..." : "Import Takeout"}
+                {importingGemini ? "Importing..." : "Import Activity"}
               </button>
             </div>
           </section>
@@ -487,22 +529,152 @@ export default function ImportSettingsSection() {
               <div>
                 <div className="flex items-center gap-2">
                   <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Claude Projects as Workspaces</h2>
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Project Export</h2>
                 </div>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Pick your Claude Desktop <code>projects.json</code> file. Each project becomes a separate workspace with its description and prompt instructions.
+                  Pick a <code>projects.json</code> export file. Supported today: Claude Desktop project exports. Each imported project becomes its own workspace with descriptions and instructions.
                 </p>
               </div>
 
               <button
-                onClick={() => void importClaudeProjects()}
-                disabled={importingClaudeProjects}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+                onClick={() => void scanClaudeProjects()}
+                disabled={projectsScanning || importingClaudeProjects}
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
               >
-                {importingClaudeProjects ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {importingClaudeProjects ? "Importing..." : "Import Projects"}
+                {projectsScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+                {projectsScanning ? "Scanning..." : "Scan Export"}
               </button>
             </div>
+
+            {/* ── Project review picker ─────────────────────────── */}
+            {projectPreviews.length > 0 && (
+              <div className="mt-4 flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-[var(--text-primary)]">
+                      Projects ({selectedProjectImportIds.size}/{projectPreviews.length})
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelectedProjectImportIds(new Set(projectPreviews.map((p) => p.uuid)))}
+                        className="text-xs text-[var(--accent-color)] hover:underline"
+                      >
+                        All
+                      </button>
+                      <button
+                        onClick={() => setSelectedProjectImportIds(new Set())}
+                        className="text-xs text-[var(--text-muted)] hover:underline"
+                      >
+                        None
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="max-h-96 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
+                    {projectPreviews.map((proj) => {
+                      const checked = selectedProjectImportIds.has(proj.uuid);
+                      const expanded = expandedProjectId === proj.uuid;
+                      return (
+                        <div key={proj.uuid} className="border-b border-[var(--border-color)] last:border-b-0">
+                          <div className="flex cursor-pointer items-start gap-2.5 px-3 py-2 hover:bg-[var(--bg-hover)]">
+                            <button
+                              type="button"
+                              role="checkbox"
+                              aria-checked={checked}
+                              onClick={() => {
+                                setSelectedProjectImportIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (checked) { next.delete(proj.uuid); }
+                                  else { next.add(proj.uuid); }
+                                  return next;
+                                });
+                              }}
+                              className="mt-0.5 shrink-0 text-[var(--accent-color)]"
+                            >
+                              {checked ? <CheckSquare size={16} /> : <Square size={16} className="text-[var(--text-muted)]" />}
+                            </button>
+                            <div
+                              className="min-w-0 flex-1"
+                              onClick={() => setExpandedProjectId(expanded ? null : proj.uuid)}
+                            >
+                              <p className="truncate text-xs font-medium text-[var(--text-primary)]">
+                                {proj.name}
+                              </p>
+                              <p className="text-[10px] text-[var(--text-muted)]">
+                                {proj.description || "No description"}
+                                {proj.has_prompt && " · Has instructions"}
+                              </p>
+                            </div>
+                            {(proj.description || proj.has_prompt) && (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedProjectId(expanded ? null : proj.uuid)}
+                                className="shrink-0 text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                                aria-label={expanded ? "Collapse" : "Expand"}
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="12"
+                                  height="12"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className={`transition-transform ${expanded ? "rotate-180" : ""}`}
+                                >
+                                  <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                          {expanded && (proj.description || proj.prompt_preview) && (
+                            <div className="px-3 pb-3 pt-0 pl-10 flex flex-col gap-2">
+                              {proj.description && (
+                                <div>
+                                  <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)]">Description</p>
+                                  <p className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{proj.description}</p>
+                                </div>
+                              )}
+                              {proj.prompt_preview && (
+                                <div>
+                                  <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)]">Instructions</p>
+                                  <p className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap font-mono bg-[var(--bg-elevated)] rounded px-2 py-1.5">{proj.prompt_preview}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Import / Cancel buttons */}
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      setProjectsFilePath(null);
+                      setProjectPreviews([]);
+                      setSelectedProjectImportIds(new Set());
+                      setExpandedProjectId(null);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    <X size={12} /> Cancel
+                  </button>
+                  <button
+                    onClick={() => void importClaudeProjects()}
+                    disabled={selectedProjectImportIds.size === 0 || importingClaudeProjects}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[var(--accent-color)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+                  >
+                    {importingClaudeProjects ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                    {importingClaudeProjects ? "Importing..." : `Import ${selectedProjectImportIds.size} project${selectedProjectImportIds.size !== 1 ? "s" : ""}`}
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
@@ -510,10 +682,10 @@ export default function ImportSettingsSection() {
               <div>
                 <div className="flex items-center gap-2">
                   <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Claude Desktop Conversations</h2>
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Conversation Export</h2>
                 </div>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Pick your Claude Desktop <code>conversations.json</code> file. Conversations are listed for selection before import.
+                  Pick a <code>conversations.json</code> export file. Supported today: Claude Desktop conversation exports. Conversations are listed for selection before import.
                 </p>
               </div>
 
@@ -523,7 +695,7 @@ export default function ImportSettingsSection() {
                 className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
               >
                 {claudeScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {claudeScanning ? "Scanning..." : "Scan Folder"}
+                {claudeScanning ? "Scanning..." : "Scan Export"}
               </button>
             </div>
 
@@ -668,7 +840,7 @@ export default function ImportSettingsSection() {
                         {claudeImportMemories ? <CheckSquare size={16} /> : <Square size={16} className="text-[var(--text-muted)]" />}
                       </button>
                       <span className="text-xs font-medium text-[var(--text-primary)]">
-                        Import memories
+                        Import saved memories
                       </span>
                     </label>
                     <p className="text-[10px] text-[var(--text-muted)] pl-6">
@@ -714,4 +886,3 @@ export default function ImportSettingsSection() {
     </div>
   );
 }
-
