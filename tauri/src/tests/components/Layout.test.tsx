@@ -487,6 +487,7 @@ describe("Layout", () => {
     expect(document.querySelector("[data-workspace-tab-strip]")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Workspace: Agentic / Rust" }));
+    // "Agentic" is now a group-header option — clicking it selects ws-1 which resolves to first child
     fireEvent.click(screen.getByRole("option", { name: "Agentic" }));
 
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-1-child");

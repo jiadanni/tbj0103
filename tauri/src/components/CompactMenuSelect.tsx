@@ -6,11 +6,28 @@ interface CompactMenuSelectOption {
   label: string;
 }
 
+interface CompactMenuSelectGroup {
+  /** Displayed as a non-interactive header above the group's options. */
+  label: string;
+  /**
+   * If provided the group header is itself clickable and calls onChange with
+   * this value (e.g. to select the parent workspace which auto-resolves to its
+   * first child).
+   */
+  value?: string;
+  options: CompactMenuSelectOption[];
+}
+
 interface CompactMenuSelectProps {
   label: string;
   value: string;
   options: CompactMenuSelectOption[];
   onChange: (value: string) => void;
+  /**
+   * When provided the dropdown renders groups with headers instead of a flat
+   * list.  `options` is still used to look up the label shown in the button.
+   */
+  groups?: CompactMenuSelectGroup[];
   widthClassName?: string;
   buttonClassName?: string;
   menuClassName?: string;
@@ -24,6 +41,7 @@ export default function CompactMenuSelect({
   value,
   options,
   onChange,
+  groups,
   widthClassName = "w-full",
   buttonClassName = "",
   menuClassName = "",
@@ -81,29 +99,80 @@ export default function CompactMenuSelect({
           aria-label={label}
           className={`${defaultMenuClassName} ${menuClassName}`.trim()}
         >
-          {options.map((option) => {
-            const isSelected = option.value === selectedOption.value;
+          {groups ? (
+            groups.map((group) => (
+              <div key={group.label}>
+                {group.value !== undefined ? (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={group.value === selectedOption.value}
+                    onClick={() => {
+                      onChange(group.value ?? "");
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-center rounded-lg px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider transition-colors ${
+                      group.value === selectedOption.value
+                        ? "text-[var(--accent-color)]"
+                        : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    {group.label}
+                  </button>
+                ) : (
+                  <div className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    {group.label}
+                  </div>
+                )}
+                {group.options.map((option) => {
+                  const isSelected = option.value === selectedOption.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => {
+                        onChange(option.value);
+                        setOpen(false);
+                      }}
+                      className={`flex w-full items-center rounded-lg py-2 pl-6 pr-3 text-left text-sm transition-colors ${
+                        isSelected
+                          ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                      }`}
+                    >
+                      <span className="truncate">{option.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))
+          ) : (
+            options.map((option) => {
+              const isSelected = option.value === selectedOption.value;
 
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-                className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                  isSelected
-                    ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                }`}
-              >
-                <span className="truncate">{option.label}</span>
-              </button>
-            );
-          })}
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                    isSelected
+                      ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  <span className="truncate">{option.label}</span>
+                </button>
+              );
+            })
+          )}
         </div>
       )}
     </div>

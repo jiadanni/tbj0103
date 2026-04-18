@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { Virtuoso } from "react-virtuoso";
 import { useNavigate } from "react-router-dom";
 import { Search, Trash2, MessageSquare } from "lucide-react";
 import { message } from "@tauri-apps/plugin-dialog";
@@ -10,6 +11,10 @@ interface DateGroup {
   label: string;
   sessions: ChatSession[];
 }
+
+type HistoryRow =
+  | { type: "group"; label: string }
+  | { type: "session"; session: ChatSession };
 
 function groupSessionsByDate(sessions: ChatSession[]): DateGroup[] {
   const now = new Date();
@@ -84,6 +89,10 @@ export default function HistoryView() {
   }
 
   const groups = groupSessionsByDate(sessions);
+  const rows: HistoryRow[] = groups.flatMap((group) => [
+    { type: "group" as const, label: group.label },
+    ...group.sessions.map((session) => ({ type: "session" as const, session })),
+  ]);
 
   return (
     <div className="flex flex-col h-full bg-[var(--bg-primary)]">
@@ -103,7 +112,7 @@ export default function HistoryView() {
       </div>
 
       {/* Session list */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4">
+      <div className="flex-1 min-h-0 px-6 py-4">
         {loading && sessions.length === 0 ? (
           <div className="text-sm text-[var(--text-muted)] text-center py-12">Loading…</div>
         ) : groups.length === 0 ? (
@@ -111,17 +120,28 @@ export default function HistoryView() {
             {query ? "No results found." : "No chat history yet."}
           </div>
         ) : (
-          groups.map((group) => (
-            <div key={group.label} className="mb-6">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2 px-3">
-                {group.label}
-              </div>
-              <div className="space-y-0.5">
-                {group.sessions.map((session) => (
-                  <button
-                    key={session.id}
+          <Virtuoso
+            className="h-full"
+            data={rows}
+            initialItemCount={Math.min(rows.length, 20)}
+            computeItemKey={(_, row) => row.type === "group" ? `group-${row.label}` : row.session.id}
+            itemContent={(_, row) => {
+              if (row.type === "group") {
+                return (
+                  <div className="mb-2 mt-4 px-3 first:mt-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                      {row.label}
+                    </div>
+                  </div>
+                );
+              }
+
+              const { session } = row;
+              return (
+                <div className="pb-0.5">
+                  <div
                     onClick={() => navigate(`/chat/${session.id}`)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-[var(--bg-hover)] transition-colors group"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-[var(--bg-hover)] transition-colors group cursor-pointer"
                   >
                     <MessageSquare size={15} className="shrink-0 text-[var(--text-muted)]" />
                     <div className="flex-1 min-w-0">
@@ -147,11 +167,11 @@ export default function HistoryView() {
                     >
                       <Trash2 size={13} />
                     </button>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))
+                  </div>
+                </div>
+              );
+            }}
+          />
         )}
       </div>
     </div>

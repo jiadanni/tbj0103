@@ -196,6 +196,10 @@ type WorkspaceProjectFlyoutState = {
   maxHeight: number;
 };
 
+type SessionSidebarRow =
+  | { type: "session"; key: string; session: ChatSession; depth: number; showProjectBorder: boolean }
+  | { type: "project"; key: string; project: Project; isOpen: boolean };
+
 function SessionItem({
   session, activeChatId, selectMode, isSelected, renamingId, renameTitle,
   depth = 0,
@@ -472,46 +476,75 @@ function SessionSidebar({
     });
   }
 
-  function renderSessionList(items: ChatSession[], depth = 0) {
-    if (items.length === 0) { return null; }
+  function renderSessionRow(session: ChatSession, depth = 0, showProjectBorder = false) {
     return (
-      <div className="flex min-w-0 flex-col">
-        {items.map((session) => (
-          <div key={session.id} className="pb-[2px]">
-            <SessionItem
-              session={session}
-              activeChatId={activeChatId}
-              isSelected={selectedIds.has(session.id)}
-              selectMode={selectMode}
-              toggleSelect={(id) => {
-                lastSelectedIdRef.current = id;
-                setSelectedIds((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(id)) { next.delete(id); } else { next.add(id); }
-                  return next;
-                });
-              }}
-              onSessionClick={handleSessionClick}
-              openContextMenu={(event, targetSession) => {
-                event.preventDefault();
-                event.stopPropagation();
-                setCtxMenu({ type: "session", x: event.clientX, y: event.clientY, session: targetSession });
-              }}
-              renameSession={renameSession}
-              renamingId={renamingId}
-              renameTitle={renameTitle}
-              setRenamingId={setRenamingId}
-              setRenameTitle={setRenameTitle}
-              openSession={(targetSession) => {
-                openSession(targetSession);
-              }}
-              depth={depth}
-            />
-          </div>
-        ))}
+      <div className={showProjectBorder ? "ml-3 border-l border-[var(--border-color)]/70" : undefined}>
+        <div className="pb-[2px]">
+          <SessionItem
+            session={session}
+            activeChatId={activeChatId}
+            isSelected={selectedIds.has(session.id)}
+            selectMode={selectMode}
+            toggleSelect={(id) => {
+              lastSelectedIdRef.current = id;
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) { next.delete(id); } else { next.add(id); }
+                return next;
+              });
+            }}
+            onSessionClick={handleSessionClick}
+            openContextMenu={(event, targetSession) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setCtxMenu({ type: "session", x: event.clientX, y: event.clientY, session: targetSession });
+            }}
+            renameSession={renameSession}
+            renamingId={renamingId}
+            renameTitle={renameTitle}
+            setRenamingId={setRenamingId}
+            setRenameTitle={setRenameTitle}
+            openSession={(targetSession) => {
+              openSession(targetSession);
+            }}
+            depth={depth}
+          />
+        </div>
       </div>
     );
   }
+
+  const sessionSidebarRows: SessionSidebarRow[] = [
+    ...ungrouped.map((session) => ({
+      type: "session" as const,
+      key: session.id,
+      session,
+      depth: 0,
+      showProjectBorder: false,
+    })),
+    ...projects.flatMap((project) => {
+      const projectRows: SessionSidebarRow[] = [{
+        type: "project" as const,
+        key: `project-${project.id}`,
+        project,
+        isOpen: expanded[project.id] ?? true,
+      }];
+
+      if (expanded[project.id] ?? true) {
+        projectRows.push(
+          ...(byProject[project.id] ?? []).map((session) => ({
+            type: "session" as const,
+            key: session.id,
+            session,
+            depth: 1,
+            showProjectBorder: true,
+          })),
+        );
+      }
+
+      return projectRows;
+    }),
+  ];
 
   function resetSelectionState() {
     setSelectMode(false);
@@ -1276,7 +1309,7 @@ function SessionSidebar({
         )}
 
         {/* Session list */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0">
           {visibleSessions.length === 0 && projects.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-3">
               <MessageSquare size={isSplitPane ? 22 : 20} className="text-[var(--text-muted)] opacity-30" />
@@ -1285,142 +1318,107 @@ function SessionSidebar({
           ) : sessionQuery.trim() && visibleSessions.length === 0 ? (
             <p className={`px-3 py-4 text-[var(--text-muted)] text-center ${isSplitPane ? "text-xs" : "text-[11px]"}`}>No matches</p>
           ) : (
-            <>
-              {ungrouped.length > 0 && (
-                renderSessionList(ungrouped)
-              )}
-              {projects.map((project) => {
-                const projectSessions = byProject[project.id] ?? [];
-                const isOpen = expanded[project.id] ?? true;
+            <Virtuoso
+              className="h-full"
+              data={sessionSidebarRows}
+              initialItemCount={Math.min(sessionSidebarRows.length, 20)}
+              computeItemKey={(_, row) => row.key}
+              itemContent={(_, row) => {
+                if (row.type === "session") {
+                  return renderSessionRow(row.session, row.depth, row.showProjectBorder);
+                }
+
+                const { project, isOpen } = row;
                 return (
-                  <div key={project.id}>
-                    <button
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setCtxMenu({ type: "project", x: event.clientX, y: event.clientY, project });
-                      }}
-                      onDragOver={(event) => {
-                        if (selectMode || !event.dataTransfer.types.includes("application/x-chat-session-ids")) {
-                          return;
-                        }
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = "move";
-                        setDragOverProjectId(project.id);
-                      }}
-                      onDragLeave={(event) => {
-                        const relatedTarget = event.relatedTarget as Node | null;
-                        if (relatedTarget && event.currentTarget.contains(relatedTarget)) {
-                          return;
-                        }
-                        setDragOverProjectId((current) => current === project.id ? null : current);
-                      }}
-                      onDrop={(event) => {
-                        void handleProjectDrop(event, project);
-                      }}
-                      onClick={() => {
-                        if (selectMode) {
+                  <button
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setCtxMenu({ type: "project", x: event.clientX, y: event.clientY, project });
+                    }}
+                    onDragOver={(event) => {
+                      if (selectMode || !event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      setDragOverProjectId(project.id);
+                    }}
+                    onDragLeave={(event) => {
+                      const relatedTarget = event.relatedTarget as Node | null;
+                      if (relatedTarget && event.currentTarget.contains(relatedTarget)) {
+                        return;
+                      }
+                      setDragOverProjectId((current) => current === project.id ? null : current);
+                    }}
+                    onDrop={(event) => {
+                      void handleProjectDrop(event, project);
+                    }}
+                    onClick={() => {
+                      if (selectMode) {
+                        toggleProjectSelection(project.id);
+                        return;
+                      }
+                      setExpanded((prev) => ({ ...prev, [project.id]: !isOpen }));
+                    }}
+                    className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${dragOverProjectId === project.id
+                      ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
+                      : selectedProjectIds.has(project.id)
+                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                      }`}
+                  >
+                    {selectMode && (
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
                           toggleProjectSelection(project.id);
-                          return;
-                        }
-                        setExpanded((prev) => ({ ...prev, [project.id]: !isOpen }));
-                      }}
-                      className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${dragOverProjectId === project.id
-                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
-                        : selectedProjectIds.has(project.id)
-                          ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                        }`}
-                    >
-                      {selectMode && (
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            toggleProjectSelection(project.id);
-                          }}
-                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${selectedProjectIds.has(project.id)
-                            ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
-                            : "border-[var(--text-muted)] text-transparent"
-                            }`}
-                        >
-                          <Check size={10} />
-                        </button>
-                      )}
-                      <Folder size={isSplitPane ? 14 : 13} className="text-[var(--text-muted)] shrink-0" />
-                      {projectRenamingId === project.id ? (
-                        <input
-                          autoFocus
-                          value={projectRenameValue}
-                          onChange={(event) => setProjectRenameValue(event.target.value)}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              void renameProject(project.id, projectRenameValue).then(() => {
-                                setProjectRenamingId(null);
-                                setProjectRenameValue("");
-                              });
-                            }
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              setProjectRenamingId(null);
-                              setProjectRenameValue("");
-                            }
-                          }}
-                          onBlur={() => {
+                        }}
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${selectedProjectIds.has(project.id)
+                          ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+                          : "border-[var(--text-muted)] text-transparent"
+                          }`}
+                      >
+                        <Check size={10} />
+                      </button>
+                    )}
+                    <Folder size={isSplitPane ? 14 : 13} className="text-[var(--text-muted)] shrink-0" />
+                    {projectRenamingId === project.id ? (
+                      <input
+                        autoFocus
+                        value={projectRenameValue}
+                        onChange={(event) => setProjectRenameValue(event.target.value)}
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
                             void renameProject(project.id, projectRenameValue).then(() => {
                               setProjectRenamingId(null);
                               setProjectRenameValue("");
                             });
-                          }}
-                          className={`flex-1 rounded border border-[var(--accent-color)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${isSplitPane ? "text-sm" : "text-xs"}`}
-                        />
-                      ) : (
-                        <span className={`flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{project.name}</span>
-                      )}
-                      <ChevronDown size={12} className={`text-[var(--text-muted)] transition-transform ${isOpen ? "" : "-rotate-90"}`} />
-                    </button>
-                    {isOpen && (
-                      <div className="ml-3 border-l border-[var(--border-color)]/70">
-                        {projectSessions.map((session) => (
-                          <div key={session.id} className="pb-[2px]">
-                            <SessionItem
-                              session={session}
-                              activeChatId={activeChatId}
-                              isSelected={selectedIds.has(session.id)}
-                              selectMode={selectMode}
-                              toggleSelect={(id) => {
-                                lastSelectedIdRef.current = id;
-                                setSelectedIds((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(id)) { next.delete(id); } else { next.add(id); }
-                                  return next;
-                                });
-                              }}
-                              onSessionClick={handleSessionClick}
-                              openContextMenu={(event, targetSession) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                setCtxMenu({ type: "session", x: event.clientX, y: event.clientY, session: targetSession });
-                              }}
-                              renameSession={renameSession}
-                              renamingId={renamingId}
-                              renameTitle={renameTitle}
-                              setRenamingId={setRenamingId}
-                              setRenameTitle={setRenameTitle}
-                              openSession={(targetSession) => {
-                                openSession(targetSession);
-                              }}
-                              depth={1}
-                            />
-                          </div>
-                        ))}
-                      </div>
+                          }
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setProjectRenamingId(null);
+                            setProjectRenameValue("");
+                          }
+                        }}
+                        onBlur={() => {
+                          void renameProject(project.id, projectRenameValue).then(() => {
+                            setProjectRenamingId(null);
+                            setProjectRenameValue("");
+                          });
+                        }}
+                        className={`flex-1 rounded border border-[var(--accent-color)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${isSplitPane ? "text-sm" : "text-xs"}`}
+                      />
+                    ) : (
+                      <span className={`flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{project.name}</span>
                     )}
-                  </div>
+                    <ChevronDown size={12} className={`text-[var(--text-muted)] transition-transform ${isOpen ? "" : "-rotate-90"}`} />
+                  </button>
                 );
-              })}
-            </>
+              }}
+            />
           )}
         </div>
 
@@ -3861,10 +3859,10 @@ export default function ChatView() {
       clearStreamListener();
       const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
         if (done) {
+          const assembled = useChatStore.getState().streamingContent;
           finalizeStream(sid, selectedModel, tokensUsed, durationMs);
           setIsStreaming(false);
           clearStreamListener();
-          const assembled = useChatStore.getState().streamingContent;
           api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
             .then((persisted) => updateMessage(sid, persisted))
             .catch(() => { });
@@ -3932,10 +3930,10 @@ export default function ChatView() {
       clearStreamListener();
       const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
         if (done) {
+          const assembled = useChatStore.getState().streamingContent;
           finalizeStream(sid, modelId, tokensUsed, durationMs);
           setIsStreaming(false);
           clearStreamListener();
-          const assembled = useChatStore.getState().streamingContent;
           api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, modelId, tokensUsed, durationMs)
             .then((persisted) => {
               updateMessage(sid, persisted);

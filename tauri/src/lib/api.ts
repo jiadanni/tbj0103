@@ -593,9 +593,10 @@ export const api = {
     listHidden: () => invoke<Workspace[]>("list_hidden_workspaces"),
     get: (id: string) => invoke<Workspace | null>("get_workspace", { id }),
     update: (id: string, name: string, description?: string, promptInstructions?: string) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions } }),
+    setParent: (id: string, parentId: string | null) => invoke<void>("set_workspace_parent", { id, parentId }),
     delete: (id: string) => invoke<void>("delete_workspace", { id }),
     updateIcon: (id: string, icon: string) => invoke<void>("update_workspace_icon", { id, icon }),
-    recommendIcon: (workspaceName: string, workspaceDescription: string) => invoke<string>("recommend_workspace_icon", { workspace_name: workspaceName, workspace_description: workspaceDescription }),
+    recommendIcon: (workspaceName: string, workspaceDescription: string) => invoke<string>("recommend_workspace_icon", { workspaceName, workspaceDescription }),
     hide: (id: string) => invoke<void>("hide_workspace", { id }),
     unhide: (id: string) => invoke<void>("unhide_workspace", { id }),
   },
@@ -723,12 +724,17 @@ export const api = {
           project_memories: { project_uuid: string; project_name: string; memory: string }[];
         } | null;
       }>("preview_claude_desktop", { filePath }),
-    importClaudeProjects: (filePath: string) =>
+    importClaudeProjects: (filePath: string, selectedIds?: string[]) =>
       invoke<{
         created: number;
         skipped: number;
         total: number;
-      }>("import_claude_projects", { filePath }),
+      }>("import_claude_projects", { filePath, selectedIds: selectedIds ?? null }),
+    previewClaudeProjects: (filePath: string) =>
+      invoke<{
+        projects: { uuid: string; name: string; description: string; has_prompt: boolean; prompt_preview: string | null }[];
+        total: number;
+      }>("preview_claude_projects_file", { filePath }),
   },
 
   security: {
@@ -866,19 +872,19 @@ export const api = {
 
   artifact: {
     create: (req: CreateArtifactRequest) => invoke<Artifact>("create_artifact", { req }),
-    list: (workspace_id: string, limit?: number, offset?: number) => invoke<ArtifactSummary[]>("list_artifacts", { workspace_id, limit, offset }),
+    list: (workspace_id: string, limit?: number, offset?: number) => invoke<ArtifactSummary[]>("list_artifacts", { workspaceId: workspace_id, limit, offset }),
     get: (id: string) => invoke<Artifact>("get_artifact", { id }),
     update: (id: string, updates: Partial<CreateArtifactRequest & { is_pinned: boolean }>) => invoke<void>("update_artifact", { id, updates }),
     delete: (id: string) => invoke<void>("delete_artifact", { id }),
     versions: (id: string) => invoke<ArtifactSummary[]>("get_artifact_versions", { id }),
-    search: (workspace_id: string, query: string) => invoke<ArtifactSummary[]>("search_artifacts", { workspace_id, query }),
+    search: (workspace_id: string, query: string) => invoke<ArtifactSummary[]>("search_artifacts", { workspaceId: workspace_id, query }),
     createVersion: (parentId: string, content: string) => invoke<Artifact>("create_artifact_version", { parentId, content }),
   },
 
   summary: {
     generate: (session_id: string, workspace_id: string, summary_type: string) => 
-      invoke<void>("generate_summary", { session_id, workspace_id, summary_type }),
-    list: (session_id: string) => invoke<ConversationSummary[]>("list_summaries", { session_id }),
+      invoke<void>("generate_summary", { sessionId: session_id, workspaceId: workspace_id, summaryType: summary_type }),
+    list: (session_id: string) => invoke<ConversationSummary[]>("list_summaries", { sessionId: session_id }),
   },
 
   ollama: {
@@ -1075,7 +1081,7 @@ export const api = {
     sendMessage: (sessionId: string, model: string, messages: { role: string; content: string }[], mlxUrl?: string) =>
       invoke<string>("send_mlx_message", { req: { session_id: sessionId, model, messages, mlx_url: mlxUrl } }),
     listModels: (mlxUrl?: string) =>
-      invoke<{ id: string }[]>("list_mlx_models", { mlx_url: mlxUrl }),
+      invoke<{ id: string }[]>("list_mlx_models", { mlxUrl }),
     stopStream: (sessionId: string) => invoke<void>("stop_stream", { sessionId }),
   },
 
@@ -1207,9 +1213,9 @@ export const api = {
           source_session_id: sourceSessionId,
         },
       }),
-    list: (workspaceId: string) => invoke<Memory[]>("list_memories", { workspace_id: workspaceId }),
+    list: (workspaceId: string) => invoke<Memory[]>("list_memories", { workspaceId }),
     listGlobal: () => invoke<Memory[]>("list_global_memories"),
-    listActive: (workspaceId: string) => invoke<Memory[]>("get_active_memories", { workspace_id: workspaceId }),
+    listActive: (workspaceId: string) => invoke<Memory[]>("get_active_memories", { workspaceId }),
     update: (id: string, fields: { content?: string; memory_type?: Memory["memory_type"]; is_pinned?: boolean; is_active?: boolean }) =>
       invoke<Memory>("update_memory", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_memory", { id }),
@@ -1243,23 +1249,23 @@ export const api = {
   mcp: {
     listServers: () => invoke<MCPServerConfig[]>("list_mcp_servers", {}),
     addServer: (name: string, command: string, args: string[], workspaceId: string) =>
-      invoke<MCPServerConfig>("add_mcp_server", { name, command, args, workspace_id: workspaceId }),
+      invoke<MCPServerConfig>("add_mcp_server", { name, command, args, workspaceId }),
     updateServer: (name: string, command: string, args: string[], enabled: boolean) =>
       invoke<void>("update_mcp_server", { name, command, args, enabled }),
     deleteServer: (name: string) =>
       invoke<void>("delete_mcp_server", { name }),
     connectServer: (serverName: string) =>
-      invoke<void>("mcp_connect_server", { server_name: serverName }),
+      invoke<void>("mcp_connect_server", { serverName }),
     disconnectServer: (serverName: string) =>
-      invoke<void>("mcp_disconnect_server", { server_name: serverName }),
+      invoke<void>("mcp_disconnect_server", { serverName }),
     listTools: (serverName: string) =>
-      invoke<MCPTool[]>("mcp_list_tools", { server_name: serverName }),
+      invoke<MCPTool[]>("mcp_list_tools", { serverName }),
     callTool: (serverName: string, toolName: string, toolArguments: Record<string, unknown>) =>
-      invoke<string>("mcp_call_tool", { server_name: serverName, tool_name: toolName, arguments: toolArguments }),
+      invoke<string>("mcp_call_tool", { serverName, toolName, arguments: toolArguments }),
     listResources: (serverName: string) =>
-      invoke<[MCPResource[], MCPResourceTemplate[]]>("mcp_list_resources", { server_name: serverName }),
+      invoke<[MCPResource[], MCPResourceTemplate[]]>("mcp_list_resources", { serverName }),
     readResource: (serverName: string, uri: string) =>
-      invoke<string>("mcp_read_resource", { server_name: serverName, uri }),
+      invoke<string>("mcp_read_resource", { serverName, uri }),
   },
 
   gitSync: {
@@ -1313,25 +1319,25 @@ export const mcp = {
   // Server management
   listServers: () => invoke<MCPServerConfig[]>("list_mcp_servers", {}),
   addServer: (name: string, command: string, args: string[], workspaceId: string) =>
-    invoke<MCPServerConfig>("add_mcp_server", { name, command, args, workspace_id: workspaceId }),
+    invoke<MCPServerConfig>("add_mcp_server", { name, command, args, workspaceId }),
   updateServer: (name: string, command: string, args: string[], enabled: boolean) =>
     invoke<void>("update_mcp_server", { name, command, args, enabled }),
   deleteServer: (name: string) =>
     invoke<void>("delete_mcp_server", { name }),
   connectServer: (serverName: string) =>
-    invoke<void>("mcp_connect_server", { server_name: serverName }),
+    invoke<void>("mcp_connect_server", { serverName }),
   disconnectServer: (serverName: string) =>
-    invoke<void>("mcp_disconnect_server", { server_name: serverName }),
+    invoke<void>("mcp_disconnect_server", { serverName }),
 
   // Tool discovery and invocation
   listTools: (serverName: string) =>
-    invoke<MCPTool[]>("mcp_list_tools", { server_name: serverName }),
+    invoke<MCPTool[]>("mcp_list_tools", { serverName }),
   callTool: (serverName: string, toolName: string, toolArguments: Record<string, unknown>) =>
-    invoke<string>("mcp_call_tool", { server_name: serverName, tool_name: toolName, arguments: toolArguments }),
+    invoke<string>("mcp_call_tool", { serverName, toolName, arguments: toolArguments }),
 
   // Resource discovery and access
   listResources: (serverName: string) =>
-    invoke<[MCPResource[], MCPResourceTemplate[]]>("mcp_list_resources", { server_name: serverName }),
+    invoke<[MCPResource[], MCPResourceTemplate[]]>("mcp_list_resources", { serverName }),
   readResource: (serverName: string, uri: string) =>
-    invoke<string>("mcp_read_resource", { server_name: serverName, uri }),
+    invoke<string>("mcp_read_resource", { serverName, uri }),
 };

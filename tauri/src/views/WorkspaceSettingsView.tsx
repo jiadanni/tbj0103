@@ -42,6 +42,8 @@ export default function WorkspaceSettingsView() {
   const [createParentId, setCreateParentId] = useState<string | null>(null);
   const [dialogState, setDialogState] = useState<WorkspaceDialogState | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
+  const [moveToParentId, setMoveToParentId] = useState<string>("");
+  const [isMovingToParent, setIsMovingToParent] = useState(false);
 
   // Stats & Details State
   const [selectedId, setSelectedId] = useState<string | null>(activeWorkspaceId);
@@ -86,6 +88,7 @@ export default function WorkspaceSettingsView() {
       setStats(null);
       setMemoryCount(0);
       setEditPrompt("");
+      setMoveToParentId("");
       return;
     }
 
@@ -228,6 +231,25 @@ export default function WorkspaceSettingsView() {
       return;
     }
     setDialogState({ kind: "delete", workspace: ws });
+  }
+
+  async function moveWorkspaceToParent(ws: Workspace) {
+    if (!moveToParentId) { return; }
+    setIsMovingToParent(true);
+    try {
+      await api.workspace.setParent(ws.id, moveToParentId);
+      const updated = workspaces.map((w) =>
+        w.id === ws.id ? { ...w, parent_workspace_id: moveToParentId } : w
+      );
+      setWorkspaces(updated);
+      // If this workspace was the active parent, update parent reference
+      if (activeParentWorkspaceId === ws.id) {
+        setActiveParentWorkspaceId(moveToParentId);
+      }
+      setMoveToParentId("");
+    } finally {
+      setIsMovingToParent(false);
+    }
   }
 
   function formatDate(iso: string) {
@@ -580,6 +602,32 @@ export default function WorkspaceSettingsView() {
                       <Plus size={12} />
                       New Child Workspace
                     </button>
+                  </div>
+                )}
+                {!selectedWorkspace.parent_workspace_id && rootWorkspaces.filter((ws) => ws.id !== selectedWorkspace.id).length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={moveToParentId}
+                      onChange={(e) => setMoveToParentId(e.target.value)}
+                      className="text-xs bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2 py-1.5 text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    >
+                      <option value="">Move under parent…</option>
+                      {rootWorkspaces
+                        .filter((ws) => ws.id !== selectedWorkspace.id)
+                        .map((ws) => (
+                          <option key={ws.id} value={ws.id}>{ws.name}</option>
+                        ))}
+                    </select>
+                    {moveToParentId && (
+                      <button
+                        onClick={() => moveWorkspaceToParent(selectedWorkspace)}
+                        disabled={isMovingToParent}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
+                      >
+                        {isMovingToParent ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                        Move
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

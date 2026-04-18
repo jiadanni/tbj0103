@@ -539,6 +539,14 @@ describe("ChatView", () => {
     )).toBe("gemma4:latest");
   });
 
+  it("uses provider-neutral labels for default browser-backed models", () => {
+    expect(resolveModelDisplayName(
+      "chatgpt-web",
+      { "chatgpt-web": "ChatGPT (Web)" },
+      [{ model_id: "chatgpt-web", name: "ChatGPT (Web)", provider: "web_chatgpt", enabled: true, priority: 1 } as never],
+    )).toBe("Browser Assistant A");
+  });
+
   it("attaches files into the composer as draft sources", async () => {
     mockActiveChatId = "session-1";
     (openDialog as ReturnType<typeof vi.fn>).mockResolvedValue(["/tmp/notes.md"]);

@@ -327,6 +327,7 @@ pub fn run() {
             commands::workspace::get_workspace,
             commands::workspace::update_workspace,
             commands::workspace::delete_workspace,
+            commands::workspace::set_workspace_parent,
             commands::workspace::update_workspace_icon,
             commands::workspace::recommend_workspace_icon,
             commands::workspace::hide_workspace,
@@ -546,6 +547,7 @@ pub fn run() {
             commands::chat_file::import_claude_desktop,
             commands::chat_file::import_claude_projects,
             commands::chat_file::preview_claude_desktop,
+            commands::chat_file::preview_claude_projects_file,
             // Web AI (Playwright bridge)
             commands::web_ai::send_web_message,
             // Topic signatures
