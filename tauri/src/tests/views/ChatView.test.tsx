@@ -241,6 +241,8 @@ describe("ChatView", () => {
             ollama_enriched: false,
           },
           signature_updated_at: null,
+          parent_workspace_id: null,
+          icon: "",
         },
       ],
       activeWorkspaceId: "ws-1",

@@ -29,10 +29,19 @@ pub struct Workspace {
     pub is_hidden: bool,
     pub created_at: String,
     pub updated_at: String,
+    pub parent_workspace_id: Option<String>,
+    pub icon: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateWorkspaceRequest {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSubWorkspaceRequest {
+    pub parent_id: String,
     pub name: String,
     pub description: Option<String>,
 }
@@ -58,6 +67,8 @@ impl Workspace {
             is_hidden: false,
             created_at: now.clone(),
             updated_at: now,
+            parent_workspace_id: None,
+            icon: String::new(),
         }
     }
 }

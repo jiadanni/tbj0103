@@ -319,11 +319,16 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Workspace commands
             commands::workspace::create_workspace,
+            commands::workspace::create_sub_workspace,
             commands::workspace::list_workspaces,
+            commands::workspace::list_root_workspaces,
+            commands::workspace::list_child_workspaces,
             commands::workspace::list_hidden_workspaces,
             commands::workspace::get_workspace,
             commands::workspace::update_workspace,
             commands::workspace::delete_workspace,
+            commands::workspace::update_workspace_icon,
+            commands::workspace::recommend_workspace_icon,
             commands::workspace::hide_workspace,
             commands::workspace::unhide_workspace,
             // Project commands
@@ -355,6 +360,8 @@ pub fn run() {
             commands::chat::delete_chat_session,
             commands::chat::add_message,
             commands::chat::get_messages,
+            commands::chat::refresh_message,
+            commands::chat::get_message_variants,
             commands::chat::list_deleted_chat_sessions,
             commands::chat::restore_chat_session,
             commands::chat::hard_delete_chat_session,

@@ -1142,6 +1142,28 @@ export default function PreferencesView() {
 
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
                 <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Features</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Enable or disable optional features across Aetherium.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Workspace Memory</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      Store and use workspace-scoped persistent facts, preferences, and context
+                    </p>
+                  </div>
+                  <Toggle
+                    on={dbSettings.memory_enabled}
+                    onToggle={() => set("memory_enabled", !dbSettings.memory_enabled)}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
+                <div>
                   <h3 className="text-sm font-semibold text-[var(--text-primary)]">Shortcut</h3>
                   <p className="text-xs text-[var(--text-muted)] mt-1">
                     Set the global accelerator used to open quick search from anywhere.

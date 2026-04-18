@@ -819,6 +819,36 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v37: add parent_workspace_id for hierarchical sub-workspaces
+    let applied_v37: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v37_workspace_parent_id'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v37 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE workspaces ADD COLUMN parent_workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL;",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v37_workspace_parent_id');",
+        )?;
+    }
+
+    // v38: add icon field to workspaces for visual identification
+    let applied_v38: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v38_workspace_icon'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v38 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE workspaces ADD COLUMN icon TEXT NOT NULL DEFAULT '';",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v38_workspace_icon');",
+        )?;
+    }
+
     Ok(())
 }
 

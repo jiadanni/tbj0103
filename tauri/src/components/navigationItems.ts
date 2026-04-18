@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart2,
+  Brain,
   FileEdit,
   FileText,
   Globe,
@@ -20,6 +21,7 @@ export const PRIMARY_NAV_ITEMS: NavigationItem[] = [
   { path: "/chat", icon: MessageSquare, label: "Chat" },
   { path: "/notes", icon: FileEdit, label: "Notes" },
   { path: "/documents", icon: FileText, label: "Documents" },
+  { path: "/memory", icon: Brain, label: "Memory" },
   { path: "/webcapture", icon: Globe, label: "Web Captures" },
   { path: "/graph", icon: Network, label: "Knowledge" },
   { path: "/history", icon: History, label: "History" },

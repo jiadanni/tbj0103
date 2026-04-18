@@ -12,6 +12,8 @@ export interface Workspace {
   is_hidden: boolean;
   created_at: string;
   updated_at: string;
+  parent_workspace_id: string | null;
+  icon: string;
 }
 
 export interface Project {
@@ -195,6 +197,7 @@ function reconcilePaneProjectsForWorkspace(
 interface WorkspaceStore {
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
+  activeParentWorkspaceId: string | null;
   activeProjectId: string | null;
   projects: Project[];
   projectsByWorkspace: Record<string, Project[]>;
@@ -212,6 +215,7 @@ interface WorkspaceStore {
   panes: Record<PaneId, WorkspacePaneState>;
   setWorkspaces: (ws: Workspace[]) => void;
   setActiveWorkspaceId: (id: string | null) => void;
+  setActiveParentWorkspaceId: (id: string | null) => void;
   setActiveProjectId: (id: string | null) => void;
   setProjects: (ps: Project[]) => void;
   setProjectsForWorkspace: (workspaceId: string, projects: Project[]) => void;
@@ -273,6 +277,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
   return {
   workspaces: [],
   activeWorkspaceId: null,
+  activeParentWorkspaceId: null,
   activeProjectId: null,
   projects: [],
   projectsByWorkspace: {},
@@ -330,9 +335,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       }
 
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
+      const resolvedActiveWs = sortedWorkspaces.find((ws) => ws.id === activeWorkspaceId);
+      const activeParentWorkspaceId =
+        resolvedActiveWs?.parent_workspace_id ??
+        (resolvedActiveWs && !resolvedActiveWs.parent_workspace_id ? resolvedActiveWs.id : state.activeParentWorkspaceId);
       return {
         workspaces: sortedWorkspaces,
         activeWorkspaceId,
+        activeParentWorkspaceId,
         activeProjectId: activeWorkspaceChanged ? null : state.activeProjectId,
         panes,
         projectsByWorkspace: Object.fromEntries(
@@ -364,6 +374,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         panes,
       };
     }),
+    setActiveParentWorkspaceId: (activeParentWorkspaceId) => set(() => ({ activeParentWorkspaceId })),
     setActiveProjectId: (activeProjectId) => set((state) => {
       const panes = {
         ...state.panes,

@@ -74,17 +74,18 @@ function workspaceTabClassName({
 }
 
 function WorkspaceNavigationTabs({
+  workspaces,
   activeWorkspaceId,
   onSelect,
   onContextMenu,
   paneId,
 }: {
+  workspaces: Workspace[];
   activeWorkspaceId: string | null;
   onSelect: (workspaceId: string) => void;
   onContextMenu?: (workspace: Workspace, x: number, y: number) => void;
   paneId?: PaneId;
 }) {
-  const workspaces = useWorkspaceStore((s) => s.workspaces);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
   const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -251,6 +252,8 @@ function WorkspaceNavigationTabs({
 }
 
 function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
+  const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
+  const rootWorkspaces = allWorkspaces.filter((ws) => ws.parent_workspace_id === null);
   const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
   const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
   const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
@@ -263,10 +266,71 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
 
   return (
     <WorkspaceNavigationTabs
+      workspaces={rootWorkspaces}
       activeWorkspaceId={activeWorkspaceId}
       onSelect={selectWorkspace}
       paneId={paneId}
     />
+  );
+}
+
+function SubWorkspaceTabBar({
+  parentWorkspaceId,
+  activeWorkspaceId,
+  onSelect,
+  onAdd,
+}: {
+  parentWorkspaceId: string | null;
+  activeWorkspaceId: string | null;
+  onSelect: (workspaceId: string) => void;
+  onAdd?: () => void;
+}) {
+  const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
+  const children = parentWorkspaceId
+    ? allWorkspaces.filter((ws) => ws.parent_workspace_id === parentWorkspaceId)
+    : [];
+
+  if (!parentWorkspaceId) { return null; }
+
+  return (
+    <div
+      data-tauri-drag-region
+      onMouseDown={onDragRegionMouseDown}
+      className={`relative flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${isLinux ? "pr-[112px]" : ""}`}
+    >
+      <div
+        data-no-drag
+        className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none"
+        onWheel={handleHorizontalWheel}
+      >
+        {children.map((workspace) => (
+          <button
+            key={workspace.id}
+            onClick={() => onSelect(workspace.id)}
+            className={`relative mt-0.5 flex h-[30px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-3 text-xs font-medium whitespace-nowrap transition-all select-none ${
+              activeWorkspaceId === workspace.id
+                ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
+                : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+            }`}
+          >
+            {activeWorkspaceId === workspace.id && (
+              <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+            )}
+            {workspace.name}
+          </button>
+        ))}
+      </div>
+      {onAdd && (
+        <button
+          data-no-drag
+          onClick={onAdd}
+          title="New Sub-workspace"
+          className="ml-1 h-8 w-8 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+        >
+          <Plus size={14} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -601,7 +665,10 @@ function WorkspaceTabBar({
 }) {
   const location = useLocation();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const rootWorkspaces = workspaces.filter((ws) => ws.parent_workspace_id === null);
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
+  const activeParentWorkspaceId = useWorkspaceStore((state) => state.activeParentWorkspaceId);
+  const setActiveParentWorkspaceId = useWorkspaceStore((state) => state.setActiveParentWorkspaceId);
   const splitMode = useWorkspaceStore((state) => state.splitMode);
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
@@ -630,11 +697,34 @@ function WorkspaceTabBar({
 
   function activateWorkspace(workspaceId: string) {
     const isChanged = workspaceId !== activeWorkspaceId;
-    setActiveWorkspaceId(workspaceId);
-    if (isChanged && switchWorkspaceToChat) {
-      navigate("/chat");
+    // When selecting a root workspace, check if it has children; if so, auto-select first child
+    const children = workspaces.filter((ws) => ws.parent_workspace_id === workspaceId);
+    if (children.length > 0) {
+      setActiveParentWorkspaceId(workspaceId);
+      setActiveWorkspaceId(children[0].id);
+      if (isChanged && switchWorkspaceToChat) { navigate("/chat"); }
+    } else {
+      setActiveParentWorkspaceId(workspaceId);
+      setActiveWorkspaceId(workspaceId);
+      if (isChanged && switchWorkspaceToChat) { navigate("/chat"); }
     }
     setContextMenu(null);
+  }
+
+  function activateSubWorkspace(workspaceId: string) {
+    const isChanged = workspaceId !== activeWorkspaceId;
+    setActiveWorkspaceId(workspaceId);
+    if (isChanged && switchWorkspaceToChat) { navigate("/chat"); }
+    setContextMenu(null);
+  }
+
+  async function createSubWorkspace() {
+    if (!activeParentWorkspaceId) { return; }
+    const name = window.prompt("Sub-workspace name")?.trim();
+    if (!name) { return; }
+    const ws = await api.workspace.createSub(activeParentWorkspaceId, name);
+    addWorkspace(ws);
+    activateSubWorkspace(ws.id);
   }
 
   async function createWorkspace() {
@@ -757,7 +847,8 @@ function WorkspaceTabBar({
             <div className={`${showSplitTitlebarWorkspaceNavigation ? "hidden" : "flex min-w-0 flex-1 items-center"}`}>
               {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs ? (
                 <WorkspaceNavigationTabs
-                  activeWorkspaceId={activeWorkspaceId}
+                  workspaces={rootWorkspaces}
+                  activeWorkspaceId={activeParentWorkspaceId ?? activeWorkspaceId}
                   onSelect={activateWorkspace}
                   onContextMenu={(ws, x, y) => setContextMenu({ workspace: ws, x, y })}
                 />
@@ -803,6 +894,15 @@ function WorkspaceTabBar({
           </div>
         )}
       </div>
+      {/* Row 2: Sub-workspace tabs for the active parent workspace */}
+      {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && (
+        <SubWorkspaceTabBar
+          parentWorkspaceId={activeParentWorkspaceId}
+          activeWorkspaceId={activeWorkspaceId}
+          onSelect={activateSubWorkspace}
+          onAdd={createSubWorkspace}
+        />
+      )}
 
       {contextMenu && (
         <div
@@ -1192,7 +1292,6 @@ export default function Layout() {
       <WorkspaceTabBar 
         onToggleSplit={toggleSplitModeFromShell} 
         showWorkspaceTabs={!splitMode} 
-        className="z-40"
       />
 
       {isDemoMode && (
@@ -1228,7 +1327,7 @@ export default function Layout() {
           </div>
         )}
       </div>
-      {showSplitPaneLayout && !hasLeftRail && <PreferencesDockButton />}
+      {!hasLeftRail && <PreferencesDockButton />}
       <ArtifactPanel />
     </div>
   );
