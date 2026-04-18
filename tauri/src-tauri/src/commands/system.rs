@@ -1,4 +1,5 @@
 use crate::models::system::SystemSpecs;
+#[cfg(target_os = "linux")]
 use std::process::Command;
 use sysinfo::System;
 use tauri::Manager;
