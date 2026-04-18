@@ -1140,7 +1140,6 @@ struct ClaudeProject {
     description: Option<String>,
     #[serde(default)]
     prompt_template: Option<String>,
-    created_at: String,
     #[serde(default)]
     docs: Vec<ClaudeProjectDoc>,
 }

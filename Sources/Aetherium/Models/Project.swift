@@ -10,8 +10,11 @@ final class Project {
     var updatedAt: Date
 
     @Relationship(deleteRule: .cascade) var chatSessions: [ChatSession] = []
-    @Relationship(deleteRule: .cascade) var documents: [ProjectSource] = []
     var workspace: Workspace?
+
+    var documents: [ProjectSource] {
+        workspace?.sources ?? []
+    }
 
     init(
         id: UUID = UUID(),
@@ -26,7 +29,6 @@ final class Project {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.chatSessions = []
-        self.documents = []
     }
 
     func updateTimestamp() {

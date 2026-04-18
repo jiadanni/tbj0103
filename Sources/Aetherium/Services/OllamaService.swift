@@ -124,6 +124,22 @@ class OllamaService: ObservableObject {
         } else {
             let config = URLSessionConfiguration.default
             config.timeoutIntervalForRequest = 300 // 5 minutes for long responses
+
+            // Transparent proxy support: honor HTTP(S)_PROXY environment variables
+            let env = ProcessInfo.processInfo.environment
+            if let proxy = env["HTTPS_PROXY"] ?? env["https_proxy"] ?? env["HTTP_PROXY"] ?? env["http_proxy"],
+               let proxyURL = URL(string: proxy), let host = proxyURL.host {
+                let port = proxyURL.port ?? (proxyURL.scheme == "https" ? 443 : 80)
+                config.connectionProxyDictionary = [
+                    "HTTPEnable": 1,
+                    "HTTPProxy": host,
+                    "HTTPPort": port,
+                    "HTTPSEnable": 1,
+                    "HTTPSProxy": host,
+                    "HTTPSPort": port
+                ]
+            }
+
             self.session = URLSession(configuration: config)
         }
     }

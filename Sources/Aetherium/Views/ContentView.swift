@@ -56,7 +56,7 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
-                GlobalModelPicker(ollamaService: ollamaService, appSettings: appSettings)
+                GlobalModelPicker(modelOrchestrator: modelOrchestrator, appSettings: appSettings)
             }
 
             ToolbarItem(placement: .automatic) {
@@ -210,8 +210,10 @@ struct ContentView: View {
             if let project = projects.first(where: { project in
                 project.chatSessions.contains(where: { $0.id.uuidString == result.sourceID })
             }) {
-                selectedProject = project
-                selectedView = .chat
+                DispatchQueue.main.async {
+                    selectedProject = project
+                    selectedView = .chat
+                }
             }
 
         case .documentChunk:
@@ -220,32 +222,40 @@ struct ContentView: View {
                     source.document?.id.uuidString == result.sourceID
                 })
             }) {
-                selectedProject = project
-                selectedView = .documents
+                DispatchQueue.main.async {
+                    selectedProject = project
+                    selectedView = .documents
+                }
             }
 
         case .concept:
             if let project = projects.first(where: { project in
                 project.concepts.contains(where: { $0.id.uuidString == result.sourceID })
             }) {
-                selectedProject = project
-                selectedView = .knowledgeGraph
+                DispatchQueue.main.async {
+                    selectedProject = project
+                    selectedView = .knowledgeGraph
+                }
             }
 
         case .note:
             if let project = projects.first(where: { project in
                 project.sources.contains(where: { $0.id.uuidString == result.sourceID })
             }) {
-                selectedProject = project
-                selectedView = .dailyNotes
+                DispatchQueue.main.async {
+                    selectedProject = project
+                    selectedView = .dailyNotes
+                }
             }
 
         case .learningGoal:
             if let project = projects.first(where: { project in
                 project.learningGoals.contains(where: { $0.id.uuidString == result.sourceID })
             }) {
-                selectedProject = project
-                selectedView = .learningPaths
+                DispatchQueue.main.async {
+                    selectedProject = project
+                    selectedView = .learningPaths
+                }
             }
         }
     }
@@ -1279,21 +1289,21 @@ struct NewChatSheet: View {
 // MARK: - Global Model Picker
 
 struct GlobalModelPicker: View {
-    @ObservedObject var ollamaService: OllamaService
+    @ObservedObject var modelOrchestrator: ModelOrchestrator
     @ObservedObject var appSettings: AppSettings
 
     var body: some View {
         Menu {
-            if ollamaService.availableModels.isEmpty {
+            if modelOrchestrator.availableLocalModels.isEmpty {
                 Text("No models available")
                     .foregroundColor(.secondary)
             } else {
-                ForEach(ollamaService.availableModels) { model in
+                ForEach(modelOrchestrator.availableLocalModels) { model in
                     Button {
                         appSettings.preferredModel = model.name
                     } label: {
                         HStack {
-                            Text(model.name)
+                            Text(model.displayName)
                             if model.name == appSettings.preferredModel {
                                 Image(systemName: "checkmark")
                             }
@@ -1308,6 +1318,9 @@ struct GlobalModelPicker: View {
                     .lineLimit(1)
             }
             .font(.caption)
+        }
+        .task {
+            await modelOrchestrator.refreshLocalModels()
         }
     }
 }
