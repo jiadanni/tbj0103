@@ -849,6 +849,22 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v39: add variant_group_id to messages and index variant lookups
+    let applied_v39: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v39_messages_variant_group'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v39 == 0 {
+        let _ = conn.execute_batch("ALTER TABLE messages ADD COLUMN variant_group_id TEXT;");
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_messages_variant_group
+                 ON messages(variant_group_id)
+                 WHERE variant_group_id IS NOT NULL;
+             INSERT INTO _migrations(name) VALUES('v39_messages_variant_group');",
+        )?;
+    }
+
     Ok(())
 }
 
@@ -1018,6 +1034,10 @@ mod tests {
             "v33_source_chunks_embedding_blob",
             "v34_chat_sessions_last_processed_message_count",
             "v35_concept_nodes_hierarchy_level",
+            "v36_ai_models_provider_model_unique",
+            "v37_workspace_parent_id",
+            "v38_workspace_icon",
+            "v39_messages_variant_group",
         ];
 
         for name in migration_names {

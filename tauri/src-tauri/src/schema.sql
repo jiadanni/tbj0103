@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS messages (
     model_name TEXT,
     tokens_used INTEGER,
     duration_ms INTEGER,
+    variant_group_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -952,5 +953,4 @@ CREATE INDEX IF NOT EXISTS idx_app_logs_timestamp ON app_logs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs(level, timestamp DESC);
 
 -- Message variants support (v31)
-ALTER TABLE messages ADD COLUMN IF NOT EXISTS variant_group_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_messages_variant_group ON messages(variant_group_id) WHERE variant_group_id IS NOT NULL;
