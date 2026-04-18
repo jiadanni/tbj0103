@@ -952,5 +952,5 @@ CREATE TABLE IF NOT EXISTS app_logs (
 CREATE INDEX IF NOT EXISTS idx_app_logs_timestamp ON app_logs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs(level, timestamp DESC);
 
--- Message variants support (v31)
-CREATE INDEX IF NOT EXISTS idx_messages_variant_group ON messages(variant_group_id) WHERE variant_group_id IS NOT NULL;
+-- Message variants support (v39)
+CREATE INDEX IF NOT EXISTS idx_messages_variant_group ON messages(variant_group_id);

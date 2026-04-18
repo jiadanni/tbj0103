@@ -9,10 +9,60 @@ pub mod test_utils;
 
 pub struct DbState(pub Pool<SqliteConnectionManager>);
 
+const ALL_MIGRATION_NAMES: &[&str] = &[
+    "v1_chat_project_no_fk",
+    "v2_ai_models_table",
+    "v3_memories_table",
+    "v4_messages_duration_ms",
+    "v5_workspace_topic_signature",
+    "v6_learning_cards_workspace",
+    "v7_chat_workspace_scope",
+    "v8_all_tables_workspace_id",
+    "v9_ensure_all_indexes",
+    "v10_chat_sessions_is_incognito",
+    "v11_conversation_summaries",
+    "v12_artifacts",
+    "v13_artifact_embeddings",
+    "v14_memory_embeddings",
+    "v15_project_scoped_memories",
+    "v16_context_snapshots",
+    "v17_chat_recycle_bin",
+    "v18_git_sync_settings",
+    "v19_confirm_move_to_trash",
+    "v20_pin_lock_settings",
+    "v21_chat_sessions_exclude_from_analytics",
+    "v22_ai_model_role_tags",
+    "v23_memory_scope",
+    "v24_workspace_description",
+    "v25_prompt_instructions",
+    "v26_thought_session_id",
+    "v27_switch_workspace_to_chat",
+    "v27_sources_folder_tokens",
+    "v28_workspace_is_hidden",
+    "v29_query_indexes",
+    "v30_performance_indexes",
+    "v31_chat_sessions_is_imported",
+    "v32_chat_sessions_last_accessed_at",
+    "v33_source_chunks_embedding_blob",
+    "v34_chat_sessions_last_processed_message_count",
+    "v35_concept_nodes_hierarchy_level",
+    "v36_ai_models_provider_model_unique",
+    "v37_workspace_parent_id",
+    "v38_workspace_icon",
+    "v39_messages_variant_group",
+];
+
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
     // We first open a direct connection to run pragmas, create tables and migrations,
     // ensuring this happens sequentially before the pool is used by commands.
     let conn = Connection::open(path)?;
+    let is_fresh_database: bool = conn.query_row(
+        "SELECT COUNT(*) = 0
+         FROM sqlite_master
+         WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        [],
+        |row| row.get(0),
+    )?;
 
     // WAL mode first; foreign keys enabled AFTER migrations
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;
@@ -20,8 +70,14 @@ pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>>
     // Create all tables (idempotent for new installs)
     conn.execute_batch(include_str!("../schema.sql"))?;
 
-    // Apply any pending schema migrations
-    run_migrations(&conn)?;
+    create_migrations_table(&conn)?;
+
+    if is_fresh_database {
+        seed_all_migrations(&conn)?;
+    } else {
+        // Apply any pending schema migrations for existing databases.
+        run_migrations(&conn)?;
+    }
 
     // Now enforce foreign keys for normal operation
     conn.execute_batch("PRAGMA foreign_keys=ON;")?;
@@ -40,15 +96,30 @@ pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>>
     Ok(pool)
 }
 
-/// Schema migrations — each is guarded by the _migrations table so they
-/// run exactly once against any existing database.
-fn run_migrations(conn: &Connection) -> Result<()> {
+fn create_migrations_table(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS _migrations (
             name TEXT PRIMARY KEY NOT NULL,
             applied_at TEXT NOT NULL DEFAULT (datetime('now'))
         );",
-    )?;
+    )
+}
+
+fn seed_all_migrations(conn: &Connection) -> Result<()> {
+    for name in ALL_MIGRATION_NAMES {
+        conn.execute(
+            "INSERT OR IGNORE INTO _migrations(name) VALUES(?1)",
+            rusqlite::params![name],
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Schema migrations — each is guarded by the _migrations table so they
+/// run exactly once against any existing database.
+fn run_migrations(conn: &Connection) -> Result<()> {
+    create_migrations_table(conn)?;
 
     // v1: drop the hard FK on chat_sessions.project_id so that sessions
     // can exist independently of a project (project is optional context).
@@ -859,8 +930,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         let _ = conn.execute_batch("ALTER TABLE messages ADD COLUMN variant_group_id TEXT;");
         conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_messages_variant_group
-                 ON messages(variant_group_id)
-                 WHERE variant_group_id IS NOT NULL;
+                 ON messages(variant_group_id);
              INSERT INTO _migrations(name) VALUES('v39_messages_variant_group');",
         )?;
     }
@@ -968,7 +1038,7 @@ fn dedupe_ai_models(conn: &Connection) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::initialize_database;
+    use super::{initialize_database, ALL_MIGRATION_NAMES};
     use rusqlite::Connection;
 
     #[test]
@@ -997,50 +1067,7 @@ mod tests {
         )
         .expect("Failed to create legacy schema");
 
-        let migration_names = [
-            "v1_chat_project_no_fk",
-            "v2_ai_models_table",
-            "v3_memories_table",
-            "v4_messages_duration_ms",
-            "v5_workspace_topic_signature",
-            "v6_learning_cards_workspace",
-            "v7_chat_workspace_scope",
-            "v8_all_tables_workspace_id",
-            "v9_ensure_all_indexes",
-            "v10_chat_sessions_is_incognito",
-            "v11_conversation_summaries",
-            "v12_artifacts",
-            "v13_artifact_embeddings",
-            "v14_memory_embeddings",
-            "v15_project_scoped_memories",
-            "v16_context_snapshots",
-            "v17_chat_recycle_bin",
-            "v18_git_sync_settings",
-            "v19_confirm_move_to_trash",
-            "v20_pin_lock_settings",
-            "v21_chat_sessions_exclude_from_analytics",
-            "v22_ai_model_role_tags",
-            "v23_memory_scope",
-            "v24_workspace_description",
-            "v25_prompt_instructions",
-            "v26_thought_session_id",
-            "v27_switch_workspace_to_chat",
-            "v27_sources_folder_tokens",
-            "v28_workspace_is_hidden",
-            "v29_query_indexes",
-            "v30_performance_indexes",
-            "v31_chat_sessions_is_imported",
-            "v32_chat_sessions_last_accessed_at",
-            "v33_source_chunks_embedding_blob",
-            "v34_chat_sessions_last_processed_message_count",
-            "v35_concept_nodes_hierarchy_level",
-            "v36_ai_models_provider_model_unique",
-            "v37_workspace_parent_id",
-            "v38_workspace_icon",
-            "v39_messages_variant_group",
-        ];
-
-        for name in migration_names {
+        for name in ALL_MIGRATION_NAMES {
             conn.execute(
                 "INSERT INTO _migrations(name) VALUES(?1)",
                 rusqlite::params![name],
@@ -1121,5 +1148,28 @@ mod tests {
             )
             .expect("Failed to count unique index");
         assert_eq!(unique_index_count, 1);
+    }
+
+    #[test]
+    fn initializes_database_with_message_variant_index() {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let path = dir.path().join("fresh.db");
+
+        initialize_database(&path).expect("Failed to initialize database");
+
+        let conn = Connection::open(&path).expect("Failed to reopen initialized database");
+        let index_sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master
+                 WHERE type = 'index' AND name = 'idx_messages_variant_group'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("Failed to fetch variant index definition");
+
+        assert_eq!(
+            index_sql,
+            "CREATE INDEX idx_messages_variant_group ON messages(variant_group_id)"
+        );
     }
 }
