@@ -4,6 +4,43 @@ Guidance for AI coding agents (Copilot, Claude, Codex, etc.) working in this rep
 
 ---
 
+## Critical Rule: "Zero-Regression Policy"
+1. **Research Phase:** Find all dependencies before changing an interface/struct.
+2. **Strategy Phase:** Propose surgical edits. Avoid rewriting large blocks of code.
+3. **Execution Phase:** After every file write, run `npm run typecheck` or `cargo check`.
+4. **Safety Check:** If a `git diff` shows more lines removed than added (unless requested), STOP and explain the discrepancy.
+
+## Operational Guardrails
+
+### 1. The "Immediate Validation" Mandate
+AI agents often assume a change is correct if the tool call succeeds. You must strictly follow technical verification protocols.
+*   **TypeScript/React:** Run `npm run typecheck` after changes. DO NOT ignore errors in unrelated files; a change in an interface requires fixing all usages.
+*   **Rust/Backend:** Run `cargo check --manifest-path src-tauri/Cargo.toml` after backend changes.
+*   **Logic/UI:** Run only the relevant test file (e.g., `npx vitest run src/tests/views/ChatView.test.tsx`) to ensure no existing functionality was broken.
+
+### 2. Surgical Editing vs. Rewrite
+*   **Prefer surgical editing** for files over 200 lines. Avoid rewriting the entire file unless necessary.
+*   **Anti-Regression Check:** After a modification, run `git diff --stat`. If you see a massive deletion (e.g., -500 lines) that wasn't explicitly requested, you must REVERT immediately and use a more surgical approach.
+*   **Marker Usage:** When adding new features to large components, search for existing logic "anchors" to ensure you are inserting code into the correct scope.
+
+### 3. Interface & Mock Consistency
+If you modify a **Rust Struct** or a **TypeScript Interface**:
+1.  Search the entire codebase for all occurrences of that symbol.
+2.  Update all usage sites, including **Mock Objects** in test files.
+3.  A task is not complete until `npm run typecheck` and `cargo check` pass project-wide.
+
+### 4. Large File Strategy (e.g., `ChatView.tsx`)
+Files like `src/views/ChatView.tsx` are critical and highly complex.
+*   Before editing, read the targeted section with at least 20 lines of context.
+*   Double-check brace nesting (`{}`) after every insertion.
+*   If a feature (like file attachments or prompt polishing) is already present, DO NOT reimplement it; safely extend it.
+
+### 5. AI Tooling Assumptions
+*   Never assume Ollama is running or a specific model is pulled during a test.
+*   Always check `apiMocks` in tests to ensure they return valid, expected data shapes for the component being tested.
+
+---
+
 ## Project Overview
 
 **Aetherium** is a local-first AI learning companion. It exists as two parallel implementations:
