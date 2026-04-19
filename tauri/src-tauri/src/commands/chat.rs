@@ -123,7 +123,7 @@ pub fn list_chat_sessions(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
-                (SELECT COUNT(*) FROM messages WHERE session_id = id) AS message_count
+                (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
          WHERE workspace_id = ?1 AND is_deleted = 0
          ORDER BY is_pinned DESC, updated_at DESC
@@ -133,7 +133,7 @@ pub fn list_chat_sessions(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
-                (SELECT COUNT(*) FROM messages WHERE session_id = id) AS message_count
+                (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
          WHERE workspace_id = ?1 AND project_id = ?2 AND is_deleted = 0
          ORDER BY is_pinned DESC, updated_at DESC
@@ -170,7 +170,7 @@ pub fn search_chat_sessions(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
-                (SELECT COUNT(*) FROM messages WHERE session_id = id) AS message_count
+                (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
          WHERE workspace_id = ?1 AND is_deleted = 0
            AND (title LIKE ?2 OR model_name LIKE ?2)
@@ -180,7 +180,7 @@ pub fn search_chat_sessions(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
-                (SELECT COUNT(*) FROM messages WHERE session_id = id) AS message_count
+                (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
          WHERE workspace_id = ?1 AND project_id = ?2 AND is_deleted = 0
            AND (title LIKE ?3 OR model_name LIKE ?3)
@@ -210,7 +210,7 @@ pub fn get_chat_session(state: State<DbState>, id: String) -> Result<Option<Chat
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
-                (SELECT COUNT(*) FROM messages WHERE session_id = id) AS message_count
+                (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions WHERE id = ?1",
         rusqlite::params![id],
         row_to_session,
@@ -301,7 +301,7 @@ pub fn list_deleted_chat_sessions(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
-                (SELECT COUNT(*) FROM messages WHERE session_id = id) AS message_count
+                (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
          WHERE workspace_id = ?1 AND is_deleted = 1
          ORDER BY deleted_at DESC, updated_at DESC"
@@ -783,7 +783,7 @@ pub fn get_recent_sessions(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
-                (SELECT COUNT(*) FROM messages WHERE session_id = id) AS message_count
+                (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
          WHERE workspace_id = ?1 AND is_deleted = 0
          ORDER BY last_accessed_at DESC
