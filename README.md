@@ -35,6 +35,7 @@ The Tauri port is the primary development target and receives all new features.
 - **Artifacts**: Side-by-side rendering of generated code, diagrams, and markdown documents
 - **Dual-model comparison**: Benchmark different models against the same prompt
 - **Multi-pane Workspaces**: Split-view support for working on different chats or documents side-by-side
+- **Contextual Navigation**: Link related conversations via "Related Chat Excerpts" that automatically surface past knowledge
 - **Model Context Protocol (MCP)**: Dynamic tool and resource integration for AI models via external servers
 - **AI Models Registry**: Manage local models and web providers (ChatGPT, Claude, DeepSeek, Gemini)
 - **Chat-to-Note / Chat-to-Document conversion**: One-click export of a session to a summarized note or document, with LLM-based concept extraction that auto-populates the knowledge graph
@@ -42,6 +43,7 @@ The Tauri port is the primary development target and receives all new features.
 - **History view**: Dedicated browser for all past sessions, grouped by date with instant search
 - **Thought Queue**: Background AI processing for scheduled or deferred tasks
 - **Generation metrics**: Detailed inference logs and performance stats per message
+- **Status Bar Telemetry**: Real-time monitoring of background job states (Started, Processing, Completed)
 
 ### Intelligent Memory
 - **Fact Extraction**: Automatically identifies and saves user facts and preferences from conversations
@@ -64,6 +66,7 @@ The Tauri port is the primary development target and receives all new features.
 
 ### Full-Text & Semantic Search
 - **Command Palette (Cmd+K)**: Instant global search across all content
+- **FTS5 Optimized Retrieval**: High-performance keyword search with SQL-native Full-Text Search triggers
 - Semantic search using local Ollama embeddings
 - Hybrid matching combining vector similarity with keyword search
 
@@ -79,6 +82,8 @@ The Tauri port is the primary development target and receives all new features.
 
 ### Privacy & Security
 - **Local-first**: All data, embeddings, and inference remain on your machine
+- **Real-time System Observability**: Live status bar monitoring CPU, RAM, and GPU/VRAM telemetry
+- **Diagnostics & Logs**: Integrated logging and diagnostic hub for troubleshooting local AI performance
 - **PIN Protection**: Optional application lock with PIN
 - **Biometric Security**: macOS Touch ID support (Tauri/Swift)
 - **Encryption**: Optional database encryption for sensitive chat history
@@ -145,6 +150,8 @@ open Package.swift   # opens in Xcode
 - `Cmd+7` - Knowledge Graph
 - `Cmd+8` - History
 - `Cmd+9` - Preferences
+- `Cmd+Shift+,` - Open Preferences in new window
+- `F12` - Toggle Developer Tools
 
 ## Architecture (Tauri Target)
 
