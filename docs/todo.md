@@ -71,3 +71,44 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 - [ ] **Focus Drift**: Command Palette/Search Box closing sometimes scrolls the main window to the top on macOS.
 - [ ] **Navigation Stalling**: Occasional view update failure when clicking a search result despite URL changes.
 - [ ] **FTS Multi-word Tags**: Improved quoting needed for complex topic filters (Partially fixed).
+
+
+Plan: Extract Workspace / Chat / Project Services
+TL;DR: Create 3 new service files (workspace_service.rs, chat_service.rs, project_service.rs), move all inline SQL into them, then slim down the 3 command files to pure connection-acquire + service-delegate. demo.rs stays raw SQL (intentional hardcoded IDs). No frontend changes needed.
+
+Phase 1 — Create Service Files (all 3 parallel)
+Step 1a — services/workspace_service.rs — 13 functions:
+create, create_child, list_all, list_root, list_children, list_hidden, get, hide, unhide, update (+ file-sync args), delete, set_parent (+ cycle-check), update_icon
+
+Step 1b — services/project_service.rs — 6 functions:
+create, list, get, update (+ file-sync args), delete, move_to_workspace (+ transaction + file-sync)
+
+Step 1c — services/chat_service.rs — 19 functions:
+create_session, list_sessions, search_sessions, get_session, soft_delete, hard_delete, list_deleted, restore, empty_recycle_bin, move_sessions, batch_move_sessions, add_message, get_messages, update_session, get_token_usage_by_date, touch_accessed, get_recent, refresh_message, get_message_variants
+
+All service functions take conn: &Connection, return Result<T, String>.
+
+Functions with chat_file_store side-effects (update_workspace, update_project, move_project, move_sessions, batch_move_sessions) additionally accept chats_dir: &Path and passphrase: Option<&str> — the command layer already extracts these from app_handle and passes them through.
+
+Phase 2 — Register Modules (depends on Phase 1)
+Step 2 — services/mod.rs: add 3 pub mod lines in alphabetical order:
+
+pub mod chat_service; (between chat_file_store and concept_extractor)
+pub mod project_service; (between note_template_engine and quick_search_index)
+pub mod workspace_service; (between vector_index and end)
+Phase 3 — Refactor Command Files (parallel, depends on Phase 2)
+Step 3a — commands/workspace.rs: each of 13 commands becomes: acquire conn → call workspace_service::fn → return. Skip recommend_workspace_icon (no SQL, already clean).
+
+Step 3b — commands/project.rs: same for 6 project commands.
+
+Step 3c — commands/chat.rs: same for 19 chat commands. Skip get_related_chats (already delegates to quick_search_service).
+
+Phase 4 — Verification
+cargo check --manifest-path tauri/src-tauri/Cargo.toml → exit 0
+cargo clippy --manifest-path Cargo.toml -- -D warnings → exit 0
+Manual smoke: create workspace → create project → create chat → send message
+Decisions
+demo.rs stays raw SQL — it uses hardcoded string IDs for cleanup (DELETE WHERE id LIKE 'demo-%'); exposing service functions with explicit IDs isn't warranted
+Scope boundary: only these 3 command files; all others follow the opportunistic rule later
+Service signature convention: conn: &Connection (not DbState) so services are testable without Tauri infrastructure
+get_related_chats unchanged — it already delegates cleanly to quick_search_service
