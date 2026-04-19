@@ -4386,11 +4386,11 @@ export default function ChatView() {
 
                   {/* Input / composer area */}
                   <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-3 pt-2 sm:px-5"}`}>
-                    <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[rgba(255,255,255,0.10)] bg-[rgba(14,16,20,0.58)] ${showComposerHeader ? "p-2.5" : "p-1.5"} shadow-[0_30px_90px_-46px_rgba(0,0,0,0.95)] backdrop-blur-[24px]`}>
+                    <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[var(--border-color)] bg-[var(--bg-elevated)]/80 ${showComposerHeader ? "p-2.5" : "p-1.5"} shadow-2xl backdrop-blur-[24px]`}>
                       <div className="flex flex-col gap-2 min-w-0">
                         {showComposerHeader && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
                           <div className="px-1 pt-0.5">
-                            <div className="px-1.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(255,255,255,0.48)]">
+                            <div className="px-1.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
                               General
                             </div>
                             <TopicChips
@@ -4415,7 +4415,7 @@ export default function ChatView() {
                             <button
                               type="button"
                               onClick={() => setIsComposerHeaderCollapsed((collapsed) => !collapsed)}
-                              className="flex h-7 w-7 items-center justify-center rounded-full bg-[rgba(255,255,255,0.04)] text-[rgba(255,255,255,0.42)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+                              className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                               aria-label="Show suggestions"
                               title="Show suggestions"
                             >
@@ -4425,7 +4425,7 @@ export default function ChatView() {
                         )}
 
                         {/* Tool buttons row */}
-                        <div className={`flex flex-wrap items-center gap-1.5 px-1 ${showComposerHeader ? "border-t border-[rgba(255,255,255,0.06)] pt-2" : ""}`}>
+                        <div className={`flex flex-wrap items-center gap-1.5 px-1 ${showComposerHeader ? "border-t border-[var(--border-color)]/50 pt-2" : ""}`}>
                               {/* Active model picker */}
                               <div className="relative" data-active-model-menu>
                                 <button
@@ -4436,7 +4436,7 @@ export default function ChatView() {
                                     setIsModelPickerOpen((open) => !open);
                                   }}
                                   disabled={modelPickerOptions.length === 0}
-                                  className={`inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.18)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.88)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40`}
+                                  className={`inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-sm transition-all hover:border-[rgba(var(--accent-color-rgb),0.4)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] disabled:cursor-not-allowed disabled:opacity-40`}
                                   title={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
                                   aria-label={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
                                   aria-haspopup="menu"
@@ -4448,7 +4448,7 @@ export default function ChatView() {
                                   <ChevronDown size={14} strokeWidth={2.2} />
                                 </button>
                                 {isModelPickerOpen && modelPickerOptions.length > 0 && (
-                                  <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                                  <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
                                     <div className="max-h-72 overflow-y-auto">
                                       {groupedModelPickerOptions.map((group) => (
                                         <div key={group.key} className="pb-1 last:pb-0">
@@ -4490,7 +4490,7 @@ export default function ChatView() {
                               <button
                                 onClick={() => setActiveSubView(isComparePanelOpen ? "chat" : "compare")}
                                 title={isComparePanelOpen ? "Close model comparison" : "Compare two models side by side"}
-                                className={`${composerIconOnlyButtonClass} ${isComparePanelOpen ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
+                                className={`${composerIconOnlyButtonClass} ${isComparePanelOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
                               >
                                 <SplitSquareHorizontal size={13} />
                               </button>
@@ -4505,7 +4505,7 @@ export default function ChatView() {
                                   aria-label="Open attachment menu"
                                   aria-haspopup="menu"
                                   aria-expanded={isAttachmentMenuOpen}
-                                  className={`relative ${composerIconOnlyButtonClass} ${attachedSources.length > 0 || isAttachmentMenuOpen ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
+                                  className={`relative ${composerIconOnlyButtonClass} ${attachedSources.length > 0 || isAttachmentMenuOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
                                 >
                                   {isAttachingFiles ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />}
                                   {attachedSources.length > 0 && (
@@ -4515,7 +4515,7 @@ export default function ChatView() {
                                   )}
                                 </button>
                                 {isAttachmentMenuOpen && (
-                                  <div className="absolute bottom-full left-0 z-20 mb-2 min-w-[188px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                                  <div className="absolute bottom-full left-0 z-20 mb-2 min-w-[188px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -4548,7 +4548,7 @@ export default function ChatView() {
                               <button
                                 onClick={() => setThoughtPanelOpen((v) => !v)}
                                 title="Thought Queue — schedule follow-up questions to process in background"
-                                className={`relative ${composerIconOnlyButtonClass} ${thoughtPanelOpen ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
+                                className={`relative ${composerIconOnlyButtonClass} ${thoughtPanelOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
                               >
                                 <Inbox size={13} />
                                 {(() => {
@@ -4567,7 +4567,7 @@ export default function ChatView() {
                                 disabled={!input.trim() || isStreaming || isPolishingPrompt || !(draftModel || selectedModel || preferredModel)}
                                 title={isPolishingPrompt ? "Polishing prompt…" : "Polish prompt with a smaller model"}
                                 aria-label={isPolishingPrompt ? "Polishing prompt" : "Polish prompt"}
-                                className={`${composerIconOnlyButtonClass} ${isPolishingPrompt ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]" : ""}`}
+                                className={`${composerIconOnlyButtonClass} ${isPolishingPrompt ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
                               >
                                 {isPolishingPrompt ? <Loader2 size={13} className="animate-spin" /> : <Pencil size={13} />}
                               </button>
@@ -4587,7 +4587,7 @@ export default function ChatView() {
                             </div>
 
 	                        {/* Textarea */}
-	                        <div className="flex items-end gap-2.5 rounded-2xl bg-[rgba(255,255,255,0.03)] px-1.5 py-1">
+	                        <div className="flex items-end gap-2.5 rounded-2xl bg-[var(--bg-secondary)] px-1.5 py-1">
                                 <textarea
                                   ref={inputRef}
                                   value={input}
@@ -4611,7 +4611,7 @@ export default function ChatView() {
                                           : "Start a new thread…"
                                   }
                                   rows={1}
-                                  className="flex-1 appearance-none resize-none border-0 bg-transparent px-5 py-3 text-[15px] font-medium leading-6 tracking-[0.01em] text-[rgba(255,255,255,0.94)] placeholder:text-[rgba(255,255,255,0.26)] shadow-none outline-none ring-0 transition-colors max-h-40 overflow-y-auto focus:border-0 focus:shadow-none focus:ring-0"
+                                  className="flex-1 appearance-none resize-none border-0 bg-transparent px-5 py-3 text-[15px] font-medium leading-6 tracking-[0.01em] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] shadow-none outline-none ring-0 transition-colors max-h-40 overflow-y-auto focus:border-0 focus:shadow-none focus:ring-0"
                                   style={{ minHeight: 56 }}
                                   onInput={(e) => {
                                     const el = e.currentTarget;
@@ -4653,7 +4653,7 @@ export default function ChatView() {
                                           await sendMessage();
                                         }}
                                         disabled={!input.trim() || !selectedModel}
-                                        className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.18)] bg-[rgba(var(--accent-color-rgb),0.1)] text-[rgba(255,255,255,0.72)] shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
+                                        className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--text-primary)] shadow-sm transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.3)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
                                           }`}
                                         title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
                                       >
@@ -4668,7 +4668,7 @@ export default function ChatView() {
                                               setIsModelSendMenuOpen((open) => !open);
                                             }}
                                             disabled={!input.trim() || isStreaming}
-                                            className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.18)] border-l-white/10 bg-[rgba(var(--accent-color-rgb),0.1)] text-white shadow-[0_14px_32px_-22px_rgba(var(--accent-color-rgb),0.32)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.28)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                            className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.2)] border-l-[var(--border-color)]/20 bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--text-primary)] shadow-sm transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.3)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
                                             title="Send with another pinned model"
                                             aria-label="Send with another pinned model"
                                             aria-haspopup="menu"
@@ -4677,7 +4677,7 @@ export default function ChatView() {
                                             <ChevronDown size={14} strokeWidth={2.2} />
                                           </button>
                                           {isModelSendMenuOpen && (
-                                            <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                                            <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
                                               <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
                                                 Send With
                                               </div>
@@ -4724,7 +4724,7 @@ export default function ChatView() {
                                         setInput("");
                                       }}
                                       disabled={!input.trim() || !selectedModel}
-                                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.58)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.95)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-muted)] shadow-sm transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.2)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
                                       title="Schedule for background processing"
                                     >
                                       <Clock size={14} strokeWidth={2.2} />
@@ -4738,14 +4738,14 @@ export default function ChatView() {
                               {attachedSources.map((source) => (
                                 <span
                                   key={source.id}
-                                  className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(var(--accent-color-rgb),0.22)] bg-[rgba(var(--accent-color-rgb),0.1)] px-3 py-1 text-[11px] font-medium text-[rgba(255,255,255,0.82)]"
+                                  className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(var(--accent-color-rgb),0.25)] bg-[rgba(var(--accent-color-rgb),0.1)] px-3 py-1 text-[11px] font-medium text-[var(--text-primary)]"
                                 >
                                   <FileText size={11} />
                                   <span className="max-w-44 truncate">{source.title}</span>
                                   <button
                                     type="button"
                                     onClick={() => setAttachedSources((prev) => prev.filter((item) => item.id !== source.id))}
-                                    className="rounded-full text-[rgba(255,255,255,0.55)] transition-colors hover:text-white"
+                                    className="rounded-full text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
                                     title={`Remove ${source.title}`}
                                     aria-label={`Remove ${source.title}`}
                                   >
