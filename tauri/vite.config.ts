@@ -10,13 +10,14 @@ export default defineConfig(async () => ({
   plugins: [react()],
   clearScreen: false,
   optimizeDeps: {
-    entries: [resolve(__dirname, "index.html"), resolve(__dirname, "quick-search.html")],
+    entries: [resolve(__dirname, "index.html"), resolve(__dirname, "quick-search.html"), resolve(__dirname, "preferences.html")],
   },
   build: {
     rollupOptions: {
       input: {
         main: resolve(__dirname, "index.html"),
         quickSearch: resolve(__dirname, "quick-search.html"),
+        preferences: resolve(__dirname, "preferences.html"),
       },
       output: {
         manualChunks: {

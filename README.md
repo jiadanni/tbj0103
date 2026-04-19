@@ -36,10 +36,12 @@ The Tauri port is the primary development target and receives all new features.
 - **Dual-model comparison**: Benchmark different models against the same prompt
 - **Multi-pane Workspaces**: Split-view support for working on different chats or documents side-by-side
 - **Model Context Protocol (MCP)**: Dynamic tool and resource integration for AI models via external servers
-- **Chat-to-Note / Chat-to-Document conversion**: One-click export of a session to a summarized note or document, with LLM-based concept extraction that auto-populates the knowledge graph via `[[wiki-links]]`
+- **AI Models Registry**: Manage local models and web providers (ChatGPT, Claude, DeepSeek, Gemini)
+- **Chat-to-Note / Chat-to-Document conversion**: One-click export of a session to a summarized note or document, with LLM-based concept extraction that auto-populates the knowledge graph
 - Chat session history with rename / soft-delete; Recycle Bin for restoration
-- **History view**: Dedicated browser for all past sessions, grouped by date (Today / Yesterday / Last 7 days / Older) with instant search
-- **Generation metrics**: Per-session model speed averages and timestamped inference logs visible in the chat toolbar
+- **History view**: Dedicated browser for all past sessions, grouped by date with instant search
+- **Thought Queue**: Background AI processing for scheduled or deferred tasks
+- **Generation metrics**: Detailed inference logs and performance stats per message
 
 ### Intelligent Memory
 - **Fact Extraction**: Automatically identifies and saves user facts and preferences from conversations
@@ -57,7 +59,7 @@ The Tauri port is the primary development target and receives all new features.
 ### Data Synchronization & Resilience
 - **Git-based Sync**: Automatic background synchronization to private Git repositories via SSH
 - **Automated Backups**: Configurable local database backups with version history
-- **Data Portability**: Import from LM Studio, Google Gemini, and export to Markdown, PDF, or Obsidian Vaults
+- **Data Portability**: Import from LM Studio and Google Gemini; export to Markdown or Obsidian
 - **Topic-based Routing**: Automatic workspace selection based on message content via Topic Signatures
 
 ### Full-Text & Semantic Search
@@ -138,10 +140,10 @@ open Package.swift   # opens in Xcode
 - `Cmd+2` - Chat
 - `Cmd+3` - Notes
 - `Cmd+4` - Documents
-- `Cmd+5` - Web Captures
-- `Cmd+6` - Knowledge Graph
-- `Cmd+7` - History
-- `Cmd+8` - Logs
+- `Cmd+5` - Intelligent Memory
+- `Cmd+6` - Web Captures
+- `Cmd+7` - Knowledge Graph
+- `Cmd+8` - History
 - `Cmd+9` - Preferences
 
 ## Architecture (Tauri Target)
@@ -177,6 +179,8 @@ tauri/
 | `learning_cards` | Spaced-repetition items (SM-2) |
 | `sources` | Unified storage for Documents and Web Captures |
 | `mcp_servers` | Configured AI Model Context Protocol servers |
+| `ai_models` | Local and Web AI provider registry |
+| `thought_queue` | Background task orchestration |
 | `settings` | Global application preferences |
 
 ## Contributing

@@ -11,6 +11,8 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 - [/] **Unified 'Source' model**: Migrating both Documents and Web Captures to a single `sources` table with type-specific metadata. (Backend complete and SourceBrowserView implemented, but specialized views still co-exist).
 - [ ] **Onboarding tooltips**: First-run tour highlighting the sidebar, model selection, and workspace switcher.
 - [ ] **Progress Indicators**: Real progress bars (not just boolean spinners) for embedding, large document imports, and graph rebuilds.
+- [ ] **Calendar Alarms UI**: Implementation of a dedicated view for managing scheduled AI-triggered prompts (backend commands exist).
+- [ ] **Audio Transcription UI**: Frontend for uploading and transcribing audio content via local STT models (e.g., Whisper).
 
 ## 🔄 Feature Consolidation
 - [ ] **Chat & Thought Queue Merger**: Move the "Passive Processing" (Thought Queue) into a specialized "Scheduled Chat" or "Background Thought" state within the main Chat view.
