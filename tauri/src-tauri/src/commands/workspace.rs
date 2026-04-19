@@ -1,7 +1,9 @@
 use crate::db::DbState;
-use crate::models::workspace::{CreateChildWorkspaceRequest, CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace};
-use crate::services::chat_file_store;
 use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
+use crate::models::workspace::{
+    CreateChildWorkspaceRequest, CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace,
+};
+use crate::services::workspace_service;
 use tauri::State;
 
 #[tauri::command]
@@ -10,15 +12,7 @@ pub fn create_workspace(
     req: CreateWorkspaceRequest,
 ) -> Result<Workspace, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let ws = Workspace::new(req.name, req.description.unwrap_or_default());
-
-    let sig_json = serde_json::to_string(&ws.topic_signature).map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        rusqlite::params![ws.id, ws.name, ws.description, ws.prompt_instructions, sig_json, ws.signature_updated_at, ws.is_hidden as i64, ws.created_at, ws.updated_at, ws.parent_workspace_id, ws.icon],
-    ).map_err(|e| e.to_string())?;
-    Ok(ws)
+    workspace_service::create(&conn, req)
 }
 
 #[tauri::command]
@@ -27,206 +21,49 @@ pub fn create_child_workspace(
     req: CreateChildWorkspaceRequest,
 ) -> Result<Workspace, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let mut ws = Workspace::new(req.name, req.description.unwrap_or_default());
-    ws.parent_workspace_id = Some(req.parent_id);
-    let sig_json = serde_json::to_string(&ws.topic_signature).map_err(|e| e.to_string())?;
-    conn.execute(
-        "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        rusqlite::params![ws.id, ws.name, ws.description, ws.prompt_instructions, sig_json, ws.signature_updated_at, ws.is_hidden as i64, ws.created_at, ws.updated_at, ws.parent_workspace_id, ws.icon],
-    ).map_err(|e| e.to_string())?;
-    Ok(ws)
+    workspace_service::create_child(&conn, req)
 }
 
 #[tauri::command]
 pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon
-         FROM workspaces
-         WHERE is_hidden = 0
-         ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
-    ).map_err(|e| e.to_string())?;
-    let items = stmt
-        .query_map([], |row| {
-            let sig_json: String = row.get(4)?;
-            let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
-            let is_hidden: i64 = row.get(6)?;
-            Ok(Workspace {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                prompt_instructions: row.get(3)?,
-                topic_signature,
-                signature_updated_at: row.get(5)?,
-                is_hidden: is_hidden != 0,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
-                parent_workspace_id: row.get(9)?,
-                icon: row.get(10)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    Ok(items)
+    workspace_service::list_all(&conn)
 }
 
 #[tauri::command]
 pub fn list_root_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon
-         FROM workspaces
-         WHERE is_hidden = 0 AND parent_workspace_id IS NULL
-         ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
-    ).map_err(|e| e.to_string())?;
-    let items = stmt
-        .query_map([], |row| {
-            let sig_json: String = row.get(4)?;
-            let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
-            let is_hidden: i64 = row.get(6)?;
-            Ok(Workspace {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                prompt_instructions: row.get(3)?,
-                topic_signature,
-                signature_updated_at: row.get(5)?,
-                is_hidden: is_hidden != 0,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
-                parent_workspace_id: row.get(9)?,
-                icon: row.get(10)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    Ok(items)
+    workspace_service::list_root(&conn)
 }
 
 #[tauri::command]
 pub fn list_child_workspaces(state: State<DbState>, parent_id: String) -> Result<Vec<Workspace>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon
-         FROM workspaces
-         WHERE is_hidden = 0 AND parent_workspace_id = ?1
-         ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
-    ).map_err(|e| e.to_string())?;
-    let items = stmt
-        .query_map(rusqlite::params![parent_id], |row| {
-            let sig_json: String = row.get(4)?;
-            let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
-            let is_hidden: i64 = row.get(6)?;
-            Ok(Workspace {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                prompt_instructions: row.get(3)?,
-                topic_signature,
-                signature_updated_at: row.get(5)?,
-                is_hidden: is_hidden != 0,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
-                parent_workspace_id: row.get(9)?,
-                icon: row.get(10)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    Ok(items)
+    workspace_service::list_children(&conn, &parent_id)
 }
 
 #[tauri::command]
 pub fn list_hidden_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon
-         FROM workspaces
-         WHERE is_hidden = 1
-         ORDER BY name COLLATE NOCASE ASC, created_at ASC, id ASC"
-    ).map_err(|e| e.to_string())?;
-    let items = stmt
-        .query_map([], |row| {
-            let sig_json: String = row.get(4)?;
-            let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
-            let is_hidden: i64 = row.get(6)?;
-            Ok(Workspace {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                prompt_instructions: row.get(3)?,
-                topic_signature,
-                signature_updated_at: row.get(5)?,
-                is_hidden: is_hidden != 0,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
-                parent_workspace_id: row.get(9)?,
-                icon: row.get(10)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    Ok(items)
+    workspace_service::list_hidden(&conn)
 }
 
 #[tauri::command]
 pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspace>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let result = conn.query_row(
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon FROM workspaces WHERE id = ?1",
-        rusqlite::params![id],
-        |row| {
-            let sig_json: String = row.get(4)?;
-            let topic_signature = serde_json::from_str(&sig_json).unwrap_or_default();
-            let is_hidden: i64 = row.get(6)?;
-            Ok(Workspace {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                prompt_instructions: row.get(3)?,
-                topic_signature,
-                signature_updated_at: row.get(5)?,
-                is_hidden: is_hidden != 0,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
-                parent_workspace_id: row.get(9)?,
-                icon: row.get(10)?,
-            })
-        },
-    );
-    match result {
-        Ok(ws) => Ok(Some(ws)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e.to_string()),
-    }
+    workspace_service::get(&conn, &id)
 }
 
 #[tauri::command]
 pub fn hide_workspace(state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "UPDATE workspaces SET is_hidden = 1, updated_at = ?1 WHERE id = ?2",
-        rusqlite::params![now, id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    workspace_service::hide(&conn, &id)
 }
 
 #[tauri::command]
 pub fn unhide_workspace(state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "UPDATE workspaces SET is_hidden = 0, updated_at = ?1 WHERE id = ?2",
-        rusqlite::params![now, id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    workspace_service::unhide(&conn, &id)
 }
 
 #[tauri::command]
@@ -237,66 +74,14 @@ pub fn update_workspace(
     crypto: State<ChatCryptoState>,
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let session_ids = if req.name.trim().is_empty() {
-        Vec::new()
-    } else {
-        let mut stmt = conn
-            .prepare("SELECT id FROM chat_sessions WHERE workspace_id = ?1")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![req.id.clone()], |row| row.get::<_, String>(0))
-            .map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
-        rows
-    };
-    let previous_paths =
-        chat_file_store::capture_session_file_variants(&conn, &chats_dir_state.0, &session_ids);
-    let now = chrono::Utc::now().to_rfc3339();
-    // Always update name and updated_at; conditionally update description and prompt_instructions
-    conn.execute(
-        "UPDATE workspaces SET name = ?1, updated_at = ?2 WHERE id = ?3",
-        rusqlite::params![req.name, now, req.id],
-    )
-    .map_err(|e| e.to_string())?;
-    if let Some(description) = &req.description {
-        conn.execute(
-            "UPDATE workspaces SET description = ?1 WHERE id = ?2",
-            rusqlite::params![description, req.id],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    if let Some(instructions) = &req.prompt_instructions {
-        conn.execute(
-            "UPDATE workspaces SET prompt_instructions = ?1 WHERE id = ?2",
-            rusqlite::params![instructions, req.id],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    if !session_ids.is_empty() {
-        let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
-        chat_file_store::sync_session_files_for_hierarchy_change(
-            &conn,
-            &chats_dir_state.0,
-            &session_ids,
-            &previous_paths,
-            pass.as_deref(),
-        )?;
-    }
-
-    Ok(())
+    let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
+    workspace_service::update(&conn, req, &chats_dir_state.0, pass.as_deref())
 }
 
 #[tauri::command]
 pub fn delete_workspace(state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    conn.execute(
-        "DELETE FROM workspaces WHERE id = ?1",
-        rusqlite::params![id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    workspace_service::delete(&conn, &id)
 }
 
 #[tauri::command]
@@ -305,36 +90,8 @@ pub fn set_workspace_parent(
     id: String,
     parent_id: Option<String>,
 ) -> Result<(), String> {
-    if let Some(ref pid) = parent_id {
-        if *pid == id {
-            return Err("A workspace cannot be its own parent.".to_string());
-        }
-        // Prevent circular references: ensure the proposed parent is not itself a child of `id`
-        let conn = state.0.get().map_err(|e| e.to_string())?;
-        let parent_of_parent: Option<String> = conn.query_row(
-            "SELECT parent_workspace_id FROM workspaces WHERE id = ?1",
-            rusqlite::params![pid],
-            |row| row.get(0),
-        ).unwrap_or(None);
-        if parent_of_parent.as_deref() == Some(&id) {
-            return Err("Cannot create a circular parent-child relationship.".to_string());
-        }
-        let now = chrono::Utc::now().to_rfc3339();
-        conn.execute(
-            "UPDATE workspaces SET parent_workspace_id = ?1, updated_at = ?2 WHERE id = ?3",
-            rusqlite::params![pid, now, id],
-        )
-        .map_err(|e| e.to_string())?;
-    } else {
-        let conn = state.0.get().map_err(|e| e.to_string())?;
-        let now = chrono::Utc::now().to_rfc3339();
-        conn.execute(
-            "UPDATE workspaces SET parent_workspace_id = NULL, updated_at = ?1 WHERE id = ?2",
-            rusqlite::params![now, id],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    workspace_service::set_parent(&conn, &id, parent_id)
 }
 
 #[tauri::command]
@@ -344,12 +101,7 @@ pub fn update_workspace_icon(
     icon: String,
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    conn.execute(
-        "UPDATE workspaces SET icon = ?, updated_at = datetime('now') WHERE id = ?",
-        rusqlite::params![icon, id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    workspace_service::update_icon(&conn, &id, &icon)
 }
 
 #[tauri::command]
@@ -391,7 +143,6 @@ async fn try_ai_icon_recommendation(workspace_name: &str, workspace_description:
     let response = client.send_message("workspace_icon", "mistral", messages).await?;
     
     let icon_name = response
-        .trim()
         .split_whitespace()
         .next()
         .unwrap_or("folder")
