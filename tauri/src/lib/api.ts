@@ -690,7 +690,29 @@ export const api = {
     importFromJson: (path: string, workspaceId: string, projectId?: string | null, passphrase?: string) =>
       invoke<ChatSession>("import_chat_from_json", { path, workspaceId, projectId: projectId ?? null, passphrase }),
     syncAll: () => invoke<number>("sync_all_chats_to_files"),
-    importLmStudioFolder: (folderPath: string, workspaceName?: string) =>
+    previewLmStudioFolder: (folderPath: string) =>
+      invoke<{
+        conversations: {
+          uuid: string;
+          name: string;
+          message_count: number;
+          created_at: string;
+          updated_at: string;
+          project_id: string | null;
+          project_name: string | null;
+          source_path: string;
+        }[];
+        total: number;
+        projects: {
+          uuid: string;
+          name: string;
+          conversation_count: number;
+          message_count: number;
+        }[];
+        errors: number;
+        error_messages: string[];
+      }>("preview_lmstudio_folder", { folderPath }),
+    importLmStudioFolder: (folderPath: string, workspaceName?: string, selectedIds?: string[], selectedProjectIds?: string[]) =>
       invoke<{
         imported: number;
         skipped: number;
@@ -699,7 +721,12 @@ export const api = {
         projects_created: number;
         errors: number;
         error_messages: string[];
-      }>("import_lmstudio_folder", { folderPath, workspaceName: workspaceName ?? null }),
+      }>("import_lmstudio_folder", {
+        folderPath,
+        workspaceName: workspaceName ?? null,
+        selectedIds: selectedIds ?? null,
+        selectedProjectIds: selectedProjectIds ?? null,
+      }),
     importMultipleFolders: (folderPaths: string[]) =>
       invoke<{
         total_folders: number;
