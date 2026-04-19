@@ -6,7 +6,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { readTextFile } from "@tauri-apps/plugin-fs";
-import { api, type AiModel, type OllamaModel, type SearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
+import { api, type AiModel, type OllamaModel, type SearchResult, type QuickSearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Project, type Workspace } from "../stores/workspaceStore";
@@ -14,6 +14,7 @@ import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession, Message } from "../stores/chatStore";
 import ComposerSuggestionRows from "../components/ComposerSuggestionRows";
 import { TopicChips } from "../components/TopicChips";
+import { RelatedChatPills } from "../components/RelatedChatPills";
 import { WorkspaceMigrationBanner } from "../components/WorkspaceMigrationBanner";
 import ChatMessageBubble from "../components/ChatMessageBubble";
 import ConvertChatModal, { type ConvertKind } from "../components/ConvertChatModal";
@@ -2095,6 +2096,34 @@ export default function ChatView() {
 
   // Integrated subview state (Standard Chat, Grounded, Compare)
   const [activeSubView, setActiveSubView] = useState<ChatSubView>("chat");
+  const [relatedChats, setRelatedChats] = useState<QuickSearchResult[]>([]);
+
+  // Fetch related chats when topic signature changes
+  useEffect(() => {
+    let active = true;
+    const fetchRelated = async () => {
+      const tags = activeTopicSignature?.domain_tags.map(t => t.tag) || [];
+      if (tags.length === 0 || !effectiveWorkspaceId) {
+        setRelatedChats([]);
+        return;
+      }
+      try {
+        const results = await api.chat.getRelatedChats(effectiveWorkspaceId, tags, currentSessionId || undefined, 5);
+        if (active) {
+          setRelatedChats(results);
+        }
+      } catch (error) {
+        console.error("Failed to fetch related chats:", error);
+      }
+    };
+    void fetchRelated();
+    return () => { active = false; };
+  }, [activeTopicSignature, effectiveWorkspaceId, currentSessionId]);
+
+  const onChatClick = useCallback((chat: QuickSearchResult) => {
+    if (chat.target_id === currentSessionId) { return; }
+    navigate(`/chat/${chat.target_id}`);
+  }, [currentSessionId, navigate]);
 
   // Handle external subview switching via router state
   useEffect(() => {
@@ -2496,7 +2525,6 @@ export default function ChatView() {
             <span className="flex gap-1 items-center">
               <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80" style={{ animation: "thinking-dot 1.2s ease-in-out infinite" }} />
               <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80" style={{ animation: "thinking-dot 1.2s ease-in-out 0.2s infinite" }} />
-              <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80" style={{ animation: "thinking-dot 1.2s ease-in-out 0.4s infinite" }} />
             </span>
           </div>
         </div>
@@ -4244,6 +4272,12 @@ export default function ChatView() {
                       <span className="text-xs text-amber-400">No Ollama models installed</span>
                     )}
                   </div>
+                  
+                  <RelatedChatPills 
+                    relatedChats={relatedChats} 
+                    onChatClick={onChatClick}
+                    className="sticky top-0 z-10"
+                  />
 
                   {activeSession?.is_incognito && (
                     <div className="mx-4 mt-2 px-3 py-2 rounded bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-300 flex items-start gap-2">

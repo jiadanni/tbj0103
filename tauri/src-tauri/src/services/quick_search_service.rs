@@ -31,7 +31,32 @@ pub fn query(
     }
 
     let fts_query = build_fts_query(trimmed).ok_or_else(|| "Enter a search query.".to_string())?;
-    let sql = r#"
+    query_filtered(conn, &fts_query, limit, None, None)
+}
+
+pub fn query_filtered(
+    conn: &Connection,
+    fts_query: &str,
+    limit: usize,
+    workspace_id: Option<&str>,
+    exclude_session_id: Option<&str>,
+) -> Result<Vec<QuickSearchResult>, String> {
+    let mut where_clauses = vec!["quick_search_documents_fts MATCH ?1"];
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(fts_query.to_string())];
+
+    if let Some(ws_id) = workspace_id {
+        where_clauses.push("d.workspace_id = ?2");
+        params.push(Box::new(ws_id.to_string()));
+    }
+
+    if let Some(ex_sid) = exclude_session_id {
+        where_clauses.push("d.session_id != ?3");
+        params.push(Box::new(ex_sid.to_string()));
+    }
+
+    let where_sql = where_clauses.join(" AND ");
+    let sql = format!(
+        r#"
         SELECT
             d.doc_id,
             d.target_id,
@@ -52,14 +77,20 @@ pub fn query(
         JOIN quick_search_documents d ON d.rowid = quick_search_documents_fts.rowid
         LEFT JOIN workspaces w ON w.id = d.workspace_id
         LEFT JOIN projects p ON p.id = d.project_id
-        WHERE quick_search_documents_fts MATCH ?1
+        WHERE {}
         ORDER BY bm25(quick_search_documents_fts, 8.0, 2.0, 1.0) ASC, d.updated_at DESC
-        LIMIT ?2
-    "#;
+        LIMIT ?{}
+    "#,
+        where_sql,
+        params.len() + 1
+    );
 
-    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+    params.push(Box::new(limit as i64));
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(params![fts_query, limit as i64], |row| {
+        .query_map(param_refs.as_slice(), |row| {
             let body: String = row.get(5)?;
             let snippet: String = row.get(13)?;
             let excerpt = if snippet.trim().is_empty() {
