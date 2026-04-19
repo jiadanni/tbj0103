@@ -516,8 +516,14 @@ AFTER DELETE ON quick_search_documents BEGIN
     VALUES ('delete', OLD.rowid, OLD.title, OLD.subtitle, OLD.body);
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_documents_au
-AFTER UPDATE ON quick_search_documents BEGIN
+-- Guard: only update the FTS index when the indexed text columns actually
+-- changed. Updating a metadata column (project_id, workspace_id, etc.) no
+-- longer causes a superfluous FTS delete+insert pair per row.
+DROP TRIGGER IF EXISTS quick_search_documents_au;
+CREATE TRIGGER quick_search_documents_au
+AFTER UPDATE ON quick_search_documents
+WHEN OLD.title != NEW.title OR OLD.subtitle != NEW.subtitle OR OLD.body != NEW.body
+BEGIN
     INSERT INTO quick_search_documents_fts(quick_search_documents_fts, rowid, title, subtitle, body)
     VALUES ('delete', OLD.rowid, OLD.title, OLD.subtitle, OLD.body);
     INSERT INTO quick_search_documents_fts(rowid, title, subtitle, body)
@@ -556,63 +562,54 @@ DROP TRIGGER IF EXISTS quick_search_chat_sessions_au;
 CREATE TRIGGER quick_search_chat_sessions_au
 AFTER UPDATE ON chat_sessions
 FOR EACH ROW
-WHEN (OLD.title != NEW.title OR OLD.is_deleted != NEW.is_deleted OR OLD.project_id != NEW.project_id)
+-- Use IS NOT for project_id comparison so NULL↔value transitions are detected.
+WHEN (OLD.title != NEW.title OR OLD.is_deleted != NEW.is_deleted OR OLD.project_id IS NOT NEW.project_id)
 BEGIN
+    -- (a) Session soft-deleted: remove all its search documents in one pass.
+    --     session_id = OLD.id covers the conversation doc and all
+    --     message / artifact / summary rows for this session.
     DELETE FROM quick_search_documents
-    WHERE doc_id = 'session:' || OLD.id
-       OR (session_id = OLD.id AND kind IN ('message', 'artifact', 'summary'));
+    WHERE OLD.is_deleted = 0 AND NEW.is_deleted = 1
+      AND session_id = OLD.id;
 
-    INSERT INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    -- (b) Session restored (is_deleted 1→0): re-index the conversation entry
+    --     and every message, artifact, and summary it contains.
+    --     Full table scan is unavoidable here because the rows were absent.
+    INSERT OR IGNORE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id,
+        source_session_id, title, subtitle, body, updated_at
     )
     SELECT
-        'session:' || NEW.id,
-        NEW.id,
-        'conversation',
-        NEW.workspace_id,
-        NULLIF(NEW.project_id, ''),
-        NEW.id,
-        NULL,
-        NEW.title,
-        'Conversation',
-        '',
-        NEW.updated_at
-    WHERE NEW.is_deleted = 0;
+        'session:' || NEW.id, NEW.id, 'conversation',
+        NEW.workspace_id, NULLIF(NEW.project_id, ''), NEW.id, NULL,
+        NEW.title, 'Conversation', '', NEW.updated_at
+    WHERE OLD.is_deleted = 1 AND NEW.is_deleted = 0;
 
-    INSERT INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    INSERT OR IGNORE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id,
+        source_session_id, title, subtitle, body, updated_at
     )
     SELECT
-        'message:' || m.id,
-        m.id,
-        'message',
-        NEW.workspace_id,
-        NULLIF(NEW.project_id, ''),
-        NEW.id,
-        NULL,
+        'message:' || m.id, m.id, 'message',
+        NEW.workspace_id, NULLIF(NEW.project_id, ''), NEW.id, NULL,
         NEW.title,
         CASE m.role
             WHEN 'assistant' THEN 'Assistant reply'
             WHEN 'system' THEN 'System message'
             ELSE 'User message'
         END,
-        m.content,
-        m.created_at
+        m.content, m.created_at
     FROM messages m
     WHERE m.session_id = NEW.id
-      AND NEW.is_deleted = 0;
+      AND OLD.is_deleted = 1 AND NEW.is_deleted = 0;
 
-    INSERT INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    INSERT OR IGNORE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id,
+        source_session_id, title, subtitle, body, updated_at
     )
     SELECT
-        'artifact:' || a.id,
-        a.id,
-        'artifact',
-        a.workspace_id,
-        NULLIF(NEW.project_id, ''),
-        a.session_id,
-        NULL,
+        'artifact:' || a.id, a.id, 'artifact',
+        a.workspace_id, NULLIF(NEW.project_id, ''), a.session_id, NULL,
         a.title,
         CASE
             WHEN a.language IS NOT NULL AND a.language != '' THEN a.artifact_type || ' • ' || a.language
@@ -622,26 +619,43 @@ BEGIN
         a.updated_at
     FROM artifacts a
     WHERE a.session_id = NEW.id
-      AND NEW.is_deleted = 0;
+      AND OLD.is_deleted = 1 AND NEW.is_deleted = 0;
 
-    INSERT INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+    INSERT OR IGNORE INTO quick_search_documents (
+        doc_id, target_id, kind, workspace_id, project_id, session_id,
+        source_session_id, title, subtitle, body, updated_at
     )
     SELECT
-        'summary:' || s.id,
-        s.id,
-        'summary',
-        s.workspace_id,
-        NULLIF(NEW.project_id, ''),
-        s.session_id,
-        NULL,
-        NEW.title,
-        s.summary_type || ' summary',
-        s.content,
-        s.updated_at
+        'summary:' || s.id, s.id, 'summary',
+        s.workspace_id, NULLIF(NEW.project_id, ''), s.session_id, NULL,
+        NEW.title, s.summary_type || ' summary',
+        s.content, s.updated_at
     FROM conversation_summaries s
     WHERE s.session_id = NEW.id
-      AND NEW.is_deleted = 0;
+      AND OLD.is_deleted = 1 AND NEW.is_deleted = 0;
+
+    -- (c) Session remains active and its title changed.
+    --     UPDATE the existing rows in place: no table scan of messages/artifacts,
+    --     no FTS bulk re-index — each updated row fires quick_search_documents_au
+    --     which updates only that row's FTS entry.
+    --     Artifact docs carry the artifact's own title, not the session title,
+    --     so kind='artifact' is intentionally excluded here.
+    UPDATE quick_search_documents
+    SET title = NEW.title, updated_at = NEW.updated_at
+    WHERE NEW.is_deleted = 0 AND OLD.is_deleted = 0
+      AND OLD.title != NEW.title
+      AND session_id = NEW.id
+      AND kind IN ('conversation', 'message', 'summary');
+
+    -- (d) Session remains active and was moved between projects.
+    --     UPDATE project_id in place on all related docs.
+    --     Because project_id is not an FTS-indexed column, quick_search_documents_au
+    --     (guarded by WHEN text columns change) will NOT fire — zero FTS work.
+    UPDATE quick_search_documents
+    SET project_id = NULLIF(NEW.project_id, '')
+    WHERE NEW.is_deleted = 0 AND OLD.is_deleted = 0
+      AND OLD.project_id IS NOT NEW.project_id
+      AND session_id = NEW.id;
 END;
 
 CREATE TRIGGER IF NOT EXISTS quick_search_messages_ai

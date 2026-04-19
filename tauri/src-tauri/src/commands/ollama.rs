@@ -413,13 +413,66 @@ pub struct TopicEntry {
     pub weight: u32,
 }
 
-/// Extracts the first JSON array `[...]` substring from a raw model response.
+/// Extracts the first balanced JSON array `[...]` from a raw model response.
+///
+/// Strategy:
+/// 1. If the response contains a markdown code fence (``` ... ```), extract the
+///    content inside it — models frequently wrap their JSON output in fences.
+/// 2. Within the selected text, find the first `[` and walk bytes, tracking
+///    string/escape state and bracket depth, to locate the matching `]`.
+///    This avoids the brittle find('[') / rfind(']') pattern, which returns an
+///    invalid slice when there are multiple arrays or surrounding brackets.
 fn extract_json_array(s: &str) -> String {
-    if let (Some(start), Some(end)) = (s.find('['), s.rfind(']')) {
-        s[start..=end].to_string()
-    } else {
-        "[]".to_string()
+    let text = extract_from_code_fence(s).unwrap_or(s);
+    extract_balanced_array(text).unwrap_or_else(|| "[]".to_string())
+}
+
+/// Returns the text inside the first ``` ... ``` fence, skipping any language tag.
+fn extract_from_code_fence(s: &str) -> Option<&str> {
+    let start = s.find("```")?;
+    let after_marker = &s[start + 3..];
+    // Skip optional language identifier (e.g. "json") up to the first newline.
+    let nl = after_marker.find('\n')?;
+    let content_start = start + 3 + nl + 1;
+    let rest = &s[content_start..];
+    let fence_end = rest.find("```")?;
+    Some(&rest[..fence_end])
+}
+
+/// Finds the first `[` in `s` and returns the balanced `[...]` substring,
+/// respecting quoted strings and escape sequences.
+fn extract_balanced_array(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let start = bytes.iter().position(|&b| b == b'[')?;
+    let mut depth: i32 = 0;
+    let mut in_string = false;
+    let mut escape_next = false;
+    for (i, &b) in bytes[start..].iter().enumerate() {
+        if escape_next {
+            escape_next = false;
+            continue;
+        }
+        if in_string {
+            match b {
+                b'\\' => escape_next = true,
+                b'"' => in_string = false,
+                _ => {}
+            }
+        } else {
+            match b {
+                b'"' => in_string = true,
+                b'[' => depth += 1,
+                b']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(s[start..=start + i].to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
     }
+    None
 }
 
 /// Cancel an in-progress stream for the given session.

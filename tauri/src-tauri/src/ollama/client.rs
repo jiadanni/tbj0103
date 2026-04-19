@@ -646,6 +646,14 @@ impl OllamaClient {
         let mut aborted = false;
         let mut cancel_rx = Self::register_abort_listener(app, session_id)?;
         let mut pending_chunk = String::new();
+        // Byte-level accumulator to guard against two failure modes:
+        //  1. Multi-byte UTF-8 character split across two network chunks
+        //     (std::str::from_utf8 would return an error on the partial sequence).
+        //  2. A large JSON object whose newline-delimited boundary arrives in a
+        //     later chunk than the opening brace (serde_json::from_str would fail).
+        // We accumulate raw bytes and only extract complete newline-terminated
+        // lines before converting to UTF-8 and parsing.
+        let mut byte_buf: Vec<u8> = Vec::new();
         let mut last_emit = std::time::Instant::now();
         const EMIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
 
@@ -693,9 +701,15 @@ impl OllamaClient {
                 );
                 message
             })?;
-            let text = std::str::from_utf8(&chunk).map_err(|e| format!("UTF-8 error: {e}"))?;
-
-            for line in text.lines() {
+            byte_buf.extend_from_slice(&chunk);
+            // Drain all complete newline-terminated lines from the buffer.
+            // Any trailing bytes that don't yet end in '\n' stay in the buffer
+            // and will be prepended to the next chunk, preserving both UTF-8
+            // sequence integrity and JSON object completeness.
+            while let Some(nl_pos) = byte_buf.iter().position(|&b| b == b'\n') {
+                let line_bytes: Vec<u8> = byte_buf.drain(..=nl_pos).collect();
+                let line_str = String::from_utf8_lossy(&line_bytes);
+                let line = line_str.trim();
                 if line.is_empty() {
                     continue;
                 }
