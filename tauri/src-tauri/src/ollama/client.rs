@@ -30,11 +30,12 @@ struct CachedModels {
 
 static MODEL_CACHE: OnceLock<Mutex<Option<CachedModels>>> = OnceLock::new();
 
-/// Per-model capabilities cache: model_name -> (capabilities, fetched_at).
-/// Keyed only by model name; Ollama capabilities are server-scoped, not
-/// per-base-URL, so a single map is sufficient.
+/// Per-model capabilities cache: (base_url, model_name) -> (capabilities, fetched_at).
+/// Keyed by both server URL and model name so that two local Ollama instances
+/// exposing the same model name on different ports cannot cross-contaminate each
+/// other's capability metadata.
 struct CapabilityCache {
-    entries: HashMap<String, (Option<Vec<String>>, Instant)>,
+    entries: HashMap<(String, String), (Option<Vec<String>>, Instant)>,
 }
 
 static CAPABILITY_CACHE: OnceLock<Mutex<CapabilityCache>> = OnceLock::new();
@@ -1206,9 +1207,11 @@ impl OllamaClient {
         // Check the long-lived per-model capability cache first.
         // This prevents N parallel /api/show calls every 30s when the model
         // list cache expires — capabilities only change after `ollama pull`.
+        // Keyed by (base_url, model) so different local Ollama servers that
+        // share a model name don't serve each other's stale capability data.
         {
             if let Ok(guard) = capability_cache().lock() {
-                if let Some((caps, fetched_at)) = guard.entries.get(model) {
+                if let Some((caps, fetched_at)) = guard.entries.get(&(self.base_url.clone(), model.to_string())) {
                     if fetched_at.elapsed() < CAPABILITY_CACHE_TTL {
                         return caps.clone();
                     }
@@ -1286,7 +1289,7 @@ impl OllamaClient {
         // for CAPABILITY_CACHE_TTL regardless of how many times the model list
         // cache expires.
         if let Ok(mut guard) = capability_cache().lock() {
-            guard.entries.insert(model.to_string(), (caps.clone(), Instant::now()));
+            guard.entries.insert((self.base_url.clone(), model.to_string()), (caps.clone(), Instant::now()));
         }
         caps
     }
