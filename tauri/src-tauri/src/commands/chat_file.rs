@@ -301,6 +301,7 @@ pub fn import_chat_from_json(
                 branch_message_id: row.get(15)?,
                 created_at: row.get(16)?,
                 updated_at: row.get(17)?,
+                message_count: 0,
             })
         },
     )
