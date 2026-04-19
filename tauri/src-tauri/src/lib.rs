@@ -366,6 +366,7 @@ pub fn run() {
             commands::chat::list_chat_sessions,
             commands::chat::search_chat_sessions,
             commands::chat::get_chat_session,
+            commands::chat::get_related_chats,
             commands::chat::delete_chat_session,
             commands::chat::add_message,
             commands::chat::get_messages,

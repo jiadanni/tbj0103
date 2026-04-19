@@ -6,12 +6,21 @@ use crate::models::chat::{
     AddMessageRequest, ChatSession, CreateChatSessionRequest, Message, MessageRole,
 };
 use crate::services::chat_file_store;
+use crate::services::quick_search_service::{self, QuickSearchResult};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct SearchChatSessionsRequest {
     pub workspace_id: String,
     pub query: String,
     pub project_id: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct GetRelatedChatsRequest {
+    pub workspace_id: String,
+    pub session_id: Option<String>,
+    pub tags: Vec<String>,
+    pub limit: Option<usize>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -206,6 +215,30 @@ pub fn get_chat_session(state: State<DbState>, id: String) -> Result<Option<Chat
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
+}
+
+#[tauri::command]
+pub fn get_related_chats(
+    state: tauri::State<DbState>,
+    req: GetRelatedChatsRequest,
+) -> Result<Vec<QuickSearchResult>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let limit = req.limit.unwrap_or(5).clamp(1, 20);
+
+    if req.tags.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Join tags into a simple space-separated query for FTS
+    let fts_query = req.tags.join(" ");
+    
+    quick_search_service::query_filtered(
+        &conn,
+        &fts_query,
+        limit,
+        Some(&req.workspace_id),
+        req.session_id.as_deref(),
+    )
 }
 
 #[tauri::command]
