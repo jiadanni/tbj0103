@@ -1171,6 +1171,7 @@ export const api = {
   system: {
     getSpecs: () => invoke<SystemSpecs>("get_system_specs"),
     toggleDevtools: () => invoke<void>("toggle_devtools"),
+    openPreferencesWindow: () => invoke<void>("open_preferences_window"),
   },
 
   knowledge: {

@@ -8,6 +8,23 @@ import { normalizeTheme } from "./lib/theme";
 import Layout from "./components/Layout";
 import AuthenticationView from "./views/AuthenticationView";
 
+/**
+ * Detects when the app is running inside the dedicated "preferences" webview window
+ * and immediately redirects to the /preferences route.
+ */
+function PreferencesWindowRedirect() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const label: string =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__TAURI_INTERNALS__?.metadata?.currentWebview?.label ?? "";
+    if (label === "preferences") {
+      navigate("/preferences", { replace: true });
+    }
+  }, [navigate]);
+  return null;
+}
+
 /** Listens for native menu-bar events and translates them into navigation/actions. */
 function MenuEventHandler() {
   const navigate = useNavigate();
@@ -118,12 +135,16 @@ export default function App() {
     root.style.fontSize = `${fontSize}px`;
   }, [theme, accentColor, fontSize]);
 
-  // F12 to toggle devtools
+  // F12 to toggle devtools; Ctrl+Shift+, to open Preferences in a separate window
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "F12") {
         e.preventDefault();
         api.system.toggleDevtools().catch(() => {});
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === ",") {
+        e.preventDefault();
+        api.system.openPreferencesWindow().catch(() => {});
       }
     };
     window.addEventListener("keydown", handler);
@@ -241,6 +262,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <MenuEventHandler />
+      <PreferencesWindowRedirect />
       <Routes>
         <Route path="/*" element={<Layout />} />
         <Route path="/" element={<Navigate to="/project" replace />} />

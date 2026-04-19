@@ -454,6 +454,7 @@ pub fn run() {
             commands::settings::update_settings,
             commands::system::get_system_specs,
             commands::system::toggle_devtools,
+            commands::system::open_preferences_window,
             commands::security::get_security_status,
             commands::security::set_pin_passcode,
             commands::security::verify_pin_passcode,

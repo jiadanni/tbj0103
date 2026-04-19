@@ -511,15 +511,25 @@ function PreferencesDockButton() {
   const navigate = useNavigate();
 
   return (
-    <button
-      onClick={() => navigate("/preferences")}
-      aria-label="Preferences"
-      title="Preferences"
-      className="absolute bottom-3 left-3 z-30 inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 px-3 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-    >
-      <SettingsIcon size={16} />
-      <span>Preferences</span>
-    </button>
+    <div className="absolute bottom-3 left-3 z-30 flex items-center gap-1">
+      <button
+        onClick={() => navigate("/preferences")}
+        aria-label="Preferences"
+        title="Preferences"
+        className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 px-3 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+      >
+        <SettingsIcon size={16} />
+        <span>Preferences</span>
+      </button>
+      <button
+        onClick={() => api.system.openPreferencesWindow().catch(() => {})}
+        aria-label="Open Preferences in new window"
+        title="Open in new window"
+        className="inline-flex items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 p-2 text-[var(--text-secondary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+      >
+        <ExternalLink size={14} />
+      </button>
+    </div>
   );
 }
 

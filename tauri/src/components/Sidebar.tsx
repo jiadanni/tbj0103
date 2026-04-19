@@ -213,26 +213,43 @@ export default function Sidebar({
         )}
 
         {showPreferencesButton && (
-          <button
-            onClick={() => {
-              setTooltip(null);
-              setPopoverOpen(false);
-              navigate("/preferences");
-            }}
-            onMouseEnter={(event) => showTooltip("Preferences", event.currentTarget)}
-            onMouseLeave={hideTooltip}
-            onFocus={(event) => showTooltip("Preferences", event.currentTarget)}
-            onBlur={hideTooltip}
-            aria-label="Preferences"
-            className={
-              !labelsVisible
-                ? "mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-                : "mb-3 flex w-full items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-            }
-          >
-            <SettingsIcon size={16} />
-            {labelsVisible && <span className="flex-1 text-left">Preferences</span>}
-          </button>
+          <div className={!labelsVisible ? "mb-2" : "mb-3 flex items-center gap-1"}>
+            <button
+              onClick={() => {
+                setTooltip(null);
+                setPopoverOpen(false);
+                navigate("/preferences");
+              }}
+              onMouseEnter={(event) => showTooltip("Preferences", event.currentTarget)}
+              onMouseLeave={hideTooltip}
+              onFocus={(event) => showTooltip("Preferences", event.currentTarget)}
+              onBlur={hideTooltip}
+              aria-label="Preferences"
+              className={
+                !labelsVisible
+                  ? "flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+                  : "flex flex-1 items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+              }
+            >
+              <SettingsIcon size={16} />
+              {labelsVisible && <span className="flex-1 text-left">Preferences</span>}
+            </button>
+            {labelsVisible && (
+              <button
+                onClick={() => {
+                  setTooltip(null);
+                  setPopoverOpen(false);
+                  api.system.openPreferencesWindow().catch(() => {});
+                }}
+                onMouseEnter={(event) => showTooltip("Open in new window", event.currentTarget)}
+                onMouseLeave={hideTooltip}
+                aria-label="Open Preferences in new window"
+                className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+              >
+                <ExternalLink size={14} />
+              </button>
+            )}
+          </div>
         )}
 
         <button

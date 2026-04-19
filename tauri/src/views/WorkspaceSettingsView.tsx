@@ -84,11 +84,11 @@ export default function WorkspaceSettingsView() {
   const childCreateParentId = selectedWorkspace?.parent_workspace_id ?? selectedWorkspace?.id ?? null;
 
   useEffect(() => {
+    setMoveToParentId("");
     if (!selectedId) {
       setStats(null);
       setMemoryCount(0);
       setEditPrompt("");
-      setMoveToParentId("");
       return;
     }
 
