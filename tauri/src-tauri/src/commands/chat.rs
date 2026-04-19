@@ -229,15 +229,29 @@ pub fn get_related_chats(
         return Ok(vec![]);
     }
 
-    // Join tags into a simple space-separated query for FTS
-    let fts_query = req.tags.join(" ");
-    
+    // Quote every tag as an FTS5 phrase so multi-word tags (e.g. "state
+    // management") and tags containing special chars (e.g. "c++") are safe.
+    let fts_query: String = req
+        .tags
+        .iter()
+        .filter_map(|tag| {
+            let cleaned = tag.trim().replace('"', "");
+            if cleaned.is_empty() { None } else { Some(format!("\"{}\"", cleaned)) }
+        })
+        .collect::<Vec<_>>()
+        .join(" OR ");
+
+    if fts_query.is_empty() {
+        return Ok(vec![]);
+    }
+
     quick_search_service::query_filtered(
         &conn,
         &fts_query,
         limit,
         Some(&req.workspace_id),
         req.session_id.as_deref(),
+        Some("conversation"),
     )
 }
 

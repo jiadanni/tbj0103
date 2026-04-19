@@ -31,7 +31,7 @@ pub fn query(
     }
 
     let fts_query = build_fts_query(trimmed).ok_or_else(|| "Enter a search query.".to_string())?;
-    query_filtered(conn, &fts_query, limit, None, None)
+    query_filtered(conn, &fts_query, limit, None, None, None)
 }
 
 pub fn query_filtered(
@@ -40,6 +40,7 @@ pub fn query_filtered(
     limit: usize,
     workspace_id: Option<&str>,
     exclude_session_id: Option<&str>,
+    kind_filter: Option<&str>,
 ) -> Result<Vec<QuickSearchResult>, String> {
     let mut where_clauses = vec!["quick_search_documents_fts MATCH ?1"];
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(fts_query.to_string())];
@@ -54,7 +55,16 @@ pub fn query_filtered(
         params.push(Box::new(ex_sid.to_string()));
     }
 
+    if let Some(kind) = kind_filter {
+        // Use the next positional param index
+        let next_idx = params.len() + 1;
+        where_clauses.push(Box::leak(format!("d.kind = ?{}", next_idx).into_boxed_str()));
+        params.push(Box::new(kind.to_string()));
+    }
+
     let where_sql = where_clauses.join(" AND ");
+    // Deduplicate by session_id so one chat only appears once even if many of
+    // its rows (messages, summaries) all match the query.
     let sql = format!(
         r#"
         SELECT
@@ -78,6 +88,7 @@ pub fn query_filtered(
         LEFT JOIN workspaces w ON w.id = d.workspace_id
         LEFT JOIN projects p ON p.id = d.project_id
         WHERE {}
+        GROUP BY d.session_id
         ORDER BY bm25(quick_search_documents_fts, 8.0, 2.0, 1.0) ASC, d.updated_at DESC
         LIMIT ?{}
     "#,
