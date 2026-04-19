@@ -496,6 +496,11 @@ export interface PerformanceStats {
   gpu_vram_total_bytes: number | null;
   /** GPU display name. null when unavailable. */
   gpu_name: string | null;
+  /**
+   * True when gpu_vram_used_bytes reflects live usage (nvidia-smi on Linux/Windows).
+   * False when only total capacity is known (macOS system_profiler).
+   */
+  gpu_vram_usage_available: boolean;
 }
 
 export interface DashboardRoute {

@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { api, type PerformanceStats, type BackgroundTaskEvent } from "../lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -60,9 +59,9 @@ const JOB_LABELS: Record<string, string> = {
 
 function JobPill({ taskType }: { taskType: string }) {
   return (
-    <div className="flex items-center gap-1.5 animate-fade-in">
+    <div className="flex items-center gap-1.5">
       {/* Pulsing dot */}
-      <span className="relative flex h-[7px] w-[7px]">
+      <span className="relative flex h-[7px] w-[7px]" aria-hidden="true">
         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
         <span className="relative inline-flex rounded-full h-[7px] w-[7px] bg-emerald-500" />
       </span>
@@ -80,37 +79,52 @@ const POLL_INTERVAL_MS = 2500;
 export default function StatusBar() {
   const [stats, setStats] = useState<PerformanceStats | null>(null);
   const [activeJobs, setActiveJobs] = useState<Set<string>>(new Set());
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // [P2] In-flight guard: prevents overlapping getPerformanceStats() calls.
+  const inFlightRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Poll performance stats
+  // Poll performance stats — reschedule only after each response completes.
   useEffect(() => {
     let cancelled = false;
 
+    function scheduleNext() {
+      if (cancelled) { return; }
+      timerRef.current = setTimeout(() => { void fetchOnce(); }, POLL_INTERVAL_MS);
+    }
+
     async function fetchOnce() {
+      if (cancelled || inFlightRef.current) {
+        scheduleNext();
+        return;
+      }
+      inFlightRef.current = true;
       try {
         const result = await api.system.getPerformanceStats();
         if (!cancelled) { setStats(result); }
       } catch {
         // silently ignore — backend may not be ready yet
+      } finally {
+        inFlightRef.current = false;
+        scheduleNext();
       }
     }
 
+    // Kick off immediately, then reschedule after each completion.
     void fetchOnce();
-    pollingRef.current = setInterval(() => { void fetchOnce(); }, POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      if (pollingRef.current !== null) { clearInterval(pollingRef.current); }
+      if (timerRef.current !== null) { clearTimeout(timerRef.current); }
     };
   }, []);
 
-  // Listen for background task events
+  // Listen for background task events via the shared api.ts wrapper.
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
 
     const setup = async () => {
-      unlistenFn = await listen<BackgroundTaskEvent>("background_task", (event) => {
-        const { task_type, status } = event.payload;
+      unlistenFn = await api.listenBackgroundTask((payload: BackgroundTaskEvent) => {
+        const { task_type, status } = payload;
         setActiveJobs((prev) => {
           const next = new Set(prev);
           if (status === "started" || status === "processing") {
@@ -138,31 +152,49 @@ export default function StatusBar() {
   const gpuVramUsed = stats?.gpu_vram_used_bytes ?? null;
   const hasGpu = gpuVramTotal !== null && gpuVramTotal > 0;
 
-  const gpuPct = hasGpu && gpuVramUsed !== null ? pct(gpuVramUsed, gpuVramTotal) : 0;
-
-  // On macOS used == total (capacity only) — show capacity label, no usage bar
-  const isTotalOnly = hasGpu && gpuVramUsed === gpuVramTotal;
+  // [P2] Use the explicit flag from the backend — never infer from used === total.
+  const hasLiveUsage = stats?.gpu_vram_usage_available === true;
+  const gpuPct = hasGpu && hasLiveUsage && gpuVramUsed !== null
+    ? pct(gpuVramUsed, gpuVramTotal)
+    : 0;
 
   let gpuLabel = "";
   if (hasGpu) {
-    if (isTotalOnly) {
-      gpuLabel = formatBytes(gpuVramTotal);
-    } else if (gpuVramUsed !== null) {
+    if (hasLiveUsage && gpuVramUsed !== null) {
       gpuLabel = `${formatBytes(gpuVramUsed)} / ${formatBytes(gpuVramTotal)}`;
+    } else {
+      gpuLabel = formatBytes(gpuVramTotal);
     }
   }
 
   const jobList = Array.from(activeJobs);
 
+  // [P2] Build a screen-reader announcement string for background jobs only —
+  // the continuously-updating metrics are not announced.
+  const jobAnnouncement = jobList.length > 0
+    ? jobList.map((t) => JOB_LABELS[t] ?? t).join(", ") + " running"
+    : "";
+
   return (
+    // [P2] No role="status" / aria-live on the container — metrics update every
+    // 2.5 s and would flood screen readers. A hidden live region below handles
+    // discrete job announcements only.
     <div
-      role="status"
-      aria-live="polite"
       aria-label="System status bar"
       className="shrink-0 flex h-[22px] items-center justify-between gap-4 border-t border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-3 backdrop-blur-sm select-none"
     >
-      {/* Left — active background jobs */}
-      <div className="flex items-center gap-3 min-w-0 overflow-hidden">
+      {/* Hidden live region — announces job state changes only */}
+      <span
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {jobAnnouncement}
+      </span>
+
+      {/* Left — active background jobs (visible) */}
+      <div className="flex items-center gap-3 min-w-0 overflow-hidden" aria-hidden="true">
         {jobList.length === 0 ? (
           <span className="text-[10px] text-[var(--text-muted)]/50 leading-none">
             No background jobs
@@ -172,13 +204,13 @@ export default function StatusBar() {
         )}
       </div>
 
-      {/* Right — performance meters */}
-      <div className="flex items-center gap-3 shrink-0">
+      {/* Right — performance meters (aria-hidden; screen readers get no value from constant churn) */}
+      <div className="flex items-center gap-3 shrink-0" aria-hidden="true">
         {/* CPU */}
         <MiniBar percent={cpuPct} label="CPU" />
 
         {/* Divider */}
-        <span className="h-3 w-px bg-[var(--border-color)]" aria-hidden="true" />
+        <span className="h-3 w-px bg-[var(--border-color)]" />
 
         {/* RAM */}
         <div className="flex items-center gap-1.5">
@@ -199,14 +231,14 @@ export default function StatusBar() {
         {/* GPU (only when detected) */}
         {hasGpu && (
           <>
-            <span className="h-3 w-px bg-[var(--border-color)]" aria-hidden="true" />
+            <span className="h-3 w-px bg-[var(--border-color)]" />
             <div className="flex items-center gap-1.5">
-              {!isTotalOnly && (
+              {hasLiveUsage && (
                 <span className="text-[10px] tabular-nums text-[var(--text-muted)] leading-none w-[26px] text-right">
                   {gpuPct}%
                 </span>
               )}
-              {!isTotalOnly && (
+              {hasLiveUsage && (
                 <div className="relative h-[5px] w-14 rounded-full overflow-hidden bg-[var(--border-color)]/60">
                   <div
                     className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ${barColor(gpuPct)}`}
