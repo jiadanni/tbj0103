@@ -93,14 +93,30 @@ pub fn get_system_specs() -> Result<SystemSpecs, String> {
 }
 
 #[tauri::command]
-pub async fn open_preferences_window(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window("preferences") {
-        win.show().map_err(|e| e.to_string())?;
-        win.set_focus().map_err(|e| e.to_string())?;
-        return Ok(());
+pub async fn open_preferences_window(
+    app: tauri::AppHandle,
+    single_instance: bool,
+) -> Result<(), String> {
+    if single_instance {
+        // Focus the first existing preferences window if any is open
+        for (label, _) in app.webview_windows() {
+            if label.starts_with("preferences") {
+                let win = app.get_webview_window(&label).ok_or("window gone")?;
+                win.show().map_err(|e| e.to_string())?;
+                win.set_focus().map_err(|e| e.to_string())?;
+                return Ok(());
+            }
+        }
     }
 
-    WebviewWindowBuilder::new(&app, "preferences", WebviewUrl::App("index.html".into()))
+    // Open a new window with a unique label so multiple instances can coexist
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let label = format!("preferences-{ts}");
+
+    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("preferences.html".into()))
         .title("Preferences — Aetherium")
         .inner_size(960.0, 640.0)
         .min_inner_size(720.0, 480.0)

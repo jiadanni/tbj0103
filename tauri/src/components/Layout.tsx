@@ -4,7 +4,7 @@ import { message } from "@tauri-apps/plugin-dialog";
 import {
   
 } from "react-resizable-panels";
-import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon } from "lucide-react";
+import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon, Pin } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
@@ -17,6 +17,7 @@ import AppHeaderMenu from "./AppHeaderMenu";
 import ArtifactPanel from "./ArtifactPanel";
 import ConfirmDialog from "./ConfirmDialog";
 import { api } from "../lib/api";
+import { usePrefsWindowMode } from "../lib/prefsWindowMode";
 import { isMac, isLinux } from "../lib/platform";
 import SplitPaneLayout from "./SplitPaneLayout";
 import ChatView from "../views/ChatView";
@@ -509,6 +510,7 @@ function SplitTitlebarWorkspaceNavigation() {
 
 function PreferencesDockButton() {
   const navigate = useNavigate();
+  const [singleInstance, toggleSingleInstance] = usePrefsWindowMode();
 
   return (
     <div className="absolute bottom-3 left-3 z-30 flex items-center gap-1">
@@ -522,12 +524,24 @@ function PreferencesDockButton() {
         <span>Preferences</span>
       </button>
       <button
-        onClick={() => api.system.openPreferencesWindow().catch(() => {})}
+        onClick={() => api.system.openPreferencesWindow(singleInstance).catch(() => {})}
         aria-label="Open Preferences in new window"
         title="Open in new window"
         className="inline-flex items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 p-2 text-[var(--text-secondary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
       >
         <ExternalLink size={14} />
+      </button>
+      <button
+        onClick={toggleSingleInstance}
+        aria-label={singleInstance ? "Single-instance mode (click to allow multiple)" : "Multi-instance mode (click to enforce single)"}
+        title={singleInstance ? "Single window mode — click to allow multiple" : "Multi-window mode — click to enforce single"}
+        className={`inline-flex items-center justify-center rounded-xl border p-2 shadow-lg backdrop-blur-xl transition-colors ${
+          singleInstance
+            ? "border-[var(--accent-color)] bg-[var(--bg-elevated)]/95 text-[var(--accent-color)]"
+            : "border-[var(--border-color)] bg-[var(--bg-elevated)]/95 text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+        }`}
+      >
+        <Pin size={14} />
       </button>
     </div>
   );

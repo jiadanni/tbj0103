@@ -6,12 +6,43 @@ import {
   ChevronRight,
   ChevronUp,
   ExternalLink,
+  Pin,
   Settings as SettingsIcon,
   Zap,
 } from "lucide-react";
 import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
 import { api } from "../lib/api";
+import { usePrefsWindowMode } from "../lib/prefsWindowMode";
+
+/** Pop-out + single-instance toggle buttons shown alongside the Preferences button. */
+function PrefsPopOutButtons({ onClose }: { onClose: () => void }) {
+  const [singleInstance, toggleSingleInstance] = usePrefsWindowMode();
+  return (
+    <>
+      <button
+        onClick={() => { onClose(); api.system.openPreferencesWindow(singleInstance).catch(() => {}); }}
+        title="Open in new window"
+        aria-label="Open Preferences in new window"
+        className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+      >
+        <ExternalLink size={14} />
+      </button>
+      <button
+        onClick={toggleSingleInstance}
+        title={singleInstance ? "Single window mode — click to allow multiple" : "Multi-window mode — click to enforce single"}
+        aria-label={singleInstance ? "Single-instance mode (click to allow multiple)" : "Multi-instance mode (click to enforce single)"}
+        className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl border shadow-sm transition-colors ${
+          singleInstance
+            ? "border-[var(--accent-color)] bg-[var(--bg-elevated)] text-[var(--accent-color)]"
+            : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+        }`}
+      >
+        <Pin size={14} />
+      </button>
+    </>
+  );
+}
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
@@ -234,21 +265,7 @@ export default function Sidebar({
               <SettingsIcon size={16} />
               {labelsVisible && <span className="flex-1 text-left">Preferences</span>}
             </button>
-            {labelsVisible && (
-              <button
-                onClick={() => {
-                  setTooltip(null);
-                  setPopoverOpen(false);
-                  api.system.openPreferencesWindow().catch(() => {});
-                }}
-                onMouseEnter={(event) => showTooltip("Open in new window", event.currentTarget)}
-                onMouseLeave={hideTooltip}
-                aria-label="Open Preferences in new window"
-                className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-              >
-                <ExternalLink size={14} />
-              </button>
-            )}
+            {labelsVisible && <PrefsPopOutButtons onClose={() => { setTooltip(null); setPopoverOpen(false); }} />}
           </div>
         )}
 
