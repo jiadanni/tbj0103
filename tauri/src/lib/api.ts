@@ -482,6 +482,22 @@ export interface SystemSpecs {
   gpu_detection_source?: string | null;
 }
 
+/** Lightweight snapshot polled every few seconds for the status bar. */
+export interface PerformanceStats {
+  /** Global CPU usage across all cores, 0–100. */
+  cpu_usage_percent: number;
+  /** RAM currently in use (bytes). */
+  memory_used_bytes: number;
+  /** Total physical RAM (bytes). */
+  memory_total_bytes: number;
+  /** GPU VRAM in use (bytes). null when unavailable. */
+  gpu_vram_used_bytes: number | null;
+  /** Total GPU VRAM (bytes). null when unavailable. */
+  gpu_vram_total_bytes: number | null;
+  /** GPU display name. null when unavailable. */
+  gpu_name: string | null;
+}
+
 export interface DashboardRoute {
   path: string;
   state?: Record<string, unknown> | null;
@@ -1172,6 +1188,7 @@ export const api = {
 
   system: {
     getSpecs: () => invoke<SystemSpecs>("get_system_specs"),
+    getPerformanceStats: () => invoke<PerformanceStats>("get_performance_stats"),
     toggleDevtools: () => invoke<void>("toggle_devtools"),
     openPreferencesWindow: (singleInstance = false) =>
       invoke<void>("open_preferences_window", { singleInstance }),

@@ -462,6 +462,7 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::system::get_system_specs,
+            commands::system::get_performance_stats,
             commands::system::toggle_devtools,
             commands::system::open_preferences_window,
             commands::security::get_security_status,

@@ -25,6 +25,7 @@ import MemoryView from "../views/MemoryView";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useChatStore } from "../stores/chatStore";
 import CompactMenuSelect from "./CompactMenuSelect";
+import StatusBar from "./StatusBar";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
@@ -1426,6 +1427,7 @@ export default function Layout() {
         )}
       </div>
       {!hasLeftRail && <PreferencesDockButton />}
+      <StatusBar />
       <ArtifactPanel />
     </div>
   );
