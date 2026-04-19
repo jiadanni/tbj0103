@@ -145,6 +145,16 @@ pub async fn assemble_and_send(
             load_raw_history(&conn_guard, &req.session_id)?
         };
 
+        // Apply context-window truncation even on the fast path so that long
+        // conversations don't silently overflow the model's context limit.
+        let budget = crate::services::context_assembler::budget_for_context_window(
+            crate::services::context_assembler::DEFAULT_CONTEXT_SIZE,
+        );
+        let messages = crate::services::context_assembler::truncate_messages(
+            messages,
+            budget.conversation,
+        );
+
         let _ = app.emit(
             &format!("context-sources-{}", req.session_id),
             crate::models::context::ContextSources {
