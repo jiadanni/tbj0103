@@ -6,6 +6,10 @@ use rusqlite::Connection;
 const MEMORY_SIMILARITY_THRESHOLD: f32 = 0.3;
 const MEMORY_RETRIEVAL_TOP_K: usize = 5;
 
+/// Default context window size used when the model's actual limit is unknown.
+/// Ollama defaults to 2048; this value is 4× larger and safe for most models.
+pub const DEFAULT_CONTEXT_SIZE: usize = 8192;
+
 pub fn budget_for_context_window(context_size: usize) -> TokenBudget {
     let safe_total = (context_size as f64 * 0.90) as usize; // 10% safety margin
     let reserved_for_response = safe_total.min(2048);
@@ -25,6 +29,53 @@ pub fn estimate_tokens(text: &str) -> usize {
     text.len() / 4 // 1 token ≈ 4 chars
 }
 
+/// Truncate a message list to fit within `budget_tokens`.
+///
+/// Always preserves `messages[0]` (anchors the conversation) and the most
+/// recent `RECENT_WINDOW` messages (current turn + one prior turn).  Middle
+/// messages are included in chronological order as long as they fit the
+/// budget.  Returns the original list unchanged when everything already fits.
+const RECENT_WINDOW: usize = 4;
+
+pub fn truncate_messages(messages: Vec<OllamaMessage>, budget_tokens: usize) -> Vec<OllamaMessage> {
+    if messages.is_empty() {
+        return messages;
+    }
+
+    // Fast path: if everything fits, return as-is
+    let total_tokens: usize = messages.iter().map(|m| estimate_tokens(&m.content)).sum();
+    if total_tokens <= budget_tokens {
+        return messages;
+    }
+
+    let n = messages.len();
+    let recent_count = RECENT_WINDOW.min(n);
+    let recent_start = n - recent_count;
+
+    let mut result: Vec<OllamaMessage> = Vec::with_capacity(n);
+    let mut tokens_used = 0usize;
+
+    // Always include first message (establishes context)
+    result.push(messages[0].clone());
+    tokens_used += estimate_tokens(&messages[0].content);
+
+    // Include middle messages that fit within budget [1..recent_start]
+    for msg in messages.iter().take(recent_start).skip(1) {
+        let t = estimate_tokens(&msg.content);
+        if tokens_used + t <= budget_tokens {
+            result.push(msg.clone());
+            tokens_used += t;
+        }
+    }
+
+    // Always append the recent window (skip index 0 if it is already in recent range)
+    for msg in messages.iter().skip(recent_start.max(1)) {
+        result.push(msg.clone());
+    }
+
+    result
+}
+
 pub fn assemble_context(
     conn: &Connection,
     workspace_id: &str,
@@ -33,10 +84,9 @@ pub fn assemble_context(
     _options: &std::collections::HashMap<String, serde_json::Value>,
     query_embedding: Option<&[f32]>,
 ) -> Result<(Vec<OllamaMessage>, ContextSources), String> {
-    // Basic budget, default to 8192 if unknown
-    // Note: Querying Ollama /api/show for num_ctx can be added later
-    let context_size = 8192;
-    let budget = budget_for_context_window(context_size);
+    // Budget derived from the model's context window. Querying Ollama /api/show
+    // for the actual num_ctx will be added in a follow-up (phase 3).
+    let budget = budget_for_context_window(DEFAULT_CONTEXT_SIZE);
     let mut sources = ContextSources {
         memories_used: vec![],
         artifacts_used: vec![],
@@ -388,8 +438,9 @@ pub fn assemble_context(
         }
     }
 
-    // Add recent messages
+    // Add recent messages (track tokens for correctness)
     for msg in recent_messages.into_iter().rev() {
+        current_history_tokens += estimate_tokens(&msg.content);
         combined.push(msg);
     }
 

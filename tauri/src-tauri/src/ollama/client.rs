@@ -490,7 +490,8 @@ impl OllamaClient {
         let mut body = json!({
             "model": resolved_model,
             "messages": messages,
-            "stream": false
+            "stream": false,
+            "options": { "num_ctx": crate::services::context_assembler::DEFAULT_CONTEXT_SIZE }
         });
         if let Some(ka) = keep_alive {
             body.as_object_mut()
@@ -572,7 +573,8 @@ impl OllamaClient {
         let body = json!({
             "model": resolved_model,
             "messages": messages,
-            "stream": true
+            "stream": true,
+            "options": { "num_ctx": crate::services::context_assembler::DEFAULT_CONTEXT_SIZE }
         });
 
         let response = self
