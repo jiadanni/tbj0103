@@ -50,6 +50,9 @@ pub struct ChatSession {
     pub branch_message_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Total number of messages in the session, computed at query time.
+    /// Zero for brand-new sessions; non-zero means the session has been used.
+    pub message_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,6 +134,7 @@ impl ChatSession {
             branch_message_id: None,
             created_at: now.clone(),
             updated_at: now,
+            message_count: 0,
         }
     }
 }

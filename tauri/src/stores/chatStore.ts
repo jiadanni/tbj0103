@@ -30,6 +30,8 @@ export interface ChatSession {
   updated_at: string;
   title_generated_at?: string;
   message_count_at_title_gen?: number;
+  /** Persisted message count returned from the backend; 0 means truly empty. */
+  message_count?: number;
 }
 
 interface ChatStore {
@@ -139,7 +141,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   addMessageVariant: (newMessage) => {
     set((s) => {
       const groupId = newMessage.variant_group_id;
-      if (!groupId) return s;
+      if (!groupId) { return s; }
       const existing = s.messageVariants[groupId] ?? [];
       return {
         messageVariants: {
@@ -196,11 +198,14 @@ export function findUnusedSession(
       s.is_incognito === (options?.isIncognito ?? false) &&
       s.exclude_from_analytics === (options?.excludeFromAnalytics ?? false);
     const isNewTitle = s.title === "New Chat" || s.title === "";
-    // If we have messages loaded and there are none, it's unused.
-    // If we don't have messages loaded, check message_count_at_title_gen (usually 0 for new chats).
-    const hasNoMessages =
-      (messages[s.id] === undefined || messages[s.id].length === 0) &&
-      (s.message_count_at_title_gen === 0 || s.message_count_at_title_gen === undefined);
+    // Prefer the backend-provided message_count (reliable after restarts).
+    // Fall back to the in-memory message_count_at_title_gen for sessions that
+    // were updated in this session but whose count hasn't been persisted.
+    // Finally consult the in-process message store.
+    const loadedMessages = messages[s.id];
+    const hasNoMessages = loadedMessages?.length
+      ? false
+      : (s.message_count ?? s.message_count_at_title_gen ?? 0) === 0;
 
     return (
       isWorkspaceMatch &&

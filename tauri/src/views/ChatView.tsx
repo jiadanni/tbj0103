@@ -30,6 +30,8 @@ import { getModelGroupMeta } from "../lib/modelGroups";
 import { resolveChatTitle } from "../lib/chatTitles";
 import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
 import { SelectionToolbar } from "../components/SelectionToolbar";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import type { ChatSubView } from "../components/navigationItems";
 
@@ -1823,8 +1825,8 @@ function StreamingBubble({
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
   const isCurrentlyStreaming = activeChatId ? streamingSessionId === activeChatId : false;
 
-  // Direct DOM updates via rAF — avoids React reconciliation on every token.
-  const textRef = useRef<HTMLParagraphElement>(null);
+  // Batched state updates via rAF — avoids thrashing React on every token.
+  const [content, setContent] = useState("");
   const rafRef = useRef(0);
   const visibleRef = useRef(false);
   const [visible, setVisible] = useState(false);
@@ -1832,14 +1834,15 @@ function StreamingBubble({
   useEffect(() => {
     if (!isCurrentlyStreaming) {
       visibleRef.current = false;
+      // Defer the reset so it does not trigger a synchronous setState inside an effect.
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => { setContent(""); });
       return;
     }
     const unsub = useChatStore.subscribe((state) => {
       window.cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => {
-        if (textRef.current) {
-          textRef.current.textContent = state.streamingContent;
-        }
+        setContent(state.streamingContent);
         if (state.streamingContent && !visibleRef.current) {
           visibleRef.current = true;
           setVisible(true);
@@ -1862,7 +1865,9 @@ function StreamingBubble({
         ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]"
         : ""
         }`}>
-        <p ref={textRef} className="whitespace-pre-wrap" />
+        <div className="prose prose-sm dark:prose-invert max-w-none">
+          <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+        </div>
         <span className="streaming-cursor" />
       </div>
     </div>
@@ -3208,11 +3213,16 @@ export default function ChatView() {
 
     return { sessionId, session };
   }
-  async function generateSessionTitleIfNeeded(sessionId: string, model: string, firstMessage: string) {
+  async function generateSessionTitleIfNeeded(sessionId: string, model: string, firstMessage: string, knownSession?: ChatSession) {
     const settings = await api.settings.get().catch(() => null);
     if (!settings || settings.chat_title_auto_refresh === "disabled") { return; }
 
-    const session = sessions.find((s) => s.id === sessionId);
+    // Use the provided session object when available to avoid stale-closure misses
+    // (e.g. a brand-new session that hasn't propagated through React state yet).
+    const session = knownSession
+      ?? sessions.find((s) => s.id === sessionId)
+      ?? useChatStore.getState().sessions.find((s) => s.id === sessionId)
+      ?? null;
     if (!session) { return; }
 
     const sessionMessages = useChatStore.getState().messages[sessionId] ?? [];
@@ -3226,13 +3236,14 @@ export default function ChatView() {
         const title = resolveChatTitle({ aiTitle, firstMessage });
         // Persist to DB
         await api.chat.updateSession(effectiveWorkspaceId, sessionId, { title });
-        // Update local store
+        // Update scoped sessions list and sidebar
         updateSessionInScope({
           ...session,
           title,
           title_generated_at: new Date().toISOString(),
           message_count_at_title_gen: 1
         });
+        setSidebarSessions((prev) => prev.map((item) => item.id === sessionId ? { ...item, title } : item));
       } catch {
         // Leave the existing title untouched if persistence fails.
       }
@@ -3252,13 +3263,14 @@ export default function ChatView() {
           const title = resolveChatTitle({ aiTitle, firstMessage });
           // Persist to DB
           await api.chat.updateSession(effectiveWorkspaceId, sessionId, { title });
-          // Update local store
+          // Update scoped sessions list and sidebar
           updateSessionInScope({
             ...session,
             title,
             title_generated_at: new Date().toISOString(),
             message_count_at_title_gen: userMessageCount
           });
+          setSidebarSessions((prev) => prev.map((item) => item.id === sessionId ? { ...item, title } : item));
         } catch {
           // Silently fail if title generation errors
         }
@@ -3563,7 +3575,7 @@ export default function ChatView() {
     }
     /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
-    await generateSessionTitleIfNeeded(sid, modelId, userContent);
+    await generateSessionTitleIfNeeded(sid, modelId, userContent, ensuredSession.session ?? undefined);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
