@@ -32,9 +32,8 @@ const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"
 const HistoryView = React.lazy(() => import("../views/HistoryView"));
 const ProjectDashboardView = React.lazy(() => import("../views/ProjectDashboardView"));
 const PreferencesView = React.lazy(() => import("../views/PreferencesView"));
-const DocumentBrowserView = React.lazy(() => import("../views/DocumentBrowserView"));
+const SourceBrowserView = React.lazy(() => import("../views/SourceBrowserView"));
 const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
-const WebCaptureView = React.lazy(() => import("../views/WebCaptureView"));
 const FlashcardReviewView = React.lazy(() => import("../views/FlashcardReviewView"));
 const LearningPathView = React.lazy(() => import("../views/LearningPathView"));
 const LogsView = React.lazy(() => import("../views/LogsView"));
@@ -797,7 +796,7 @@ function WorkspaceTabBar({
   const [dialogBusy, setDialogBusy] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
-  const splitUnsupportedRoute = ["/preferences", "/memory", "/webcapture"].some((path) => location.pathname.startsWith(path));
+  const splitUnsupportedRoute = ["/preferences", "/memory"].some((path) => location.pathname.startsWith(path));
   const showSplitTitlebarWorkspaceNavigation = splitMode && !splitUnsupportedRoute;
   const showSinglePaneWorkspaceDropdown = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "top-dropdown";
   const showSplitToggle = !splitUnsupportedRoute || splitMode;
@@ -1316,7 +1315,7 @@ export default function Layout() {
   const setDemo = useWorkspaceStore((state) => state.setDemo);
   const loadArtifact = useArtifactStore((state) => state.loadArtifact);
   const setArtifactPanelOpen = useArtifactStore((state) => state.setPanelOpen);
-  const splitUnsupportedRoute = ["/preferences", "/memory", "/webcapture"].some((path) => location.pathname.startsWith(path));
+  const splitUnsupportedRoute = ["/preferences", "/memory"].some((path) => location.pathname.startsWith(path));
   const showSplitPaneLayout = splitMode && !splitUnsupportedRoute;
   const showSinglePaneNavigation = !showSplitPaneLayout;
   const showSectionSidebar = showSinglePaneNavigation && sectionNavigation === "sidebar";
@@ -1446,8 +1445,7 @@ function AppRoutes() {
       <Route path="/chat" element={<ChatView />} />
       <Route path="/chat/:sessionId" element={<ChatView />} />
       <Route path="/notes" element={<NoteEditorView />} />
-      <Route path="/documents" element={<DocumentBrowserView />} />
-      <Route path="/webcapture" element={<WebCaptureView />} />
+      <Route path="/sources" element={<SourceBrowserView />} />
       <Route path="/graph" element={<KnowledgeGraphView />} />
       <Route path="/flashcards" element={<FlashcardReviewView />} />
       <Route path="/learning" element={<LearningPathView />} />
@@ -1457,6 +1455,8 @@ function AppRoutes() {
       <Route path="/preferences" element={<PreferencesView />} />
       
       {/* Legacy redirects */}
+      <Route path="/documents" element={<Navigate to="/sources" replace />} />
+      <Route path="/webcapture" element={<Navigate to="/sources" replace />} />
       <Route path="/grounded" element={<Navigate to="/chat" replace />} />
       <Route path="/chat-sessions" element={<Navigate to="/chat" replace />} />
       <Route path="/daily" element={<Navigate to="/notes" state={{ subView: "daily" }} replace />} />

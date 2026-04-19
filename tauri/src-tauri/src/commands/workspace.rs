@@ -409,89 +409,52 @@ async fn try_ai_icon_recommendation(workspace_name: &str, workspace_description:
 /// Uses simple keyword matching to suggest appropriate icons.
 fn fallback_icon_recommendation(workspace_name: &str, workspace_description: &str) -> String {
     let input = format!("{} {}", workspace_name, workspace_description).to_lowercase();
-    
-    if regex::Regex::new(r"(python|code|programming|dev|javascript|typescript|rust|golang|js|ts|java|kotlin)")
-        .unwrap()
-        .is_match(&input)
-    {
+
+    let contains_any = |keywords: &[&str]| keywords.iter().any(|kw| input.contains(kw));
+
+    if contains_any(&["python", "code", "programming", "dev", "javascript", "typescript", "rust", "golang", " js ", " ts ", "java", "kotlin"]) {
         return "code".to_string();
     }
-    if regex::Regex::new(r"(learn|education|study|course|tutorial|training|books?)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&["learn", "education", "study", "course", "tutorial", "training", "book"]) {
         return "book-open".to_string();
     }
-    if regex::Regex::new(r"(security|crypto|privacy|encrypt|safe)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&["security", "crypto", "privacy", "encrypt", "safe"]) {
         return "shield".to_string();
     }
-    if regex::Regex::new(r"music").unwrap().is_match(&input) {
+    if input.contains("music") {
         return "music".to_string();
     }
-    if regex::Regex::new(r"(health|medical|fitness|wellness|doctor)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&["health", "medical", "fitness", "wellness", "doctor"]) {
         return "heart".to_string();
     }
-    if regex::Regex::new(r"(business|work|job|startup|career|enterprise)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&["business", "work", "job", "startup", "career", "enterprise"]) {
         return "briefcase".to_string();
     }
-    if regex::Regex::new(r"(design|art|creative|visual|ui|ux|graphics)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&["design", "art", "creative", "visual", " ui ", " ux ", "graphics"]) {
         return "palette".to_string();
     }
-    if regex::Regex::new(r"(data|database|sql|analytics|bigdata)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&["data", "database", "sql", "analytics", "bigdata"]) {
         return "database".to_string();
     }
-    if regex::Regex::new(r"(web|website|frontend|backend|api|rest|http)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&["web", "website", "frontend", "backend", "api", "rest", "http"]) {
         return "globe".to_string();
     }
-    if regex::Regex::new(r"(system|devops|docker|container|kubernetes|infra)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&["system", "devops", "docker", "container", "kubernetes", "infra"]) {
         return "zap".to_string();
     }
-    if regex::Regex::new(r"(ml|ai|machine.?learning|neural|deep.?learning|nlp|gpt)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&[" ml ", " ai ", "machine learning", "machinelearning", "neural", "deep learning", "deeplearning", "nlp", "gpt"]) {
         return "brain".to_string();
     }
-    if regex::Regex::new(r"(linux|bash|shell|terminal|cli|command)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&["linux", "bash", "shell", "terminal", "cli", "command"]) {
         return "terminal".to_string();
     }
-    if regex::Regex::new(r"(math|engineering|physics|science|equation)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&["math", "engineering", "physics", "science", "equation"]) {
         return "square-root".to_string();
     }
-    if regex::Regex::new(r"(write|blog|article|content|documentation|wiki)")
-        .unwrap()
-        .is_match(&input)
-    {
+    if contains_any(&["write", "blog", "article", "content", "documentation", "wiki"]) {
         return "pen".to_string();
     }
-    
+
     "folder".to_string()
 }
 

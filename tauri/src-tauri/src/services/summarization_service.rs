@@ -27,14 +27,15 @@ pub async fn generate_rolling_summary(
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let mut stmt = conn.prepare(
             "SELECT id, role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
-        ).unwrap();
+        ).map_err(|e| e.to_string())?;
 
-        stmt.query_map(rusqlite::params![session_id], |row| {
+        let messages = stmt.query_map(rusqlite::params![session_id], |row| {
             Ok((row.get(0)?, row.get(1)?, row.get(2)?))
         })
-        .unwrap()
+        .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
-        .collect()
+        .collect::<Vec<_>>();
+        messages
     };
 
     if messages.len() < 10 {

@@ -378,7 +378,7 @@ pub fn assemble_context(
     let mut history: Vec<OllamaMessage> = vec![];
     let mut stmt = conn
         .prepare("SELECT role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC")
-        .unwrap();
+        .map_err(|e| e.to_string())?;
 
     if let Ok(iter) = stmt.query_map(rusqlite::params![session_id], |row| {
         Ok(OllamaMessage {

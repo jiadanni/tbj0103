@@ -20,8 +20,8 @@ pub async fn process_auto_memory_extraction(
              AND is_imported = 0
              ORDER BY updated_at DESC
              LIMIT 5"
-        ).unwrap();
-        stmt.query_map([], |row| {
+        ).map_err(|e| e.to_string())?;
+        let sessions = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -29,9 +29,10 @@ pub async fn process_auto_memory_extraction(
                 row.get::<_, i64>(3)?,
             ))
         })
-        .unwrap()
+        .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+        sessions
     };
 
     for (session_id, workspace_id, project_id, last_count) in sessions {
@@ -39,9 +40,9 @@ pub async fn process_auto_memory_extraction(
             let conn = state.0.get().map_err(|e| e.to_string())?;
             let mut msg_stmt = conn.prepare(
                 "SELECT id, role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
-            ).unwrap();
+            ).map_err(|e| e.to_string())?;
 
-            msg_stmt
+            let messages = msg_stmt
                 .query_map(rusqlite::params![session_id], |row| {
                     Ok(Message {
                         id: row.get(0)?,
@@ -58,9 +59,10 @@ pub async fn process_auto_memory_extraction(
                         created_at: "".to_string(),
                     })
                 })
-                .unwrap()
+                .map_err(|e| e.to_string())?
                 .filter_map(Result::ok)
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            messages
         };
 
         if !messages.is_empty() && messages.len() >= 5 && messages.len() > last_count as usize {

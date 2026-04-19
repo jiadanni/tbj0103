@@ -15,7 +15,7 @@ Guidance for AI coding agents (Copilot, Claude, Codex, etc.) working in this rep
 ### 1. The "Immediate Validation" Mandate
 AI agents often assume a change is correct if the tool call succeeds. You must strictly follow technical verification protocols.
 *   **TypeScript/React:** Run `npm run typecheck` after changes. DO NOT ignore errors in unrelated files; a change in an interface requires fixing all usages.
-*   **Rust/Backend:** Run `cargo check --manifest-path src-tauri/Cargo.toml` after backend changes.
+*   **Rust/Backend:** Run `cargo check --manifest-path src-tauri/Cargo.toml` after backend changes. For lint correctness, also run `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings`; clippy warnings are treated as errors.
 *   **Logic/UI:** Run only the relevant test file (e.g., `npx vitest run src/tests/views/ChatView.test.tsx`) to ensure no existing functionality was broken.
 
 ### 2. Surgical Editing vs. Rewrite
@@ -82,7 +82,8 @@ tbj0103/
 │       └── schema.sql          # SQLite schema (source of truth)
 ├── ARCHITECTURE.md
 ├── TAURI_PORT_ANALYSIS.md
-└── todo.md
+├── todo.md                     # Active roadmap — read before starting work
+└── bugs.md                     # Known issues — check before touching affected areas
 ```
 
 ---
@@ -166,8 +167,15 @@ npx vitest run
 # Rust check
 cargo check --manifest-path tauri/src-tauri/Cargo.toml
 
+# Rust lint (clippy)
+cargo clippy --manifest-path tauri/src-tauri/Cargo.toml -- -D warnings
+
+# Run all checks at once (SwiftLint + ESLint + tsc + clippy)
+./lint.sh
+
 # Run dev server (requires Ollama running on :11434 for AI features)
 cd tauri
+npm install          # run on first checkout or after package.json changes
 npm run tauri dev
 ```
 
@@ -263,6 +271,9 @@ System/Area 2:
 
 ## Safety Protocols
 
+### Ollama Prerequisite
+- AI features (chat, topic signatures, RAG) require Ollama running on `http://localhost:11434`. Before investigating AI-related failures, verify with `curl http://localhost:11434/api/tags`. A 7B+ model must be pulled for most features to produce meaningful output (`ollama list`).
+
 ### Data & Context Preservation
 - **Never `git checkout .` or `git restore .` without a full `git diff` first.** You may accidentally discard uncommitted changes that were necessary for the current task or environment state.
 - **Assume uncommitted changes are intentional.** If you see modifications you don't recognize, ask the user or analyze them thoroughly before reverting.
@@ -273,6 +284,14 @@ System/Area 2:
 - **Maintain Foreign Keys.** When restructuring tables in migrations, ensure all `REFERENCES` and `ON DELETE` constraints are preserved in the new table definition.
 
 ## Debugging Runtime Bugs
+
+- **Tauri IPC errors:** Open DevTools (`Ctrl+Shift+I`) and check the Console for `invoke` rejections. The error string is what the Rust command returned as `Err(String)`.
+- **Rust panics (dev):** Check the terminal running `npm run tauri dev`. Release builds suppress panics; dev builds print the full location.
+- **UI state bugs:** Install the Redux DevTools browser extension — it works with Zustand and lets you inspect the full store state over time.
+- **Ollama-related failures:** Confirm Ollama is running (`curl http://localhost:11434/api/tags`) and the expected model is pulled (`ollama list`). Many "no response" bugs are missing models, not code bugs.
+- **Render loop / infinite update:** Add a temporary `console.trace()` inside the looping effect to identify the exact call site. Then audit the dependency array for unstable function references (see React / Zustand Effect Safety above).
+- **Split-pane state divergence:** Log `useScopedWorkspace()` output for both panes. State drift almost always traces to a global store write (e.g., `setActiveWorkspaceId`) being called from a pane-scoped component instead of `setPaneWorkspace`.
+- **SQLite errors:** SQLite errors surface as `Err(String)` from commands. Look for `UNIQUE constraint failed`, `FOREIGN KEY constraint failed`, or `no such column` — each points to a specific schema/query mismatch.
 
 ## What to Avoid
 
