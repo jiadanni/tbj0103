@@ -2,7 +2,7 @@ use crate::models::system::SystemSpecs;
 #[cfg(target_os = "linux")]
 use std::process::Command;
 use sysinfo::System;
-use tauri::Manager;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[derive(Debug)]
 struct GpuInfo {
@@ -90,4 +90,23 @@ pub fn get_system_specs() -> Result<SystemSpecs, String> {
         gpu_memory_bytes: gpu_info.as_ref().and_then(|gpu| gpu.memory_bytes),
         gpu_detection_source: gpu_info.map(|gpu| gpu.detection_source),
     })
+}
+
+#[tauri::command]
+pub async fn open_preferences_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("preferences") {
+        win.show().map_err(|e| e.to_string())?;
+        win.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(&app, "preferences", WebviewUrl::App("index.html".into()))
+        .title("Preferences — Aetherium")
+        .inner_size(960.0, 640.0)
+        .min_inner_size(720.0, 480.0)
+        .resizable(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
