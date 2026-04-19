@@ -1,10 +1,11 @@
 use crate::db::DbState;
 use crate::models::workspace::{TopicSignature, TopicTag};
-use crate::ollama::client::{OllamaClient, OllamaMessage};
+use crate::ollama::client::{OllamaClient, OllamaMessage, RequestContext};
 use crate::services::ai_content_generator::generate_tags;
 use crate::services::model_settings::{get_configured_background_model, get_ollama_base_url};
 use rusqlite::Connection;
 use std::collections::HashMap;
+use std::time::Duration;
 
 const GENERIC_TOPIC_TAGS: &[&str] = &[
     "code",
@@ -418,6 +419,7 @@ pub async fn enrich_with_ollama(
     text: &str,
     model: &str,
     ollama_url: &str,
+    mut cancel_rx: Option<tokio::sync::watch::Receiver<u64>>,
 ) -> TopicSignature {
     #[derive(serde::Deserialize)]
     struct EnrichmentPayload {
@@ -458,8 +460,41 @@ Chat excerpts:\n{sample}"
         content: prompt,
     }];
 
-    let Ok(raw) = client.send_message("topic_signature", model, messages).await else {
-        return heuristic;
+    // Background task: use a short timeout so a busy Ollama instance doesn't
+    // block for 300s, and keep_alive="0s" so the model unloads immediately
+    // after the call and doesn't compete with user-initiated inference.
+    let ctx = RequestContext {
+        source: Some("topic_signature"),
+        timeout_override: Some(Duration::from_secs(90)),
+        ..Default::default()
+    };
+
+    // Race the HTTP call against the user-chat cancel signal so the background
+    // task yields the Ollama queue the moment a user sends a message.
+    let raw = if let Some(ref mut rx) = cancel_rx {
+        let gen_before = *rx.borrow();
+        tokio::select! {
+            result = client.send_message_with_options_observed(model, messages, Some("0s"), &ctx) => {
+                match result {
+                    Ok(r) => r,
+                    Err(_) => return heuristic,
+                }
+            }
+            _ = async {
+                // Wait for a generation bump (user chat starting)
+                loop {
+                    let _ = rx.changed().await;
+                    if *rx.borrow() != gen_before { break; }
+                }
+            } => {
+                return heuristic; // cancelled — user chat takes priority
+            }
+        }
+    } else {
+        match client.send_message_with_options_observed(model, messages, Some("0s"), &ctx).await {
+            Ok(r) => r,
+            Err(_) => return heuristic,
+        }
     };
     let Some(json_str) = extract_json_object(&raw) else {
         return heuristic;
@@ -504,6 +539,7 @@ pub async fn recompute_workspace_signature_with_ai(
     workspace_id: &str,
     model_override: Option<String>,
     ollama_url_override: Option<String>,
+    cancel_rx: Option<tokio::sync::watch::Receiver<u64>>,
 ) -> Result<TopicSignature, String> {
     let (existing, text, count, model, ollama_url) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -529,7 +565,7 @@ pub async fn recompute_workspace_signature_with_ai(
     sig.message_count_at_gen = Some(count);
 
     if let (Some(model), Some(ollama_url)) = (model, ollama_url) {
-        sig = enrich_with_ollama(sig, &text, &model, &ollama_url).await;
+        sig = enrich_with_ollama(sig, &text, &model, &ollama_url, cancel_rx).await;
     }
 
     sig.manual_tags = existing.manual_tags;

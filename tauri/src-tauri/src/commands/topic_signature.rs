@@ -46,7 +46,8 @@ pub async fn regenerate_topic_signature(
     model: Option<String>,
     ollama_url: Option<String>,
 ) -> Result<TopicSignature, String> {
-    recompute_workspace_signature_with_ai(&state, &workspace_id, model, ollama_url).await
+    // User-initiated: no cancel_rx needed (it IS the high-priority caller)
+    recompute_workspace_signature_with_ai(&state, &workspace_id, model, ollama_url, None).await
 }
 
 #[tauri::command]

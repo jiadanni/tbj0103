@@ -160,6 +160,8 @@ pub fn run() {
             app.manage(commands::ollama::StreamAbortState(
                 std::sync::Mutex::new(std::collections::HashMap::new()),
             ));
+            let (bg_cancel_tx, _) = tokio::sync::watch::channel(0u64);
+            app.manage(commands::ollama::BackgroundInferenceCancel(bg_cancel_tx));
             app.manage(commands::quick_search::QuickSearchRuntimeState::default());
 
             #[cfg(feature = "llamacpp")]
@@ -293,6 +295,10 @@ pub fn run() {
 
                     {
                         let db = app_handle.state::<db::DbState>();
+                        let cancel_rx = app_handle
+                            .state::<commands::ollama::BackgroundInferenceCancel>()
+                            .0
+                            .subscribe();
                         let workspace_ids: Vec<String> = {
                             let Ok(conn) = db.0.get() else {
                                 tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
@@ -307,7 +313,9 @@ pub fn run() {
                         };
 
                         for id in workspace_ids {
-                            let _ = crate::services::topic_signature::recompute_workspace_signature_with_ai(&db, &id, None, None).await;
+                            let _ = crate::services::topic_signature::recompute_workspace_signature_with_ai(
+                                &db, &id, None, None, Some(cancel_rx.clone()),
+                            ).await;
                         }
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
