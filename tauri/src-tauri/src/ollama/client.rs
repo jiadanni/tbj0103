@@ -156,6 +156,10 @@ pub struct RequestContext {
     pub session_id: Option<String>,
     pub model: Option<String>,
     pub stream: Option<bool>,
+    /// If set, overrides the shared client's default 300s timeout for this
+    /// request. Use a short value (e.g. 90s) for background / non-interactive
+    /// calls so they fail fast instead of blocking the Ollama queue.
+    pub timeout_override: Option<Duration>,
 }
 
 pub struct OllamaClient {
@@ -521,10 +525,11 @@ impl OllamaClient {
                 .insert("keep_alive".to_string(), json!(ka));
         }
 
-        let response = self
-            .client
-            .post(&url)
-            .json(&body)
+        let mut req = self.client.post(&url).json(&body);
+        if let Some(t) = ctx.timeout_override {
+            req = req.timeout(t);
+        }
+        let response = req
             .send()
             .await
             .map_err(|e| {

@@ -1,7 +1,7 @@
 use crate::ollama::client::{ModelInfo, OllamaClient, OllamaMessage};
 use serde::{Deserialize, Serialize};
 use std::process::{Command, Stdio};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tokio::sync::oneshot;
 
 pub struct StreamAbortEntry {
@@ -12,6 +12,11 @@ pub struct StreamAbortEntry {
 pub struct StreamAbortState(
     pub std::sync::Mutex<std::collections::HashMap<String, StreamAbortEntry>>,
 );
+
+/// Bumped whenever a user-initiated Ollama request starts.
+/// Background tasks subscribe to this and abort via tokio::select! so they
+/// yield the Ollama queue to the user immediately.
+pub struct BackgroundInferenceCancel(pub tokio::sync::watch::Sender<u64>);
 const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +77,7 @@ fn context(
         session_id: session_id.map(ToOwned::to_owned),
         model: model.map(ToOwned::to_owned),
         stream,
+        timeout_override: None,
     }
 }
 
@@ -79,7 +85,9 @@ fn context(
 /// For streaming: emits "ollama-stream-{session_id}" events to frontend.
 #[tauri::command]
 pub async fn send_message(app: AppHandle, req: SendMessageRequest) -> Result<String, String> {
-    let client = OllamaClient::new(req.ollama_url)?;
+    // Signal background tasks to yield the Ollama queue.
+    let _ = app.state::<BackgroundInferenceCancel>().0.send_modify(|v| *v += 1);
+    let client = OllamaClient::new(req.ollama_url)?;;
     let ctx = context(
         req.request_id.clone(),
         "send_message",
@@ -252,6 +260,8 @@ pub async fn send_dual_model_message(
     app: AppHandle,
     req: DualModelRequest,
 ) -> Result<String, String> {
+    // Signal background tasks to yield the Ollama queue.
+    let _ = app.state::<BackgroundInferenceCancel>().0.send_modify(|v| *v += 1);
     let client = OllamaClient::new(req.ollama_url)?;
     let execution_mode = req.execution_mode.as_deref().unwrap_or("serial");
     let draft_ctx = context(
