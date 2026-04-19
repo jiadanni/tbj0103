@@ -8,12 +8,17 @@ use futures::{future::join_all, StreamExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 const DEFAULT_BASE_URL: &str = "http://localhost:11434";
 const MODEL_CACHE_TTL: Duration = Duration::from_secs(30);
+/// Capabilities are fetched via /api/show which is expensive (can take 20-50s
+/// on a cold Ollama instance). They almost never change between app restarts
+/// (only after `ollama pull`), so cache them per model name for 10 minutes.
+const CAPABILITY_CACHE_TTL: Duration = Duration::from_secs(600);
 
 // Process-level cache for /api/tags responses, keyed by base URL.
 // This prevents a redundant GET /api/tags before every /api/chat call.
@@ -24,6 +29,23 @@ struct CachedModels {
 }
 
 static MODEL_CACHE: OnceLock<Mutex<Option<CachedModels>>> = OnceLock::new();
+
+/// Per-model capabilities cache: model_name -> (capabilities, fetched_at).
+/// Keyed only by model name; Ollama capabilities are server-scoped, not
+/// per-base-URL, so a single map is sufficient.
+struct CapabilityCache {
+    entries: HashMap<String, (Option<Vec<String>>, Instant)>,
+}
+
+static CAPABILITY_CACHE: OnceLock<Mutex<CapabilityCache>> = OnceLock::new();
+
+fn capability_cache() -> &'static Mutex<CapabilityCache> {
+    CAPABILITY_CACHE.get_or_init(|| {
+        Mutex::new(CapabilityCache {
+            entries: HashMap::new(),
+        })
+    })
+}
 
 // Shared HTTP client — reqwest::Client is internally Arc'd and manages a
 // connection pool, so reusing one instance across all OllamaClient instances
@@ -1176,6 +1198,19 @@ impl OllamaClient {
         model: &str,
         ctx: &RequestContext,
     ) -> Option<Vec<String>> {
+        // Check the long-lived per-model capability cache first.
+        // This prevents N parallel /api/show calls every 30s when the model
+        // list cache expires — capabilities only change after `ollama pull`.
+        {
+            if let Ok(guard) = capability_cache().lock() {
+                if let Some((caps, fetched_at)) = guard.entries.get(model) {
+                    if fetched_at.elapsed() < CAPABILITY_CACHE_TTL {
+                        return caps.clone();
+                    }
+                }
+            }
+        }
+
         let url = format!("{}/api/show", self.base_url);
         let started_at = Instant::now();
         let response = match self
@@ -1241,13 +1276,24 @@ impl OllamaClient {
             &[("model", model.to_string())],
         );
 
-        normalize_capabilities(details.capabilities)
+        let caps = normalize_capabilities(details.capabilities);
+        // Store in long-lived cache so this model doesn't need /api/show again
+        // for CAPABILITY_CACHE_TTL regardless of how many times the model list
+        // cache expires.
+        if let Ok(mut guard) = capability_cache().lock() {
+            guard.entries.insert(model.to_string(), (caps.clone(), Instant::now()));
+        }
+        caps
     }
 
-    /// Force-flush the process-level model cache (called by `list_models_fresh`).
+    /// Force-flush the process-level model cache and capability cache.
+    /// Called whenever the user explicitly refreshes the model list.
     pub fn invalidate_model_cache(&self) {
         if let Ok(mut guard) = model_cache().lock() {
             *guard = None;
+        }
+        if let Ok(mut guard) = capability_cache().lock() {
+            guard.entries.clear();
         }
     }
 
