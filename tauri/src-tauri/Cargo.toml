@@ -67,6 +67,14 @@ llama-cpp-2-cuda-backend   = { package = "llama-cpp-2", version = "0.1", feature
 llama-cpp-2-rocm-backend   = { package = "llama-cpp-2", version = "0.1", features = ["rocm"],   optional = true }
 llama-cpp-2-vulkan-backend = { package = "llama-cpp-2", version = "0.1", features = ["vulkan"], optional = true }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+# Base CPU-only build for Windows.
+llama-cpp-2 = { version = "0.1", optional = true }
+# CUDA (NVIDIA) and Vulkan (AMD/Intel via WDDM) are the supported backends on
+# Windows. ROCm is Linux-only; AMD users on Windows should use llamacpp-vulkan.
+llama-cpp-2-cuda-backend   = { package = "llama-cpp-2", version = "0.1", features = ["cuda"],   optional = true }
+llama-cpp-2-vulkan-backend = { package = "llama-cpp-2", version = "0.1", features = ["vulkan"], optional = true }
+
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 llamacpp        = ["dep:llama-cpp-2"]
