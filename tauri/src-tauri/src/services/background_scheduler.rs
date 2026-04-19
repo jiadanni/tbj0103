@@ -17,7 +17,7 @@ pub struct BackgroundTaskEvent {
 
 fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str) {
     let _ = app.emit(
-        "background_task",
+        "background-task",
         BackgroundTaskEvent {
             task_type: task_type.to_string(),
             status: status.to_string(),

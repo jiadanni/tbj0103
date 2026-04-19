@@ -214,6 +214,14 @@ pub fn get_system_specs() -> Result<SystemSpecs, String> {
     })
 }
 
+// macOS system_profiler only gives total VRAM capacity — not live usage.
+#[cfg(target_os = "macos")]
+fn gpu_vram_usage_is_live() -> bool { false }
+
+// nvidia-smi (Linux/Windows) provides live memory.used.
+#[cfg(not(target_os = "macos"))]
+fn gpu_vram_usage_is_live() -> bool { true }
+
 #[tauri::command]
 pub fn get_performance_stats() -> Result<crate::models::system::PerformanceStats, String> {
     // sysinfo 0.30: use System::new_all() then refresh to get a CPU delta.
@@ -228,6 +236,7 @@ pub fn get_performance_stats() -> Result<crate::models::system::PerformanceStats
     let memory_used = sys.used_memory();
     let memory_total = sys.total_memory();
     let gpu = query_gpu_vram();
+    let usage_available = gpu.is_some() && gpu_vram_usage_is_live();
 
     Ok(crate::models::system::PerformanceStats {
         cpu_usage_percent: cpu_usage,
@@ -236,6 +245,7 @@ pub fn get_performance_stats() -> Result<crate::models::system::PerformanceStats
         gpu_vram_used_bytes: gpu.as_ref().map(|(used, _, _)| *used),
         gpu_vram_total_bytes: gpu.as_ref().map(|(_, total, _)| *total),
         gpu_name: gpu.map(|(_, _, name)| name),
+        gpu_vram_usage_available: usage_available,
     })
 }
 

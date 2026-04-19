@@ -33,4 +33,7 @@ pub struct PerformanceStats {
     pub gpu_vram_total_bytes: Option<u64>,
     /// Human-readable GPU name. `None` when unavailable.
     pub gpu_name: Option<String>,
+    /// True when `gpu_vram_used_bytes` reflects live usage.
+    /// False when only total capacity is known (e.g. macOS system_profiler).
+    pub gpu_vram_usage_available: bool,
 }
