@@ -4,7 +4,7 @@ import type { QuickSearchResult } from "../lib/api";
 
 interface RelatedChatPillsProps {
   relatedChats: QuickSearchResult[];
-  onChatClick: (chat: QuickSearchResult) => void;
+  onChatClick: (chat: QuickSearchResult) => void | Promise<void>;
   className?: string;
 }
 

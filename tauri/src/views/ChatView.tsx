@@ -2120,11 +2120,6 @@ export default function ChatView() {
     return () => { active = false; };
   }, [activeTopicSignature, effectiveWorkspaceId, currentSessionId]);
 
-  const onChatClick = useCallback((chat: QuickSearchResult) => {
-    if (chat.target_id === currentSessionId) { return; }
-    navigate(`/chat/${chat.target_id}`);
-  }, [currentSessionId, navigate]);
-
   // Handle external subview switching via router state
   useEffect(() => {
     const locState = location.state as { subView?: ChatSubView } | null;
@@ -3087,6 +3082,24 @@ export default function ChatView() {
       return next;
     });
   }, [setScopedProjectId, setActiveChatId, isSplitPane, routeSessionId, navigate, mergeSessionIntoScope, setSidebarSessions]);
+
+  const onChatClick = useCallback(async (chat: QuickSearchResult) => {
+    if (chat.target_id === currentSessionId) { return; }
+    // Look up the session in the current local list first to avoid an extra
+    // round-trip. Fall back to a backend fetch for sessions in other projects
+    // or workspaces that haven't been loaded into this pane yet.
+    let session = sessions.find((s) => s.id === chat.target_id) ?? null;
+    if (!session && effectiveWorkspaceId) {
+      try {
+        session = await api.chat.getSession(effectiveWorkspaceId, chat.target_id);
+      } catch {
+        // session remains null; fall through to graceful no-op
+      }
+    }
+    if (session) {
+      activateSession(session);
+    }
+  }, [currentSessionId, sessions, effectiveWorkspaceId, activateSession]);
 
   const findOrCreateEmptySession = useCallback(async (options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) => {
     if (!effectiveWorkspaceId) { return null; }
