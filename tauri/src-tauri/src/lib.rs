@@ -552,6 +552,7 @@ pub fn run() {
             commands::chat_file::export_chat_as_json,
             commands::chat_file::import_chat_from_json,
             commands::chat_file::sync_all_chats_to_files,
+            commands::chat_file::preview_lmstudio_folder,
             commands::chat_file::import_lmstudio_folder,
             commands::chat_file::import_multiple_folders,
             commands::chat_file::import_gemini_takeout,

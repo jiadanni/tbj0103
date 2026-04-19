@@ -3,6 +3,7 @@
 use crate::db::DbState;
 use crate::models::chat::ChatSession;
 use crate::services::chat_file_store;
+use serde::Serialize;
 use std::process::Command;
 #[cfg(target_os = "linux")]
 use std::path::Path;
@@ -14,6 +15,26 @@ pub struct ChatCryptoState(pub std::sync::Mutex<Option<String>>);
 
 /// Immutable path to the chats directory (app_data/chats/).
 pub struct ChatsDirState(pub std::path::PathBuf);
+
+#[derive(Serialize)]
+struct LmStudioConversationPreview {
+    uuid: String,
+    name: String,
+    message_count: usize,
+    created_at: String,
+    updated_at: String,
+    project_id: Option<String>,
+    project_name: Option<String>,
+    source_path: String,
+}
+
+#[derive(Serialize)]
+struct LmStudioProjectPreview {
+    uuid: String,
+    name: String,
+    conversation_count: usize,
+    message_count: usize,
+}
 
 // ── Keyring helpers ─────────────────────────────────────────────────────────
 
@@ -82,6 +103,34 @@ fn try_linux_file_selection(reveal_path: &Path) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+fn lmstudio_preview_id(root: &std::path::Path, path: &std::path::Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn lmstudio_selection_matches(
+    preview_id: &str,
+    subfolder: &str,
+    selected_ids: Option<&std::collections::HashSet<&str>>,
+    selected_project_ids: Option<&std::collections::HashSet<&str>>,
+) -> bool {
+    if let Some(filter) = selected_ids {
+        if !filter.contains(preview_id) {
+            return false;
+        }
+    }
+
+    if let Some(filter) = selected_project_ids {
+        if !subfolder.is_empty() && !filter.contains(subfolder) {
+            return false;
+        }
+    }
+
+    true
 }
 
 // ── Commands ─────────────────────────────────────────────────────────────────
@@ -312,9 +361,107 @@ pub fn import_chat_from_json(
 /// Root folder name → workspace, subfolders → projects, conversations → sessions.
 /// Returns the workspace ID and count of imported sessions.
 #[tauri::command]
+pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value, String> {
+    let folder = std::path::Path::new(&folder_path);
+    if !folder.is_dir() {
+        return Err(format!("{} is not a directory", folder_path));
+    }
+
+    let conversations = chat_file_store::discover_lmstudio_conversations(folder)?;
+    if conversations.is_empty() {
+        return Err("No .conversation.json files found in the selected folder.".to_string());
+    }
+
+    let mut previews = Vec::new();
+    let mut project_counts: std::collections::BTreeMap<String, (usize, usize)> =
+        std::collections::BTreeMap::new();
+    let mut errors = Vec::new();
+
+    for conv in &conversations {
+        let preview_id = lmstudio_preview_id(folder, &conv.path);
+        match std::fs::read(&conv.path) {
+            Ok(bytes) => match chat_file_store::parse_lmstudio_conversation(&bytes) {
+                Ok(data) => {
+                    let project_id = (!conv.subfolder.is_empty()).then(|| conv.subfolder.clone());
+                    let project_name = project_id.clone();
+                    let message_count = data.messages.len();
+
+                    if let Some(project_key) = project_id.as_ref() {
+                        let entry = project_counts.entry(project_key.clone()).or_insert((0, 0));
+                        entry.0 += 1;
+                        entry.1 += message_count;
+                    }
+
+                    previews.push(LmStudioConversationPreview {
+                        uuid: preview_id.clone(),
+                        name: data.title,
+                        message_count,
+                        created_at: data.created_at,
+                        updated_at: data.updated_at,
+                        project_id,
+                        project_name,
+                        source_path: preview_id,
+                    });
+                }
+                Err(e) => errors.push(format!("{preview_id}: {e}")),
+            },
+            Err(e) => errors.push(format!("{preview_id}: {e}")),
+        }
+    }
+
+    if previews.is_empty() {
+        let mut message =
+            "LM Studio scan found conversation files, but none contained importable messages."
+                .to_string();
+        if !errors.is_empty() {
+            let sample = errors
+                .iter()
+                .take(3)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n");
+            message.push_str("\n\nExamples:\n");
+            message.push_str(&sample);
+            if errors.len() > 3 {
+                message.push_str(&format!("\n… and {} more.", errors.len() - 3));
+            }
+        }
+        return Err(message);
+    }
+
+    previews.sort_by(|left, right| {
+        left.project_name
+            .cmp(&right.project_name)
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+            .then_with(|| left.created_at.cmp(&right.created_at))
+            .then_with(|| left.uuid.cmp(&right.uuid))
+    });
+
+    let projects = project_counts
+        .into_iter()
+        .map(|(name, (conversation_count, message_count))| LmStudioProjectPreview {
+            uuid: name.clone(),
+            name,
+            conversation_count,
+            message_count,
+        })
+        .collect::<Vec<_>>();
+
+    Ok(serde_json::json!({
+        "conversations": previews,
+        "total": previews.len(),
+        "projects": projects,
+        "errors": errors.len(),
+        "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
+    }))
+}
+
+#[tauri::command]
 pub fn import_lmstudio_folder(
     folder_path: String,
     workspace_name: Option<String>,
+    selected_ids: Option<Vec<String>>,
+    selected_project_ids: Option<Vec<String>>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
@@ -340,6 +487,13 @@ pub fn import_lmstudio_folder(
         return Err("No .conversation.json files found in the selected folder.".to_string());
     }
 
+    let selected_id_filter: Option<std::collections::HashSet<&str>> = selected_ids
+        .as_ref()
+        .map(|ids| ids.iter().map(|id| id.as_str()).collect());
+    let selected_project_filter: Option<std::collections::HashSet<&str>> = selected_project_ids
+        .as_ref()
+        .map(|ids| ids.iter().map(|id| id.as_str()).collect());
+
     let now = chrono::Utc::now().to_rfc3339();
     let normalized_workspace_name = workspace_name.trim();
     let existing_workspace_id = conn
@@ -360,8 +514,20 @@ pub fn import_lmstudio_folder(
     let mut session_ids = Vec::new();
     let mut errors = Vec::new();
     let mut skipped = 0usize;
+    let mut matched_selection = 0usize;
 
     for conv in &conversations {
+        let preview_id = lmstudio_preview_id(folder, &conv.path);
+        if !lmstudio_selection_matches(
+            &preview_id,
+            &conv.subfolder,
+            selected_id_filter.as_ref(),
+            selected_project_filter.as_ref(),
+        ) {
+            continue;
+        }
+
+        matched_selection += 1;
         match std::fs::read(&conv.path) {
             Ok(bytes) => match chat_file_store::parse_lmstudio_conversation(&bytes) {
                 Ok(data) => {
@@ -430,6 +596,10 @@ pub fn import_lmstudio_folder(
             },
             Err(e) => errors.push(format!("{}: {e}", conv.path.display())),
         }
+    }
+
+    if matched_selection == 0 {
+        return Err("No conversations were selected for import.".to_string());
     }
 
     // Sync imported sessions to chat files (best-effort)

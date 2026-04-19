@@ -48,6 +48,31 @@ export default function ImportSettingsSection() {
   } = useWorkspaceStore();
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const [importingLmStudio, setImportingLmStudio] = useState(false);
+  const [lmStudioFolder, setLmStudioFolder] = useState<string | null>(null);
+  const [lmStudioPreviews, setLmStudioPreviews] = useState<
+    {
+      uuid: string;
+      name: string;
+      message_count: number;
+      created_at: string;
+      updated_at: string;
+      project_id: string | null;
+      project_name: string | null;
+      source_path: string;
+    }[]
+  >([]);
+  const [lmStudioProjects, setLmStudioProjects] = useState<
+    {
+      uuid: string;
+      name: string;
+      conversation_count: number;
+      message_count: number;
+    }[]
+  >([]);
+  const [lmStudioSelected, setLmStudioSelected] = useState<Set<string>>(new Set());
+  const [lmStudioSelectedProjects, setLmStudioSelectedProjects] = useState<Set<string>>(new Set());
+  const [lmStudioScanning, setLmStudioScanning] = useState(false);
+  const [lmStudioScanErrors, setLmStudioScanErrors] = useState(0);
   const [importingMultipleFolders, setImportingMultipleFolders] = useState(false);
   const [importingGemini, setImportingGemini] = useState(false);
   const [importingClaude, setImportingClaude] = useState(false);
@@ -76,9 +101,19 @@ export default function ImportSettingsSection() {
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function importFromLmStudio() {
+  function resetLmStudioPreview() {
+    setLmStudioFolder(null);
+    setLmStudioPreviews([]);
+    setLmStudioProjects([]);
+    setLmStudioSelected(new Set());
+    setLmStudioSelectedProjects(new Set());
+    setLmStudioScanErrors(0);
+  }
+
+  async function scanLmStudioFolder() {
     setError(null);
-    setImportingLmStudio(true);
+    setLmStudioScanning(true);
+    resetLmStudioPreview();
 
     try {
       const selected = await open({
@@ -87,22 +122,63 @@ export default function ImportSettingsSection() {
         title: "Select LM Studio conversations folder",
       });
       const folderPath = Array.isArray(selected) ? selected[0] : selected;
-      if (!folderPath) {return;}
+      if (!folderPath) { return; }
+
+      const result = await api.chatFile.previewLmStudioFolder(folderPath);
+      if (result.total < 1) {
+        throw new Error("No importable conversations were found in the selected folder.");
+      }
+
+      setLmStudioFolder(folderPath);
+      setLmStudioPreviews(result.conversations);
+      setLmStudioProjects(result.projects);
+      setLmStudioSelected(new Set(result.conversations.map((conversation) => conversation.uuid)));
+      setLmStudioSelectedProjects(new Set(result.projects.map((project) => project.uuid)));
+      setLmStudioScanErrors(result.errors);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "LM Studio scan failed";
+      setError(msg);
+      await message(msg, { title: "LM Studio scan failed", kind: "error" });
+    } finally {
+      setLmStudioScanning(false);
+    }
+  }
+
+  async function importFromLmStudio() {
+    if (!lmStudioFolder) { return; }
+    setError(null);
+    setImportingLmStudio(true);
+
+    try {
+      const selectedConversationIds = lmStudioPreviews
+        .filter((conversation) => (
+          lmStudioSelected.has(conversation.uuid)
+          && (!conversation.project_id || lmStudioSelectedProjects.has(conversation.project_id))
+        ))
+        .map((conversation) => conversation.uuid);
+
+      if (selectedConversationIds.length < 1) {
+        throw new Error("Select at least one LM Studio conversation to import.");
+      }
 
       // Derive workspace name from folder and check for conflicts
-      const defaultName = folderPath.split(/[/\\]/).filter(Boolean).pop() ?? "Imported Chats";
+      const defaultName = lmStudioFolder.split(/[/\\]/).filter(Boolean).pop() ?? "Imported Chats";
       const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces);
       if (!resolvedName) {return;} // user cancelled
 
+      const selectedProjectIds = [...lmStudioSelectedProjects];
       const result = await api.chatFile.importLmStudioFolder(
-        folderPath,
+        lmStudioFolder,
         resolvedName !== defaultName ? resolvedName : undefined,
+        selectedConversationIds,
+        selectedProjectIds.length > 0 ? selectedProjectIds : undefined,
       );
       if (result.imported < 1 && result.skipped > 0) {
         await message(`All ${result.skipped} conversation${result.skipped === 1 ? "" : "s"} already imported — nothing new to add.`, {
           title: "LM Studio import",
           kind: "info",
         });
+        resetLmStudioPreview();
         return;
       }
       if (result.imported < 1) {
@@ -134,6 +210,7 @@ export default function ImportSettingsSection() {
         lines.push(`${result.errors} file${result.errors === 1 ? "" : "s"} skipped (empty or unreadable).`);
       }
 
+      resetLmStudioPreview();
       navigate(`/chat/${firstSession[0].id}`);
       await message(lines.join("\n"), {
         title: "LM Studio import complete",
@@ -441,6 +518,11 @@ export default function ImportSettingsSection() {
     }
   }
 
+  const selectedLmStudioConversationCount = lmStudioPreviews.filter((conversation) => (
+    lmStudioSelected.has(conversation.uuid)
+    && (!conversation.project_id || lmStudioSelectedProjects.has(conversation.project_id))
+  )).length;
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="border-b border-[var(--border-color)] px-5 py-3">
@@ -463,19 +545,170 @@ export default function ImportSettingsSection() {
                   <h2 className="text-sm font-medium text-[var(--text-primary)]">Import from LM Studio</h2>
                 </div>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Pick a folder containing LM Studio <code>.conversation.json</code> files. The folder name becomes a new workspace and subfolders become projects.
+                  Pick a folder containing LM Studio <code>.conversation.json</code> files. Conversations are listed for review before import, and subfolders can be imported as projects selectively.
                 </p>
               </div>
 
               <button
-                onClick={() => void importFromLmStudio()}
-                disabled={importingLmStudio}
+                onClick={() => void scanLmStudioFolder()}
+                disabled={lmStudioScanning || importingLmStudio}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
               >
-                {importingLmStudio ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {importingLmStudio ? "Importing..." : "Import Folder"}
+                {lmStudioScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+                {lmStudioScanning ? "Scanning..." : "Scan Folder"}
               </button>
             </div>
+
+            {lmStudioPreviews.length > 0 && (
+              <div className="mt-4 flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-[var(--text-primary)]">
+                      Conversations ({selectedLmStudioConversationCount}/{lmStudioPreviews.length})
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setLmStudioSelected(new Set(lmStudioPreviews.map((conversation) => conversation.uuid)))}
+                        className="text-xs text-[var(--accent-color)] hover:underline"
+                      >
+                        All
+                      </button>
+                      <button
+                        onClick={() => setLmStudioSelected(new Set())}
+                        className="text-xs text-[var(--text-muted)] hover:underline"
+                      >
+                        None
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
+                    {lmStudioPreviews.map((conversation) => {
+                      const checked = lmStudioSelected.has(conversation.uuid);
+                      return (
+                        <label
+                          key={conversation.uuid}
+                          className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 hover:bg-[var(--bg-hover)]"
+                        >
+                          <button
+                            type="button"
+                            role="checkbox"
+                            aria-checked={checked}
+                            onClick={() => {
+                              setLmStudioSelected((prev) => {
+                                const next = new Set(prev);
+                                if (checked) { next.delete(conversation.uuid); }
+                                else { next.add(conversation.uuid); }
+                                return next;
+                              });
+                            }}
+                            className="shrink-0 text-[var(--accent-color)]"
+                          >
+                            {checked ? <CheckSquare size={16} /> : <Square size={16} className="text-[var(--text-muted)]" />}
+                          </button>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-medium text-[var(--text-primary)]">
+                              {conversation.name || "Untitled"}
+                            </p>
+                            <p className="truncate text-[10px] text-[var(--text-muted)]">
+                              {conversation.message_count} msg{conversation.message_count !== 1 && "s"}
+                              {" · "}
+                              {conversation.project_name || "Workspace root"}
+                              {" · "}
+                              {conversation.source_path}
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {lmStudioProjects.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[var(--text-primary)]">
+                        Projects ({lmStudioSelectedProjects.size}/{lmStudioProjects.length})
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setLmStudioSelectedProjects(new Set(lmStudioProjects.map((project) => project.uuid)))}
+                          className="text-xs text-[var(--accent-color)] hover:underline"
+                        >
+                          All
+                        </button>
+                        <button
+                          onClick={() => setLmStudioSelectedProjects(new Set())}
+                          className="text-xs text-[var(--text-muted)] hover:underline"
+                        >
+                          None
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-44 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
+                      {lmStudioProjects.map((project) => {
+                        const checked = lmStudioSelectedProjects.has(project.uuid);
+                        return (
+                          <label
+                            key={project.uuid}
+                            className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 hover:bg-[var(--bg-hover)]"
+                          >
+                            <button
+                              type="button"
+                              role="checkbox"
+                              aria-checked={checked}
+                              onClick={() => {
+                                setLmStudioSelectedProjects((prev) => {
+                                  const next = new Set(prev);
+                                  if (checked) { next.delete(project.uuid); }
+                                  else { next.add(project.uuid); }
+                                  return next;
+                                });
+                              }}
+                              className="shrink-0 text-[var(--accent-color)]"
+                            >
+                              {checked ? <CheckSquare size={16} /> : <Square size={16} className="text-[var(--text-muted)]" />}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium text-[var(--text-primary)]">
+                                {project.name}
+                              </p>
+                              <p className="text-[10px] text-[var(--text-muted)]">
+                                {project.conversation_count} conversation{project.conversation_count !== 1 ? "s" : ""}
+                                {" · "}
+                                {project.message_count} total message{project.message_count !== 1 ? "s" : ""}
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {lmStudioScanErrors > 0 && (
+                  <p className="text-[10px] text-amber-400">
+                    {lmStudioScanErrors} file{lmStudioScanErrors === 1 ? "" : "s"} could not be previewed and will be skipped unless fixed.
+                  </p>
+                )}
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => resetLmStudioPreview()}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    <X size={12} /> Cancel
+                  </button>
+                  <button
+                    onClick={() => void importFromLmStudio()}
+                    disabled={selectedLmStudioConversationCount === 0 || importingLmStudio}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[var(--accent-color)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+                  >
+                    {importingLmStudio ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                    {importingLmStudio ? "Importing..." : `Import ${selectedLmStudioConversationCount} conversation${selectedLmStudioConversationCount !== 1 ? "s" : ""}`}
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
