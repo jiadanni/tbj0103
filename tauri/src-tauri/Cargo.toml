@@ -58,11 +58,14 @@ objc2-local-authentication = { version = "0.3", features = ["LAContext", "block2
 block2 = "0.6"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-llama-cpp-2 = { version = "0.1", features = ["cuda"], optional = true }
+llama-cpp-2 = { version = "0.1", optional = true }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 llamacpp = ["dep:llama-cpp-2"]
+llamacpp-cuda  = ["llamacpp", "llama-cpp-2/cuda"]   # NVIDIA
+llamacpp-rocm  = ["llamacpp", "llama-cpp-2/rocm"]   # AMD
+llamacpp-vulkan = ["llamacpp", "llama-cpp-2/vulkan"] # Intel / any Vulkan GPU
 
 [profile.release]
 lto = "thin"
