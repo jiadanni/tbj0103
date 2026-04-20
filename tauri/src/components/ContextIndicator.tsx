@@ -25,54 +25,54 @@ export default function ContextIndicator({ sources }: ContextIndicatorProps) {
   if (totalSources === 0) { return null; }
 
   return (
-    <div className="mt-2 mb-4">
+    <div className="mb-4 mt-2">
       <button 
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        className="inline-flex items-center gap-2 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
       >
-        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <Zap size={10} className="text-amber-500 fill-amber-500" />
+        {expanded ? <ChevronDown size={12} strokeWidth={1.5} /> : <ChevronRight size={12} strokeWidth={1.5} />}
+        <Zap size={10} strokeWidth={1.5} className="text-amber-400" />
         Context Used ({totalSources})
       </button>
 
       {expanded && (
-        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {sources.memories_used.length > 0 && (
-            <div className="flex items-start gap-2 p-2 rounded bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
-              <Brain size={14} className="text-purple-500 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--message-assistant-bg)] px-3 py-2.5">
+              <Brain size={14} strokeWidth={1.5} className="mt-0.5 shrink-0 text-purple-400" />
               <div>
-                <p className="text-[10px] font-bold text-zinc-500 uppercase">Memories</p>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400">{sources.memories_used.length} active memories injected</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Memories</p>
+                <p className="text-xs text-[var(--text-secondary)]">{sources.memories_used.length} active memories injected</p>
               </div>
             </div>
           )}
 
           {sources.artifacts_used.length > 0 && (
-            <div className="flex items-start gap-2 p-2 rounded bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
-              <FileText size={14} className="text-blue-500 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--message-assistant-bg)] px-3 py-2.5">
+              <FileText size={14} strokeWidth={1.5} className="mt-0.5 shrink-0 text-[var(--link-color)]" />
               <div>
-                <p className="text-[10px] font-bold text-zinc-500 uppercase">Artifacts</p>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400">{sources.artifacts_used.length} artifacts referenced</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Artifacts</p>
+                <p className="text-xs text-[var(--text-secondary)]">{sources.artifacts_used.length} artifacts referenced</p>
               </div>
             </div>
           )}
 
           {sources.summaries_used.length > 0 && (
-            <div className="flex items-start gap-2 p-2 rounded bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
-              <MessageSquare size={14} className="text-green-500 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--message-assistant-bg)] px-3 py-2.5">
+              <MessageSquare size={14} strokeWidth={1.5} className="mt-0.5 shrink-0 text-emerald-400" />
               <div>
-                <p className="text-[10px] font-bold text-zinc-500 uppercase">Summaries</p>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400">{sources.summaries_used.length} past turn summaries</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Summaries</p>
+                <p className="text-xs text-[var(--text-secondary)]">{sources.summaries_used.length} past turn summaries</p>
               </div>
             </div>
           )}
 
           {sources.documents_used.length > 0 && (
-            <div className="flex items-start gap-2 p-2 rounded bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
-              <FileText size={14} className="text-amber-500 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--message-assistant-bg)] px-3 py-2.5">
+              <FileText size={14} strokeWidth={1.5} className="mt-0.5 shrink-0 text-amber-400" />
               <div>
-                <p className="text-[10px] font-bold text-zinc-500 uppercase">Documents (RAG)</p>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400">{sources.documents_used.length} relevant chunks retrieved</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Documents</p>
+                <p className="text-xs text-[var(--text-secondary)]">{sources.documents_used.length} relevant chunks retrieved</p>
               </div>
             </div>
           )}

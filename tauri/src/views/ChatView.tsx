@@ -242,11 +242,11 @@ function SessionItem({
           openSession(session);
         }
       }}
-      className={`group flex min-w-0 select-none items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${isSelected
-        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+      className={`group flex min-w-0 cursor-pointer select-none items-center gap-1 rounded-xl border px-3 py-2 transition-colors ${isSelected
+        ? "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
         : isActive
-          ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          ? "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+          : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
         }`}
       style={{ paddingLeft: `${12 + depth * 20}px` }}
     >
@@ -1364,11 +1364,11 @@ function SessionSidebar({
                       }
                       setExpanded((prev) => ({ ...prev, [project.id]: !isOpen }));
                     }}
-                    className={`w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors ${dragOverProjectId === project.id
+                    className={`w-full flex items-center gap-1.5 rounded-xl border px-3 py-2 text-left transition-colors ${dragOverProjectId === project.id
                       ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
                       : selectedProjectIds.has(project.id)
-                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                        ? "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                        : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                       }`}
                   >
                     {selectMode && (
@@ -1936,11 +1936,11 @@ export default function ChatView() {
   const sidebarWidth = useSettingsStore((state) => state.sidebarWidth);
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
   const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
-  const composerSelectClassName = "h-10 w-full appearance-none rounded-full border border-[rgba(var(--accent-color-rgb),0.16)] bg-[rgba(255,255,255,0.02)] pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.9)] shadow-[0_12px_30px_-22px_rgba(0,0,0,0.95)] outline-none transition-all hover:border-[rgba(var(--accent-color-rgb),0.34)] hover:bg-[rgba(var(--accent-color-rgb),0.05)] focus:border-[rgba(var(--accent-color-rgb),0.42)] focus:bg-[rgba(var(--accent-color-rgb),0.06)]";
+  const composerSelectClassName = "h-10 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-none outline-none transition-all hover:border-[rgba(var(--accent-color-rgb),0.26)] hover:bg-[var(--bg-hover)] focus:border-[rgba(var(--accent-color-rgb),0.32)] focus:bg-[var(--bg-hover)]";
   const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all";
-  const composerToggleInactiveClass = "border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.02)] text-[rgba(255,255,255,0.78)] hover:border-[rgba(255,255,255,0.18)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white";
-  const composerToggleActiveClass = "border-[rgba(var(--accent-color-rgb),0.34)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[rgba(255,255,255,0.96)]";
-  const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-transparent bg-[rgba(255,255,255,0.04)] text-[rgba(255,255,255,0.54)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
+  const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[rgba(var(--accent-color-rgb),0.24)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+  const composerToggleActiveClass = "border-[rgba(var(--accent-color-rgb),0.24)] bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--text-primary)]";
+  const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.22)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40";
 
   const [input, setInput] = useState("");
   const [isPolishingPrompt, setIsPolishingPrompt] = useState(false);
@@ -4397,8 +4397,11 @@ export default function ChatView() {
                   )}
 
                   {/* Input / composer area */}
-                  <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-6" : "flex-shrink-0 px-4 pb-3 pt-2 sm:px-5"}`}>
-                    <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] border border-[var(--border-color)] bg-[var(--bg-elevated)]/80 ${showComposerHeader ? "p-2.5" : "p-1.5"} shadow-2xl backdrop-blur-[24px]`}>
+                  <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-10" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-6"}`}>
+                    <div
+                      data-testid="composer-shell"
+                      className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[30px] border border-white/10 bg-[var(--bg-elevated)]/95 ${showComposerHeader ? "p-3" : "p-2"} shadow-[0_16px_40px_-36px_rgba(0,0,0,0.7)]`}
+                    >
                       <div className="flex flex-col gap-2 min-w-0">
                         {showComposerHeader && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
                           <div className="px-1 pt-0.5">
@@ -4599,7 +4602,7 @@ export default function ChatView() {
                             </div>
 
 	                        {/* Textarea */}
-	                        <div className="flex items-end gap-2.5 rounded-2xl bg-[var(--bg-secondary)] px-1.5 py-1">
+	                        <div className="flex items-end gap-2.5 rounded-[24px] border border-white/10 bg-[var(--bg-secondary)]/80 px-2 py-1.5">
                                 <textarea
                                   ref={inputRef}
                                   value={input}
@@ -4623,7 +4626,7 @@ export default function ChatView() {
                                           : "Start a new thread…"
                                   }
                                   rows={1}
-                                  className="flex-1 appearance-none resize-none border-0 bg-transparent px-5 py-3 text-[15px] font-medium leading-6 tracking-[0.01em] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] shadow-none outline-none ring-0 transition-colors max-h-40 overflow-y-auto focus:border-0 focus:shadow-none focus:ring-0"
+                                  className="flex-1 appearance-none resize-none border-0 bg-transparent px-4 py-3 text-[15px] font-medium leading-6 tracking-[0.01em] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] shadow-none outline-none ring-0 transition-colors max-h-40 overflow-y-auto focus:border-0 focus:shadow-none focus:ring-0"
                                   style={{ minHeight: 56 }}
                                   onInput={(e) => {
                                     const el = e.currentTarget;
@@ -4651,7 +4654,7 @@ export default function ChatView() {
                                         }
                                       }
                                     }}
-                                    className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-red-500 text-white shadow-[0_12px_30px_-18px_rgba(239,68,68,0.65)] transition-opacity hover:opacity-90"
+                                    className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-red-400/30 bg-red-500/90 text-white transition-opacity hover:opacity-90"
                                     title="Stop generation"
                                   >
                                     <X size={16} />
@@ -4665,7 +4668,7 @@ export default function ChatView() {
                                           await sendMessage();
                                         }}
                                         disabled={!input.trim() || !selectedModel}
-                                        className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--text-primary)] shadow-sm transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.3)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
+                                        className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--text-primary)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.3)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
                                           }`}
                                         title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
                                       >
@@ -4680,7 +4683,7 @@ export default function ChatView() {
                                               setIsModelSendMenuOpen((open) => !open);
                                             }}
                                             disabled={!input.trim() || isStreaming}
-                                            className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.2)] border-l-[var(--border-color)]/20 bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--text-primary)] shadow-sm transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.3)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                            className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.2)] border-l-[var(--border-color)]/20 bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--text-primary)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.3)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
                                             title="Send with another pinned model"
                                             aria-label="Send with another pinned model"
                                             aria-haspopup="menu"
@@ -4736,7 +4739,7 @@ export default function ChatView() {
                                         setInput("");
                                       }}
                                       disabled={!input.trim() || !selectedModel}
-                                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-muted)] shadow-sm transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.2)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.2)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
                                       title="Schedule for background processing"
                                     >
                                       <Clock size={14} strokeWidth={2.2} />
@@ -4750,7 +4753,7 @@ export default function ChatView() {
                               {attachedSources.map((source) => (
                                 <span
                                   key={source.id}
-                                  className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(var(--accent-color-rgb),0.25)] bg-[rgba(var(--accent-color-rgb),0.1)] px-3 py-1 text-[11px] font-medium text-[var(--text-primary)]"
+                                  className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-1.5 text-[11px] font-medium text-[var(--text-primary)]"
                                 >
                                   <FileText size={11} />
                                   <span className="max-w-44 truncate">{source.title}</span>

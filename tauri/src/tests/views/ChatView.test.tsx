@@ -531,6 +531,16 @@ describe("ChatView", () => {
     expect(screen.getByRole("button", { name: "Active model: Test Model" })).toBeInTheDocument();
   });
 
+  it("renders the composer inside the elevated floating shell", () => {
+    mockActiveChatId = "session-1";
+
+    renderChatView();
+
+    const composerShell = screen.getByTestId("composer-shell");
+    expect(composerShell.className).toContain("border-white/10");
+    expect(composerShell.className).toContain("bg-[var(--bg-elevated)]/95");
+  });
+
   it("shows the full Ollama model id when the stored label is only the base model name", () => {
     expect(resolveModelDisplayName(
       "gemma4:latest",
