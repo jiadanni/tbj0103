@@ -75,7 +75,56 @@ describe("ChatMessageBubble", () => {
       />,
     );
 
-    const bubble = screen.getByText(message.content).closest("div.rounded-2xl");
+    const bubble = screen.getByTestId("assistant-bubble");
     expect(bubble).toHaveClass("overflow-hidden");
+    expect(bubble.className).toContain("message-assistant");
+  });
+
+  it("renders grounded source chips alongside the expandable sources control", () => {
+    render(
+      <ChatMessageBubble
+        msg={message}
+        isLastMessage
+        isStreaming={false}
+        chatMessageStyle="bubble"
+        expandChatToWindowWidth={false}
+        showGenInfo={false}
+        editingMessageId={null}
+        editContent=""
+        copiedMessageId={null}
+        expandedThoughtIds={new Set()}
+        messageSources={{
+          [message.id]: [
+            { id: "source-1", result_type: "document", title: "Rust Book", excerpt: "Ownership basics", score: 0.9 },
+            { id: "source-2", result_type: "document", title: "Cargo Guide", excerpt: "Workspace layout", score: 0.84 },
+          ],
+        }}
+        expandedSources={null}
+        contextSources={null}
+        markdownComponents={{}}
+        redoPickerOpen={false}
+        availableModels={[]}
+        aiModelList={[]}
+        selectedModel=""
+        showGenInfoModel={false}
+        showGenInfoTokenCount={false}
+        showGenInfoDuration={false}
+        showGenInfoSpeed={false}
+        onCopy={vi.fn()}
+        onStartEdit={vi.fn()}
+        onSubmitEdit={vi.fn()}
+        onSetEditContent={vi.fn()}
+        onCancelEdit={vi.fn()}
+        onRedoWithModel={vi.fn()}
+        onToggleRedoPicker={vi.fn()}
+        onVariationChange={vi.fn()}
+        onToggleThought={vi.fn()}
+        onToggleSources={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /sources/i })).toBeInTheDocument();
+    expect(screen.getAllByTestId("grounded-source-chip")).toHaveLength(2);
+    expect(screen.getByText("Rust Book")).toBeInTheDocument();
   });
 });

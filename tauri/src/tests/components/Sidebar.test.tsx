@@ -5,6 +5,18 @@ import { MemoryRouter } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 
 describe("Sidebar", () => {
+  it("marks the active navigation item as the current page and uses the elevated pill treatment", () => {
+    render(
+      <MemoryRouter initialEntries={["/project"]}>
+        <Sidebar onOpenCommandPalette={vi.fn()} />
+      </MemoryRouter>
+    );
+
+    const button = screen.getByRole("button", { name: "Dashboard" });
+    expect(button).toHaveAttribute("aria-current", "page");
+    expect(button.className).toContain("bg-[var(--bg-elevated)]");
+  });
+
   it("shows a tooltip for collapsed navigation items on hover", () => {
     render(
       <MemoryRouter initialEntries={["/project"]}>
