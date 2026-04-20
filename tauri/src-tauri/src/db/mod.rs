@@ -36,6 +36,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v24_workspace_description",
     "v25_prompt_instructions",
     "v26_thought_session_id",
+    "v26_sources_unification",
     "v27_switch_workspace_to_chat",
     "v27_sources_folder_tokens",
     "v28_workspace_is_hidden",
@@ -696,6 +697,60 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v26_thought_session_id');")?;
     }
 
+    // v26: create unified sources tables for existing databases before later
+    // sources-specific migrations attempt to alter or index them.
+    let applied_v26_sources: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v26_sources_unification'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v26_sources == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS sources (
+                id TEXT PRIMARY KEY NOT NULL,
+                workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                source_type TEXT NOT NULL CHECK(source_type IN ('document', 'web_capture')),
+                title TEXT NOT NULL DEFAULT '',
+                filename TEXT,
+                file_type TEXT,
+                file_size INTEGER,
+                url TEXT,
+                content TEXT NOT NULL DEFAULT '',
+                summary TEXT,
+                favicon_data TEXT,
+                is_processed INTEGER NOT NULL DEFAULT 0,
+                folder TEXT,
+                token_count INTEGER,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS source_chunks (
+                id TEXT PRIMARY KEY NOT NULL,
+                source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                embedding BLOB,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT OR IGNORE INTO sources (
+                id, workspace_id, source_type, title, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at
+            )
+            SELECT
+                id, workspace_id, 'document', filename, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at
+            FROM uploaded_documents;
+            INSERT OR IGNORE INTO sources (
+                id, workspace_id, source_type, title, url, content, summary, favicon_data, is_processed, created_at, updated_at
+            )
+            SELECT
+                id, workspace_id, 'web_capture', title, url, content, summary, favicon_data, is_processed, created_at, datetime('now')
+            FROM web_captures;
+            INSERT OR IGNORE INTO source_chunks (id, source_id, content, chunk_index, embedding, created_at)
+            SELECT id, document_id, content, chunk_index, embedding, created_at
+            FROM document_chunks;
+            INSERT INTO _migrations(name) VALUES('v26_sources_unification');",
+        )?;
+    }
+
     // v27: workspace switch behavior preference
     let applied_v27: i64 = conn.query_row(
         "SELECT COUNT(*) FROM _migrations WHERE name = 'v27_switch_workspace_to_chat'",
@@ -1172,5 +1227,161 @@ mod tests {
             index_sql,
             "CREATE INDEX idx_messages_variant_group ON messages(variant_group_id)"
         );
+    }
+
+    #[test]
+    fn migrates_legacy_databases_without_unified_sources_tables() {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let path = dir.path().join("legacy-sources.db");
+        let conn = Connection::open(&path).expect("Failed to open legacy db");
+
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS _migrations (
+                name TEXT PRIMARY KEY NOT NULL,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS workspaces (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL DEFAULT 'My Workspace'
+            );
+            CREATE TABLE IF NOT EXISTS uploaded_documents (
+                id TEXT PRIMARY KEY NOT NULL,
+                workspace_id TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                file_type TEXT NOT NULL,
+                file_size INTEGER NOT NULL DEFAULT 0,
+                content TEXT NOT NULL DEFAULT '',
+                summary TEXT,
+                is_processed INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS document_chunks (
+                id TEXT PRIMARY KEY NOT NULL,
+                document_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                embedding TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS web_captures (
+                id TEXT PRIMARY KEY NOT NULL,
+                workspace_id TEXT NOT NULL,
+                url TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL DEFAULT '',
+                summary TEXT,
+                favicon_data TEXT,
+                is_processed INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        )
+        .expect("Failed to create legacy schema");
+
+        conn.execute(
+            "INSERT INTO workspaces (id, name) VALUES (?1, ?2)",
+            rusqlite::params!["ws-1", "Workspace"],
+        )
+        .expect("Failed to insert workspace");
+        conn.execute(
+            "INSERT INTO uploaded_documents (id, workspace_id, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            rusqlite::params![
+                "doc-1",
+                "ws-1",
+                "notes.md",
+                "text/markdown",
+                42_i64,
+                "legacy document body",
+                "doc summary",
+                1_i32,
+                "2026-04-01T08:00:00Z",
+                "2026-04-01T09:00:00Z",
+            ],
+        )
+        .expect("Failed to insert uploaded document");
+        conn.execute(
+            "INSERT INTO document_chunks (id, document_id, content, chunk_index, embedding, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                "chunk-1",
+                "doc-1",
+                "legacy chunk",
+                0_i64,
+                "[0.1, 0.2]",
+                "2026-04-01T10:00:00Z",
+            ],
+        )
+        .expect("Failed to insert document chunk");
+        conn.execute(
+            "INSERT INTO web_captures (id, workspace_id, url, title, content, summary, favicon_data, is_processed, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                "web-1",
+                "ws-1",
+                "https://example.com",
+                "Example",
+                "legacy web content",
+                "web summary",
+                "icon",
+                0_i32,
+                "2026-04-02T08:00:00Z",
+            ],
+        )
+        .expect("Failed to insert web capture");
+
+        for name in ALL_MIGRATION_NAMES {
+            if *name == "v26_sources_unification" {
+                continue;
+            }
+
+            conn.execute(
+                "INSERT INTO _migrations(name) VALUES(?1)",
+                rusqlite::params![name],
+            )
+            .expect("Failed to seed migration");
+        }
+        drop(conn);
+
+        let pool = initialize_database(&path).expect("Failed to initialize migrated db");
+        let conn = pool.get().expect("Failed to get connection");
+
+        let source_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sources", [], |row| row.get(0))
+            .expect("Failed to count sources");
+        assert_eq!(source_count, 2);
+
+        let doc_row: (String, Option<String>, Option<String>, Option<i64>, i32) = conn
+            .query_row(
+                "SELECT title, filename, file_type, token_count, is_processed
+                 FROM sources
+                 WHERE id = 'doc-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .expect("Failed to fetch migrated document source");
+        assert_eq!(doc_row.0, "notes.md");
+        assert_eq!(doc_row.1.as_deref(), Some("notes.md"));
+        assert_eq!(doc_row.2.as_deref(), Some("text/markdown"));
+        assert_eq!(doc_row.3, None);
+        assert_eq!(doc_row.4, 1);
+
+        let web_title: String = conn
+            .query_row(
+                "SELECT title FROM sources WHERE id = 'web-1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("Failed to fetch migrated web source");
+        assert_eq!(web_title, "Example");
+
+        let chunk_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM source_chunks WHERE source_id = 'doc-1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("Failed to count source chunks");
+        assert_eq!(chunk_count, 1);
     }
 }
