@@ -143,6 +143,8 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   const messageWidthClassName = expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]";
   const assistantColumnClassName = msg.role === "assistant" ? "w-full self-center" : "";
   const userBubbleWidthClassName = msg.role === "user" ? "w-fit self-end" : "";
+  const assistantBubbleClassName = "rounded-[24px] message-assistant overflow-hidden shadow-none";
+  const userBubbleClassName = "rounded-[24px] message-user shadow-none";
 
   const varCount = variations?.length ?? 0;
   const varIdx = currentVariationIndex ?? 0;
@@ -184,14 +186,15 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
       ) : (
         <>
           <div
+            data-testid={msg.role === "assistant" ? "assistant-bubble" : "user-bubble"}
             className={`min-w-0 ${messageWidthClassName} ${assistantColumnClassName} ${userBubbleWidthClassName} break-words px-4 py-2.5 text-left text-sm ${
               chatMessageStyle === "flat"
                 ? msg.role === "user"
                   ? "rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)]"
                   : "rounded border-l-2 border-[var(--accent-color)]/40 bg-transparent text-[var(--text-primary)]"
                 : msg.role === "user"
-                  ? "rounded-2xl message-user"
-                  : "rounded-2xl message-assistant overflow-hidden"
+                  ? userBubbleClassName
+                  : assistantBubbleClassName
             }`}
           >
             {msg.role === "assistant" ? (
@@ -200,16 +203,16 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                   <ContextIndicator sources={contextSources} />
                 )}
                 {parts?.thought && (
-                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/50">
+                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/78">
                     <button
                       onClick={() => onToggleThought(msg.id)}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
                     >
-                      {thoughtExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      {thoughtExpanded ? <ChevronDown size={12} strokeWidth={1.5} /> : <ChevronRight size={12} strokeWidth={1.5} />}
                       <span>{parts.thoughtTitle || "Thought"}</span>
                     </button>
                     {thoughtExpanded && (
-                      <div className="border-t border-[var(--border-color)] px-3 py-2">
+                      <div className="border-t border-[var(--border-color)] px-3 py-2.5">
                         <div className="prose prose-sm prose-invert min-w-0 max-w-none text-[var(--text-secondary)]">
                           <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>{parts.thought}</ReactMarkdown>
                         </div>
@@ -230,7 +233,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                       className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] disabled:opacity-30 transition-colors"
                       title="Previous variation"
                     >
-                      <ChevronLeft size={13} />
+                      <ChevronLeft size={13} strokeWidth={1.5} />
                     </button>
                     <div className="flex items-center gap-2">
                       <div className="flex gap-1 items-center">
@@ -258,7 +261,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                       className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] disabled:opacity-30 transition-colors"
                       title="Next variation"
                     >
-                      <ChevronRight size={13} />
+                      <ChevronRight size={13} strokeWidth={1.5} />
                     </button>
                   </div>
                 )}
@@ -291,14 +294,14 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                   className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
                   title={`Redo with ${selectedModel ?? "default"}`}
                 >
-                  <RotateCcw size={11} />
+                  <RotateCcw size={11} strokeWidth={1.5} />
                 </button>
                 <button
                   onClick={() => onToggleRedoPicker?.(msg.id)}
                   className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
                   title="Redo with different model"
                 >
-                  <ChevronDown size={10} />
+                  <ChevronDown size={10} strokeWidth={1.5} />
                 </button>
                 {redoPickerOpen && availableModels && (
                   <div className="absolute bottom-full right-0 z-30 mb-1.5 w-[200px] overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-[0_16px_40px_-16px_rgba(15,23,42,0.7)]">
@@ -322,7 +325,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                             }`}
                           >
                             <span className="min-w-0 truncate">{modelName}</span>
-                            {isCurrent && <Check size={11} className="shrink-0 text-[var(--accent-color)]" />}
+                            {isCurrent && <Check size={11} strokeWidth={1.5} className="shrink-0 text-[var(--accent-color)]" />}
                           </button>
                         );
                       })}
@@ -342,7 +345,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
               </button>
             )}
           </div>
-          <div className={`flex items-center gap-2 text-[11px] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
+          <div className={`flex items-center gap-2.5 text-[10px] font-medium tracking-[0.02em] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
             <span>{formatMessageTimestamp(msg.created_at)}</span>
             {showGenInfo && showGenInfoModel && msg.role === "assistant" && displayMsg.model_name && varCount <= 1 ? (
               <span className="text-[var(--text-secondary)]">{displayMsg.model_name}</span>
@@ -366,20 +369,44 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
           {/* Grounded sources for this message */}
           {hasSources && (
             <div className={`min-w-0 ${messageWidthClassName} ${msg.role === "user" ? "self-end" : "w-full self-center"}`}>
-              <button
-                onClick={() => onToggleSources(msg.id)}
-                className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-              >
-                <BookOpen size={10} />
-                {sources.length} source{sources.length !== 1 ? "s" : ""} used
-                {isSourcesExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => onToggleSources(msg.id)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+                >
+                  <BookOpen size={10} strokeWidth={1.5} className="text-[var(--link-color)]" />
+                  Sources
+                  <span className="text-[var(--text-secondary)]">({sources.length})</span>
+                  {isSourcesExpanded ? <ChevronUp size={10} strokeWidth={1.5} /> : <ChevronDown size={10} strokeWidth={1.5} />}
+                </button>
+                {sources.map((s, idx) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    data-testid="grounded-source-chip"
+                    onClick={() => {
+                      if (!isSourcesExpanded) {
+                        onToggleSources(msg.id);
+                      }
+                    }}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--border-color)] bg-[var(--message-assistant-bg)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[rgba(var(--accent-color-rgb),0.24)] hover:text-[var(--link-color)]"
+                    title={s.title}
+                  >
+                    <BookOpen size={11} strokeWidth={1.5} className="shrink-0 text-[var(--link-color)]" />
+                    <span className="truncate">{s.title || `Source ${idx + 1}`}</span>
+                  </button>
+                ))}
+              </div>
               {isSourcesExpanded && (
-                <div className="mt-1.5 space-y-1">
+                <div className="mt-2 space-y-2">
                   {sources.map((s, idx) => (
-                    <div key={s.id} className="rounded-lg p-2 bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[11px]">
-                      <div className="font-medium text-[var(--text-secondary)]">[{idx + 1}] {s.title}</div>
-                      <div className="text-[var(--text-muted)] line-clamp-2 mt-0.5">{s.excerpt}</div>
+                    <div key={s.id} className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2.5 text-[11px]">
+                      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                        <BookOpen size={10} strokeWidth={1.5} className="text-[var(--link-color)]" />
+                        <span>Source {idx + 1}</span>
+                      </div>
+                      <div className="mt-1 text-[var(--text-secondary)]">{s.title}</div>
+                      <div className="mt-1 line-clamp-2 text-[var(--text-muted)]">{s.excerpt}</div>
                     </div>
                   ))}
                 </div>
