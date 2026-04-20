@@ -26,7 +26,7 @@ function PrefsPopOutButtons({ onClose }: { onClose: () => void }) {
         aria-label="Open Preferences in new window"
         className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
       >
-        <ExternalLink size={14} />
+        <ExternalLink size={14} strokeWidth={1.5} />
       </button>
       <button
         onClick={toggleSingleInstance}
@@ -38,7 +38,7 @@ function PrefsPopOutButtons({ onClose }: { onClose: () => void }) {
             : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
         }`}
       >
-        <Pin size={14} />
+        <Pin size={14} strokeWidth={1.5} />
       </button>
     </>
   );
@@ -173,6 +173,8 @@ export default function Sidebar({
   }
 
   const visibleTooltip = tooltip && tooltip.path === location.pathname ? tooltip : null;
+  const activeNavClassName = "border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  const inactiveNavClassName = "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 
   return (
     <div className={`flex h-full flex-col bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] shrink-0 transition-[width] duration-200 overflow-hidden ${labelsVisible ? "w-44" : "w-14 items-center"}`}>
@@ -201,21 +203,22 @@ export default function Sidebar({
                   setContextMenu({ item, x: event.clientX, y: event.clientY });
                 }}
                 aria-label={!labelsVisible ? item.label : undefined}
+                aria-current={isActive ? "page" : undefined}
                 className={
                   !labelsVisible
                     ? `flex items-center justify-center w-10 h-10 rounded-xl transition-colors select-none ${
                         isActive
-                          ? "bg-[var(--accent-color)] text-white shadow-sm"
-                          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                          ? activeNavClassName
+                          : inactiveNavClassName
                       }`
                     : `w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-sm transition-colors select-none ${
                         isActive
-                          ? "bg-[var(--accent-color)] text-white shadow-sm"
-                          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                          ? activeNavClassName
+                          : inactiveNavClassName
                       }`
                 }
               >
-                <Icon size={!labelsVisible ? 20 : 18} />
+                <Icon size={!labelsVisible ? 20 : 18} strokeWidth={1.5} />
                 {labelsVisible && <span className="flex-1 text-left">{item.label}</span>}
               </button>
             );
@@ -238,7 +241,7 @@ export default function Sidebar({
                 : "mb-2 flex w-full items-center gap-2 px-2.5 py-2 rounded-xl text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
             }
           >
-            {labelsVisible ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            {labelsVisible ? <ChevronLeft size={16} strokeWidth={1.5} /> : <ChevronRight size={16} strokeWidth={1.5} />}
             {labelsVisible && <span className="flex-1 text-left">Collapse</span>}
           </button>
         )}
@@ -262,7 +265,7 @@ export default function Sidebar({
                   : "flex flex-1 items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
               }
             >
-              <SettingsIcon size={16} />
+              <SettingsIcon size={16} strokeWidth={1.5} />
               {labelsVisible && <span className="flex-1 text-left">Preferences</span>}
             </button>
             {labelsVisible && <PrefsPopOutButtons onClose={() => { setTooltip(null); setPopoverOpen(false); }} />}
@@ -298,7 +301,7 @@ export default function Sidebar({
           {labelsVisible && (
             <>
               <span className="min-w-0 flex-1 truncate text-left font-medium">Aetherium</span>
-              <ChevronUp size={14} className={`shrink-0 transition-transform ${popoverOpen ? "" : "rotate-180"}`} />
+              <ChevronUp size={14} strokeWidth={1.5} className={`shrink-0 transition-transform ${popoverOpen ? "" : "rotate-180"}`} />
             </>
           )}
         </button>
@@ -344,7 +347,7 @@ export default function Sidebar({
               }}
               className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
             >
-              <Zap size={16} />
+              <Zap size={16} strokeWidth={1.5} />
               <span className="flex-1">Command Palette</span>
               <kbd className="text-[10px] px-1 py-0.5 bg-[var(--bg-hover)] rounded font-mono text-[var(--text-muted)]">⌘K</kbd>
             </button>
@@ -376,7 +379,7 @@ export default function Sidebar({
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
           >
-            <ExternalLink size={11} /> Open section
+            <ExternalLink size={11} strokeWidth={1.5} /> Open section
           </button>
           <button
             onClick={() => {
@@ -385,7 +388,7 @@ export default function Sidebar({
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
           >
-            <SettingsIcon size={11} /> Customize navigation
+            <SettingsIcon size={11} strokeWidth={1.5} /> Customize navigation
           </button>
         </div>
       )}
