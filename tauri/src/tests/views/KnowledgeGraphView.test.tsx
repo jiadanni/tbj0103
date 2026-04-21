@@ -11,16 +11,21 @@ const mocks = vi.hoisted(() => ({
   listLinks: vi.fn(),
   listByConcept: vi.fn(),
   getSummary: vi.fn(),
+  d3ForceStrength: vi.fn(),
+  d3Force: vi.fn(),
+  zoom: vi.fn(),
+  centerAt: vi.fn(),
+  zoomToFit: vi.fn(),
 }));
 
 vi.mock("react-force-graph-2d", () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const MockForceGraph = React.forwardRef<any>((_props, ref) => {
     React.useImperativeHandle(ref, () => ({
-      d3Force: vi.fn(() => ({ strength: vi.fn() })),
-      zoom: vi.fn(),
-      centerAt: vi.fn(),
-      zoomToFit: vi.fn(),
+      d3Force: mocks.d3Force.mockReturnValue({ strength: mocks.d3ForceStrength }),
+      zoom: mocks.zoom,
+      centerAt: mocks.centerAt,
+      zoomToFit: mocks.zoomToFit,
     }), []);
     return <div data-testid="force-graph" />;
   });
@@ -206,5 +211,10 @@ describe("KnowledgeGraphView", () => {
     expect(screen.queryByRole("button", { name: "Deduplication" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Flashcards" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Learning" })).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(mocks.centerAt).toHaveBeenCalled();
+      expect(mocks.zoomToFit).toHaveBeenCalled();
+    });
   });
 });
