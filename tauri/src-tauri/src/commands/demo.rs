@@ -17,6 +17,24 @@ const DEMO_PROJECT_MUSIC_RHYTHM: &str = "demo-project-music-rhythm-0000000000";
 const DEMO_PROJECT_ROME: &str = "demo-project-rome-0000000000000000000";
 const DEMO_PROJECT_ROME_MILITARY: &str = "demo-project-rome-military-00000000000";
 
+const DEMO_SOURCE_AI_TRANSFORMER: &str = "demo-source-ai-transformer-0000000001";
+const DEMO_SOURCE_MUSIC_CHORDS: &str = "demo-source-music-chords-0000000001";
+const DEMO_SOURCE_ROME_RES_GESTAE: &str = "demo-source-rome-res-gestae-0000001";
+
+const DEMO_MEMORY_AI_PREF: &str = "demo-memory-ai-preference-0000000001";
+const DEMO_MEMORY_MUSIC_FACT: &str = "demo-memory-music-fact-000000000001";
+const DEMO_MEMORY_ROME_PREF: &str = "demo-memory-rome-preference-00000001";
+
+const DEMO_ARTIFACT_AI_ATTENTION: &str = "demo-artifact-ai-attention-code-001";
+
+const DEMO_GOAL_AI_TRANSFORMER: &str = "demo-goal-ai-master-transformers-00001";
+const DEMO_NOTE_AI_MATH: &str = "demo-note-ai-attention-math-000000001";
+
+const DEMO_SOURCE_MUSIC_WEB: &str = "demo-source-music-web-theory-0000001";
+
+const DEMO_GOAL_ROME_PUNIC: &str = "demo-goal-rome-punic-wars-00000000001";
+const DEMO_NOTE_ROME_LEGATE: &str = "demo-note-rome-legate-duties-000000001";
+
 #[tauri::command]
 pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -158,6 +176,103 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
+    // AI Workspace: Source Document
+    conn.execute(
+        "INSERT INTO sources (id, workspace_id, source_type, title, filename, file_type, content, is_processed, created_at, updated_at)
+         VALUES (?1, ?2, 'document', 'Attention Is All You Need - Summary', 'transformer_summary.md', 'markdown', ?3, 1, ?4, ?5)",
+        rusqlite::params![
+            DEMO_SOURCE_AI_TRANSFORMER,
+            DEMO_WS_AI,
+            "The Transformer model relies entirely on an attention mechanism to draw global dependencies between input and output. The model architecture uses stacked self-attention and point-wise, fully connected layers for both the encoder and decoder.
+
+Key highlights:
+1. Encoder and Decoder Stacks: Both use multi-head self-attention.
+2. Attention: Maps a query and a set of key-value pairs to an output.
+3. Multi-Head Attention: Allows the model to jointly attend to information from different representation subspaces at different positions.",
+            now,
+            now
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    // AI Workspace: Source Chunks
+    let ai_chunks = vec![
+        "The Transformer model relies entirely on an attention mechanism to draw global dependencies between input and output.",
+        "Key highlights: 1. Encoder and Decoder Stacks: Both use multi-head self-attention.",
+        "3. Multi-Head Attention: Allows the model to jointly attend to information from different representation subspaces at different positions."
+    ];
+    for (i, chunk) in ai_chunks.iter().enumerate() {
+        let chunk_id = format!("{}-chunk-{}", DEMO_SOURCE_AI_TRANSFORMER, i);
+        conn.execute(
+            "INSERT INTO source_chunks (id, source_id, content, chunk_index, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![chunk_id, DEMO_SOURCE_AI_TRANSFORMER, chunk, i as i32, now],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // AI Workspace: Memory
+    conn.execute(
+        "INSERT INTO memories (id, workspace_id, content, memory_type, scope, created_at, updated_at)
+         VALUES (?1, ?2, 'Prefers detailed technical explanations with LaTeX math notation.', 'preference', 'workspace', ?3, ?4)",
+        rusqlite::params![DEMO_MEMORY_AI_PREF, DEMO_WS_AI, now, now],
+    ).map_err(|e| e.to_string())?;
+
+    // AI Workspace: Artifact
+    conn.execute(
+        "INSERT INTO artifacts (id, workspace_id, session_id, title, artifact_type, language, content, description, created_at, updated_at)
+         VALUES (?1, ?2, ?3, 'Self-Attention Implementation', 'code', 'python', ?4, 'A simple PyTorch-like implementation of the self-attention mechanism.', ?5, ?6)",
+        rusqlite::params![
+            DEMO_ARTIFACT_AI_ATTENTION,
+            DEMO_WS_AI,
+            session_ai_1,
+            "import torch
+import torch.nn.functional as F
+
+def self_attention(query, key, value, mask=None):
+    d_k = query.size(-1)
+    scores = torch.matmul(query, key.transpose(-2, -1)) /  math.sqrt(d_k)
+    if mask is not None:
+        scores = scores.masked_fill(mask == 0, -1e9)
+    p_attn = F.softmax(scores, dim=-1)
+    return torch.matmul(p_attn, value), p_attn",
+            now,
+            now
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    // AI Workspace: Learning Goal
+    conn.execute(
+        "INSERT INTO learning_goals (id, workspace_id, title, goal_description, progress, is_completed, due_date, prerequisite_ids, related_chat_ids, created_at, updated_at)
+         VALUES (?1, ?2, 'Master Transformer Architecture', 'Deep understanding of self-attention, multi-head attention, and positional encoding.', 0.45, 0, ?3, '[]', ?4, ?5, ?6)",
+        rusqlite::params![
+            DEMO_GOAL_AI_TRANSFORMER,
+            DEMO_WS_AI,
+            (chrono::Utc::now() + chrono::Duration::days(14)).format("%Y-%m-%d").to_string(),
+            format!("[\"{}\"]", session_ai_1),
+            now,
+            now
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    // AI Workspace: Project Note
+    conn.execute(
+        "INSERT INTO project_notes (id, workspace_id, title, content, note_type, tags, created_at, updated_at)
+         VALUES (?1, ?2, 'Attention Mechanism Deep Dive', ?3, 'ai_generated', '[\"math\", \"deep-learning\"]', ?4, ?5)",
+        rusqlite::params![
+            DEMO_NOTE_AI_MATH,
+            DEMO_WS_AI,
+            "## Mathematical Intuition of Self-Attention
+
+Self-attention can be viewed as a mapping from a query and a set of key-value pairs to an output. The output is a weighted sum of the values.
+
+### The Scaling Factor
+The reason for $\\sqrt{d_k}$ is to keep the dot products from growing too large in magnitude, which would push the softmax function into regions where it has extremely small gradients.
+
+### Complexity
+Compared to RNNs ($O(n \\cdot d^2)$), self-attention is $O(n^2 \\cdot d)$, making it faster for shorter sequences but memory-intensive for very long ones.",
+            now,
+            now
+        ],
+    ).map_err(|e| e.to_string())?;
+
     // ── Workspace 2: Music Theory ────────────────────────────────────
     conn.execute(
         "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '🎵 Music Theory', ?2, ?3)",
@@ -290,6 +405,81 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         ).map_err(|e| e.to_string())?;
     }
 
+    // Music Workspace: Source Document
+    conn.execute(
+        "INSERT INTO sources (id, workspace_id, source_type, title, filename, file_type, content, is_processed, created_at, updated_at)
+         VALUES (?1, ?2, 'document', 'Circle of Fifths Reference', 'circle_of_fifths.md', 'markdown', ?3, 1, ?4, ?5)",
+        rusqlite::params![
+            DEMO_SOURCE_MUSIC_CHORDS,
+            DEMO_WS_MUSIC,
+            "The Circle of Fifths is a visual representation of the relationships among the 12 tones of the chromatic scale, their corresponding key signatures, and the associated major and minor keys.
+
+It is essential for:
+- Understanding key signatures
+- Transposing music
+- Harmonizing melodies
+- Understanding chord progressions (I-IV-V)",
+            now,
+            now
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    // Music Workspace: Source Chunks
+    let music_chunks = vec![
+        "The Circle of Fifths is a visual representation of the relationships among the 12 tones of the chromatic scale.",
+        "It is essential for: Understanding key signatures, Transposing music, and Harmonizing melodies."
+    ];
+    for (i, chunk) in music_chunks.iter().enumerate() {
+        let chunk_id = format!("{}-chunk-{}", DEMO_SOURCE_MUSIC_CHORDS, i);
+        conn.execute(
+            "INSERT INTO source_chunks (id, source_id, content, chunk_index, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![chunk_id, DEMO_SOURCE_MUSIC_CHORDS, chunk, i as i32, now],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Music Workspace: Memory
+    conn.execute(
+        "INSERT INTO memories (id, workspace_id, content, memory_type, scope, created_at, updated_at)
+         VALUES (?1, ?2, 'The user is currently focusing on Jazz harmony and extended chords (9ths, 11ths, 13ths).', 'context', 'workspace', ?3, ?4)",
+        rusqlite::params![DEMO_MEMORY_MUSIC_FACT, DEMO_WS_MUSIC, now, now],
+    ).map_err(|e| e.to_string())?;
+
+    // Music Workspace: Web Capture Source
+    conn.execute(
+        "INSERT INTO sources (id, workspace_id, source_type, title, url, content, is_processed, created_at, updated_at)
+         VALUES (?1, ?2, 'web_capture', 'Modern Music Theory - Advanced Harmony', 'https://example.com/musictheory/advanced-harmony', ?3, 1, ?4, ?5)",
+        rusqlite::params![
+            DEMO_SOURCE_MUSIC_WEB,
+            DEMO_WS_MUSIC,
+            "Functional harmony in jazz often involves 'ii-V-I' progressions and their variations. This article explores how to substitute dominant chords with tritone substitutions to create chromatic bass movement.
+
+Key topics:
+- Tritone substitution
+- Secondary dominants
+- Altered scales and their use over V7 chords",
+            now,
+            now
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    // Music Workspace: Concepts (Continued)
+    let more_music_concepts: Vec<(&str, &str, &str, &str)> = vec![
+        ("demo-concept-jazz-harmony-000000001", "Jazz Harmony", "Complex harmonic structures characteristic of jazz music.", "topic"),
+        ("demo-concept-ii-v-i-000000000000001", "ii-V-I Progression", "The most common chord progression in jazz and bebop.", "definition"),
+    ];
+    for (id, name, desc, ctype) in &more_music_concepts {
+        conn.execute(
+            "INSERT OR IGNORE INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, '[]', '[]', '[]', 0, 0, 0, ?6, ?7)",
+            rusqlite::params![id, DEMO_WS_MUSIC, name, desc, ctype, now, now],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    conn.execute(
+        "INSERT OR IGNORE INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at) VALUES (?1, ?2, ?3, 'related', 0.9, '', ?4)",
+        rusqlite::params![uuid::Uuid::new_v4().to_string(), "demo-concept-jazz-harmony-000000001", "demo-concept-chord-progression-00000001", now],
+    ).map_err(|e| e.to_string())?;
+
     // ── Workspace 3: Roman History ──────────────────────────────────────
     conn.execute(
         "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '🏛️ Roman History', ?2, ?3)",
@@ -420,6 +610,77 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
             rusqlite::params![dnid, DEMO_WS_ROME, date, content, now, now],
         ).map_err(|e| e.to_string())?;
     }
+
+    // Rome Workspace: Source Document
+    conn.execute(
+        "INSERT INTO sources (id, workspace_id, source_type, title, filename, file_type, content, is_processed, created_at, updated_at)
+         VALUES (?1, ?2, 'document', 'Res Gestae Divi Augusti (Excerpts)', 'res_gestae.md', 'markdown', ?3, 1, ?4, ?5)",
+        rusqlite::params![
+            DEMO_SOURCE_ROME_RES_GESTAE,
+            DEMO_WS_ROME,
+            "The Res Gestae Divi Augusti is the funerary inscription of the first Roman emperor, Augustus, giving a first-person record of his life and accomplishments.
+
+Notable achievements:
+- Transitioned Rome from Republic to Empire
+- Initiated the Pax Romana
+- Vastly expanded the empire's borders
+- Major public building programs in Rome",
+            now,
+            now
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    // Rome Workspace: Source Chunks
+    let rome_chunks = vec![
+        "The Res Gestae Divi Augusti is the funerary inscription of the first Roman emperor, Augustus.",
+        "Notable achievements: Transitioned Rome from Republic to Empire and Initiated the Pax Romana."
+    ];
+    for (i, chunk) in rome_chunks.iter().enumerate() {
+        let chunk_id = format!("{}-chunk-{}", DEMO_SOURCE_ROME_RES_GESTAE, i);
+        conn.execute(
+            "INSERT INTO source_chunks (id, source_id, content, chunk_index, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![chunk_id, DEMO_SOURCE_ROME_RES_GESTAE, chunk, i as i32, now],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Rome Workspace: Memory
+    conn.execute(
+        "INSERT INTO memories (id, workspace_id, content, memory_type, scope, created_at, updated_at)
+         VALUES (?1, ?2, 'Interested in the transition from late Republic to early Principate, specifically institutional continuity.', 'preference', 'workspace', ?3, ?4)",
+        rusqlite::params![DEMO_MEMORY_ROME_PREF, DEMO_WS_ROME, now, now],
+    ).map_err(|e| e.to_string())?;
+
+    // Rome Workspace: Learning Goal
+    conn.execute(
+        "INSERT INTO learning_goals (id, workspace_id, title, goal_description, progress, is_completed, due_date, prerequisite_ids, related_chat_ids, created_at, updated_at)
+         VALUES (?1, ?2, 'Analyze the Punic Wars', 'Detailed study of the three conflicts between Rome and Carthage.', 0.2, 0, ?3, '[]', '[]', ?4, ?5)",
+        rusqlite::params![
+            DEMO_GOAL_ROME_PUNIC,
+            DEMO_WS_ROME,
+            (chrono::Utc::now() + chrono::Duration::days(30)).format("%Y-%m-%d").to_string(),
+            now,
+            now
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    // Rome Workspace: Project Note
+    conn.execute(
+        "INSERT INTO project_notes (id, workspace_id, title, content, note_type, tags, created_at, updated_at)
+         VALUES (?1, ?2, 'Duties of a Legionary Legate', ?3, 'manual', '[\"military\", \"organization\"]', ?4, ?5)",
+        rusqlite::params![
+            DEMO_NOTE_ROME_LEGATE,
+            DEMO_WS_ROME,
+            "The Legatus Legionis was the commander of a Roman legion.
+
+### Responsibilities:
+- Operational command during campaigns
+- Ensuring discipline and training within the legion
+- Coordination with other legates and the provincial governor
+- Administrative oversight of the legionary camp",
+            now,
+            now
+        ],
+    ).map_err(|e| e.to_string())?;
 
     // Return the first workspace ID as the initially active one
     Ok(DEMO_WS_AI.to_string())
