@@ -1,5 +1,13 @@
-use rusqlite::{params, Connection};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+
+pub const QUICK_SEARCH_KIND_FILTERS: [&str; 5] = [
+    "conversation",
+    "message",
+    "artifact",
+    "memory",
+    "summary",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuickSearchResult {
@@ -24,14 +32,24 @@ pub fn query(
     conn: &Connection,
     query: &str,
     limit: usize,
+    workspace_id: Option<&str>,
+    kind_filters: Option<&[String]>,
 ) -> Result<Vec<QuickSearchResult>, String> {
+    let effective_kind_filters = normalize_kind_filters(kind_filters);
     let trimmed = query.trim();
     if trimmed.is_empty() {
-        return recent_results(conn, limit);
+        return recent_results(conn, limit, workspace_id, effective_kind_filters.as_deref());
     }
 
     let fts_query = build_fts_query(trimmed).ok_or_else(|| "Enter a search query.".to_string())?;
-    query_filtered(conn, &fts_query, limit, None, None, None)
+    query_filtered(
+        conn,
+        &fts_query,
+        limit,
+        workspace_id,
+        None,
+        effective_kind_filters.as_deref(),
+    )
 }
 
 pub fn query_filtered(
@@ -40,26 +58,30 @@ pub fn query_filtered(
     limit: usize,
     workspace_id: Option<&str>,
     exclude_session_id: Option<&str>,
-    kind_filter: Option<&str>,
+    kind_filters: Option<&[String]>,
 ) -> Result<Vec<QuickSearchResult>, String> {
-    let mut where_clauses = vec!["quick_search_documents_fts MATCH ?1"];
+    let mut where_clauses = vec!["quick_search_documents_fts MATCH ?1".to_string()];
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(fts_query.to_string())];
 
     if let Some(ws_id) = workspace_id {
-        where_clauses.push("d.workspace_id = ?2");
+        where_clauses.push(format!("d.workspace_id = ?{}", params.len() + 1));
         params.push(Box::new(ws_id.to_string()));
     }
 
     if let Some(ex_sid) = exclude_session_id {
-        where_clauses.push("d.session_id != ?3");
+        where_clauses.push(format!("d.session_id != ?{}", params.len() + 1));
         params.push(Box::new(ex_sid.to_string()));
     }
 
-    if let Some(kind) = kind_filter {
-        // Use the next positional param index
-        let next_idx = params.len() + 1;
-        where_clauses.push(Box::leak(format!("d.kind = ?{}", next_idx).into_boxed_str()));
-        params.push(Box::new(kind.to_string()));
+    if let Some(kinds) = kind_filters {
+        if !kinds.is_empty() {
+            let mut placeholders = Vec::with_capacity(kinds.len());
+            for kind in kinds {
+                placeholders.push(format!("?{}", params.len() + 1));
+                params.push(Box::new(kind.clone()));
+            }
+            where_clauses.push(format!("d.kind IN ({})", placeholders.join(", ")));
+        }
     }
 
     let where_sql = where_clauses.join(" AND ");
@@ -104,10 +126,12 @@ pub fn query_filtered(
         .query_map(param_refs.as_slice(), |row| {
             let body: String = row.get(5)?;
             let snippet: String = row.get(13)?;
+            let clean_body = sanitize_quick_search_text(&body);
+            let clean_snippet = sanitize_quick_search_text(&snippet);
             let excerpt = if snippet.trim().is_empty() {
-                truncate_plaintext(&body, 180)
+                truncate_plaintext(&clean_body, 180)
             } else {
-                collapse_whitespace(&snippet)
+                collapse_whitespace(&clean_snippet)
             };
 
             Ok(QuickSearchResult {
@@ -134,8 +158,18 @@ pub fn query_filtered(
         .map_err(|e| e.to_string())
 }
 
-fn recent_results(conn: &Connection, limit: usize) -> Result<Vec<QuickSearchResult>, String> {
-    let sql = r#"
+fn recent_results(
+    conn: &Connection,
+    limit: usize,
+    workspace_id: Option<&str>,
+    kind_filters: Option<&[String]>,
+) -> Result<Vec<QuickSearchResult>, String> {
+    if matches!(kind_filters, Some(kinds) if !kinds.iter().any(|kind| kind == "conversation")) {
+        return Ok(vec![]);
+    }
+
+    let mut sql = String::from(
+        r#"
         SELECT
             'session:' || cs.id,
             cs.id,
@@ -160,13 +194,28 @@ fn recent_results(conn: &Connection, limit: usize) -> Result<Vec<QuickSearchResu
         LEFT JOIN workspaces w ON w.id = cs.workspace_id
         LEFT JOIN projects p ON p.id = cs.project_id
         WHERE cs.is_deleted = 0
-        ORDER BY COALESCE(cs.last_accessed_at, cs.updated_at) DESC, cs.updated_at DESC
-        LIMIT ?1
-    "#;
+    "#,
+    );
 
-    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if let Some(workspace_id) = workspace_id {
+        sql.push_str(" AND cs.workspace_id = ?1");
+        params.push(Box::new(workspace_id.to_string()));
+    }
+
+    sql.push_str(
+        r#"
+        ORDER BY COALESCE(cs.last_accessed_at, cs.updated_at) DESC, cs.updated_at DESC
+        LIMIT ?"#
+    );
+    sql.push_str(&(params.len() + 1).to_string());
+
+    params.push(Box::new(limit as i64));
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(params![limit as i64], |row| {
+        .query_map(param_refs.as_slice(), |row| {
             let excerpt: String = row.get(5)?;
             Ok(QuickSearchResult {
                 doc_id: row.get(0)?,
@@ -174,7 +223,7 @@ fn recent_results(conn: &Connection, limit: usize) -> Result<Vec<QuickSearchResu
                 kind: row.get(2)?,
                 title: row.get(3)?,
                 subtitle: row.get(4)?,
-                excerpt: truncate_plaintext(&excerpt, 180),
+                excerpt: truncate_plaintext(&sanitize_quick_search_text(&excerpt), 180),
                 workspace_id: row.get(6)?,
                 workspace_name: row.get(7)?,
                 project_id: row.get(8)?,
@@ -190,6 +239,25 @@ fn recent_results(conn: &Connection, limit: usize) -> Result<Vec<QuickSearchResu
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+fn normalize_kind_filters(kind_filters: Option<&[String]>) -> Option<Vec<String>> {
+    let kind_filters = kind_filters?;
+
+    let mut normalized = Vec::new();
+    for kind in kind_filters {
+        if QUICK_SEARCH_KIND_FILTERS.contains(&kind.as_str())
+            && !normalized.iter().any(|existing| existing == kind)
+        {
+            normalized.push(kind.clone());
+        }
+    }
+
+    if normalized.is_empty() || normalized.len() == QUICK_SEARCH_KIND_FILTERS.len() {
+        None
+    } else {
+        Some(normalized)
+    }
 }
 
 fn build_fts_query(input: &str) -> Option<String> {
@@ -227,4 +295,21 @@ fn truncate_plaintext(input: &str, max_chars: usize) -> String {
 
 fn collapse_whitespace(input: &str) -> String {
     input.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn sanitize_quick_search_text(input: &str) -> String {
+    let mut sanitized = input.to_string();
+    for marker in [
+        "<|start|>",
+        "<|assistant|>",
+        "<|user|>",
+        "<|system|>",
+        "<|channel|>",
+        "<|message|>",
+        "<|final|>",
+    ] {
+        sanitized = sanitized.replace(marker, " ");
+    }
+
+    collapse_whitespace(&sanitized)
 }

@@ -30,6 +30,15 @@ const mock = new LocalStorageMock();
 Object.defineProperty(window, 'localStorage', { value: mock });
 Object.defineProperty(globalThis, 'localStorage', { value: mock });
 
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+Object.defineProperty(window, "ResizeObserver", { value: ResizeObserverMock });
+Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserverMock });
+
 beforeEach(() => {
   mock.clear();
 });

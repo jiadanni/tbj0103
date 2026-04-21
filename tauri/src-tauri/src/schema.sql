@@ -380,6 +380,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('background_model', '""'),
     ('quick_search_models', '[]'),
     ('quick_search_shortcut', '"CmdOrCtrl+Shift+K"'),
+    ('quick_search_workspace_scope', '"__all__"'),
+    ('quick_search_type_filters', '["conversation","message","artifact","memory","summary"]'),
     ('backup_enabled', 'true'),
     ('touch_id_enabled', 'false'),
     ('pin_lock_enabled', 'false'),

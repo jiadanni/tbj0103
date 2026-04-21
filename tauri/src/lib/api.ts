@@ -212,6 +212,10 @@ export interface QuickSearchResult {
   recent: boolean;
 }
 
+export interface QuickSearchContext {
+  preferred_workspace_id?: string | null;
+}
+
 export interface OllamaModelDetails { parameter_size?: string; }
 export interface OllamaModel { name: string; size?: number; modified_at?: string; details?: OllamaModelDetails; capabilities?: string[]; }
 export interface OllamaRuntimeStatus {
@@ -338,6 +342,8 @@ export interface AppSettings {
   background_model: string;
   quick_search_models: string[];
   quick_search_shortcut: string;
+  quick_search_workspace_scope: string;
+  quick_search_type_filters: string[];
   embedding_model: string;
   chat_title_auto_refresh: "disabled" | "initial_only" | "periodic";
   chat_title_refresh_interval: number;
@@ -903,8 +909,23 @@ export const api = {
   quickSearch: {
     show: () => invoke<void>("show_quick_search"),
     hide: () => invoke<void>("hide_quick_search"),
-    query: (query: string, limit?: number) =>
-      invoke<QuickSearchResult[]>("query_quick_search", { req: { query, limit } }),
+    query: (
+      query: string,
+      options?: {
+        limit?: number;
+        workspaceId?: string | null;
+        kindFilters?: string[] | null;
+      },
+    ) =>
+      invoke<QuickSearchResult[]>("query_quick_search", {
+        req: {
+          query,
+          limit: options?.limit,
+          workspace_id: options?.workspaceId ?? null,
+          kind_filters: options?.kindFilters ?? null,
+        },
+      }),
+    getContext: () => invoke<QuickSearchContext>("get_quick_search_context"),
     openResult: (result: QuickSearchResult) =>
       invoke<void>("open_quick_search_result", { result }),
     markMainWindowReady: () => invoke<void>("mark_main_window_ready"),

@@ -5,6 +5,8 @@ const SETTINGS_INITIAL = {
   preferredModel: "",
   backgroundModel: "",
   quickSearchModels: [],
+  quickSearchWorkspaceScope: "__all__",
+  quickSearchTypeFilters: ["conversation", "message", "artifact", "memory", "summary"],
   ollamaUrl: "http://localhost:11434",
   embeddingModel: "nomic-embed-text",
   theme: "system" as const,
@@ -92,6 +94,16 @@ describe("setters", () => {
   it("setQuickSearchModels updates quickSearchModels", () => {
     useSettingsStore.getState().setQuickSearchModels(["claude-web", "gemini-web"]);
     expect(useSettingsStore.getState().quickSearchModels).toEqual(["claude-web", "gemini-web"]);
+  });
+
+  it("setQuickSearchWorkspaceScope updates quickSearchWorkspaceScope", () => {
+    useSettingsStore.getState().setQuickSearchWorkspaceScope("ws-1");
+    expect(useSettingsStore.getState().quickSearchWorkspaceScope).toBe("ws-1");
+  });
+
+  it("setQuickSearchTypeFilters updates quickSearchTypeFilters", () => {
+    useSettingsStore.getState().setQuickSearchTypeFilters(["artifact", "memory"]);
+    expect(useSettingsStore.getState().quickSearchTypeFilters).toEqual(["artifact", "memory"]);
   });
 
   it("setSidebarWidth updates sidebarWidth only", () => {
