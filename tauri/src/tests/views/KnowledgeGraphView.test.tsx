@@ -1,6 +1,6 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import KnowledgeGraphView from "@/views/KnowledgeGraphView";
@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   listLinks: vi.fn(),
   listByConcept: vi.fn(),
   getSummary: vi.fn(),
+  analyzeWorkspace: vi.fn(),
+  generateFromConcept: vi.fn(),
+  ollamaListModels: vi.fn(),
   d3ForceStrength: vi.fn(),
   d3Force: vi.fn(),
   zoom: vi.fn(),
@@ -20,14 +23,22 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("react-force-graph-2d", () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const MockForceGraph = React.forwardRef<any>((_props, ref) => {
+  const MockForceGraph = React.forwardRef<any>((props: any, ref) => {
     React.useImperativeHandle(ref, () => ({
       d3Force: mocks.d3Force.mockReturnValue({ strength: mocks.d3ForceStrength }),
       zoom: mocks.zoom,
       centerAt: mocks.centerAt,
       zoomToFit: mocks.zoomToFit,
     }), []);
-    return <div data-testid="force-graph" />;
+    return (
+      <div data-testid="force-graph">
+        <button
+          type="button"
+          aria-label="Select graph node"
+          onClick={() => props.onNodeClick?.({ id: "concept-1" })}
+        />
+      </div>
+    );
   });
   MockForceGraph.displayName = "MockForceGraph";
   return {
@@ -45,7 +56,7 @@ vi.mock("@/lib/api", () => ({
     },
     flashcard: {
       listByConcept: mocks.listByConcept,
-      generateFromConcept: vi.fn(),
+      generateFromConcept: mocks.generateFromConcept,
     },
     graph: {
       listConcepts: mocks.listConcepts,
@@ -55,10 +66,10 @@ vi.mock("@/lib/api", () => ({
       getLearningPath: vi.fn().mockResolvedValue([]),
     },
     knowledge: {
-      analyzeWorkspace: vi.fn(),
+      analyzeWorkspace: mocks.analyzeWorkspace,
     },
     ollama: {
-      listModels: vi.fn().mockResolvedValue([]),
+      listModels: mocks.ollamaListModels,
     },
   },
 }));
@@ -104,11 +115,13 @@ describe("KnowledgeGraphView", () => {
         },
       ],
       activeWorkspaceId: "ws-1",
+      isDemoMode: false,
     });
 
     mocks.listModels.mockResolvedValue([
       { model_id: "gemma3:1b", enabled: true, priority: 1 },
     ]);
+    mocks.ollamaListModels.mockResolvedValue([]);
     mocks.listConcepts.mockResolvedValue([
       {
         id: "concept-1",
@@ -216,5 +229,50 @@ describe("KnowledgeGraphView", () => {
       expect(mocks.centerAt).toHaveBeenCalled();
       expect(mocks.zoomToFit).toHaveBeenCalled();
     });
+  });
+
+  it("explains missing models outside demo mode", async () => {
+    mocks.listModels.mockResolvedValue([]);
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/graph", state: null }]}>
+        <KnowledgeGraphView />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("No local AI models are available yet. Install or connect a model to analyze this workspace.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Analyze Workspace" })[0]).toBeDisabled();
+  });
+
+  it("simulates analysis and cards in demo mode without local models", async () => {
+    mocks.listModels.mockResolvedValue([]);
+    useWorkspaceStore.setState({ isDemoMode: true });
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/graph", state: null }]}>
+        <KnowledgeGraphView />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Demo data is preloaded. No local models are installed on this machine, so AI actions use simulated demo output.")).toBeInTheDocument();
+
+    const analyzeButton = screen.getAllByRole("button", { name: "Simulate Analysis" })[0];
+    expect(analyzeButton).toBeEnabled();
+    fireEvent.click(analyzeButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Demo analysis refreshed the seeded sample content.")).toBeInTheDocument();
+    });
+    expect(mocks.analyzeWorkspace).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select graph node" }));
+
+    const cardsButton = await screen.findByRole("button", { name: "Simulate Cards" });
+    fireEvent.click(cardsButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("What is Namespaces?")).toBeInTheDocument();
+    });
+    expect(mocks.generateFromConcept).not.toHaveBeenCalled();
   });
 });
