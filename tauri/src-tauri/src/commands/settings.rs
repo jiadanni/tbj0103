@@ -149,11 +149,36 @@ fn set_setting(conn: &rusqlite::Connection, key: &str, value: &str) -> Result<()
     Ok(())
 }
 
+fn is_windows_missing_autostart_target(error: &str) -> bool {
+    cfg!(target_os = "windows")
+        && (error.contains("(os error 2)")
+            || error.contains("The system cannot find the file specified"))
+}
+
 #[tauri::command]
 pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let def = Settings::default();
-    let start_at_login = app.autolaunch().is_enabled().map_err(|e| e.to_string())?;
+    let stored_start_at_login = get_setting(&conn, "start_at_login")
+        .map(|v| v == "true")
+        .unwrap_or(def.start_at_login);
+    let start_at_login = match app.autolaunch().is_enabled() {
+        Ok(value) => value,
+        Err(err) => {
+            let error = err.to_string();
+            if is_windows_missing_autostart_target(&error) {
+                crate::logging::log_warn(
+                    "settings",
+                    format!(
+                        "Falling back to stored start_at_login value after autostart query failed: {error}"
+                    ),
+                );
+                stored_start_at_login
+            } else {
+                return Err(error);
+            }
+        }
+    };
     let pin_configured = get_setting(&conn, "pin_passcode_hash")
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false);
@@ -559,10 +584,24 @@ pub fn sync_autostart(app: &AppHandle, conn: &rusqlite::Connection) -> Result<()
         .map(|v| v == "true")
         .unwrap_or(false);
 
-    if enabled {
-        app.autolaunch().enable().map_err(|e| e.to_string())?;
+    let sync_result = if enabled {
+        app.autolaunch().enable().map_err(|e| e.to_string())
     } else {
-        app.autolaunch().disable().map_err(|e| e.to_string())?;
+        app.autolaunch().disable().map_err(|e| e.to_string())
+    };
+
+    if let Err(error) = sync_result {
+        if is_windows_missing_autostart_target(&error) {
+            crate::logging::log_warn(
+                "settings",
+                format!(
+                    "Ignoring Windows autostart sync error during startup; saved preference remains {enabled}: {error}"
+                ),
+            );
+            return Ok(());
+        }
+
+        return Err(error);
     }
 
     Ok(())
