@@ -188,6 +188,7 @@ export default function KnowledgeGraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(null);
+  const autoFitFrameRef = useRef<number | null>(null);
   const [graphSearch, setGraphSearch] = useState("");
 
   // Tree layout mode
@@ -347,6 +348,11 @@ export default function KnowledgeGraphView() {
     };
   }, [filteredNodes, links, layoutMode, treePositions]);
 
+  const graphViewportSignature = useMemo(
+    () => `${layoutMode}:${selectedRootId ?? ""}:${graphData.nodes.map((node) => node.id).join("|")}:${graphData.links.length}`,
+    [graphData.links.length, graphData.nodes, layoutMode, selectedRootId],
+  );
+
   const hierarchyTree = useMemo(() => {
     const parentOf = new Map(
       links.filter((l) => l.link_type === 'part_of').map((l) => [l.source_id, l.target_id])
@@ -387,6 +393,41 @@ export default function KnowledgeGraphView() {
       );
     }
   }, [graphData, layoutMode]);
+
+  const fitGraphToViewport = useCallback((duration = 450) => {
+    if (!fgRef.current || graphData.nodes.length === 0) { return; }
+    if (autoFitFrameRef.current !== null) {
+      window.cancelAnimationFrame(autoFitFrameRef.current);
+    }
+
+    autoFitFrameRef.current = window.requestAnimationFrame(() => {
+      if (!fgRef.current) { return; }
+      fgRef.current.centerAt(0, 0, duration);
+      fgRef.current.zoomToFit(duration, 72);
+      autoFitFrameRef.current = null;
+    });
+  }, [graphData.nodes.length]);
+
+  useEffect(() => {
+    fitGraphToViewport();
+  }, [fitGraphToViewport, graphViewportSignature]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || graphData.nodes.length === 0 || typeof ResizeObserver === "undefined") { return; }
+
+    const observer = new ResizeObserver(() => {
+      fitGraphToViewport(0);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [fitGraphToViewport, graphData.nodes.length]);
+
+  useEffect(() => () => {
+    if (autoFitFrameRef.current !== null) {
+      window.cancelAnimationFrame(autoFitFrameRef.current);
+    }
+  }, []);
 
   async function handleAnalyze() {
     if (!activeWorkspaceId || !selectedModel || isAnalyzing) { return; }
@@ -730,27 +771,27 @@ export default function KnowledgeGraphView() {
       </div>
 
       <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-6">
-          <header className="rounded-[28px] border border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(255,255,255,0)_55%),var(--bg-elevated)] p-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-3xl">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 py-5 sm:px-6">
+          <header className="rounded-[28px] border border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(255,255,255,0)_55%),var(--bg-elevated)] p-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="max-w-2xl">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                   Knowledge
                 </div>
-                <h1 className="mt-2 text-3xl font-semibold text-[var(--text-primary)]">
+                <h1 className="mt-2 text-2xl font-semibold text-[var(--text-primary)] sm:text-3xl">
                   See what this workspace knows and what needs attention next.
                 </h1>
-                <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-                  This page combines your concept map with review, goals, source coverage, and recent learning signals. The map is one part of the picture, not a hidden tool mode.
+                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                  The map is now front and center, with review and health signals kept close by instead of buried below the fold.
                 </p>
                 {summaryError && (
-                  <p className="mt-3 text-sm text-red-400">
+                  <p className="mt-2 text-sm text-red-400">
                     Overview is temporarily unavailable: {summaryError}
                   </p>
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 xl:justify-end">
                 <button
                   onClick={handleAnalyze}
                   disabled={isAnalyzing || !selectedModel}
@@ -771,7 +812,7 @@ export default function KnowledgeGraphView() {
             </div>
           </header>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <MetricCard label="Concepts" value={overview?.concepts ?? nodes.length} accentClassName="bg-sky-400" />
             <MetricCard label="Links" value={links.length} accentClassName="bg-indigo-400" />
             <MetricCard label="Due Review" value={review?.due_today ?? 0} accentClassName="bg-emerald-400" />
@@ -780,246 +821,117 @@ export default function KnowledgeGraphView() {
             <MetricCard label="Unprocessed Sources" value={summary?.knowledge_health.unprocessed_sources ?? 0} accentClassName="bg-rose-400" />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <Section title="Suggested Next Steps" eyebrow="Actions">
-              <div className="space-y-3">
-                {continueLearning && (
-                  <button
-                    onClick={() => openRoute(continueLearning.route)}
-                    className="flex w-full items-start justify-between gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-[var(--text-primary)]">Continue learning</div>
-                      <div className="mt-1 truncate text-sm text-[var(--text-secondary)]">{continueLearning.title}</div>
-                      <div className="mt-2 text-xs text-[var(--text-muted)]">Updated {timeAgo(continueLearning.updated_at)}</div>
-                    </div>
-                    <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
-                  </button>
-                )}
-
-                {review && review.due_today > 0 && (
-                  <button
-                    onClick={() => openRoute(review.route)}
-                    className="flex w-full items-start justify-between gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
-                  >
-                    <div>
-                      <div className="text-sm font-medium text-[var(--text-primary)]">Review what is due now</div>
-                      <div className="mt-1 text-sm text-[var(--text-secondary)]">
-                        {review.due_today} card{review.due_today === 1 ? "" : "s"} are ready for reinforcement.
-                      </div>
-                    </div>
-                    <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
-                  </button>
-                )}
-
-                {progression.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => openRoute(item.route)}
-                    className="flex w-full items-start gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
-                  >
-                    <div className="mt-0.5 shrink-0">{suggestionIcon(item.kind)}</div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-[var(--text-primary)]">{item.title}</div>
-                      <div className="mt-1 text-sm text-[var(--text-secondary)]">{item.description}</div>
-                    </div>
-                    <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
-                  </button>
-                ))}
-
-                {!continueLearning && progression.length === 0 && (!review || review.due_today === 0) && (
-                  <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4">
-                    <div className="text-sm font-medium text-[var(--text-primary)]">No urgent next step yet</div>
-                    <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                      Search naturally, capture a few notes or documents, then analyze the workspace to make this page more useful.
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        onClick={() => navigate("/chat")}
-                        className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                      >
-                        <Search size={14} />
-                        Search or chat
-                      </button>
-                      <button
-                        onClick={() => navigate("/documents")}
-                        className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                      >
-                        <FileText size={14} />
-                        Open sources
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </Section>
-
-            <Section title="Knowledge Health" eyebrow="Signals">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                  <div className="text-xs text-[var(--text-muted)]">Stalled goals</div>
-                  <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
-                    {summary?.knowledge_health.stalled_goals ?? 0}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                  <div className="text-xs text-[var(--text-muted)]">Weak concepts</div>
-                  <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
-                    {weakConcepts.length}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                  <div className="text-xs text-[var(--text-muted)]">Reviewed cards</div>
-                  <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
-                    {review?.learned ?? 0}
-                  </div>
-                </div>
-              </div>
-
-              {weakConcepts.length > 0 && (
-                <div className="mt-4">
-                  <div className="text-xs font-medium text-[var(--text-primary)]">Needs reinforcement</div>
-                  <div className="mt-2 space-y-2">
-                    {weakConcepts.slice(0, 3).map((concept) => (
-                      <button
-                        key={concept.concept_id}
-                        onClick={() => openRoute(concept.route)}
-                        className="flex w-full items-start justify-between gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
-                      >
-                        <div>
-                          <div className="text-sm font-medium text-[var(--text-primary)]">{concept.name}</div>
-                          <div className="mt-1 text-xs text-[var(--text-secondary)]">{concept.reason}</div>
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]">
+            <Section title="Knowledge Map" eyebrow="Graph">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
+                  <p className="max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
+                    Explore concepts and how they connect. The map auto-centers as data changes, and you can still switch between force and tree layouts when you want a different lens.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {nodes.length > 0 && (
+                      <>
+                        <div className="flex rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
+                          <button
+                            onClick={() => setLayoutMode("force")}
+                            className={`px-2 py-1.5 text-xs font-medium transition-colors ${
+                              layoutMode === "force"
+                                ? "bg-[var(--accent-color)] text-white"
+                                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                            }`}
+                            title="Force-directed layout"
+                          >
+                            Force
+                          </button>
+                          <button
+                            onClick={() => setLayoutMode("tree")}
+                            className={`border-l border-[var(--border-color)] px-2 py-1.5 text-xs font-medium transition-colors ${
+                              layoutMode === "tree"
+                                ? "bg-[var(--accent-color)] text-white"
+                                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                            }`}
+                            title="Radial tree layout"
+                          >
+                            Tree
+                          </button>
                         </div>
-                        <ArrowRight size={15} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
-              {(summary?.knowledge_health.active_topic_tags.length ?? 0) > 0 && (
-                <div className="mt-4">
-                  <div className="text-xs font-medium text-[var(--text-primary)]">Active topics</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {summary?.knowledge_health.active_topic_tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full bg-[var(--accent-color)]/10 px-2.5 py-1 text-xs text-[var(--accent-color)]"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </Section>
-          </div>
+                        {layoutMode === "tree" && (
+                          <CompactMenuSelect
+                            label="Tree Root"
+                            value={selectedRootId || ""}
+                            options={[
+                              { value: "", label: "Auto-select root" },
+                              ...nodes
+                                .filter((n) => n.hierarchy_level === "chapter")
+                                .map((n) => ({ value: n.id, label: `Root: ${n.name}` })),
+                            ]}
+                            onChange={(val) => setSelectedRootId(val || null)}
+                            widthClassName="min-w-[150px]"
+                          />
+                        )}
+                      </>
+                    )}
 
-          <Section title="Knowledge Map" eyebrow="Graph">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <p className="max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                  Explore concepts and how they connect. Use the filters and sidebar to focus the map without switching to a separate mode.
-                </p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {nodes.length > 0 && (
-                    <>
-                      {/* Layout mode toggle */}
-                      <div className="flex rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
-                        <button
-                          onClick={() => setLayoutMode("force")}
-                          className={`px-2 py-1.5 text-xs font-medium transition-colors ${
-                            layoutMode === "force"
-                              ? "bg-[var(--accent-color)] text-white"
-                              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                          }`}
-                          title="Force-directed layout"
-                        >
-                          Force
-                        </button>
-                        <button
-                          onClick={() => setLayoutMode("tree")}
-                          className={`px-2 py-1.5 text-xs font-medium transition-colors border-l border-[var(--border-color)] ${
-                            layoutMode === "tree"
-                              ? "bg-[var(--accent-color)] text-white"
-                              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                          }`}
-                          title="Radial tree layout"
-                        >
-                          Tree
-                        </button>
-                      </div>
-
-                      {/* Root node selector (only in tree mode) */}
-                      {layoutMode === "tree" && (
-                        <CompactMenuSelect
-                          label="Tree Root"
-                          value={selectedRootId || ""}
-                          options={[
-                            { value: "", label: "Auto-select root" },
-                            ...nodes
-                              .filter((n) => n.hierarchy_level === "chapter")
-                              .map((n) => ({ value: n.id, label: `Root: ${n.name}` })),
-                          ]}
-                          onChange={(val) => setSelectedRootId(val || null)}
-                          widthClassName="min-w-[140px]"
-                        />
-                      )}
-                    </>
-                  )}
-
-                  <div className="relative min-w-0 w-full lg:w-[320px]">
-                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                    <input
-                      value={graphSearch}
-                      onChange={(event) => setGraphSearch(event.target.value)}
-                      placeholder="Filter graph..."
-                      className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 pl-8 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
-                    />
-                  </div>
-                  <button
-                    onClick={zoomIn}
-                    className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
-                    title="Zoom in"
-                  >
-                    <ZoomIn size={14} />
-                  </button>
-                  <button
-                    onClick={zoomOut}
-                    className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
-                    title="Zoom out"
-                  >
-                    <ZoomOut size={14} />
-                  </button>
-                </div>
-              </div>
-
-              <div
-                ref={containerRef}
-                className="relative h-[560px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)]"
-                data-testid="knowledge-map"
-              >
-                {nodes.length === 0 && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[var(--bg-primary)]/90 text-center">
-                    <div className="rounded-full bg-[var(--accent-color)]/10 p-4 text-[var(--accent-color)]">
-                      <Network size={26} />
-                    </div>
-                    <div className="max-w-md">
-                      <div className="text-lg font-semibold text-[var(--text-primary)]">Your map will appear here</div>
-                      <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                        Analyze this workspace after you have a little material in it, and Aetherium will turn that activity into concepts and links.
-                      </div>
+                    <div className="relative min-w-0 flex-1 basis-[240px] 2xl:max-w-[320px]">
+                      <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                      <input
+                        value={graphSearch}
+                        onChange={(event) => setGraphSearch(event.target.value)}
+                        placeholder="Filter graph..."
+                        className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 pl-8 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+                      />
                     </div>
                     <button
-                      onClick={handleAnalyze}
-                      disabled={isAnalyzing || !selectedModel}
-                      className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                      onClick={() => fitGraphToViewport()}
+                      className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                      title="Reset graph view"
                     >
-                      {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      Analyze Workspace
+                      Reset view
+                    </button>
+                    <button
+                      onClick={zoomIn}
+                      className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                      title="Zoom in"
+                    >
+                      <ZoomIn size={14} />
+                    </button>
+                    <button
+                      onClick={zoomOut}
+                      className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                      title="Zoom out"
+                    >
+                      <ZoomOut size={14} />
                     </button>
                   </div>
-                )}
+                </div>
+
+                <div
+                  ref={containerRef}
+                  className="relative h-[460px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)] 2xl:h-[500px]"
+                  data-testid="knowledge-map"
+                >
+                  {nodes.length === 0 && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[var(--bg-primary)]/90 px-6 text-center">
+                      <div className="rounded-full bg-[var(--accent-color)]/10 p-4 text-[var(--accent-color)]">
+                        <Network size={26} />
+                      </div>
+                      <div className="max-w-md">
+                        <div className="text-lg font-semibold text-[var(--text-primary)]">Your map will appear here</div>
+                        <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                          Analyze this workspace after you have a little material in it, and Aetherium will turn that activity into concepts and links.
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleAnalyze}
+                        disabled={isAnalyzing || !selectedModel}
+                        className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                      >
+                        {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                        Analyze Workspace
+                      </button>
+                    </div>
+                  )}
 
                   <ForceGraph2D
                     ref={fgRef}
@@ -1027,62 +939,56 @@ export default function KnowledgeGraphView() {
                     height={containerRef.current?.clientHeight ?? 0}
                     graphData={graphData}
                     nodeRelSize={6}
-                    // In tree mode, use moderate curvature for smooth connections; force mode is straight
                     linkCurvature={layoutMode === "tree" ? 0.3 : 0}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     nodeColor={(node: any) => {
-                      // Highlight root node in tree mode
                       if (layoutMode === "tree") {
                         const rootId = selectedRootId || selectRootNode(nodes, links);
                         if (node.id === rootId) {
-                          return "#fbbf24"; // Amber highlight for root
+                          return "#fbbf24";
                         }
                       }
                       return colorFor(node.concept_type);
                     }}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     linkColor={(link: any) => {
-                      // Soften tree hierarchy edges in tree mode
-                      if (layoutMode === "tree" && link.link_type === 'part_of') {
-                        return 'rgba(100,116,139,0.3)'; // Slightly more visible than force mode
+                      if (layoutMode === "tree" && link.link_type === "part_of") {
+                        return "rgba(100,116,139,0.3)";
                       }
-                      return link.link_type === 'part_of' ? 'rgba(100,116,139,0.2)' :
-                      link.link_type === 'prerequisite' ? '#f59e0b' :
-                      link.link_type === 'supports' ? '#34d399' :
-                      link.link_type === 'contradicts' ? '#f87171' : '#475569';
+                      return link.link_type === "part_of" ? "rgba(100,116,139,0.2)"
+                        : link.link_type === "prerequisite" ? "#f59e0b"
+                        : link.link_type === "supports" ? "#34d399"
+                        : link.link_type === "contradicts" ? "#f87171" : "#475569";
                     }}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    linkWidth={(link: any) => link.link_type === 'part_of' ? 0.5 : Math.max(1, link.strength * 2)}
+                    linkWidth={(link: any) => link.link_type === "part_of" ? 0.5 : Math.max(1, link.strength * 2)}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    linkDirectionalArrowLength={(link: any) => link.link_type === 'part_of' ? 0 : 4}
+                    linkDirectionalArrowLength={(link: any) => link.link_type === "part_of" ? 0 : 4}
                     linkDirectionalArrowRelPos={1}
                     linkLabel="link_type"
                     nodeCanvasObjectMode={() => "after"}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     nodeCanvasObject={(node: any, ctx, globalScale) => {
-                      const level: string = node.hierarchy_level ?? 'concept';
-                      const baseSize = level === 'chapter' ? 14 : level === 'section' ? 11 : 9;
-                      const bold = level === 'chapter';
-                      const maxLen = level === 'chapter' ? 24 : level === 'section' ? 20 : 16;
+                      const level: string = node.hierarchy_level ?? "concept";
+                      const baseSize = level === "chapter" ? 14 : level === "section" ? 11 : 9;
+                      const bold = level === "chapter";
+                      const maxLen = level === "chapter" ? 24 : level === "section" ? 20 : 16;
                       const label = node.name.slice(0, maxLen) + (node.name.length > maxLen ? "..." : "");
                       const fontSize = baseSize / globalScale;
-                      
-                      // In tree mode, draw a subtle background for root node
+
                       if (layoutMode === "tree") {
                         const rootId = selectedRootId || selectRootNode(nodes, links);
                         if (node.id === rootId && fontSize > 0) {
-                          // Subtle glow/highlight for root node
                           ctx.fillStyle = "rgba(251, 191, 36, 0.2)";
                           ctx.globalAlpha = 0.8;
                           const padding = 5;
                           const textWidth = ctx.measureText(label).width;
-                          // Use fillRect for better compatibility
                           ctx.fillRect(node.x - textWidth / 2 - padding, node.y - fontSize / 2 - 1.5, textWidth + padding * 2, fontSize + 3);
                           ctx.globalAlpha = 1.0;
                         }
                       }
-                      
-                      ctx.font = `${bold ? 'bold ' : ''}${fontSize}px Sans-Serif`;
+
+                      ctx.font = `${bold ? "bold " : ""}${fontSize}px Sans-Serif`;
                       ctx.fillStyle = "#94a3b8";
                       ctx.textAlign = "center";
                       ctx.textBaseline = "middle";
@@ -1093,9 +999,145 @@ export default function KnowledgeGraphView() {
                     onNodeDragEnd={handleNodeDragEnd}
                     backgroundColor="transparent"
                   />
+                </div>
               </div>
+            </Section>
+
+            <div className="grid gap-6">
+              <Section title="Suggested Next Steps" eyebrow="Actions">
+                <div className="space-y-3">
+                  {continueLearning && (
+                    <button
+                      onClick={() => openRoute(continueLearning.route)}
+                      className="flex w-full items-start justify-between gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-[var(--text-primary)]">Continue learning</div>
+                        <div className="mt-1 truncate text-sm text-[var(--text-secondary)]">{continueLearning.title}</div>
+                        <div className="mt-2 text-xs text-[var(--text-muted)]">Updated {timeAgo(continueLearning.updated_at)}</div>
+                      </div>
+                      <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+                    </button>
+                  )}
+
+                  {review && review.due_today > 0 && (
+                    <button
+                      onClick={() => openRoute(review.route)}
+                      className="flex w-full items-start justify-between gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
+                    >
+                      <div>
+                        <div className="text-sm font-medium text-[var(--text-primary)]">Review what is due now</div>
+                        <div className="mt-1 text-sm text-[var(--text-secondary)]">
+                          {review.due_today} card{review.due_today === 1 ? "" : "s"} are ready for reinforcement.
+                        </div>
+                      </div>
+                      <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+                    </button>
+                  )}
+
+                  {progression.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => openRoute(item.route)}
+                      className="flex w-full items-start gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
+                    >
+                      <div className="mt-0.5 shrink-0">{suggestionIcon(item.kind)}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-[var(--text-primary)]">{item.title}</div>
+                        <div className="mt-1 text-sm text-[var(--text-secondary)]">{item.description}</div>
+                      </div>
+                      <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+                    </button>
+                  ))}
+
+                  {!continueLearning && progression.length === 0 && (!review || review.due_today === 0) && (
+                    <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4">
+                      <div className="text-sm font-medium text-[var(--text-primary)]">No urgent next step yet</div>
+                      <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                        Search naturally, capture a few notes or documents, then analyze the workspace to make this page more useful.
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => navigate("/chat")}
+                          className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                        >
+                          <Search size={14} />
+                          Search or chat
+                        </button>
+                        <button
+                          onClick={() => navigate("/documents")}
+                          className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                        >
+                          <FileText size={14} />
+                          Open sources
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Section>
+
+              <Section title="Knowledge Health" eyebrow="Signals">
+                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                    <div className="text-xs text-[var(--text-muted)]">Stalled goals</div>
+                    <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                      {summary?.knowledge_health.stalled_goals ?? 0}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                    <div className="text-xs text-[var(--text-muted)]">Weak concepts</div>
+                    <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                      {weakConcepts.length}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                    <div className="text-xs text-[var(--text-muted)]">Reviewed cards</div>
+                    <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                      {review?.learned ?? 0}
+                    </div>
+                  </div>
+                </div>
+
+                {weakConcepts.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-xs font-medium text-[var(--text-primary)]">Needs reinforcement</div>
+                    <div className="mt-2 space-y-2">
+                      {weakConcepts.slice(0, 3).map((concept) => (
+                        <button
+                          key={concept.concept_id}
+                          onClick={() => openRoute(concept.route)}
+                          className="flex w-full items-start justify-between gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
+                        >
+                          <div>
+                            <div className="text-sm font-medium text-[var(--text-primary)]">{concept.name}</div>
+                            <div className="mt-1 text-xs text-[var(--text-secondary)]">{concept.reason}</div>
+                          </div>
+                          <ArrowRight size={15} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(summary?.knowledge_health.active_topic_tags.length ?? 0) > 0 && (
+                  <div className="mt-4">
+                    <div className="text-xs font-medium text-[var(--text-primary)]">Active topics</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {summary?.knowledge_health.active_topic_tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full bg-[var(--accent-color)]/10 px-2.5 py-1 text-xs text-[var(--accent-color)]"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Section>
             </div>
-          </Section>
+          </div>
 
           {learningPath.length > 0 && (
             <Section title="Learning Path" eyebrow="Next Steps">
