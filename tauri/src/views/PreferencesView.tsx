@@ -315,6 +315,8 @@ export default function PreferencesView() {
     settingsStore.setPreferredModel(settings.preferred_model);
     settingsStore.setBackgroundModel(settings.background_model);
     settingsStore.setQuickSearchModels(settings.quick_search_models);
+    settingsStore.setQuickSearchWorkspaceScope(settings.quick_search_workspace_scope);
+    settingsStore.setQuickSearchTypeFilters(settings.quick_search_type_filters);
     settingsStore.setOllamaUrl(settings.ollama_base_url);
     settingsStore.setMlxUrl(settings.mlx_base_url);
     settingsStore.setLlamacppModelPaths(settings.llamacpp_model_paths);

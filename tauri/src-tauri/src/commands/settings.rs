@@ -10,6 +10,8 @@ pub struct Settings {
     pub background_model: String,
     pub quick_search_models: Vec<String>,
     pub quick_search_shortcut: String,
+    pub quick_search_workspace_scope: String,
+    pub quick_search_type_filters: Vec<String>,
     pub backup_enabled: bool,
     pub touch_id_enabled: bool,
     pub pin_lock_enabled: bool,
@@ -57,6 +59,14 @@ impl Default for Settings {
             background_model: "".to_string(),
             quick_search_models: Vec::new(),
             quick_search_shortcut: "CmdOrCtrl+Shift+K".to_string(),
+            quick_search_workspace_scope: "__all__".to_string(),
+            quick_search_type_filters: vec![
+                "conversation".to_string(),
+                "message".to_string(),
+                "artifact".to_string(),
+                "memory".to_string(),
+                "summary".to_string(),
+            ],
             backup_enabled: true,
             touch_id_enabled: false,
             pin_lock_enabled: false,
@@ -176,6 +186,12 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         quick_search_shortcut: get_setting(&conn, "quick_search_shortcut")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.quick_search_shortcut),
+        quick_search_workspace_scope: get_setting(&conn, "quick_search_workspace_scope")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.quick_search_workspace_scope),
+        quick_search_type_filters: get_setting(&conn, "quick_search_type_filters")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.quick_search_type_filters),
         backup_enabled: get_setting(&conn, "backup_enabled")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.backup_enabled),
@@ -330,6 +346,16 @@ pub fn update_settings(
         &conn,
         "quick_search_shortcut",
         &serde_json::to_string(&normalized_quick_search_shortcut.unwrap_or_default()).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "quick_search_workspace_scope",
+        &serde_json::to_string(&settings.quick_search_workspace_scope).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "quick_search_type_filters",
+        &serde_json::to_string(&settings.quick_search_type_filters).unwrap(),
     )?;
     set_setting(
         &conn,

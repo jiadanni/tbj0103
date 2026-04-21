@@ -13,12 +13,20 @@ pub struct QuickSearchRuntimeState {
     pub registered_shortcut: Mutex<Option<String>>,
     pub main_window_ready: Mutex<bool>,
     pub pending_navigation: Mutex<Option<QuickSearchResult>>,
+    pub preferred_workspace_id: Mutex<Option<String>>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct QuickSearchRequest {
     pub query: String,
     pub limit: Option<u32>,
+    pub workspace_id: Option<String>,
+    pub kind_filters: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct QuickSearchContext {
+    pub preferred_workspace_id: Option<String>,
 }
 
 #[tauri::command]
@@ -38,7 +46,28 @@ pub fn query_quick_search(
 ) -> Result<Vec<QuickSearchResult>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = req.limit.unwrap_or(18).clamp(1, 50) as usize;
-    quick_search_service::query(&conn, &req.query, limit)
+    let workspace_id = req.workspace_id;
+
+    quick_search_service::query(
+        &conn,
+        &req.query,
+        limit,
+        workspace_id.as_deref(),
+        req.kind_filters.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub fn get_quick_search_context(
+    runtime: State<QuickSearchRuntimeState>,
+) -> Result<QuickSearchContext, String> {
+    let preferred_workspace_id = runtime
+        .preferred_workspace_id
+        .lock()
+        .map_err(|_| "Quick search workspace context is unavailable.".to_string())?
+        .clone();
+
+    Ok(QuickSearchContext { preferred_workspace_id })
 }
 
 #[tauri::command]

@@ -10,6 +10,8 @@ interface AppSettings {
   preferredModel: string;
   backgroundModel: string;
   quickSearchModels: string[];
+  quickSearchWorkspaceScope: string;
+  quickSearchTypeFilters: string[];
   ollamaUrl: string;
   mlxUrl: string;
   llamacppModelPaths: string[];
@@ -47,6 +49,8 @@ interface SettingsStore extends AppSettings {
   setPreferredModel: (m: string) => void;
   setBackgroundModel: (m: string) => void;
   setQuickSearchModels: (models: string[]) => void;
+  setQuickSearchWorkspaceScope: (scope: string) => void;
+  setQuickSearchTypeFilters: (filters: string[]) => void;
   setOllamaUrl: (url: string) => void;
   setMlxUrl: (url: string) => void;
   setLlamacppModelPaths: (paths: string[]) => void;
@@ -85,6 +89,8 @@ export const useSettingsStore = create<SettingsStore>()(
       preferredModel: "",
       backgroundModel: "",
       quickSearchModels: [],
+      quickSearchWorkspaceScope: "__all__",
+      quickSearchTypeFilters: ["conversation", "message", "artifact", "memory", "summary"],
       ollamaUrl: "http://localhost:11434",
       mlxUrl: "http://localhost:8080",
       llamacppModelPaths: [],
@@ -119,6 +125,8 @@ export const useSettingsStore = create<SettingsStore>()(
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
+      setQuickSearchWorkspaceScope: (quickSearchWorkspaceScope) => set({ quickSearchWorkspaceScope }),
+      setQuickSearchTypeFilters: (quickSearchTypeFilters) => set({ quickSearchTypeFilters }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
       setMlxUrl: (mlxUrl) => set({ mlxUrl }),
       setLlamacppModelPaths: (llamacppModelPaths) => set({ llamacppModelPaths }),

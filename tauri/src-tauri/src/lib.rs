@@ -579,6 +579,7 @@ pub fn run() {
             commands::quick_search::show_quick_search,
             commands::quick_search::hide_quick_search,
             commands::quick_search::query_quick_search,
+            commands::quick_search::get_quick_search_context,
             commands::quick_search::open_quick_search_result,
             commands::quick_search::mark_main_window_ready,
             // Log commands
@@ -611,6 +612,7 @@ fn ensure_quick_search_window(app: &tauri::App) -> Result<(), String> {
     .maximizable(false)
     .minimizable(false)
     .decorations(false)
+    .transparent(true)
     .skip_taskbar(true)
     .always_on_top(true)
     .visible(false)

@@ -1,7 +1,9 @@
 import { Command } from "cmdk";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, MessageSquare, FileText, Brain, ScrollText, Clock } from "lucide-react";
+import { Brain, Check, Clock, FileText, MessageSquare, ScrollText, Search, Settings2 } from "lucide-react";
 import { api, type AppSettings, type QuickSearchResult } from "../lib/api";
+import { useSettingsStore } from "../stores/settingsStore";
+import type { Workspace } from "../stores/workspaceStore";
 import { normalizeTheme } from "../lib/theme";
 
 const ICON_BY_KIND = {
@@ -19,30 +21,55 @@ type ResultGroup = {
   items: QuickSearchResult[];
 };
 
+type KindFilter = "conversation" | "message" | "artifact" | "memory" | "summary";
+
+const ALL_WORKSPACES_SCOPE = "__all__";
+const SUPPORTED_KIND_FILTERS: KindFilter[] = ["conversation", "message", "artifact", "memory", "summary"];
+const KIND_FILTER_LABELS: Record<KindFilter, string> = {
+  conversation: "Chats",
+  message: "Messages",
+  artifact: "Artifacts",
+  memory: "Memory",
+  summary: "Summaries",
+};
+
 export default function QuickSearchWindow() {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const filterMenuRef = useRef<HTMLDivElement | null>(null);
   const [displaySettings, setDisplaySettings] = useState<Pick<AppSettings, "theme" | "accent_color" | "font_size">>({
     theme: "system",
     accent_color: "#007AFF",
     font_size: 16,
   });
+  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<QuickSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaceScope, setWorkspaceScope] = useState<string>(ALL_WORKSPACES_SCOPE);
+  const [selectedKinds, setSelectedKinds] = useState<string[]>(SUPPORTED_KIND_FILTERS);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function syncSettings() {
+    async function syncWindowState() {
       try {
-        const settings = await api.settings.get();
-        if (!cancelled) {
-          setDisplaySettings({
-            theme: normalizeTheme(settings.theme),
-            accent_color: settings.accent_color,
-            font_size: settings.font_size,
-          });
-        }
+        const [latestSettings, availableWorkspaces] = await Promise.all([
+          api.settings.get(),
+          api.workspace.list().catch(() => [] as Workspace[]),
+        ]);
+        if (cancelled) {return;}
+
+        setDisplaySettings({
+          theme: normalizeTheme(latestSettings.theme),
+          accent_color: latestSettings.accent_color,
+          font_size: latestSettings.font_size,
+        });
+        setSettings(latestSettings);
+        setWorkspaces(availableWorkspaces);
+        setWorkspaceScope(resolveWorkspaceScope(latestSettings.quick_search_workspace_scope, availableWorkspaces));
+        setSelectedKinds(normalizeSelectedKinds(latestSettings.quick_search_type_filters));
       } catch {
         // Keep local defaults if settings are not available yet.
       }
@@ -50,14 +77,16 @@ export default function QuickSearchWindow() {
 
     function handleFocus() {
       setQuery("");
-      void syncSettings();
+      setResults([]);
+      setIsFilterMenuOpen(false);
+      void syncWindowState();
       window.requestAnimationFrame(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
       });
     }
 
-    void syncSettings();
+    void syncWindowState();
     window.addEventListener("focus", handleFocus);
     return () => {
       cancelled = true;
@@ -77,19 +106,25 @@ export default function QuickSearchWindow() {
     }
     root.style.setProperty("--font-size-base", `${displaySettings.font_size}px`);
     root.style.fontSize = `${displaySettings.font_size}px`;
+    root.style.backgroundColor = "transparent";
+    document.body.style.backgroundColor = "transparent";
   }, [displaySettings]);
 
   useEffect(() => {
     const runQuery = window.setTimeout(() => {
       setIsLoading(true);
-      api.quickSearch.query(query, query.trim() ? 24 : 10)
+      api.quickSearch.query(query, {
+        limit: query.trim() ? 24 : 10,
+        workspaceId: workspaceScope === ALL_WORKSPACES_SCOPE ? null : workspaceScope,
+        kindFilters: effectiveKindFilters(selectedKinds),
+      })
         .then(setResults)
         .catch(() => setResults([]))
         .finally(() => setIsLoading(false));
     }, query.trim() ? 80 : 0);
 
     return () => window.clearTimeout(runQuery);
-  }, [query]);
+  }, [query, selectedKinds, workspaceScope]);
 
   useEffect(() => {
     function handleBlur() {
@@ -99,6 +134,28 @@ export default function QuickSearchWindow() {
     window.addEventListener("blur", handleBlur);
     return () => window.removeEventListener("blur", handleBlur);
   }, []);
+
+  useEffect(() => {
+    if (!isFilterMenuOpen) {return;}
+
+    function handlePointerDown(event: MouseEvent) {
+      if (filterMenuRef.current?.contains(event.target as Node)) {return;}
+      setIsFilterMenuOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsFilterMenuOpen(false);
+      }
+    }
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isFilterMenuOpen]);
 
   const groupedResults = useMemo<ResultGroup[]>(() => {
     const groups = new Map<string, ResultGroup>();
@@ -119,36 +176,186 @@ export default function QuickSearchWindow() {
     return Array.from(groups.values());
   }, [results]);
 
+  const workspaceOptions = useMemo(() => [
+    { value: ALL_WORKSPACES_SCOPE, label: "All workspaces" },
+    ...workspaces.map((workspace) => ({ value: workspace.id, label: workspace.name })),
+  ], [workspaces]);
+
+  const activeWorkspaceLabel = useMemo(
+    () => workspaceOptions.find((option) => option.value === workspaceScope)?.label ?? "All workspaces",
+    [workspaceOptions, workspaceScope],
+  );
+
+  const hasActiveFilters = workspaceScope !== ALL_WORKSPACES_SCOPE || effectiveKindFilters(selectedKinds) !== null;
+
+  async function persistQuickSearchSettings(nextWorkspaceScope: string, nextSelectedKinds: string[]) {
+    if (!settings) {return;}
+
+    const normalizedKinds = normalizeSelectedKinds(nextSelectedKinds);
+    const nextSettings: AppSettings = {
+      ...settings,
+      quick_search_workspace_scope: nextWorkspaceScope,
+      quick_search_type_filters: normalizedKinds,
+    };
+
+    setSettings(nextSettings);
+    useSettingsStore.getState().setQuickSearchWorkspaceScope(nextWorkspaceScope);
+    useSettingsStore.getState().setQuickSearchTypeFilters(normalizedKinds);
+    void api.settings.update(nextSettings).catch(() => {
+      // Keep local state if persistence fails. The user can retry by toggling again.
+    });
+  }
+
+  function updateWorkspaceScope(nextWorkspaceScope: string) {
+    setWorkspaceScope(nextWorkspaceScope);
+    void persistQuickSearchSettings(nextWorkspaceScope, selectedKinds);
+  }
+
+  function toggleKind(kind: KindFilter) {
+    setSelectedKinds((currentKinds) => {
+      const nextKinds = currentKinds.includes(kind)
+        ? currentKinds.filter((value) => value !== kind)
+        : [...currentKinds, kind];
+      void persistQuickSearchSettings(workspaceScope, nextKinds);
+      return nextKinds;
+    });
+  }
+
   async function openResult(result: QuickSearchResult) {
     await api.quickSearch.openResult(result);
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-2xl">
+    <div className="h-screen w-screen bg-transparent text-[var(--text-primary)]">
       <Command
-        className="flex h-full w-full flex-col bg-transparent"
+        className="flex h-full w-full flex-col overflow-hidden rounded-[22px] border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-[0_24px_80px_-32px_rgba(15,23,42,0.8)]"
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();
-            void api.quickSearch.hide();
+            if (isFilterMenuOpen) {
+              setIsFilterMenuOpen(false);
+            } else {
+              void api.quickSearch.hide();
+            }
           }
         }}
       >
-        <div className="flex items-center gap-3 border-b border-[var(--border-color)] px-4 py-3">
-          <Search size={15} className="text-[var(--text-muted)]" />
-          <Command.Input
-            autoFocus
-            ref={inputRef}
-            value={query}
-            onValueChange={setQuery}
-            placeholder="Search conversations, artifacts, and memory…"
-            className="w-full bg-transparent text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
-          />
-          {isLoading && (
-            <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
-              Searching
-            </span>
-          )}
+        <div className="border-b border-[var(--border-color)] px-4 py-3">
+          <div className="relative flex items-center gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/80 px-3 py-2.5">
+            <Search size={15} className="text-[var(--text-muted)]" />
+            <Command.Input
+              autoFocus
+              ref={inputRef}
+              value={query}
+              onValueChange={setQuery}
+              placeholder="Search conversations, artifacts, and memory…"
+              className="w-full bg-transparent text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+            />
+            {isLoading && (
+              <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                Searching
+              </span>
+            )}
+
+            <div ref={filterMenuRef} className="relative">
+              <button
+                type="button"
+                aria-label="Search filters"
+                aria-expanded={isFilterMenuOpen}
+                onClick={() => setIsFilterMenuOpen((current) => !current)}
+                className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${
+                  hasActiveFilters
+                    ? "border-[var(--accent-color)] bg-[var(--accent-color)]/12 text-[var(--accent-color)]"
+                    : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                <Settings2 size={16} />
+              </button>
+
+              {isFilterMenuOpen && (
+                <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[320px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-2 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.75)] backdrop-blur-xl">
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                      Workspace
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                      {activeWorkspaceLabel}
+                    </p>
+                    <div className="mt-3 space-y-1">
+                      {workspaceOptions.map((workspace) => {
+                        const isSelected = workspace.value === workspaceScope;
+                        return (
+                          <button
+                            key={workspace.value}
+                            type="button"
+                            onClick={() => updateWorkspaceScope(workspace.value)}
+                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                              isSelected
+                                ? "bg-[var(--accent-color)]/14 text-[var(--text-primary)]"
+                                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                            }`}
+                          >
+                            <span className="truncate">{workspace.label}</span>
+                            {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="mt-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                          Types
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                          Select one or more result types.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedKinds(SUPPORTED_KIND_FILTERS);
+                          void persistQuickSearchSettings(workspaceScope, SUPPORTED_KIND_FILTERS);
+                        }}
+                        className="rounded-lg border border-[var(--border-color)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
+                      >
+                        Reset
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {SUPPORTED_KIND_FILTERS.map((kind) => {
+                        const isSelected = selectedKinds.includes(kind);
+                        return (
+                          <button
+                            key={kind}
+                            type="button"
+                            onClick={() => toggleKind(kind)}
+                            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                              isSelected
+                                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/12 text-[var(--text-primary)]"
+                                : "border-[var(--border-color)] bg-transparent text-[var(--text-secondary)] hover:border-[var(--accent-color)]/45 hover:text-[var(--text-primary)]"
+                            }`}
+                          >
+                            <span className={`flex h-4 w-4 items-center justify-center rounded border ${
+                              isSelected
+                                ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+                                : "border-[var(--border-color)] bg-transparent text-transparent"
+                            }`}>
+                              <Check size={11} />
+                            </span>
+                            <span className="truncate">{KIND_FILTER_LABELS[kind]}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <Command.List className="flex-1 overflow-y-auto p-2">
@@ -208,6 +415,30 @@ export default function QuickSearchWindow() {
       </Command>
     </div>
   );
+}
+
+function resolveWorkspaceScope(workspaceScope: string | null | undefined, workspaces: Workspace[]) {
+  if (!workspaceScope || workspaceScope === ALL_WORKSPACES_SCOPE) {
+    return ALL_WORKSPACES_SCOPE;
+  }
+  return workspaces.some((workspace) => workspace.id === workspaceScope)
+    ? workspaceScope
+    : ALL_WORKSPACES_SCOPE;
+}
+
+function normalizeSelectedKinds(kinds: string[] | null | undefined) {
+  const normalized = (kinds ?? []).filter((kind): kind is KindFilter =>
+    SUPPORTED_KIND_FILTERS.includes(kind as KindFilter)
+  );
+  return Array.from(new Set(normalized));
+}
+
+function effectiveKindFilters(kinds: string[]) {
+  const normalized = normalizeSelectedKinds(kinds);
+  if (normalized.length === 0 || normalized.length === SUPPORTED_KIND_FILTERS.length) {
+    return null;
+  }
+  return normalized;
 }
 
 function groupLabelFor(result: QuickSearchResult) {

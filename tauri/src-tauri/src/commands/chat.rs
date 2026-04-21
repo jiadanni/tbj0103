@@ -1,6 +1,7 @@
 use tauri::State;
 
 use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
+use crate::commands::quick_search::QuickSearchRuntimeState;
 use crate::db::DbState;
 use crate::models::chat::{AddMessageRequest, ChatSession, CreateChatSessionRequest, Message};
 use crate::services::chat_service;
@@ -102,7 +103,7 @@ pub fn get_related_chats(
         limit,
         Some(&req.workspace_id),
         req.session_id.as_deref(),
-        Some("conversation"),
+        Some(&["conversation".to_string()]),
     )
 }
 
@@ -212,9 +213,20 @@ pub fn batch_move_sessions(
 }
 
 #[tauri::command]
-pub fn add_message(state: State<DbState>, req: AddMessageRequest) -> Result<Message, String> {
+pub fn add_message(
+    state: State<DbState>,
+    quick_search_state: State<QuickSearchRuntimeState>,
+    req: AddMessageRequest,
+) -> Result<Message, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::add_message(&conn, req)
+    let workspace_id = req.workspace_id.clone();
+    let message = chat_service::add_message(&conn, req)?;
+
+    if let Ok(mut preferred_workspace_id) = quick_search_state.preferred_workspace_id.lock() {
+        *preferred_workspace_id = Some(workspace_id);
+    }
+
+    Ok(message)
 }
 
 #[tauri::command]
