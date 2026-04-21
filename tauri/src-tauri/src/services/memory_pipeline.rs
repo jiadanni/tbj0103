@@ -65,8 +65,10 @@ pub async fn process_auto_memory_extraction(
             messages
         };
 
-        if !messages.is_empty() && messages.len() >= 5 && messages.len() > last_count as usize {
-            if extract_and_store_memories(
+        if !messages.is_empty()
+            && messages.len() >= 5
+            && messages.len() > last_count as usize
+            && extract_and_store_memories(
                 state,
                 &workspace_id,
                 &project_id,
@@ -76,13 +78,12 @@ pub async fn process_auto_memory_extraction(
             )
             .await
             .is_ok()
-            {
-                if let Ok(conn) = state.0.get() {
-                    let _ = conn.execute(
-                        "UPDATE chat_sessions SET last_processed_message_count = ?1 WHERE id = ?2",
-                        rusqlite::params![messages.len() as i64, session_id],
-                    );
-                }
+        {
+            if let Ok(conn) = state.0.get() {
+                let _ = conn.execute(
+                    "UPDATE chat_sessions SET last_processed_message_count = ?1 WHERE id = ?2",
+                    rusqlite::params![messages.len() as i64, session_id],
+                );
             }
         }
     }
