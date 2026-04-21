@@ -1469,7 +1469,7 @@ export default function PreferencesView() {
                 <div>
                   <p className="text-sm text-[var(--text-secondary)]">Hide Native Window Menu</p>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    Use an in-app hamburger menu instead of the OS native menu bar. Note: requires app restart to apply correctly.
+                    On macOS, switch between the OS menu bar and the in-app hamburger menu. On Windows and Linux, the in-app menu is always used to keep the custom title bar clean.
                   </p>
                 </div>
                 <Toggle

@@ -35,7 +35,7 @@ function barColor(percent: number): string {
 function MiniBar({ percent, label }: { percent: number; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-[10px] tabular-nums text-[var(--text-muted)] leading-none w-[26px] text-right">
+      <span className="text-[10px] tabular-nums text-[var(--text-secondary)] leading-none w-[26px] text-right">
         {percent}%
       </span>
       <div className="relative h-[5px] w-16 rounded-full overflow-hidden bg-[var(--border-color)]/60">
@@ -44,7 +44,7 @@ function MiniBar({ percent, label }: { percent: number; label: string }) {
           style={{ width: `${percent}%` }}
         />
       </div>
-      <span className="text-[10px] text-[var(--text-muted)] leading-none">{label}</span>
+      <span className="text-[10px] text-[var(--text-secondary)] leading-none">{label}</span>
     </div>
   );
 }
@@ -196,7 +196,7 @@ export default function StatusBar() {
       {/* Left — active background jobs (visible) */}
       <div className="flex items-center gap-3 min-w-0 overflow-hidden" aria-hidden="true">
         {jobList.length === 0 ? (
-          <span className="text-[10px] text-[var(--text-muted)]/50 leading-none">
+          <span className="text-[10px] text-[var(--text-secondary)]/85 leading-none">
             No background jobs
           </span>
         ) : (
@@ -214,7 +214,7 @@ export default function StatusBar() {
 
         {/* RAM */}
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] tabular-nums text-[var(--text-muted)] leading-none w-[26px] text-right">
+          <span className="text-[10px] tabular-nums text-[var(--text-secondary)] leading-none w-[26px] text-right">
             {ramPct}%
           </span>
           <div className="relative h-[5px] w-16 rounded-full overflow-hidden bg-[var(--border-color)]/60">
@@ -223,7 +223,7 @@ export default function StatusBar() {
               style={{ width: `${ramPct}%` }}
             />
           </div>
-          <span className="text-[10px] text-[var(--text-muted)] leading-none tabular-nums">
+          <span className="text-[10px] text-[var(--text-secondary)] leading-none tabular-nums">
             {ramLabel} RAM
           </span>
         </div>
@@ -234,7 +234,7 @@ export default function StatusBar() {
             <span className="h-3 w-px bg-[var(--border-color)]" />
             <div className="flex items-center gap-1.5">
               {hasLiveUsage && (
-                <span className="text-[10px] tabular-nums text-[var(--text-muted)] leading-none w-[26px] text-right">
+                <span className="text-[10px] tabular-nums text-[var(--text-secondary)] leading-none w-[26px] text-right">
                   {gpuPct}%
                 </span>
               )}
@@ -247,7 +247,7 @@ export default function StatusBar() {
                 </div>
               )}
               <span
-                className="text-[10px] text-[var(--text-muted)] leading-none tabular-nums truncate max-w-[120px]"
+                className="text-[10px] text-[var(--text-secondary)] leading-none tabular-nums truncate max-w-[120px]"
                 title={stats?.gpu_name ?? undefined}
               >
                 {gpuLabel} VRAM

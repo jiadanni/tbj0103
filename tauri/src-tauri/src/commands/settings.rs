@@ -516,12 +516,12 @@ pub fn update_settings(
         app.autolaunch().disable().map_err(|e| e.to_string())?;
     }
 
-    if settings.hide_native_menu {
-        let _ = app.remove_menu();
-    } else {
+    if cfg!(target_os = "macos") && !settings.hide_native_menu {
         if let Ok(menu) = crate::app_menu::build_menu(&app) {
             let _ = app.set_menu(menu);
         }
+    } else {
+        let _ = app.remove_menu();
     }
 
     // chat_encryption_enabled is managed by dedicated commands.
