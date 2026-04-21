@@ -24,7 +24,7 @@ function PrefsPopOutButtons({ onClose }: { onClose: () => void }) {
         onClick={() => { onClose(); api.system.openPreferencesWindow(singleInstance).catch(() => {}); }}
         title="Open in new window"
         aria-label="Open Preferences in new window"
-        className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+        className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm transition-colors hover:border-[var(--accent-color)]"
       >
         <ExternalLink size={14} strokeWidth={1.5} />
       </button>
@@ -35,7 +35,7 @@ function PrefsPopOutButtons({ onClose }: { onClose: () => void }) {
         className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl border shadow-sm transition-colors ${
           singleInstance
             ? "border-[var(--accent-color)] bg-[var(--bg-elevated)] text-[var(--accent-color)]"
-            : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+            : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[var(--accent-color)]"
         }`}
       >
         <Pin size={14} strokeWidth={1.5} />
@@ -261,8 +261,8 @@ export default function Sidebar({
               aria-label="Preferences"
               className={
                 !labelsVisible
-                  ? "flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-                  : "flex flex-1 items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+                  ? "flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm transition-colors hover:border-[var(--accent-color)]"
+                  : "flex flex-1 items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 text-sm font-medium text-[var(--text-primary)] shadow-sm transition-colors hover:border-[var(--accent-color)]"
               }
             >
               <SettingsIcon size={16} strokeWidth={1.5} />

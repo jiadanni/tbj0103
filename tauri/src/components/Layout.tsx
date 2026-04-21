@@ -18,7 +18,7 @@ import ArtifactPanel from "./ArtifactPanel";
 import ConfirmDialog from "./ConfirmDialog";
 import { api } from "../lib/api";
 import { usePrefsWindowMode } from "../lib/prefsWindowMode";
-import { isMac, isLinux } from "../lib/platform";
+import { isMac, isLinux, isWindows } from "../lib/platform";
 import SplitPaneLayout from "./SplitPaneLayout";
 import ChatView from "../views/ChatView";
 import MemoryView from "../views/MemoryView";
@@ -366,7 +366,7 @@ function SubWorkspaceTabBar({
     <div
       data-tauri-drag-region
       onMouseDown={onDragRegionMouseDown}
-      className={`relative flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${isLinux ? "pr-[112px]" : ""}`}
+      className={`relative flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
     >
       <div
         data-no-drag
@@ -476,8 +476,9 @@ function SplitTitlebarWorkspaceNavigation() {
   const splitSizes = useWorkspaceStore((s) => s.splitSizes);
   const workspaceNavigation = useWorkspaceStore((s) => s.workspaceNavigation);
   const resolvedSplitWorkspaceNavigation = resolveSplitWorkspaceNavigation(workspaceNavigation);
+  const hasCustomWindowControls = isLinux || isWindows;
   const primaryPanePaddingClass = (isLinux ? "pl-[52px]" : isMac ? "pl-[80px]" : "pl-2") + " pr-2";
-  const secondaryPaneTrailingInset = isLinux ? "pr-[192px]" : "pr-24";
+  const secondaryPaneTrailingInset = hasCustomWindowControls ? "pr-[192px]" : "pr-24";
   const secondaryPaneClass = "min-w-0 pl-2 " + secondaryPaneTrailingInset;
 
   return (
@@ -513,12 +514,12 @@ function PreferencesDockButton() {
   const [singleInstance, toggleSingleInstance] = usePrefsWindowMode();
 
   return (
-    <div className="absolute bottom-3 left-3 z-30 flex items-center gap-1">
+    <div className="absolute bottom-[34px] left-3 z-30 flex items-center gap-1">
       <button
         onClick={() => navigate("/preferences")}
         aria-label="Preferences"
         title="Preferences"
-        className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 px-3 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+        className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 px-3 py-2 text-sm font-medium text-[var(--text-primary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)]"
       >
         <SettingsIcon size={16} />
         <span>Preferences</span>
@@ -527,7 +528,7 @@ function PreferencesDockButton() {
         onClick={() => api.system.openPreferencesWindow(singleInstance).catch(() => {})}
         aria-label="Open Preferences in new window"
         title="Open in new window"
-        className="inline-flex items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 p-2 text-[var(--text-secondary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+        className="inline-flex items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 p-2 text-[var(--text-primary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)]"
       >
         <ExternalLink size={14} />
       </button>
@@ -538,7 +539,7 @@ function PreferencesDockButton() {
         className={`inline-flex items-center justify-center rounded-xl border p-2 shadow-lg backdrop-blur-xl transition-colors ${
           singleInstance
             ? "border-[var(--accent-color)] bg-[var(--bg-elevated)]/95 text-[var(--accent-color)]"
-            : "border-[var(--border-color)] bg-[var(--bg-elevated)]/95 text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+            : "border-[var(--border-color)] bg-[var(--bg-elevated)]/95 text-[var(--text-primary)] hover:border-[var(--accent-color)]"
         }`}
       >
         <Pin size={14} />
@@ -918,10 +919,10 @@ function WorkspaceTabBar({
         data-tauri-drag-region
         onMouseDown={onDragRegionMouseDown}
         onDoubleClick={onDragRegionDoubleClick}
-        className={`relative flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${isLinux ? "pr-[112px]" : ""}`}
+        className={`relative flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
       >
         {showSplitTitlebarWorkspaceNavigation && <SplitTitlebarWorkspaceNavigation />}
-        {(hideNativeMenu || isLinux) && <div className="relative z-10"><AppHeaderMenu /></div>}
+        {(!isMac || hideNativeMenu) && <div className="relative z-10"><AppHeaderMenu /></div>}
         <div
           data-no-drag
           onWheel={handleHorizontalWheel}
@@ -986,7 +987,7 @@ function WorkspaceTabBar({
             </button>
           )}
         </div>
-        {isLinux && (
+        {!isMac && (
           <div className="absolute inset-y-0 right-2 z-10 flex items-center" data-workspace-window-controls>
             <WindowControls />
           </div>

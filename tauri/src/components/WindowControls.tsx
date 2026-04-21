@@ -25,7 +25,7 @@ async function maximizeWindow() {
 
 /** onMouseDown handler that initiates window dragging. Use on drag region elements. */
 export function onDragRegionMouseDown(e: React.MouseEvent) {
-  if (!isLinux) {return;}
+  if (isMac) {return;}
   // Only drag on left-click, and only when clicking the element itself (not child buttons/inputs)
   if (e.button !== 0) {return;}
   const target = e.target as HTMLElement;
@@ -49,7 +49,7 @@ export async function onDragRegionDoubleClick(e: React.MouseEvent) {
 }
 
 function WindowControls() {
-  if (!isLinux) {return null;}
+  if (isMac) {return null;}
 
   const appWindow = getCurrentWindow();
 

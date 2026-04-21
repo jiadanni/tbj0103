@@ -4,6 +4,7 @@
 
 export const isMac = typeof window !== "undefined" && window.navigator.platform.toUpperCase().includes("MAC");
 export const isLinux = typeof window !== "undefined" && window.navigator.platform.toUpperCase().includes("LINUX");
+export const isWindows = typeof window !== "undefined" && window.navigator.platform.toUpperCase().includes("WIN");
 export const MOD_KEY = isMac ? "⌘" : "Ctrl";
 export const CTRL_KEY = isMac ? "⌃" : "Ctrl";
 

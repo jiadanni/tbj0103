@@ -261,11 +261,15 @@ pub fn run() {
                 }
             };
 
-            if !hide_native_menu {
+            let should_use_native_menu = cfg!(target_os = "macos") && !hide_native_menu;
+
+            if should_use_native_menu {
                 let menu = app_menu::build_menu(app.handle())
                     .map_err(|e| format!("Failed to build menu: {e}"))?;
                 app.set_menu(menu)
                     .map_err(|e| format!("Failed to set menu: {e}"))?;
+            } else {
+                let _ = app.remove_menu();
             }
 
             // Start background scheduler
