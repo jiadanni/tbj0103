@@ -35,8 +35,11 @@ static MODEL_CACHE: OnceLock<Mutex<Option<CachedModels>>> = OnceLock::new();
 /// exposing the same model name on different ports cannot cross-contaminate each
 /// other's capability metadata.
 struct CapabilityCache {
-    entries: HashMap<(String, String), (Option<Vec<String>>, Instant)>,
+    entries: HashMap<CapabilityCacheKey, CapabilityCacheEntry>,
 }
+
+type CapabilityCacheKey = (String, String);
+type CapabilityCacheEntry = (Option<Vec<String>>, Instant);
 
 static CAPABILITY_CACHE: OnceLock<Mutex<CapabilityCache>> = OnceLock::new();
 

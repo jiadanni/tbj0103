@@ -283,7 +283,7 @@ pub fn run() {
                 loop {
                     let interval_minutes = {
                         let state = app_handle.state::<db::DbState>();
-                        let result = match state.0.get() {
+                        match state.0.get() {
                             Ok(conn) => {
                                 let val: String = conn.query_row(
                                     "SELECT value FROM settings WHERE key = 'topic_analysis_interval_minutes'",
@@ -293,8 +293,7 @@ pub fn run() {
                                 val.parse::<u64>().unwrap_or(30)
                             }
                             Err(_) => 30,
-                        };
-                        result
+                        }
                     };
 
                     {

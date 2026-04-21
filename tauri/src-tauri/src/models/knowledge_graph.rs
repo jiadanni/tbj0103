@@ -1,17 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum HierarchyLevel {
     Chapter,
     Section,
+    #[default]
     Concept,
-}
-
-impl Default for HierarchyLevel {
-    fn default() -> Self {
-        HierarchyLevel::Concept
-    }
 }
 
 impl std::fmt::Display for HierarchyLevel {

@@ -438,9 +438,8 @@ pub fn assemble_context(
         }
     }
 
-    // Add recent messages (track tokens for correctness)
+    // Always include the most recent messages to preserve immediate context.
     for msg in recent_messages.into_iter().rev() {
-        current_history_tokens += estimate_tokens(&msg.content);
         combined.push(msg);
     }
 

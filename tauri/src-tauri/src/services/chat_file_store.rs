@@ -1014,11 +1014,9 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
     for (ts, prompt, response) in turns {
         // Start new session if gap is too large
         if let Some(last) = last_ts {
-            if ts.signed_duration_since(last) > gap_threshold {
-                if !current_messages.is_empty() {
-                    sessions.push(create_session_from_messages(current_messages));
-                    current_messages = Vec::new();
-                }
+            if ts.signed_duration_since(last) > gap_threshold && !current_messages.is_empty() {
+                sessions.push(create_session_from_messages(current_messages));
+                current_messages = Vec::new();
             }
         }
 
@@ -1310,7 +1308,7 @@ pub fn preview_claude_projects(bytes: &[u8]) -> Result<Vec<ClaudeProjectPreview>
             uuid: p.uuid,
             name: p.name,
             description: p.description.unwrap_or_default(),
-            has_prompt: p.prompt_template.as_ref().map_or(false, |s| !s.is_empty()),
+            has_prompt: p.prompt_template.as_ref().is_some_and(|s| !s.is_empty()),
             doc_count: p.docs.len(),
         })
         .collect())
