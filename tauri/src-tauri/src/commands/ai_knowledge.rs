@@ -234,9 +234,7 @@ fn repair_truncated_json_object(input: &str) -> Option<String> {
             return None;
         }
 
-        let Some(last) = trimmed.chars().last() else {
-            return None;
-        };
+        let last = trimmed.chars().last()?;
 
         if matches!(last, ',' | ':' | '{' | '[') {
             repaired = trimmed[..trimmed.len() - last.len_utf8()].to_string();

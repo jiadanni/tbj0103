@@ -147,7 +147,7 @@ pub fn start_scheduler(app: AppHandle) {
             }
 
             // 3. Git sync — every 10 ticks (5 minutes at 30s interval)
-            if git_sync_tick % 10 == 0 {
+            if git_sync_tick.is_multiple_of(10) {
                 let (sync_enabled, remote_url) = {
                     match db.0.get() {
                         Ok(conn) => {
