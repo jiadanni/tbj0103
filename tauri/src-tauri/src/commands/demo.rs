@@ -4,7 +4,6 @@ use tauri::State;
 /// Demo mode: seeds temporary workspaces with sample data.
 /// Each workspace showcases a different subject area with rich content.
 /// All demo data uses hardcoded IDs so it can be cleanly removed on deactivate.
-
 const DEMO_WS_AI: &str = "demo-workspace-ai-ml-000000000000000";
 const DEMO_WS_MUSIC: &str = "demo-workspace-music-theory-0000000";
 const DEMO_WS_ROME: &str = "demo-workspace-rome-000000000000000";

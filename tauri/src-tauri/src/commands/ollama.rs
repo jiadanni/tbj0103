@@ -86,8 +86,10 @@ fn context(
 #[tauri::command]
 pub async fn send_message(app: AppHandle, req: SendMessageRequest) -> Result<String, String> {
     // Signal background tasks to yield the Ollama queue.
-    let _ = app.state::<BackgroundInferenceCancel>().0.send_modify(|v| *v += 1);
-    let client = OllamaClient::new(req.ollama_url)?;;
+    app.state::<BackgroundInferenceCancel>()
+        .0
+        .send_modify(|v| *v += 1);
+    let client = OllamaClient::new(req.ollama_url)?;
     let ctx = context(
         req.request_id.clone(),
         "send_message",
@@ -261,7 +263,9 @@ pub async fn send_dual_model_message(
     req: DualModelRequest,
 ) -> Result<String, String> {
     // Signal background tasks to yield the Ollama queue.
-    let _ = app.state::<BackgroundInferenceCancel>().0.send_modify(|v| *v += 1);
+    app.state::<BackgroundInferenceCancel>()
+        .0
+        .send_modify(|v| *v += 1);
     let client = OllamaClient::new(req.ollama_url)?;
     let execution_mode = req.execution_mode.as_deref().unwrap_or("serial");
     let draft_ctx = context(
