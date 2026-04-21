@@ -37,6 +37,7 @@ import {
   type LearningPathItem,
 } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useScopedWorkspace } from "../lib/workspacePane";
 import {
   buildTreeFromLinks,
@@ -153,10 +154,83 @@ function Section({
   );
 }
 
+function SidebarCard({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] ${className}`}>
+      {children}
+    </section>
+  );
+}
+
+function makeDemoAnalysisResult(nodeCount: number, linkCount: number): AnalysisResult {
+  return {
+    chapters_created: Math.min(1, nodeCount > 0 ? 1 : 0),
+    sections_created: Math.min(2, Math.max(1, Math.ceil(nodeCount / 4))),
+    concepts_created: Math.max(2, nodeCount),
+    links_created: Math.max(2, linkCount),
+    concepts_skipped: 0,
+  };
+}
+
+function makeDemoCards(concept: ConceptNode, workspaceId: string): LearningCard[] {
+  const now = new Date().toISOString();
+  const description = concept.concept_description.trim() || `${concept.name} matters inside this demo workspace.`;
+  const summaryBack = description.length > 140 ? `${description.slice(0, 137)}...` : description;
+
+  return [
+    {
+      id: `${concept.id}-demo-card-1`,
+      workspace_id: workspaceId,
+      front: `What is ${concept.name}?`,
+      back: summaryBack,
+      source_type: "demo",
+      source_id: concept.id,
+      ease_factor: 2.5,
+      interval: 0,
+      repetitions: 0,
+      next_review_date: now,
+      created_at: now,
+    },
+    {
+      id: `${concept.id}-demo-card-2`,
+      workspace_id: workspaceId,
+      front: `How does ${concept.name} connect to this topic?`,
+      back: `Use the map to trace the nearby nodes and explain how ${concept.name} supports the broader concept cluster.`,
+      source_type: "demo",
+      source_id: concept.id,
+      ease_factor: 2.5,
+      interval: 0,
+      repetitions: 0,
+      next_review_date: now,
+      created_at: now,
+    },
+    {
+      id: `${concept.id}-demo-card-3`,
+      workspace_id: workspaceId,
+      front: `Why should you remember ${concept.name}?`,
+      back: `It is one of the sample concepts in this demo workspace, so recalling it helps you see how Aetherium turns structured ideas into reviewable study prompts.`,
+      source_type: "demo",
+      source_id: concept.id,
+      ease_factor: 2.5,
+      interval: 0,
+      repetitions: 0,
+      next_review_date: now,
+      created_at: now,
+    },
+  ];
+}
+
 export default function KnowledgeGraphView() {
   const navigate = useNavigate();
   const { activeWorkspaceId } = useScopedWorkspace();
   const { preferredModel, ollamaUrl } = useSettingsStore();
+  const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
 
   const [nodes, setNodes] = useState<ConceptNode[]>([]);
   const [links, setLinks] = useState<ConceptLink[]>([]);
@@ -430,11 +504,18 @@ export default function KnowledgeGraphView() {
   }, []);
 
   async function handleAnalyze() {
-    if (!activeWorkspaceId || !selectedModel || isAnalyzing) { return; }
+    const demoWithoutModels = isDemoMode && availableModels.length === 0;
+    if (!activeWorkspaceId || isAnalyzing || (!selectedModel && !demoWithoutModels)) { return; }
 
     setIsAnalyzing(true);
     setAnalyzeError("");
     try {
+      if (demoWithoutModels) {
+        await new Promise((resolve) => window.setTimeout(resolve, 450));
+        setAnalyzeResult(makeDemoAnalysisResult(nodes.length, links.length));
+        await Promise.all([loadGraph(), loadSummary()]);
+        return;
+      }
       const result = await api.knowledge.analyzeWorkspace(activeWorkspaceId, selectedModel, {
         ollamaUrl,
         focusTopic: focusTopic.trim() || undefined,
@@ -470,11 +551,17 @@ export default function KnowledgeGraphView() {
   }
 
   async function generateConceptCards() {
-    if (!selectedConcept || !activeWorkspaceId || !selectedModel || isGeneratingCards) { return; }
+    const demoWithoutModels = isDemoMode && availableModels.length === 0;
+    if (!selectedConcept || !activeWorkspaceId || isGeneratingCards || (!selectedModel && !demoWithoutModels)) { return; }
 
     setIsGeneratingCards(true);
     setGenCardError("");
     try {
+      if (demoWithoutModels) {
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+        setConceptCards(makeDemoCards(selectedConcept, activeWorkspaceId));
+        return;
+      }
       const cards = await api.flashcard.generateFromConcept(activeWorkspaceId, selectedConcept.id, selectedModel, 5, ollamaUrl);
       setConceptCards((previous) => [...cards, ...previous]);
     } catch (error: unknown) {
@@ -539,83 +626,115 @@ export default function KnowledgeGraphView() {
   const progression = summary?.progression.slice(0, 3) ?? [];
   const recentActivity = summary?.recent_activity.slice(0, 5) ?? [];
   const continueLearning = summary?.continue_learning ?? null;
+  const hasModels = availableModels.length > 0;
+  const isDemoWithoutModels = isDemoMode && !hasModels;
+  const canRunAiActions = hasModels || isDemoWithoutModels;
+  const analyzeButtonLabel = isAnalyzing ? "Analyzing..." : isDemoWithoutModels ? "Simulate Analysis" : "Analyze Workspace";
+  const analyzeHelpText = isDemoWithoutModels
+    ? "Demo data is preloaded. No local models are installed on this machine, so AI actions use simulated demo output."
+    : hasModels
+      ? "Use this to extract concepts and links from what you have already read, asked, and captured."
+      : "No local AI models are available yet. Install or connect a model to analyze this workspace.";
+  const cardHelpText = isDemoWithoutModels
+    ? "Demo mode can generate sample flashcards locally for this concept."
+    : hasModels
+      ? ""
+      : "Install a local model to generate flashcards for this concept.";
+  const analyzeResultSummary = isDemoWithoutModels
+    ? "Demo analysis refreshed the seeded sample content."
+    : analyzeResult
+      ? `+${analyzeResult.chapters_created} chapters, +${analyzeResult.sections_created} sections, +${analyzeResult.concepts_created} concepts, +${analyzeResult.links_created} links added`
+      : "";
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-[var(--bg-primary)]">
-      <div className="w-64 flex-shrink-0 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] overflow-y-auto">
-        <div className="p-3 border-b border-[var(--border-color)]">
-          <div className="mb-2 flex items-center gap-1.5">
-            <Sparkles size={14} className="text-[var(--accent-color)]" />
-            <span className="text-xs font-semibold text-[var(--text-primary)]">AI Analysis</span>
-          </div>
+      <div className="w-72 flex-shrink-0 overflow-y-auto border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]">
+        <div className="flex flex-col gap-3 p-3">
+          <SidebarCard className="p-3">
+            <div className="mb-3 flex items-center gap-1.5">
+              <Sparkles size={14} className="text-[var(--accent-color)]" />
+              <span className="text-xs font-semibold text-[var(--text-primary)]">AI Analysis</span>
+            </div>
 
-          <CompactMenuSelect
-            label="AI Model"
-            value={selectedModel}
-            options={availableModels.length === 0 
-              ? [{ value: "", label: "No models found" }] 
-              : availableModels.map((m) => ({ value: m, label: m }))
-            }
-            onChange={(val) => setSelectedModel(val)}
-            widthClassName="w-full mb-2"
-          />
-
-          <input
-            value={focusTopic}
-            onChange={(event) => setFocusTopic(event.target.value)}
-            placeholder="Focus topic (optional)"
-            className="mb-2 w-full rounded bg-[var(--bg-input)] border border-[var(--border-color)] px-2 py-1 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
-          />
-
-          <button
-            onClick={handleAnalyze}
-            disabled={isAnalyzing || !selectedModel}
-            className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-1.5 text-xs text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isAnalyzing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-            {isAnalyzing ? "Analyzing..." : "Analyze Workspace"}
-          </button>
-
-          <p className="mt-2 text-[10px] leading-relaxed text-[var(--text-muted)]">
-            Use this to extract concepts and links from what you have already read, asked, and captured.
-          </p>
-
-          {analyzeResult && (
-            <p className="mt-2 text-[10px] text-[var(--text-muted)]">
-              +{analyzeResult.chapters_created} chapters, +{analyzeResult.sections_created} sections, +{analyzeResult.concepts_created} concepts, +{analyzeResult.links_created} links added
-            </p>
-          )}
-          {analyzeError && (
-            <p className="mt-2 text-[10px] break-words text-red-400">{analyzeError}</p>
-          )}
-        </div>
-
-        <div className="border-b border-[var(--border-color)] px-3 py-2 flex gap-4">
-          <div className="text-center">
-            <div className="text-sm font-semibold text-[var(--text-primary)]">{overview?.concepts ?? nodes.length}</div>
-            <div className="text-[10px] text-[var(--text-muted)]">Concepts</div>
-          </div>
-          <div className="text-center">
-            <div className="text-sm font-semibold text-[var(--text-primary)]">{links.length}</div>
-            <div className="text-[10px] text-[var(--text-muted)]">Links</div>
-          </div>
-          <div className="text-center">
-            <div className="text-sm font-semibold text-[var(--text-primary)]">{review?.due_today ?? 0}</div>
-            <div className="text-[10px] text-[var(--text-muted)]">Due</div>
-          </div>
-        </div>
-
-        <div className="border-b border-[var(--border-color)] px-2 py-2">
-          <div className="relative mb-2">
-            <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-            <input
-              value={conceptSearch}
-              onChange={(event) => setConceptSearch(event.target.value)}
-              placeholder="Filter concepts..."
-              className="w-full rounded bg-[var(--bg-input)] border border-[var(--border-color)] py-1 pl-6 pr-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+            <CompactMenuSelect
+              label="AI Model"
+              value={selectedModel}
+              options={availableModels.length === 0
+                ? [{ value: "", label: isDemoWithoutModels ? "Demo simulation only" : "No models found" }]
+                : availableModels.map((m) => ({ value: m, label: m }))
+              }
+              onChange={(val) => setSelectedModel(val)}
+              widthClassName="mb-2 w-full"
             />
-          </div>
-          <div className="max-h-64 overflow-y-auto space-y-0.5">
+
+            <input
+              value={focusTopic}
+              onChange={(event) => setFocusTopic(event.target.value)}
+              placeholder="Focus topic (optional)"
+              className="mb-2 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] px-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+            />
+
+            <button
+              onClick={handleAnalyze}
+              disabled={isAnalyzing || !canRunAiActions}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[var(--accent-color)] px-3 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isAnalyzing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+              {analyzeButtonLabel}
+            </button>
+
+            <p className="mt-2 text-[10px] leading-relaxed text-[var(--text-muted)]">
+              {analyzeHelpText}
+            </p>
+
+            {analyzeResult && (
+              <p className="mt-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 px-2.5 py-2 text-[10px] leading-relaxed text-[var(--text-secondary)]">
+                {analyzeResultSummary}
+              </p>
+            )}
+            {analyzeError && (
+              <p className="mt-2 break-words text-[10px] text-red-400">{analyzeError}</p>
+            )}
+          </SidebarCard>
+
+          <SidebarCard className="p-3">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-2 text-center">
+                <div className="text-sm font-semibold text-[var(--text-primary)]">{overview?.concepts ?? nodes.length}</div>
+                <div className="mt-1 text-[10px] text-[var(--text-muted)]">Concepts</div>
+              </div>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-2 text-center">
+                <div className="text-sm font-semibold text-[var(--text-primary)]">{links.length}</div>
+                <div className="mt-1 text-[10px] text-[var(--text-muted)]">Links</div>
+              </div>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-2 text-center">
+                <div className="text-sm font-semibold text-[var(--text-primary)]">{review?.due_today ?? 0}</div>
+                <div className="mt-1 text-[10px] text-[var(--text-muted)]">Due</div>
+              </div>
+            </div>
+          </SidebarCard>
+
+          <SidebarCard className="p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Concepts</div>
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] px-2 py-1 text-[10px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+              >
+                <Plus size={10} />
+                Add
+              </button>
+            </div>
+            <div className="relative mb-2">
+              <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+              <input
+                value={conceptSearch}
+                onChange={(event) => setConceptSearch(event.target.value)}
+                placeholder="Filter concepts..."
+                className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] py-2 pl-7 pr-3 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+              />
+            </div>
+            <div className="max-h-[26rem] space-y-0.5 overflow-y-auto pr-1">
             {hierarchyTree.chapters.map((chapter) => {
               const chVisible = !conceptSearch || chapter.name.toLowerCase().includes(conceptSearch.toLowerCase()) ||
                 chapter.sections.some((s) => s.name.toLowerCase().includes(conceptSearch.toLowerCase()) ||
@@ -693,81 +812,86 @@ export default function KnowledgeGraphView() {
             {hierarchyTree.chapters.length === 0 && hierarchyTree.orphans.length === 0 && (
               <p className="px-2 py-3 text-[10px] text-[var(--text-muted)]">No concepts match this filter yet.</p>
             )}
-          </div>
-        </div>
-
-        <div className="p-2">
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="w-full flex items-center justify-center gap-1.5 rounded border border-[var(--border-color)] px-2 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
-          >
-            <Plus size={11} />
-            Add Concept
-          </button>
-        </div>
-
-        {selectedConcept && (
-          <div className="mt-auto border-t border-[var(--border-color)] p-3">
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="truncate text-xs font-semibold text-[var(--text-primary)]">{selectedConcept.name}</span>
-              <button onClick={() => setSelectedConcept(null)}>
-                <X size={12} className="text-[var(--text-muted)]" />
-              </button>
             </div>
-            <span
-              className="mb-1.5 inline-block rounded-full px-1.5 py-0.5 text-[10px]"
-              style={{ backgroundColor: `${colorFor(selectedConcept.concept_type)}33`, color: colorFor(selectedConcept.concept_type) }}
-            >
-              {selectedConcept.concept_type}
-            </span>
-            {selectedConcept.concept_description && (
-              <p className="mb-2 text-[10px] text-[var(--text-muted)]">{selectedConcept.concept_description}</p>
-            )}
+          </SidebarCard>
 
-            <div className="mb-2 flex items-center gap-2">
-              <button
-                onClick={generateConceptCards}
-                disabled={isGeneratingCards || !selectedModel}
-                className="flex items-center gap-1 rounded border border-[var(--border-color)] px-2 py-1 text-[10px] text-[var(--accent-color)] transition-colors hover:bg-[var(--accent-color)]/10 disabled:opacity-40"
+          {selectedConcept && (
+            <SidebarCard className="p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="truncate text-sm font-semibold text-[var(--text-primary)]">{selectedConcept.name}</span>
+                <button onClick={() => setSelectedConcept(null)}>
+                  <X size={12} className="text-[var(--text-muted)]" />
+                </button>
+              </div>
+              <span
+                className="mb-2 inline-block rounded-full px-2 py-1 text-[10px]"
+                style={{ backgroundColor: `${colorFor(selectedConcept.concept_type)}33`, color: colorFor(selectedConcept.concept_type) }}
               >
-                {isGeneratingCards ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-                {isGeneratingCards ? "Generating..." : "Generate Cards"}
-              </button>
-              {conceptCards.length > 0 && (
-                <span className="text-[10px] text-[var(--text-muted)]">
-                  {conceptCards.length} card{conceptCards.length === 1 ? "" : "s"}
-                </span>
+                {selectedConcept.concept_type}
+              </span>
+              {selectedConcept.concept_description && (
+                <p className="mb-3 text-[11px] leading-relaxed text-[var(--text-secondary)]">{selectedConcept.concept_description}</p>
               )}
-            </div>
 
-            {genCardError && (
-              <p className="mb-2 text-[10px] leading-tight text-red-400">{genCardError}</p>
-            )}
-
-            {conceptCards.length > 0 && (
-              <div className="mb-2 max-h-24 space-y-1 overflow-y-auto">
-                {conceptCards.slice(0, 5).map((card) => (
-                  <div key={card.id} className="truncate rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-                    {card.front}
-                  </div>
-                ))}
-                {conceptCards.length > 5 && (
-                  <div className="px-1.5 text-[10px] text-[var(--text-muted)]">
-                    +{conceptCards.length - 5} more
-                  </div>
+              <div className="mb-2 flex items-center gap-2">
+                <button
+                  onClick={generateConceptCards}
+                  disabled={isGeneratingCards || (!selectedModel && !isDemoWithoutModels)}
+                  className="flex items-center gap-1 rounded-lg border border-[var(--border-color)] px-2 py-1 text-[10px] text-[var(--accent-color)] transition-colors hover:bg-[var(--accent-color)]/10 disabled:opacity-40"
+                >
+                  {isGeneratingCards ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                  {isGeneratingCards ? "Generating..." : isDemoWithoutModels ? "Simulate Cards" : "Generate Cards"}
+                </button>
+                {conceptCards.length > 0 && (
+                  <span className="text-[10px] text-[var(--text-muted)]">
+                    {conceptCards.length} card{conceptCards.length === 1 ? "" : "s"}
+                  </span>
                 )}
               </div>
-            )}
 
+              {cardHelpText && (
+                <p className="mb-2 text-[10px] leading-relaxed text-[var(--text-muted)]">{cardHelpText}</p>
+              )}
+
+              {genCardError && (
+                <p className="mb-2 text-[10px] leading-tight text-red-400">{genCardError}</p>
+              )}
+
+              {conceptCards.length > 0 && (
+                <div className="mb-3 max-h-32 space-y-1 overflow-y-auto">
+                  {conceptCards.slice(0, 5).map((card) => (
+                    <div key={card.id} className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 px-2 py-1.5 text-[10px] text-[var(--text-secondary)]">
+                      {card.front}
+                    </div>
+                  ))}
+                  {conceptCards.length > 5 && (
+                    <div className="px-1.5 text-[10px] text-[var(--text-muted)]">
+                      +{conceptCards.length - 5} more
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <button
+                onClick={() => deleteConcept(selectedConcept.id)}
+                className="flex items-center gap-1 text-[10px] text-red-400 transition-colors hover:text-red-300"
+              >
+                <Trash2 size={10} />
+                Delete
+              </button>
+            </SidebarCard>
+          )}
+
+          {!selectedConcept && (
             <button
-              onClick={() => deleteConcept(selectedConcept.id)}
-              className="flex items-center gap-1 text-[10px] text-red-400 transition-colors hover:text-red-300"
+              onClick={() => setShowCreateForm(true)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:bg-[var(--bg-hover)]"
             >
-              <Trash2 size={10} />
-              Delete
+              <Plus size={11} />
+              Add Concept
             </button>
+          )}
           </div>
-        )}
       </div>
 
       <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
@@ -782,7 +906,7 @@ export default function KnowledgeGraphView() {
                   See what this workspace knows and what needs attention next.
                 </h1>
                 <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                  The map is now front and center, with review and health signals kept close by instead of buried below the fold.
+                  Explore your concept map, spot weak areas, and decide what to review or build on next.
                 </p>
                 {summaryError && (
                   <p className="mt-2 text-sm text-red-400">
@@ -794,11 +918,11 @@ export default function KnowledgeGraphView() {
               <div className="flex flex-wrap gap-2 xl:justify-end">
                 <button
                   onClick={handleAnalyze}
-                  disabled={isAnalyzing || !selectedModel}
+                  disabled={isAnalyzing || !canRunAiActions}
                   className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
                   {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  Analyze Workspace
+                  {analyzeButtonLabel}
                 </button>
                 <button
                   onClick={refreshKnowledge}
@@ -924,11 +1048,11 @@ export default function KnowledgeGraphView() {
                       </div>
                       <button
                         onClick={handleAnalyze}
-                        disabled={isAnalyzing || !selectedModel}
+                        disabled={isAnalyzing || !canRunAiActions}
                         className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                       >
                         {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                        Analyze Workspace
+                        {analyzeButtonLabel}
                       </button>
                     </div>
                   )}
