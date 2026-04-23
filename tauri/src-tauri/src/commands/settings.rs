@@ -562,9 +562,27 @@ pub fn update_settings(
     )?;
 
     if settings.start_at_login {
-        app.autolaunch().enable().map_err(|e| e.to_string())?;
-    } else {
-        app.autolaunch().disable().map_err(|e| e.to_string())?;
+        if let Err(err) = app.autolaunch().enable() {
+            let error = err.to_string();
+            if is_windows_missing_autostart_target(&error) {
+                crate::logging::log_warn(
+                    "settings",
+                    format!("Ignoring Windows autostart enable error: {error}"),
+                );
+            } else {
+                return Err(error);
+            }
+        }
+    } else if let Err(err) = app.autolaunch().disable() {
+        let error = err.to_string();
+        if is_windows_missing_autostart_target(&error) {
+            crate::logging::log_warn(
+                "settings",
+                format!("Ignoring Windows autostart disable error (no entry exists): {error}"),
+            );
+        } else {
+            return Err(error);
+        }
     }
 
     if cfg!(target_os = "macos") && !settings.hide_native_menu {
