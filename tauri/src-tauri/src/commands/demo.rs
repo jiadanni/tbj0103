@@ -853,28 +853,76 @@ Notable achievements:
 #[tauri::command]
 pub fn deactivate_demo_mode(state: State<DbState>) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    
-    // CASCADE deletes all demo data (projects, chats, concepts, etc.)
-    // We use a wildcard to ensure any stray demo workspaces are cleaned up
-    conn.execute("DELETE FROM workspaces WHERE id LIKE 'demo-%'", rusqlite::params![])
+
+    // Disable foreign keys temporarily so we can purge demo data even if some
+    // legacy tables (added via migrations) do not have CASCADE constraints.
+    conn.execute_batch("PRAGMA foreign_keys=OFF;")
         .map_err(|e| e.to_string())?;
-    
+
+    // Explicitly delete from tables that may hold demo-prefixed rows.
+    // Using id LIKE 'demo-%' or workspace_id LIKE 'demo-%' to catch orphans.
+    let demo_cleanup_statements: &[&str] = &[
+        "DELETE FROM messages WHERE session_id LIKE 'demo-%'",
+        "DELETE FROM citations WHERE message_id LIKE 'demo-%'",
+        "DELETE FROM chat_sessions WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM projects WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM concept_nodes WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM concept_links WHERE source_id LIKE 'demo-%' OR target_id LIKE 'demo-%'",
+        "DELETE FROM concept_mentions WHERE concept_id LIKE 'demo-%' OR source_id LIKE 'demo-%'",
+        "DELETE FROM sources WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM source_chunks WHERE source_id LIKE 'demo-%'",
+        "DELETE FROM uploaded_documents WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM document_chunks WHERE document_id LIKE 'demo-%'",
+        "DELETE FROM web_captures WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM project_notes WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM daily_notes WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM learning_goals WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM learning_cards WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM learning_paths WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM memories WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM memory_embeddings WHERE memory_id LIKE 'demo-%'",
+        "DELETE FROM artifacts WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM artifact_embeddings WHERE artifact_id LIKE 'demo-%'",
+        "DELETE FROM conversation_summaries WHERE id LIKE 'demo-%' OR session_id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM context_snapshots WHERE id LIKE 'demo-%' OR session_id LIKE 'demo-%'",
+        "DELETE FROM thought_queue WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM audio_transcriptions WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM calendar_alarms WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM note_templates WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM workspaces WHERE id LIKE 'demo-%'",
+    ];
+
+    for stmt in demo_cleanup_statements {
+        // Ignore individual errors (e.g. table may not exist in some schema versions)
+        // but log them for diagnostics.
+        if let Err(e) = conn.execute(stmt, rusqlite::params![]) {
+            eprintln!("demo cleanup warning ({}): {}", stmt, e);
+        }
+    }
+
+    // Re-enable foreign keys
+    conn.execute_batch("PRAGMA foreign_keys=ON;")
+        .map_err(|e| e.to_string())?;
+
     // Check if there are any workspaces left
-    let workspace_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM workspaces WHERE is_hidden = 0",
-        [],
-        |row| row.get(0),
-    ).map_err(|e| e.to_string())?;
-    
+    let workspace_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM workspaces WHERE is_hidden = 0",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
     // If no workspaces remain, create a default one
     if workspace_count == 0 {
         let req = CreateWorkspaceRequest {
             name: "My Workspace".to_string(),
             description: None,
         };
-        workspace_service::create(&conn, req).map_err(|e| format!("Failed to create default workspace: {}", e))?;
+        workspace_service::create(&conn, req)
+            .map_err(|e| format!("Failed to create default workspace: {}", e))?;
     }
-    
+
     Ok(())
 }
 
