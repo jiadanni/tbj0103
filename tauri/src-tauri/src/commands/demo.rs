@@ -1,4 +1,6 @@
 use crate::db::DbState;
+use crate::models::workspace::CreateWorkspaceRequest;
+use crate::services::workspace_service;
 use tauri::State;
 
 /// Demo mode: seeds temporary workspaces with sample data.
@@ -689,9 +691,27 @@ Notable achievements:
 #[tauri::command]
 pub fn deactivate_demo_mode(state: State<DbState>) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
+    
     // CASCADE deletes all demo data (projects, chats, concepts, etc.)
     // We use a wildcard to ensure any stray demo workspaces are cleaned up
     conn.execute("DELETE FROM workspaces WHERE id LIKE 'demo-%'", rusqlite::params![])
         .map_err(|e| e.to_string())?;
+    
+    // Check if there are any workspaces left
+    let workspace_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM workspaces WHERE is_hidden = 0",
+        [],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    
+    // If no workspaces remain, create a default one
+    if workspace_count == 0 {
+        let req = CreateWorkspaceRequest {
+            name: "My Workspace".to_string(),
+            description: None,
+        };
+        workspace_service::create(&conn, req).map_err(|e| format!("Failed to create default workspace: {}", e))?;
+    }
+    
     Ok(())
 }
