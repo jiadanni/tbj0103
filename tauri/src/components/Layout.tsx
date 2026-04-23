@@ -1333,8 +1333,9 @@ export default function Layout() {
       setDemo(false);
       // Reload to clear all in-memory state
       window.location.reload();
-    } catch {
-      await message("Failed to exit demo mode.", { title: "Error", kind: "error" });
+    } catch (e) {
+      console.error("Failed to exit demo mode:", e);
+      await message(`Failed to exit demo mode.\n${e}`, { title: "Error", kind: "error" });
     }
   };
 
