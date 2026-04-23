@@ -64,46 +64,100 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
         rusqlite::params![DEMO_PROJECT_AI_LLMS, DEMO_WS_AI, now, now],
     ).map_err(|e| e.to_string())?;
 
-    // Chat: self-attention
-    let session_ai_1 = "demo-chat-session-transformers-00001";
-    conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'What is Self-Attention?', '', ?4, ?5)",
-        rusqlite::params![session_ai_1, DEMO_WS_AI, DEMO_PROJECT_AI, now, now],
-    ).map_err(|e| e.to_string())?;
-
-    let ai_msgs_1: Vec<(&str, &str)> = vec![
-        ("user", "Can you explain how self-attention works in transformers?"),
-        ("assistant", "Self-attention allows each token in a sequence to attend to every other token, computing relevance scores (called attention weights).\n\nFor each token, we compute three vectors: **Query (Q)**, **Key (K)**, and **Value (V)**. The attention score between token i and token j is computed as:\n\n```\nAttention(Q,K,V) = softmax(QK^T / √d_k) × V\n```\n\nThe scaling factor `√d_k` prevents vanishing gradients. This mechanism captures long-range dependencies that RNNs struggled with. See [[Attention Mechanism]] and [[Query Key Value]] for more depth."),
-        ("user", "How does multi-head attention differ?"),
-        ("assistant", "[[Multi-Head Attention]] runs multiple attention operations in parallel — typically 8 or 16 heads — each with different learned projections. Each head can specialize in different aspects of the sequence.\n\nThe outputs of all heads are concatenated:\n\n```\nMultiHead(Q,K,V) = Concat(head₁,...,headₕ)W^O\n```\n\nThis dramatically increases representational power without proportionally multiplying compute."),
+    // AI Workspace Chats (22 total)
+    let ai_chats = vec![
+        ("demo-chat-session-transformers-001", DEMO_PROJECT_AI, "What is Self-Attention?", vec![
+            ("user", "Can you explain how self-attention works in transformers?"),
+            ("assistant", "Self-attention allows each token in a sequence to attend to every other token, computing relevance scores. It uses **Query (Q)**, **Key (K)**, and **Value (V)** vectors. The score is `softmax(QK^T / √d_k)V`. See [[Attention Mechanism]]."),
+        ]),
+        ("demo-chat-session-ai-scaling-001", DEMO_PROJECT_AI_LLMS, "Scaling Laws and Emergent Abilities", vec![
+            ("user", "What are scaling laws in deep learning?"),
+            ("assistant", "[[Scaling Laws]] describe predictable performance improvements with scale. Models also show [[Emergent Abilities]] like chain-of-thought reasoning that only appear at certain sizes."),
+        ]),
+        ("demo-chat-session-ai-gradient-001", DEMO_PROJECT_AI, "Gradient Descent Basics", vec![
+            ("user", "How does gradient descent work?"),
+            ("assistant", "It's an optimization algorithm that minimizes a loss function by iteratively moving in the direction of steepest descent, defined by the negative of the gradient."),
+        ]),
+        ("demo-chat-session-ai-cnn-001", DEMO_PROJECT_AI, "Convolutional Neural Networks", vec![
+            ("user", "What makes CNNs good for images?"),
+            ("assistant", "CNNs use convolutional layers to learn spatial hierarchies of features, making them translation invariant and highly efficient for visual data."),
+        ]),
+        ("demo-chat-session-ai-rnn-001", DEMO_PROJECT_AI, "RNNs vs LSTMs", vec![
+            ("user", "Why use LSTMs over standard RNNs?"),
+            ("assistant", "Standard RNNs suffer from vanishing gradients. LSTMs introduce 'gates' to selectively remember or forget information over long sequences."),
+        ]),
+        ("demo-chat-session-ai-rl-001", DEMO_PROJECT_AI, "Reinforcement Learning", vec![
+            ("user", "What is the core idea of RL?"),
+            ("assistant", "An agent learns to make decisions by performing actions in an environment to maximize a cumulative reward signal."),
+        ]),
+        ("demo-chat-session-ai-gan-001", DEMO_PROJECT_AI, "Generative Adversarial Networks", vec![
+            ("user", "How do GANs train?"),
+            ("assistant", "Two networks, a Generator and a Discriminator, compete in a zero-sum game. The generator tries to fool the discriminator with synthetic data."),
+        ]),
+        ("demo-chat-session-ai-transfer-001", DEMO_PROJECT_AI_LLMS, "Transfer Learning", vec![
+            ("user", "Why is transfer learning so popular?"),
+            ("assistant", "It allows using a pre-trained model on a large dataset as a starting point for a smaller, task-specific dataset, saving time and compute."),
+        ]),
+        ("demo-chat-session-ai-ethics-001", DEMO_PROJECT_AI_LLMS, "AI Ethics and Bias", vec![
+            ("user", "How can we mitigate bias in AI?"),
+            ("assistant", "Through diverse datasets, algorithmic fairness constraints, and rigorous testing for disparate impact across different demographic groups."),
+        ]),
+        ("demo-chat-session-ai-healthcare-001", DEMO_PROJECT_AI_LLMS, "AI in Healthcare", vec![
+            ("user", "How is AI used in medical diagnostics?"),
+            ("assistant", "AI models analyze medical images (X-rays, MRIs) to detect anomalies with high precision, often aiding doctors in early disease detection."),
+        ]),
+        ("demo-chat-session-ai-cv-001", DEMO_PROJECT_AI, "Object Detection", vec![
+            ("user", "How does YOLO work?"),
+            ("assistant", "YOLO (You Only Look Once) treats object detection as a regression problem to spatially separated bounding boxes and associated class probabilities."),
+        ]),
+        ("demo-chat-session-ai-nlp-001", DEMO_PROJECT_AI_LLMS, "BERT vs GPT", vec![
+            ("user", "What's the difference between BERT and GPT?"),
+            ("assistant", "BERT is an encoder-only model designed for bidirectional context, while GPT is a decoder-only model designed for generative tasks."),
+        ]),
+        ("demo-chat-session-ai-tuning-001", DEMO_PROJECT_AI, "Hyperparameter Tuning", vec![
+            ("user", "What's better: Grid Search or Bayesian Optimization?"),
+            ("assistant", "Bayesian Optimization is generally more efficient as it uses prior results to inform the next search, unlike the exhaustive Grid Search."),
+        ]),
+        ("demo-chat-session-ai-reg-001", DEMO_PROJECT_AI, "Regularization Techniques", vec![
+            ("user", "Explain Dropout."),
+            ("assistant", "Dropout randomly ignores neurons during training, which prevents the model from over-relying on specific features and improves generalization."),
+        ]),
+        ("demo-chat-session-ai-diffusion-001", DEMO_PROJECT_AI_LLMS, "Diffusion Models", vec![
+            ("user", "How do Stable Diffusion models work?"),
+            ("assistant", "They learn to reverse a process of adding noise to an image, starting from pure noise and iteratively refining it into a clear image."),
+        ]),
+        ("demo-chat-session-ai-rag-001", DEMO_PROJECT_AI_LLMS, "Vector DBs for RAG", vec![
+            ("user", "Why do we need vector databases for RAG?"),
+            ("assistant", "Vector DBs allow for efficient similarity searches of embeddings, enabling the retrieval of relevant context for LLM prompts."),
+        ]),
+        ("demo-chat-session-ai-quant-001", DEMO_PROJECT_AI_LLMS, "Model Quantization", vec![
+            ("user", "What is 4-bit quantization?"),
+            ("assistant", "It involves compressing model weights into 4-bit integers, significantly reducing memory footprint with minimal accuracy loss."),
+        ]),
+        ("demo-chat-session-ai-safety-001", DEMO_PROJECT_AI_LLMS, "AI Safety and Alignment", vec![
+            ("user", "What is the goal of AI alignment?"),
+            ("assistant", "To ensure that AI systems' goals and behaviors are aligned with human values and intentions, preventing harmful or unintended outcomes."),
+        ]),
+        ("demo-chat-session-ai-synthetic-001", DEMO_PROJECT_AI_LLMS, "Synthetic Data", vec![
+            ("user", "When should we use synthetic data?"),
+            ("assistant", "When real data is scarce, expensive to collect, or sensitive (privacy concerns). It can also help balance underrepresented classes."),
+        ]),
+        ("demo-chat-session-ai-multimodal-001", DEMO_PROJECT_AI_LLMS, "Multi-modal Models", vec![
+            ("user", "What is a multi-modal model?"),
+            ("assistant", "A model that can process and relate information from different types of input, such as text, images, and audio, simultaneously."),
+        ]),
+        ("demo-chat-session-ai-nas-001", DEMO_PROJECT_AI, "Neural Architecture Search", vec![
+            ("user", "What is NAS?"),
+            ("assistant", "NAS automates the design of neural networks, using algorithms to find the optimal architecture for a given task and dataset."),
+        ]),
+        ("demo-chat-session-ai-federated-001", DEMO_PROJECT_AI_LLMS, "Federated Learning", vec![
+            ("user", "How does federated learning preserve privacy?"),
+            ("assistant", "It trains models across multiple decentralized devices holding local data samples, without ever exchanging the actual data."),
+        ]),
     ];
-    for (role, content) in &ai_msgs_1 {
-        let mid = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![mid, session_ai_1, role, content, now],
-        ).map_err(|e| e.to_string())?;
-    }
 
-    // Chat: scaling laws
-    let session_ai_2 = "demo-chat-session-ai-scaling-00001";
-    conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'Scaling Laws and Emergent Abilities', '', ?4, ?5)",
-        rusqlite::params![session_ai_2, DEMO_WS_AI, DEMO_PROJECT_AI_LLMS, now, now],
-    ).map_err(|e| e.to_string())?;
-
-    let ai_msgs_2: Vec<(&str, &str)> = vec![
-        ("user", "What are scaling laws in deep learning?"),
-        ("assistant", "[[Scaling Laws]] describe how model performance improves predictably as we increase model size, data size, and compute. Key findings:\n\n1. **Power-law relationships** — Performance ∝ N^(-α) where N is parameters/data and α ≈ 0.07-0.1\n2. **Compute-optimal** — For fixed compute budget, optimal model size is ~20x smaller than data tokens\n3. **Transfer enabled** — Large models display [[Emergent Abilities]] — tasks solvable at scale that fail at small scale"),
-        ("user", "Give examples of emergent abilities."),
-        ("assistant", "[[Emergent Abilities]] are capabilities that only appear above certain model scales:\n\n- **In-context learning** — Models can learn from examples in context without parameter updates\n- **Chain-of-thought reasoning** — Solving multi-step problems by working through intermediate steps\n- **Instruction following** — Understanding and executing diverse instructions without task-specific training\n- **Few-shot generalization** — Solving novel problems with just 1-2 examples\n\nThese abilities weren't explicitly designed; they emerge from scale and are hard to predict beforehand."),
-    ];
-    for (role, content) in &ai_msgs_2 {
-        let mid = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![mid, session_ai_2, role, content, now],
-        ).map_err(|e| e.to_string())?;
+    for (id, pid, title, msgs) in ai_chats {
+        create_demo_chat(&conn, DEMO_WS_AI, pid, id, title, msgs, &now)?;
     }
 
     // Concepts for AI workspace — expanded
@@ -197,7 +251,7 @@ Key highlights:
     ).map_err(|e| e.to_string())?;
 
     // AI Workspace: Source Chunks
-    let ai_chunks = vec![
+    let ai_chunks = [
         "The Transformer model relies entirely on an attention mechanism to draw global dependencies between input and output.",
         "Key highlights: 1. Encoder and Decoder Stacks: Both use multi-head self-attention.",
         "3. Multi-Head Attention: Allows the model to jointly attend to information from different representation subspaces at different positions."
@@ -224,7 +278,7 @@ Key highlights:
         rusqlite::params![
             DEMO_ARTIFACT_AI_ATTENTION,
             DEMO_WS_AI,
-            session_ai_1,
+            "demo-chat-session-transformers-001",
             "import torch
 import torch.nn.functional as F
 
@@ -248,7 +302,7 @@ def self_attention(query, key, value, mask=None):
             DEMO_GOAL_AI_TRANSFORMER,
             DEMO_WS_AI,
             (chrono::Utc::now() + chrono::Duration::days(14)).format("%Y-%m-%d").to_string(),
-            format!("[\"{}\"]", session_ai_1),
+            format!("[\"{}\"]", "demo-chat-session-transformers-001"),
             now,
             now
         ],
@@ -291,46 +345,100 @@ Compared to RNNs ($O(n \\cdot d^2)$), self-attention is $O(n^2 \\cdot d)$, makin
         rusqlite::params![DEMO_PROJECT_MUSIC_RHYTHM, DEMO_WS_MUSIC, now, now],
     ).map_err(|e| e.to_string())?;
 
-    // Chat: chord progressions
-    let session_music_1 = "demo-chat-session-music-harmony-00001";
-    conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'How do chord progressions work?', '', ?4, ?5)",
-        rusqlite::params![session_music_1, DEMO_WS_MUSIC, DEMO_PROJECT_MUSIC_HARMONY, now, now],
-    ).map_err(|e| e.to_string())?;
-
-    let music_msgs_1: Vec<(&str, &str)> = vec![
-        ("user", "Can you explain how chord progressions work and why some sound more natural?"),
-        ("assistant", "[[Chord Progressions]] are sequences built from [[Major Scale]] degrees. In C major:\n\n| Degree | Chord | Quality |\n|--------|-------|----------|\n| I | C | Major |\n| ii | Dm | minor |\n| iii | Em | minor |\n| IV | F | Major |\n| V | G | Major |\n| vi | Am | minor |\n| vii° | Bdim | diminished |\n\nProgressions sound natural following the **circle of fifths**: tension (V) resolves to rest (I). The most common is **I → V → vi → IV** (C → G → Am → F), found in hundreds of songs.\n\nThe [[Tritone]] between V and I creates satisfying tension/resolution."),
-        ("user", "What makes minor keys different from major?"),
-        ("assistant", "Key differences in [[Minor Scale]] vs major:\n\n- **Major scale:** W-W-H-W-W-W-H (bright, major 3rd)\n- **Minor scale:** W-H-W-W-H-W-W (dark, minor 3rd)\n\nThe **minor 3rd** transforms every chord. Minor keys also have variants:\n- **Harmonic minor** — raises 7th for strong V→i\n- **Melodic minor** — raises 6th & 7th ascending only\n\nComposers mix all three freely. [[Circle of Fifths]] shows every major key has a **relative minor** using same notes but different root."),
+    // Music Workspace Chats (22 total)
+    let music_chats = vec![
+        ("demo-chat-session-music-harmony-001", DEMO_PROJECT_MUSIC_HARMONY, "How do chord progressions work?", vec![
+            ("user", "Can you explain how chord progressions work and why some sound more natural?"),
+            ("assistant", "[[Chord Progressions]] are sequences built from [[Major Scale]] degrees. Progressions sound natural following the circle of fifths. The most common is **I → V → vi → IV**. See [[Tritone]]."),
+        ]),
+        ("demo-chat-session-music-rhythm-001", DEMO_PROJECT_MUSIC_RHYTHM, "Understanding Time Signatures", vec![
+            ("user", "What does 4/4 time signature mean?"),
+            ("assistant", "In 4/4 [[Time Signature]]: 4 beats per measure, and the quarter note gets the beat. It's the most common time signature in Western music."),
+        ]),
+        ("demo-chat-session-music-piano-001", DEMO_PROJECT_MUSIC_HARMONY, "History of the Piano", vec![
+            ("user", "Who invented the piano?"),
+            ("assistant", "Bartolomeo Cristofori invented the piano around 1700 in Italy. It was originally called 'gravicembalo col piano e forte' (harpsichord with soft and loud)."),
+        ]),
+        ("demo-chat-session-music-sonata-001", DEMO_PROJECT_MUSIC_HARMONY, "Sonata Form Analysis", vec![
+            ("user", "What are the parts of a sonata form?"),
+            ("assistant", "Sonata form typically has three main sections: **Exposition** (themes introduced), **Development** (themes explored), and **Recapitulation** (themes return)."),
+        ]),
+        ("demo-chat-session-music-fugue-001", DEMO_PROJECT_MUSIC_HARMONY, "Fugue Construction", vec![
+            ("user", "What is a fugue?"),
+            ("assistant", "A fugue is a contrapuntal composition in which a short melody (the subject) is introduced by one part and successively taken up by others and developed."),
+        ]),
+        ("demo-chat-session-music-jazz-001", DEMO_PROJECT_MUSIC_HARMONY, "Modal Jazz Basics", vec![
+            ("user", "How does modal jazz differ from tonal jazz?"),
+            ("assistant", "Modal jazz relies on musical modes rather than chord progressions (tonal center). Miles Davis's 'Kind of Blue' is the definitive example."),
+        ]),
+        ("demo-chat-session-music-orch-001", DEMO_PROJECT_MUSIC_HARMONY, "Orchestration Techniques", vec![
+            ("user", "What is orchestration?"),
+            ("assistant", "Orchestration is the study or practice of writing music for an orchestra or of adapting music composed for another medium for an orchestra."),
+        ]),
+        ("demo-chat-session-music-romance-001", DEMO_PROJECT_MUSIC_HARMONY, "Chopin vs Liszt", vec![
+            ("user", "How did their styles differ?"),
+            ("assistant", "Chopin focused on intimacy, nuance, and poetic expression, while Liszt was known for his bravura, technical virtuosity, and orchestral approach to the piano."),
+        ]),
+        ("demo-chat-session-music-electronic-001", DEMO_PROJECT_MUSIC_RHYTHM, "Electronic Music Basics", vec![
+            ("user", "What is a synthesizer?"),
+            ("assistant", "An electronic musical instrument that generates audio signals. Synthesizers can imitate traditional instruments or create completely new sounds."),
+        ]),
+        ("demo-chat-session-music-scales-001", DEMO_PROJECT_MUSIC_HARMONY, "World Music Scales", vec![
+            ("user", "What is a Raga?"),
+            ("assistant", "In Indian classical music, a Raga is a melodic framework for improvisation and composition, associated with specific moods or times of day."),
+        ]),
+        ("demo-chat-session-music-min-001", DEMO_PROJECT_MUSIC_RHYTHM, "Minimalism: Steve Reich", vec![
+            ("user", "What is phasing in music?"),
+            ("assistant", "A technique where two identical parts begin in unison but gradually shift out of sync, creating complex rhythmic patterns. Used extensively by Steve Reich."),
+        ]),
+        ("demo-chat-session-music-counter-001", DEMO_PROJECT_MUSIC_HARMONY, "Species Counterpoint", vec![
+            ("user", "What is first species counterpoint?"),
+            ("assistant", "It involves writing one note for every note in the given melody (cantus firmus), following strict rules about allowable intervals."),
+        ]),
+        ("demo-chat-session-music-notation-001", DEMO_PROJECT_MUSIC_HARMONY, "Notation History", vec![
+            ("user", "When did modern notation start?"),
+            ("assistant", "Standardized Western notation began to emerge in the 11th century with Guido d'Arezzo, who introduced the four-line staff."),
+        ]),
+        ("demo-chat-session-music-film-001", DEMO_PROJECT_MUSIC_HARMONY, "Film Scoring Magic", vec![
+            ("user", "What is a leitmotif?"),
+            ("assistant", "A recurring musical theme associated with a particular person, place, or idea, famously used by Wagner and John Williams."),
+        ]),
+        ("demo-chat-session-music-opera-001", DEMO_PROJECT_MUSIC_HARMONY, "Opera vs Operetta", vec![
+            ("user", "What's the difference?"),
+            ("assistant", "Opera is usually entirely sung and serious, while operetta is shorter, lighter, and often includes spoken dialogue and dance."),
+        ]),
+        ("demo-chat-session-music-sound-001", DEMO_PROJECT_MUSIC_HARMONY, "Acoustic vs Digital", vec![
+            ("user", "What is sampling?"),
+            ("assistant", "The technique of taking a portion, or sample, of one sound recording and reusing it as an instrument or a different sound recording in a new piece."),
+        ]),
+        ("demo-chat-session-music-tempo-001", DEMO_PROJECT_MUSIC_RHYTHM, "Tempo and Dynamics", vec![
+            ("user", "What does 'rubato' mean?"),
+            ("assistant", "It refers to expressive and rhythmic freedom by a slight speeding up and then slowing down of the tempo of a piece at the discretion of the soloist."),
+        ]),
+        ("demo-chat-session-music-psycho-001", DEMO_PROJECT_MUSIC_HARMONY, "Psychoacoustics", vec![
+            ("user", "How do we perceive pitch?"),
+            ("assistant", "Pitch perception is the brain's interpretation of the frequency of sound waves. It involves both the physical stimulus and psychological processing."),
+        ]),
+        ("demo-chat-session-music-wood-001", DEMO_PROJECT_MUSIC_HARMONY, "Woodwind Comparison", vec![
+            ("user", "Oboe vs Clarinet?"),
+            ("assistant", "The oboe is a double-reed instrument with a conical bore, while the clarinet is a single-reed instrument with a cylindrical bore."),
+        ]),
+        ("demo-chat-session-music-vocal-001", DEMO_PROJECT_MUSIC_HARMONY, "Vocal Ranges: SATB", vec![
+            ("user", "What does SATB stand for?"),
+            ("assistant", "Soprano, Alto, Tenor, Bass — the four standard voice types in choral music."),
+        ]),
+        ("demo-chat-session-music-cond-001", DEMO_PROJECT_MUSIC_RHYTHM, "Choral Conducting", vec![
+            ("user", "What is the ictus?"),
+            ("assistant", "The point in a conducting gesture that indicates the exact moment of the beat."),
+        ]),
+        ("demo-chat-session-music-imp-001", DEMO_PROJECT_MUSIC_HARMONY, "Improvisation Tips", vec![
+            ("user", "How to start improvising?"),
+            ("assistant", "Start by embellishing the melody, then move to using scale tones over the underlying harmony, and practice rhythmic variations."),
+        ]),
     ];
-    for (role, content) in &music_msgs_1 {
-        let mid = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![mid, session_music_1, role, content, now],
-        ).map_err(|e| e.to_string())?;
-    }
 
-    // Chat: rhythm and time
-    let session_music_2 = "demo-chat-session-music-rhythm-00001";
-    conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'Understanding Time Signatures', '', ?4, ?5)",
-        rusqlite::params![session_music_2, DEMO_WS_MUSIC, DEMO_PROJECT_MUSIC_RHYTHM, now, now],
-    ).map_err(|e| e.to_string())?;
-
-    let music_msgs_2: Vec<(&str, &str)> = vec![
-        ("user", "What does 4/4 time signature mean?"),
-        ("assistant", "In 4/4 ([[Time Signature]]):\n\n- **First number (4)** = 4 beats per measure\n- **Second number (4)** = quarter note gets the beat\n\n4/4 is \"common time\" — the most used signature in Western music. A measure has 4 quarter-note beats. At 120 BPM, each beat is 0.5 seconds.\n\nOther common signatures: 3/4 (waltz), 6/8 (compound duple), 7/8 (odd meter)."),
-        ("user", "How are polyrhythms created?"),
-        ("assistant", "[[Polyrhythms]] layer different rhythmic patterns simultaneously — creating tension and complexity:\n\n- **3 against 2** — 3 notes in one hand over 2 in the other\n- **4 against 3** — common in jazz and modern drums\n- **5 against 4** — creates shifting accents\n\n[[Syncopation]] emphasizes offbeats, creating \"swing\" feel. The brain naturally gravitates toward simpler ratios — 1:1 and 2:1 feel stable, while 3:2 feels unstable and interesting."),
-    ];
-    for (role, content) in &music_msgs_2 {
-        let mid = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![mid, session_music_2, role, content, now],
-        ).map_err(|e| e.to_string())?;
+    for (id, pid, title, msgs) in music_chats {
+        create_demo_chat(&conn, DEMO_WS_MUSIC, pid, id, title, msgs, &now)?;
     }
 
     // Concepts for Music Theory workspace — expanded
@@ -427,7 +535,7 @@ It is essential for:
     ).map_err(|e| e.to_string())?;
 
     // Music Workspace: Source Chunks
-    let music_chunks = vec![
+    let music_chunks = [
         "The Circle of Fifths is a visual representation of the relationships among the 12 tones of the chromatic scale.",
         "It is essential for: Understanding key signatures, Transposing music, and Harmonizing melodies."
     ];
@@ -498,46 +606,100 @@ Key topics:
         rusqlite::params![DEMO_PROJECT_ROME_MILITARY, DEMO_WS_ROME, now, now],
     ).map_err(|e| e.to_string())?;
 
-    // Chat: Roman Republic fall
-    let session_rome_1 = "demo-chat-session-rome-republic-00001";
-    conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'Fall of the Roman Republic', '', ?4, ?5)",
-        rusqlite::params![session_rome_1, DEMO_WS_ROME, DEMO_PROJECT_ROME, now, now],
-    ).map_err(|e| e.to_string())?;
-
-    let rome_msgs_1: Vec<(&str, &str)> = vec![
-        ("user", "What caused the fall of the Roman Republic?"),
-        ("assistant", "The fall was gradual, driven by interconnected crises:\n\n1. **Land reform conflicts** — [[Gracchi brothers]] (133–121 BC) exposed class tensions\n2. **Military loyalty shift** — After [[Marius]]'s reforms, soldiers became loyal to generals, not the state\n3. **Civil wars** — [[Sulla]]'s march on Rome (88 BC) set precedent for military force in politics\n4. **First Triumvirate** — [[Julius Caesar]], Pompey, Crassus undermined Senate authority\n5. **Dictatorship** — Caesar's concentration of power led to assassination (44 BC)\n6. **Collapse** — Second Triumvirate and Octavian's victory at Actium (31 BC) ended the Republic\n\nIt was death by a thousand cuts over ~100 years."),
-        ("user", "How did Caesar's assassination accelerate the end?"),
-        ("assistant", "Ironically, the Liberatores thought killing Caesar would restore the Republic:\n\n- **Power vacuum** — Led to chaos, not freedom. Senate couldn't reassert control\n- **Public outrage** — Antony's funeral speech turned opinion against assassins\n- **[[Octavian]]'s rise** — Caesar's 18-year-old heir was brilliant. Used Caesar's name, wealth, veterans to build power\n- **More civil wars** — Next 13 years: Octavian vs Antony vs assassins\n- **Permanent autocracy** — Octavian (Augustus) kept republican forms while holding absolute power\n\nThe assassination proved the Republic's institutions were too hollowed to function without a strongman."),
+    // Roman History Workspace Chats (22 total)
+    let rome_chats = vec![
+        ("demo-chat-session-rome-republic-001", DEMO_PROJECT_ROME, "Fall of the Roman Republic", vec![
+            ("user", "What caused the fall of the Roman Republic?"),
+            ("assistant", "The fall was driven by land reform conflicts, military loyalty shifting to generals (see [[Marius]]), and the rise of dictators like [[Julius Caesar]]."),
+        ]),
+        ("demo-chat-session-rome-military-001", DEMO_PROJECT_ROME_MILITARY, "Roman Legions and Military Organization", vec![
+            ("user", "What was the structure of a Roman legion?"),
+            ("assistant", "A [[Roman Legion]] had ~5,500 men, organized into cohorts, maniples, and centuries, led by a [[Legate]] and professional [[Centurion]]s."),
+        ]),
+        ("demo-chat-session-rome-punic-001", DEMO_PROJECT_ROME, "The Punic Wars: Hannibal", vec![
+            ("user", "Who was Hannibal Barca?"),
+            ("assistant", "The Carthaginian general who famously crossed the Alps with elephants to attack Rome from the north during the Second Punic War."),
+        ]),
+        ("demo-chat-session-rome-life-001", DEMO_PROJECT_ROME, "Daily Life in Ancient Rome", vec![
+            ("user", "What did Romans eat?"),
+            ("assistant", "The diet consisted mainly of grain (bread/porridge), olive oil, and wine, supplemented by vegetables, cheese, and occasionally meat or fish."),
+        ]),
+        ("demo-chat-session-rome-eng-001", DEMO_PROJECT_ROME_MILITARY, "Roman Engineering: Aqueducts", vec![
+            ("user", "How did aqueducts work?"),
+            ("assistant", "They used a slight downward gradient and gravity to transport water over long distances into cities, using arches to maintain the slope over valleys."),
+        ]),
+        ("demo-chat-session-rome-games-001", DEMO_PROJECT_ROME, "The Coliseum and Games", vec![
+            ("user", "What happened at the Coliseum?"),
+            ("assistant", "It hosted gladiatorial contests, mock sea battles, animal hunts, and executions, serving as the center of Roman public entertainment."),
+        ]),
+        ("demo-chat-session-rome-pompeii-001", DEMO_PROJECT_ROME, "Pompeii: Snapshot in Time", vec![
+            ("user", "What happened in 79 AD?"),
+            ("assistant", "Mount Vesuvius erupted, burying Pompeii and Herculaneum in volcanic ash, preserving them for centuries as unique archaeological sites."),
+        ]),
+        ("demo-chat-session-rome-pax-001", DEMO_PROJECT_ROME, "Pax Romana: Stability", vec![
+            ("user", "What was the Pax Romana?"),
+            ("assistant", "A long period of relative peace and stability across the Roman Empire, beginning with the reign of [[Augustus]] in 27 BC."),
+        ]),
+        ("demo-chat-session-rome-law-001", DEMO_PROJECT_ROME, "Roman Law: Twelve Tables", vec![
+            ("user", "What were the Twelve Tables?"),
+            ("assistant", "The earliest attempt by the Romans to create a code of law, binding both patricians and plebeians, forming the foundation of Roman law."),
+        ]),
+        ("demo-chat-session-rome-rel-001", DEMO_PROJECT_ROME, "Religion in Rome", vec![
+            ("user", "Who were the main Roman gods?"),
+            ("assistant", "The Capitoline Triad consisted of Jupiter (king), Juno (queen), and Minerva (wisdom), often adapted from Greek counterparts."),
+        ]),
+        ("demo-chat-session-rome-slave-001", DEMO_PROJECT_ROME_MILITARY, "Slavery in the Empire", vec![
+            ("user", "How common was slavery?"),
+            ("assistant", "Slavery was foundational to the Roman economy. Slaves worked in agriculture, mining, domestic service, and even highly skilled professions."),
+        ]),
+        ("demo-chat-session-rome-byz-001", DEMO_PROJECT_ROME, "Byzantine Empire: East", vec![
+            ("user", "When did the West fall?"),
+            ("assistant", "The Western Roman Empire fell in 476 AD, but the Eastern half (Byzantine Empire) survived in Constantinople until 1453."),
+        ]),
+        ("demo-chat-session-rome-women-001", DEMO_PROJECT_ROME, "Women in Roman Society", vec![
+            ("user", "What rights did Roman women have?"),
+            ("assistant", "They couldn't vote or hold office, but they could own property, engage in business, and had more freedom than their Greek counterparts."),
+        ]),
+        ("demo-chat-session-rome-lit-001", DEMO_PROJECT_ROME, "Roman Literature: Virgil", vec![
+            ("user", "What is the Aeneid?"),
+            ("assistant", "An epic poem by Virgil that tells the legendary story of Aeneas, a Trojan who travelled to Italy, where he became the ancestor of the Romans."),
+        ]),
+        ("demo-chat-session-rome-silk-001", DEMO_PROJECT_ROME, "Silk Road and Trade", vec![
+            ("user", "Did Rome trade with China?"),
+            ("assistant", "Indirectly, yes. Silk from China reached Rome via the Silk Road, while Roman glass and coins have been found as far east as Vietnam."),
+        ]),
+        ("demo-chat-session-rome-barb-001", DEMO_PROJECT_ROME_MILITARY, "Barbarian Invasions", vec![
+            ("user", "Who were the Goths?"),
+            ("assistant", "Germanic tribes whose migrations and invasions, particularly the sack of Rome in 410 AD, played a key role in the Western Empire's fall."),
+        ]),
+        ("demo-chat-session-rome-coin-001", DEMO_PROJECT_ROME, "Roman Coinage and Economy", vec![
+            ("user", "What was a denarius?"),
+            ("assistant", "The standard Roman silver coin for centuries. Currency debasement later contributed to the economic crises of the late Empire."),
+        ]),
+        ("demo-chat-session-rome-guard-001", DEMO_PROJECT_ROME_MILITARY, "The Praetorian Guard", vec![
+            ("user", "What was the Guard's role?"),
+            ("assistant", "Originally the Emperor's personal bodyguards, they became a powerful political force, often making or breaking emperors themselves."),
+        ]),
+        ("demo-chat-session-rome-agri-001", DEMO_PROJECT_ROME, "Agriculture: Latifundia", vec![
+            ("user", "What were latifundia?"),
+            ("assistant", "Large landed estates typically worked by slaves, which displaced small farmers and contributed to the social tensions of the Republic."),
+        ]),
+        ("demo-chat-session-rome-bath-001", DEMO_PROJECT_ROME, "Roman Baths and Social Life", vec![
+            ("user", "Why were baths important?"),
+            ("assistant", "Thermae were not just for hygiene; they were social hubs with gyms, libraries, and meeting places for all classes of society."),
+        ]),
+        ("demo-chat-session-rome-wall-001", DEMO_PROJECT_ROME_MILITARY, "Hadrian's Wall", vec![
+            ("user", "Where is Hadrian's Wall?"),
+            ("assistant", "It stretched across northern Britain, marking the northernmost limit of the Roman Empire and serving as a defensive fortification."),
+        ]),
+        ("demo-chat-session-rome-crisis-001", DEMO_PROJECT_ROME, "Crisis of the 3rd Century", vec![
+            ("user", "What happened during the Crisis?"),
+            ("assistant", "A period of 50 years with near-constant civil war, barbarian invasions, and economic collapse, almost destroying the Empire."),
+        ]),
     ];
-    for (role, content) in &rome_msgs_1 {
-        let mid = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![mid, session_rome_1, role, content, now],
-        ).map_err(|e| e.to_string())?;
-    }
 
-    // Chat: Roman military
-    let session_rome_2 = "demo-chat-session-rome-military-00001";
-    conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, 'Roman Legions and Military Organization', '', ?4, ?5)",
-        rusqlite::params![session_rome_2, DEMO_WS_ROME, DEMO_PROJECT_ROME_MILITARY, now, now],
-    ).map_err(|e| e.to_string())?;
-
-    let rome_msgs_2: Vec<(&str, &str)> = vec![
-        ("user", "What was the structure of a Roman legion?"),
-        ("assistant", "[[Roman Legion]] organization (typical ~5,000 troops):\n\n- **Legion (〰️)** — ~5,500 men under a [[Legate]] (senatorial commander)\n- **Cohort** — ~480 men under a [[Prefect]], 10 per legion\n- **Maniple** — ~120-200 men under a [[Centurion]], 2-3 per cohort\n- **Century** — ~80 men under a [[Centurion]] (confusing name — actually smaller unit!)\n- **Contubernium** — 8 soldiers sharing tent\n\nCenturions were career officers (non-commissioned), the backbone of Roman military discipline and professionalism."),
-        ("user", "What made Roman tactics superior to barbarian forces?"),
-        ("assistant", "Roman advantages in [[Tactics]] and [[Discipline]]:\n\n1. **Formation discipline** — Tight formations (testudo, phalanx variants) vs individual combat\n2. **Centurion command** — Professional NCOs enforced discipline; barbarian warband leaders couldn't control troops from distance\n3. **Standardized weapons** — Romans used uniform equipment; barbarians used diverse weapons\n4. **Fortifications** — Romans built camps/forts methodically; barbarians relied on ambush tactics\n5. **Logistics** — Roman supply lines supported sustained campaigns; barbarian raids lasted weeks\n6. **Training** — Years of drill vs seasonal warriors. Well-trained soldier beats brave amateur\n\nOver time, barbarians adopted Roman tactics, bridging the gap."),
-    ];
-    for (role, content) in &rome_msgs_2 {
-        let mid = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![mid, session_rome_2, role, content, now],
-        ).map_err(|e| e.to_string())?;
+    for (id, pid, title, msgs) in rome_chats {
+        create_demo_chat(&conn, DEMO_WS_ROME, pid, id, title, msgs, &now)?;
     }
 
     // Concepts for Rome workspace — expanded
@@ -633,7 +795,7 @@ Notable achievements:
     ).map_err(|e| e.to_string())?;
 
     // Rome Workspace: Source Chunks
-    let rome_chunks = vec![
+    let rome_chunks = [
         "The Res Gestae Divi Augusti is the funerary inscription of the first Roman emperor, Augustus.",
         "Notable achievements: Transitioned Rome from Republic to Empire and Initiated the Pax Romana."
     ];
@@ -713,5 +875,29 @@ pub fn deactivate_demo_mode(state: State<DbState>) -> Result<(), String> {
         workspace_service::create(&conn, req).map_err(|e| format!("Failed to create default workspace: {}", e))?;
     }
     
+    Ok(())
+}
+
+fn create_demo_chat(
+    conn: &rusqlite::Connection,
+    ws_id: &str,
+    project_id: &str,
+    session_id: &str,
+    title: &str,
+    messages: Vec<(&str, &str)>,
+    now: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6)",
+        rusqlite::params![session_id, ws_id, project_id, title, now, now],
+    ).map_err(|e| e.to_string())?;
+
+    for (role, content) in messages {
+        let mid = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![mid, session_id, role, content, now],
+        ).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
