@@ -2994,15 +2994,13 @@ export default function ChatView() {
         .filter((model) => model.provider !== "ollama")
         .map((model) => model.model_id);
       const managedModelIds = aiModels.map((m) => m.model_id);
-      const showUnmanagedModels = useSettingsStore.getState().showUnmanagedModels;
-      const unmanagedInstalledModels = showUnmanagedModels
-        ? installedOllamaModels.filter((modelId) => !managedModelIds.includes(modelId))
-        : [];
+      // Include any Ollama models not yet synced to the DB (edge case — sync hook handles this)
+      const unsyncedModels = installedOllamaModels.filter((modelId) => !managedModelIds.includes(modelId));
 
       const nextAvailableModels = [
         ...enabledInstalledOllamaModels,
         ...enabledNonOllamaModels,
-        ...unmanagedInstalledModels,
+        ...unsyncedModels,
       ];
 
       // Keep session model in the list ONLY if it's already selected, 
