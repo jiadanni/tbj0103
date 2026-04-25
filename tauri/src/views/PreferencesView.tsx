@@ -182,8 +182,6 @@ export default function PreferencesView() {
   const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const setDemo = useWorkspaceStore((state) => state.setDemo);
-  const showUnmanagedModels = useSettingsStore((state) => state.showUnmanagedModels);
-  const setShowUnmanagedModels = useSettingsStore((state) => state.setShowUnmanagedModels);
 
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
   const [activeTab, setActiveTab] = useState<PreferencesSection>(() => (window.localStorage.getItem("preferencesActiveTab") as PreferencesSection) || "app");
@@ -253,10 +251,6 @@ export default function PreferencesView() {
 
     return Array.from(groups.values()).sort((a, b) => a.order - b.order);
   }, [aiModels]);
-  const unmanagedOllamaModels = useMemo(() => {
-    const managedModelIds = aiModels.map((m) => m.model_id);
-    return ollamaModels.filter((m) => !managedModelIds.includes(m.name) && !m.name.toLowerCase().includes("embed"));
-  }, [ollamaModels, aiModels]);
 
   async function refreshLlamacppModels(paths: string[]) {
     if (paths.length === 0) {
@@ -626,10 +620,6 @@ export default function PreferencesView() {
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             Manage local models, pick the one used for background tasks, and review capabilities or ordering.
           </p>
-          <div className="flex items-center gap-2 mt-2">
-            <Toggle on={showUnmanagedModels} onToggle={() => setShowUnmanagedModels(!showUnmanagedModels)} />
-            <span className="text-xs text-[var(--text-secondary)]">Show all Ollama models in Chat (including ones not added here)</span>
-          </div>
         </div>
         <button
           onClick={() => { setShowAddModel(!showAddModel); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); }}
@@ -936,73 +926,6 @@ export default function PreferencesView() {
               })}
             </div>
           ))}
-          {unmanagedOllamaModels.length > 0 && (
-            <div className="space-y-1 mt-4 pt-4 border-t border-[var(--border-color)] border-dashed">
-              <div className="px-1 pb-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                  Also installed in Ollama
-                </div>
-                <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                  These models are on your machine but haven&apos;t been added here yet. Add them to set priorities, rename, or hide them from Chat.
-                </p>
-              </div>
-              {unmanagedOllamaModels.map((m) => {
-                const modelParams = parseModelParamsB(m.name);
-                const formattedParams = formatParams(modelParams);
-                const formattedStorage = typeof m.size === "number" ? formatBytes(m.size) : null;
-                const metadataParts = [formattedParams, formattedStorage].filter(Boolean) as string[];
-
-                return (
-                  <div key={m.name} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5 opacity-60 hover:opacity-100 transition-opacity">
-                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_28px_110px_40px_40px_20px] md:items-center md:gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-[var(--text-primary)]">{m.name}</div>
-                        {metadataParts.length > 0 && (
-                          <div className="mt-1 flex items-center gap-1 text-[10px] text-[var(--text-secondary)]">
-                            {metadataParts.map((part, idx) => (
-                              <React.Fragment key={idx}>
-                                {idx > 0 && <span className="text-[var(--text-muted)]">•</span>}
-                                <span>{part}</span>
-                              </React.Fragment>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="hidden md:block md:w-7" />
-                      <div className="hidden md:block md:w-[110px]" />
-                      <div className="flex justify-center md:w-10">
-                        <button
-                          onClick={async () => {
-                            await api.aiModel.add(m.name, m.name, { provider: "ollama", enabled: true });
-                            loadAiModels();
-                            incrementModelRefreshCounter();
-                          }}
-                          className="px-2 py-1 text-[10px] rounded border border-[var(--border-color)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]"
-                        >
-                          Manage
-                        </button>
-                      </div>
-                      <div className="flex justify-center md:w-10">
-                        <button
-                          onClick={async () => {
-                            // Hiding an unmanaged model means adding it as managed but hidden
-                            await api.aiModel.add(m.name, m.name, { provider: "ollama", enabled: true, is_hidden: true });
-                            loadAiModels();
-                            incrementModelRefreshCounter();
-                          }}
-                          className="p-1 text-[var(--accent-color)] hover:opacity-80"
-                          title="Hide from Chat"
-                        >
-                          <Eye size={14} />
-                        </button>
-                      </div>
-                      <div className="md:w-5" />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       )}
     </div>
