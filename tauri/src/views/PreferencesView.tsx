@@ -172,6 +172,16 @@ export default function PreferencesView() {
   const expandChatToWindowWidth = useSettingsStore((state) => state.expandChatToWindowWidth);
   const setExpandChatToWindowWidth = useSettingsStore((state) => state.setExpandChatToWindowWidth);
   const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
+  const showComposerTopicTags = useSettingsStore((state) => state.showComposerTopicTags);
+  const setShowComposerTopicTags = useSettingsStore((state) => state.setShowComposerTopicTags);
+  const showComposerWorkspaceSuggestions = useSettingsStore((state) => state.showComposerWorkspaceSuggestions);
+  const setShowComposerWorkspaceSuggestions = useSettingsStore((state) => state.setShowComposerWorkspaceSuggestions);
+  const showComposerChatFollowUps = useSettingsStore((state) => state.showComposerChatFollowUps);
+  const setShowComposerChatFollowUps = useSettingsStore((state) => state.setShowComposerChatFollowUps);
+  const composerMode = useSettingsStore((state) => state.composerMode);
+  const setComposerMode = useSettingsStore((state) => state.setComposerMode);
+  const modelFamilyLabels = useSettingsStore((state) => state.modelFamilyLabels);
+  const setModelFamilyLabel = useSettingsStore((state) => state.setModelFamilyLabel);
   const modelLabels = useSettingsStore((state) => state.modelLabels);
   const location = useLocation();
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
@@ -2036,6 +2046,118 @@ export default function PreferencesView() {
                     onToggle={() => setAutoGenerateFlashcards(!autoGenerateFlashcards)}
                   />
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Composer Suggestions</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Manage the suggestion chips shown above the composer input.
+                  </p>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Topic tags</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Show domain tag chips inferred from the conversation</p>
+                  </div>
+                  <Toggle on={showComposerTopicTags} onToggle={() => setShowComposerTopicTags(!showComposerTopicTags)} />
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Context prompts</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Show workspace-derived suggestion chips</p>
+                  </div>
+                  <Toggle on={showComposerWorkspaceSuggestions} onToggle={() => setShowComposerWorkspaceSuggestions(!showComposerWorkspaceSuggestions)} />
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Follow-up suggestions</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Show chat follow-up chips</p>
+                  </div>
+                  <Toggle on={showComposerChatFollowUps} onToggle={() => setShowComposerChatFollowUps(!showComposerChatFollowUps)} />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Composer Mode</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Normal: one send button per message. Family: send buttons grouped by model family.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {(["normal", "family"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setComposerMode(mode)}
+                      className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium capitalize transition-colors ${
+                        composerMode === mode
+                          ? "border-[rgba(var(--accent-color-rgb),0.4)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
+                          : "border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+                {composerMode === "family" && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-[var(--text-muted)]">Custom family labels (prefix → display name)</p>
+                    {Object.entries(modelFamilyLabels).map(([prefix, label]) => (
+                      <div key={prefix} className="flex items-center gap-2">
+                        <span className="w-28 shrink-0 truncate font-mono text-xs text-[var(--text-muted)]">{prefix}</span>
+                        <input
+                          type="text"
+                          value={label}
+                          onChange={(e) => setModelFamilyLabel(prefix, e.target.value)}
+                          placeholder={prefix}
+                          className="min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[rgba(var(--accent-color-rgb),0.5)]"
+                        />
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="new-family-prefix"
+                        type="text"
+                        placeholder="family prefix (e.g. gemma4)"
+                        className="w-28 shrink-0 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[rgba(var(--accent-color-rgb),0.5)]"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const input = e.currentTarget;
+                            const labelInput = input.nextElementSibling as HTMLInputElement | null;
+                            const prefix = input.value.trim();
+                            const lbl = labelInput?.value.trim() ?? "";
+                            if (prefix) {
+                              setModelFamilyLabel(prefix, lbl || prefix);
+                              input.value = "";
+                              if (labelInput) { labelInput.value = ""; }
+                            }
+                          }
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="display name"
+                        className="min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[rgba(var(--accent-color-rgb),0.5)]"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const labelInput = e.currentTarget;
+                            const prefixInput = labelInput.previousElementSibling as HTMLInputElement | null;
+                            const prefix = prefixInput?.value.trim() ?? "";
+                            const lbl = labelInput.value.trim();
+                            if (prefix) {
+                              setModelFamilyLabel(prefix, lbl || prefix);
+                              labelInput.value = "";
+                              if (prefixInput) { prefixInput.value = ""; }
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)]">Press Enter to add a label</p>
+                  </div>
+                )}
               </div>
 
               {/* Chat Title Auto-Generation */}

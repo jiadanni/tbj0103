@@ -5,6 +5,7 @@ import { normalizeTheme, type Theme } from "../lib/theme";
 export type DualModelExecutionMode = "serial" | "parallel";
 export type SettingsNavigationLayout = "top-tabs" | "side-tabs";
 export type ChatMessageStyle = "bubble" | "flat";
+export type ComposerMode = "normal" | "family";
 
 interface AppSettings {
   preferredModel: string;
@@ -44,6 +45,11 @@ interface AppSettings {
   hideNativeMenu: boolean;
   showUnmanagedModels: boolean;
   modelRefreshCounter: number;
+  showComposerTopicTags: boolean;
+  showComposerWorkspaceSuggestions: boolean;
+  showComposerChatFollowUps: boolean;
+  composerMode: ComposerMode;
+  modelFamilyLabels: Record<string, string>;
 }
 
 interface SettingsStore extends AppSettings {
@@ -83,6 +89,11 @@ interface SettingsStore extends AppSettings {
   setHideNativeMenu: (v: boolean) => void;
   setShowUnmanagedModels: (v: boolean) => void;
   incrementModelRefreshCounter: () => void;
+  setShowComposerTopicTags: (v: boolean) => void;
+  setShowComposerWorkspaceSuggestions: (v: boolean) => void;
+  setShowComposerChatFollowUps: (v: boolean) => void;
+  setComposerMode: (v: ComposerMode) => void;
+  setModelFamilyLabel: (prefix: string, label: string) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -125,6 +136,11 @@ export const useSettingsStore = create<SettingsStore>()(
       hideNativeMenu: false,
       showUnmanagedModels: true,
       modelRefreshCounter: 0,
+      showComposerTopicTags: true,
+      showComposerWorkspaceSuggestions: true,
+      showComposerChatFollowUps: true,
+      composerMode: "normal",
+      modelFamilyLabels: {},
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
@@ -161,6 +177,11 @@ export const useSettingsStore = create<SettingsStore>()(
       setHideNativeMenu: (hideNativeMenu) => set({ hideNativeMenu }),
       setShowUnmanagedModels: (showUnmanagedModels) => set({ showUnmanagedModels }),
       incrementModelRefreshCounter: () => set((state) => ({ modelRefreshCounter: state.modelRefreshCounter + 1 })),
+      setShowComposerTopicTags: (showComposerTopicTags) => set({ showComposerTopicTags }),
+      setShowComposerWorkspaceSuggestions: (showComposerWorkspaceSuggestions) => set({ showComposerWorkspaceSuggestions }),
+      setShowComposerChatFollowUps: (showComposerChatFollowUps) => set({ showComposerChatFollowUps }),
+      setComposerMode: (composerMode) => set({ composerMode }),
+      setModelFamilyLabel: (prefix, label) => set((state) => ({ modelFamilyLabels: { ...state.modelFamilyLabels, [prefix]: label } })),
     }),
     {
       name: "aetherium-settings",
