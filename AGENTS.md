@@ -52,6 +52,11 @@ Files like `src/views/ChatView.tsx` are critical and highly complex.
 
 Both apps share the same feature set and data model; the Tauri port is the active development target.
 
+### Technology Stack
+- **Backend:** Rust, Tauri v2, SQLite (rusqlite), Ollama (local AI), reqwest, serde.
+- **Frontend:** React 18, TypeScript (strict), Tailwind CSS v3, Zustand (state management), Vite.
+- **Native macOS:** Swift 5.9, SwiftUI, SwiftData, LocalAuthentication.
+
 ---
 
 ## Repository Layout
@@ -74,16 +79,21 @@ tbj0103/
 │   │   ├── stores/             # Zustand stores
 │   │   └── styles/             # Tailwind CSS
 │   └── src-tauri/              # Rust backend
-│       ├── src/commands/       # Tauri command handlers
-│       ├── src/services/       # Business-logic services
-│       ├── src/models/         # Rust structs / DB models
+│       ├── src/commands/       # Tauri command handlers (thin wrappers)
+│       ├── src/services/       # Core business logic (RAG, search, linking, etc.)
+│       ├── src/models/         # Rust structs and database models
 │       ├── src/db/             # SQLite connection pool
 │       ├── src/ollama/         # Ollama HTTP client
 │       └── schema.sql          # SQLite schema (source of truth)
-├── ARCHITECTURE.md
-├── TAURI_PORT_ANALYSIS.md
-├── todo.md                     # Active roadmap — read before starting work
-└── bugs.md                     # Known issues — check before touching affected areas
+├── docs/                       # Project documentation
+│   ├── ARCHITECTURE.md         # Deep dive into system design
+│   ├── TAURI_PORT_ANALYSIS.md  # Analysis of the Tauri port
+│   ├── todo.md                 # Active roadmap — read before starting work
+│   └── bugs.md                 # Known issues — check before touching affected areas
+├── README.md
+├── AGENTS.md
+├── GEMINI.md
+└── lint.sh
 ```
 
 ---
@@ -269,9 +279,12 @@ System/Area 2:
 
 ---
 
-## Safety Protocols
+### Safety Protocols
 
-### Ollama Prerequisite
+#### No Data Leaks (Local-First Principle)
+- **Zero Telemetry:** Never add telemetry, external logging, or analytics that bypasses the local-first principle. All data must remain on the user's machine.
+
+#### Ollama Prerequisite
 - AI features (chat, topic signatures, RAG) require Ollama running on `http://localhost:11434`. Before investigating AI-related failures, verify with `curl http://localhost:11434/api/tags`. A 7B+ model must be pulled for most features to produce meaningful output (`ollama list`).
 
 ### Data & Context Preservation

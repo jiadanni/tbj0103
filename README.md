@@ -25,7 +25,7 @@ The Tauri port is the primary development target and receives all new features.
 
 ## Roadmap
 
-`todo.md` tracks the Tauri app roadmap only. It should not be read as the status board for the Swift/macOS implementation.
+`docs/todo.md` tracks the Tauri app roadmap only. It should not be read as the status board for the Swift/macOS implementation.
 
 ## Features
 

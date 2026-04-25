@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -182,6 +182,8 @@ export default function PreferencesView() {
   const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const setDemo = useWorkspaceStore((state) => state.setDemo);
+  const showUnmanagedModels = useSettingsStore((state) => state.showUnmanagedModels);
+  const setShowUnmanagedModels = useSettingsStore((state) => state.setShowUnmanagedModels);
 
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
   const [activeTab, setActiveTab] = useState<PreferencesSection>(() => (window.localStorage.getItem("preferencesActiveTab") as PreferencesSection) || "app");
@@ -251,6 +253,10 @@ export default function PreferencesView() {
 
     return Array.from(groups.values()).sort((a, b) => a.order - b.order);
   }, [aiModels]);
+  const unmanagedOllamaModels = useMemo(() => {
+    const managedModelIds = aiModels.map((m) => m.model_id);
+    return ollamaModels.filter((m) => !managedModelIds.includes(m.name) && !m.name.toLowerCase().includes("embed"));
+  }, [ollamaModels, aiModels]);
 
   async function refreshLlamacppModels(paths: string[]) {
     if (paths.length === 0) {
@@ -620,6 +626,10 @@ export default function PreferencesView() {
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             Manage local models, pick the one used for background tasks, and review capabilities or ordering.
           </p>
+          <div className="flex items-center gap-2 mt-2">
+            <Toggle on={showUnmanagedModels} onToggle={() => setShowUnmanagedModels(!showUnmanagedModels)} />
+            <span className="text-xs text-[var(--text-secondary)]">Show unmanaged models in Chat</span>
+          </div>
         </div>
         <button
           onClick={() => { setShowAddModel(!showAddModel); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); }}
@@ -688,11 +698,12 @@ export default function PreferencesView() {
         <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
       ) : (
         <div className="space-y-3">
-          <div className="hidden grid-cols-[minmax(0,1fr)_28px_110px_40px_20px] items-center gap-3 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)] md:grid">
+          <div className="hidden grid-cols-[minmax(0,1fr)_28px_110px_40px_40px_20px] items-center gap-3 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)] md:grid">
             <span>Model</span>
             <span className="text-center">Background</span>
             <span className="text-right">Speed</span>
             <span className="text-center">Active</span>
+            <span className="text-center">Visible</span>
             <span />
           </div>
 
@@ -727,7 +738,7 @@ export default function PreferencesView() {
 
                 return (
                   <div key={m.id} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5">
-                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_28px_110px_40px_20px] md:items-start md:gap-3">
+                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_28px_110px_40px_40px_20px] md:items-start md:gap-3">
                       <div className="flex min-w-0 items-start gap-2">
                         <div className="flex flex-col gap-0.5 pt-0.5">
                           <button
@@ -884,6 +895,20 @@ export default function PreferencesView() {
                         />
                       </div>
 
+                      <div className="flex justify-center pt-1 md:w-10">
+                        <button
+                          onClick={async () => {
+                            await api.aiModel.update(m.id, { is_hidden: !m.is_hidden });
+                            loadAiModels();
+                            incrementModelRefreshCounter();
+                          }}
+                          className={`p-1 transition-colors ${m.is_hidden ? "text-[var(--text-muted)] hover:text-[var(--text-primary)]" : "text-[var(--accent-color)] hover:opacity-80"}`}
+                          title={m.is_hidden ? "Show in Chat" : "Hide from Chat"}
+                        >
+                          {m.is_hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+
                       <button
                         onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); incrementModelRefreshCounter(); }}
                         className="p-1 text-[var(--text-muted)] transition-colors hover:text-red-400 md:w-5"
@@ -911,6 +936,73 @@ export default function PreferencesView() {
               })}
             </div>
           ))}
+          {unmanagedOllamaModels.length > 0 && (
+            <div className="space-y-1 mt-4 pt-4 border-t border-[var(--border-color)] border-dashed">
+              <div className="px-1 pb-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Other installed Ollama models
+                </div>
+                <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                  These models are available in your local Ollama but haven&apos;t been added to Aetherium yet.
+                </p>
+              </div>
+              {unmanagedOllamaModels.map((m) => {
+                const modelParams = parseModelParamsB(m.name);
+                const formattedParams = formatParams(modelParams);
+                const formattedStorage = typeof m.size === "number" ? formatBytes(m.size) : null;
+                const metadataParts = [formattedParams, formattedStorage].filter(Boolean) as string[];
+
+                return (
+                  <div key={m.name} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5 opacity-60 hover:opacity-100 transition-opacity">
+                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_28px_110px_40px_40px_20px] md:items-center md:gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-[var(--text-primary)]">{m.name}</div>
+                        {metadataParts.length > 0 && (
+                          <div className="mt-1 flex items-center gap-1 text-[10px] text-[var(--text-secondary)]">
+                            {metadataParts.map((part, idx) => (
+                              <React.Fragment key={idx}>
+                                {idx > 0 && <span className="text-[var(--text-muted)]">•</span>}
+                                <span>{part}</span>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="hidden md:block md:w-7" />
+                      <div className="hidden md:block md:w-[110px]" />
+                      <div className="flex justify-center md:w-10">
+                        <button
+                          onClick={async () => {
+                            await api.aiModel.add(m.name, m.name, { provider: "ollama", enabled: true });
+                            loadAiModels();
+                            incrementModelRefreshCounter();
+                          }}
+                          className="px-2 py-1 text-[10px] rounded border border-[var(--border-color)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]"
+                        >
+                          Manage
+                        </button>
+                      </div>
+                      <div className="flex justify-center md:w-10">
+                        <button
+                          onClick={async () => {
+                            // Hiding an unmanaged model means adding it as managed but hidden
+                            await api.aiModel.add(m.name, m.name, { provider: "ollama", enabled: true, is_hidden: true });
+                            loadAiModels();
+                            incrementModelRefreshCounter();
+                          }}
+                          className="p-1 text-[var(--accent-color)] hover:opacity-80"
+                          title="Hide from Chat"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      </div>
+                      <div className="md:w-5" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

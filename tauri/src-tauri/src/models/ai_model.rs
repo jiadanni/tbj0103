@@ -10,6 +10,7 @@ pub struct AiModel {
     pub priority: i64,
     pub is_paid: bool,
     pub enabled: bool,
+    pub is_hidden: bool,
     pub tokens_used_total: i64,
     pub created_at: String,
 }
@@ -31,6 +32,7 @@ pub struct AddAiModelRequest {
     pub is_paid: Option<bool>,
     pub priority: Option<i64>,
     pub enabled: Option<bool>,
+    pub is_hidden: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,4 +43,5 @@ pub struct UpdateAiModelRequest {
     pub priority: Option<i64>,
     pub is_paid: Option<bool>,
     pub enabled: Option<bool>,
+    pub is_hidden: Option<bool>,
 }

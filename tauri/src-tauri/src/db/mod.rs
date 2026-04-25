@@ -51,6 +51,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v37_workspace_parent_id",
     "v38_workspace_icon",
     "v39_messages_variant_group",
+    "v40_ai_models_is_hidden",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -989,6 +990,17 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                  ON messages(variant_group_id);
              INSERT INTO _migrations(name) VALUES('v39_messages_variant_group');",
         )?;
+    }
+
+    // v40: add is_hidden to ai_models for granular dropdown visibility
+    let applied_v40: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v40_ai_models_is_hidden'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v40 == 0 {
+        let _ = conn.execute_batch("ALTER TABLE ai_models ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0;");
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v40_ai_models_is_hidden');")?;
     }
 
     Ok(())

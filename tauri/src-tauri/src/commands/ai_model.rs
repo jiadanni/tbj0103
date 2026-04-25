@@ -13,8 +13,9 @@ fn row_to_model(row: &rusqlite::Row) -> rusqlite::Result<AiModel> {
         priority: row.get(5)?,
         is_paid: row.get::<_, i32>(6)? != 0,
         enabled: row.get::<_, i32>(7)? != 0,
-        tokens_used_total: row.get(8)?,
-        created_at: row.get(9)?,
+        is_hidden: row.get::<_, i32>(8)? != 0,
+        tokens_used_total: row.get(9)?,
+        created_at: row.get(10)?,
     })
 }
 
@@ -22,7 +23,7 @@ fn row_to_model(row: &rusqlite::Row) -> rusqlite::Result<AiModel> {
 pub fn list_ai_models(state: State<DbState>) -> Result<Vec<AiModel>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at
+        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, is_hidden, tokens_used_total, created_at
          FROM ai_models ORDER BY priority ASC"
     ).map_err(|e| e.to_string())?;
     let items = stmt
@@ -43,7 +44,7 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
     let enabled = req.enabled.unwrap_or(true);
 
     let existing = conn.query_row(
-        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at
+        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, is_hidden, tokens_used_total, created_at
          FROM ai_models
          WHERE model_id = ?1 AND provider = ?2",
         rusqlite::params![&req.model_id, &provider],
@@ -68,10 +69,11 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
 
     let now = chrono::Utc::now().to_rfc3339();
     let role_tags_json = serde_json::to_string(&role_tags).map_err(|e| e.to_string())?;
+    let is_hidden = req.is_hidden.unwrap_or(false);
     conn.execute(
-        "INSERT INTO ai_models (id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9)",
-        rusqlite::params![id, req.name, req.model_id, provider, role_tags_json, priority, is_paid as i32, enabled as i32, now],
+        "INSERT INTO ai_models (id, name, model_id, provider, role_tags, priority, is_paid, enabled, is_hidden, tokens_used_total, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10)",
+        rusqlite::params![id, req.name, req.model_id, provider, role_tags_json, priority, is_paid as i32, enabled as i32, is_hidden as i32, now],
     ).map_err(|e| e.to_string())?;
 
     Ok(AiModel {
@@ -83,6 +85,7 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
         priority,
         is_paid,
         enabled,
+        is_hidden,
         tokens_used_total: 0,
         created_at: now,
     })
@@ -105,21 +108,23 @@ pub fn update_ai_model(
             role_tags = COALESCE(?2, role_tags),
             priority = COALESCE(?3, priority),
             is_paid = COALESCE(?4, is_paid),
-            enabled = COALESCE(?5, enabled)
-         WHERE id = ?6",
+            enabled = COALESCE(?5, enabled),
+            is_hidden = COALESCE(?6, is_hidden)
+         WHERE id = ?7",
         rusqlite::params![
             req.name,
             role_tags_json,
             req.priority,
             req.is_paid.map(|v| v as i32),
             req.enabled.map(|v| v as i32),
+            req.is_hidden.map(|v| v as i32),
             req.id,
         ],
     )
     .map_err(|e| e.to_string())?;
 
     let model = conn.query_row(
-        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at
+        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, is_hidden, tokens_used_total, created_at
          FROM ai_models WHERE id = ?1",
         rusqlite::params![req.id],
         row_to_model,
@@ -140,7 +145,7 @@ pub fn delete_ai_model(state: State<DbState>, id: String) -> Result<(), String> 
 pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, tokens_used_total, created_at
+        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, is_hidden, tokens_used_total, created_at
          FROM ai_models WHERE enabled = 1 ORDER BY priority ASC LIMIT 1",
         [],
         row_to_model,
@@ -167,6 +172,7 @@ pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
                 priority: 0,
                 is_paid: false,
                 enabled: true,
+                is_hidden: false,
                 tokens_used_total: 0,
                 created_at: String::new(),
             })
