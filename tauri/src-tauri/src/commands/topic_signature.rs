@@ -4,7 +4,7 @@ use crate::services::topic_signature::{
     compute_match_score, find_best_workspace, recompute_workspace_signature_with_ai,
 };
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 #[tauri::command]
 pub fn get_topic_signature(
@@ -41,17 +41,21 @@ pub struct WorkspaceMatchResult {
 
 #[tauri::command]
 pub async fn regenerate_topic_signature(
+    app: AppHandle,
     state: State<'_, DbState>,
     workspace_id: String,
     model: Option<String>,
     ollama_url: Option<String>,
 ) -> Result<TopicSignature, String> {
     // User-initiated: no cancel_rx needed (it IS the high-priority caller)
-    recompute_workspace_signature_with_ai(&state, &workspace_id, model, ollama_url, None).await
+    let sig = recompute_workspace_signature_with_ai(&state, &workspace_id, model, ollama_url, None).await?;
+    let _ = app.emit("workspaces-changed", ());
+    Ok(sig)
 }
 
 #[tauri::command]
 pub fn update_topic_signature(
+    app: AppHandle,
     state: State<DbState>,
     workspace_id: String,
     manual_tags: Vec<String>,
@@ -79,6 +83,7 @@ pub fn update_topic_signature(
     )
     .map_err(|e| e.to_string())?;
 
+    let _ = app.emit("workspaces-changed", ());
     Ok(sig)
 }
 

@@ -192,6 +192,58 @@ export default function App() {
     };
   }, [setWorkspaces]);
 
+  // Listen for workspace changes from other windows
+  useEffect(() => {
+    const unlisten = listen("workspaces-changed", async () => {
+      try {
+        const workspaces = await api.workspace.list();
+        setWorkspaces(workspaces);
+      } catch (err) {
+        console.error("Failed to re-fetch workspaces after change:", err);
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, [setWorkspaces]);
+
+  // Listen for settings changes from other windows
+  useEffect(() => {
+    const unlisten = listen("settings-changed", async () => {
+      try {
+        const settings = await api.settings.get();
+        const store = useSettingsStore.getState();
+        store.setTheme(normalizeTheme(settings.theme));
+        store.setAccentColor(settings.accent_color);
+        store.setFontSize(settings.font_size);
+        store.setPreferredModel(settings.preferred_model);
+        store.setBackgroundModel(settings.background_model);
+        store.setQuickSearchModels(settings.quick_search_models);
+        store.setQuickSearchWorkspaceScope(settings.quick_search_workspace_scope);
+        store.setQuickSearchTypeFilters(settings.quick_search_type_filters);
+        store.setOllamaUrl(settings.ollama_base_url);
+        store.setMlxUrl(settings.mlx_base_url);
+        store.setLlamacppModelPaths(settings.llamacpp_model_paths);
+        store.setDualModelEnabled(settings.dual_model_enabled);
+        store.setDraftModel(settings.draft_model);
+        store.setDualModelExecutionMode(settings.dual_model_execution_mode as "serial" | "parallel");
+        store.setCompareModelA(settings.compare_model_a);
+        store.setCompareModelB(settings.compare_model_b);
+        store.setImmediateDelete(settings.immediate_delete);
+        store.setConfirmMoveToTrash(settings.confirm_move_to_trash);
+        store.setPromptInstructions(settings.prompt_instructions);
+        store.setSwitchWorkspaceToChat(settings.switch_workspace_to_chat);
+        store.setHideNativeMenu(settings.hide_native_menu);
+        store.setShowGenInfo(settings.show_gen_info);
+        store.setShowGenInfoTokenCount(settings.show_gen_info_token_count);
+        store.setShowGenInfoDuration(settings.show_gen_info_duration);
+        store.setShowGenInfoSpeed(settings.show_gen_info_speed);
+        store.setShowGenInfoModel(settings.show_gen_info_model);
+      } catch (err) {
+        console.error("Failed to re-fetch settings after change:", err);
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
+
   // Reload projects for all visible workspaces so split panes don't retain stale folder filters.
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const splitMode = useWorkspaceStore((s) => s.splitMode);

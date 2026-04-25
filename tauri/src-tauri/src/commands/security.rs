@@ -1,7 +1,7 @@
 use pbkdf2::pbkdf2_hmac;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::db::DbState;
 
@@ -167,6 +167,7 @@ pub fn get_security_status(state: State<DbState>) -> Result<SecurityStatus, Stri
 
 #[tauri::command]
 pub fn set_pin_passcode(
+    app: AppHandle,
     state: State<DbState>,
     current_pin: Option<String>,
     new_pin: String,
@@ -185,6 +186,7 @@ pub fn set_pin_passcode(
 
     let hash = generate_pin_hash(&new_pin);
     set_setting(&conn, PIN_HASH_KEY, &hash)?;
+    let _ = app.emit("settings-changed", ());
     Ok(())
 }
 
@@ -204,6 +206,7 @@ pub fn verify_pin_passcode(state: State<DbState>, pin: String) -> Result<bool, S
 
 #[tauri::command]
 pub fn remove_pin_passcode(state: State<DbState>, current_pin: String) -> Result<(), String> {
+    app: AppHandle,
     validate_pin(&current_pin)?;
 
     let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -220,6 +223,7 @@ pub fn remove_pin_passcode(state: State<DbState>, current_pin: String) -> Result
     set_setting(&conn, PIN_HASH_KEY, "")?;
     set_setting(&conn, "pin_lock_enabled", "false")?;
     set_setting(&conn, "touch_id_enabled", "false")?;
+    let _ = app.emit("settings-changed", ());
     Ok(())
 }
 

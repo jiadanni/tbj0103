@@ -4,6 +4,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff } from "lucide-react";
@@ -182,6 +183,7 @@ export default function PreferencesView() {
   const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const setDemo = useWorkspaceStore((state) => state.setDemo);
+  const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
 
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
   const [activeTab, setActiveTab] = useState<PreferencesSection>(() => (window.localStorage.getItem("preferencesActiveTab") as PreferencesSection) || "app");
@@ -477,7 +479,35 @@ export default function PreferencesView() {
     api.security.getStatus().then(setSecurityStatus).catch(() => {});
     api.mcp.listServers().then(setMcpServers).catch(() => {});
     api.gitSync.getStatus().then((s) => { setGitSync(s); setGitSyncUrl(s.remote_url); }).catch(() => {});
-  }, []);
+
+    // Initial fetch and listen for workspace changes
+    api.workspace.list().then(setWorkspaces).catch(() => {});
+    const unlistenWorkspaces = listen("workspaces-changed", async () => {
+      try {
+        const workspaces = await api.workspace.list();
+        setWorkspaces(workspaces);
+      } catch (err) {
+        console.error("Failed to re-fetch workspaces in preferences:", err);
+      }
+    });
+
+    const unlistenSettings = listen("settings-changed", async () => {
+      try {
+        const s = await api.settings.get();
+        const normalizedSettings = normalizeAppSettingsTheme(s);
+        setDbSettings(normalizedSettings);
+        dbSettingsRef.current = normalizedSettings;
+        syncClientSettings(normalizedSettings);
+      } catch (err) {
+        console.error("Failed to re-fetch settings in preferences:", err);
+      }
+    });
+
+    return () => {
+      unlistenWorkspaces.then((fn) => fn());
+      unlistenSettings.then((fn) => fn());
+    };
+  }, [setWorkspaces]);
 
   function set<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
     updateSettings({ [key]: value } as Partial<AppSettings>);
