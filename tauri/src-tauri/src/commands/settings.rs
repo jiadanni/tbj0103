@@ -1,7 +1,7 @@
 use crate::commands::quick_search::QuickSearchRuntimeState;
 use crate::db::DbState;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -594,6 +594,7 @@ pub fn update_settings(
     }
 
     // chat_encryption_enabled is managed by dedicated commands.
+    let _ = app.emit("settings-changed", ());
     Ok(())
 }
 

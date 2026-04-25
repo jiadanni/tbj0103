@@ -4,24 +4,30 @@ use crate::models::workspace::{
     CreateChildWorkspaceRequest, CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace,
 };
 use crate::services::workspace_service;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 #[tauri::command]
 pub fn create_workspace(
+    app: AppHandle,
     state: State<DbState>,
     req: CreateWorkspaceRequest,
 ) -> Result<Workspace, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::create(&conn, req)
+    let ws = workspace_service::create(&conn, req)?;
+    let _ = app.emit("workspaces-changed", ());
+    Ok(ws)
 }
 
 #[tauri::command]
 pub fn create_child_workspace(
+    app: AppHandle,
     state: State<DbState>,
     req: CreateChildWorkspaceRequest,
 ) -> Result<Workspace, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::create_child(&conn, req)
+    let ws = workspace_service::create_child(&conn, req)?;
+    let _ = app.emit("workspaces-changed", ());
+    Ok(ws)
 }
 
 #[tauri::command]
@@ -55,19 +61,24 @@ pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspa
 }
 
 #[tauri::command]
-pub fn hide_workspace(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn hide_workspace(app: AppHandle, state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::hide(&conn, &id)
+    workspace_service::hide(&conn, &id)?;
+    let _ = app.emit("workspaces-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
-pub fn unhide_workspace(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn unhide_workspace(app: AppHandle, state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::unhide(&conn, &id)
+    workspace_service::unhide(&conn, &id)?;
+    let _ = app.emit("workspaces-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
 pub fn update_workspace(
+    app: AppHandle,
     state: State<DbState>,
     req: UpdateWorkspaceRequest,
     chats_dir_state: State<ChatsDirState>,
@@ -75,33 +86,43 @@ pub fn update_workspace(
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
-    workspace_service::update(&conn, req, &chats_dir_state.0, pass.as_deref())
+    workspace_service::update(&conn, req, &chats_dir_state.0, pass.as_deref())?;
+    let _ = app.emit("workspaces-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
-pub fn delete_workspace(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_workspace(app: AppHandle, state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::delete(&conn, &id)
+    workspace_service::delete(&conn, &id)?;
+    let _ = app.emit("workspaces-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
 pub fn set_workspace_parent(
+    app: AppHandle,
     state: State<DbState>,
     id: String,
     parent_id: Option<String>,
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::set_parent(&conn, &id, parent_id)
+    workspace_service::set_parent(&conn, &id, parent_id)?;
+    let _ = app.emit("workspaces-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
 pub fn update_workspace_icon(
+    app: AppHandle,
     state: State<DbState>,
     id: String,
     icon: String,
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::update_icon(&conn, &id, &icon)
+    workspace_service::update_icon(&conn, &id, &icon)?;
+    let _ = app.emit("workspaces-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -234,6 +255,7 @@ mod tests {
         let app = mock_builder().build(tauri::generate_context!()).unwrap();
         app.manage(DbState(db));
         let state = app.state::<DbState>();
+        let handle = app.handle().clone();
 
         let req = CreateWorkspaceRequest {
             name: "Test Workspace".to_string(),
@@ -241,7 +263,7 @@ mod tests {
         };
 
         // Test create
-        let ws = create_workspace(state.clone(), req).expect("Failed to create workspace");
+        let ws = create_workspace(handle, state.clone(), req).expect("Failed to create workspace");
         assert_eq!(ws.name, "Test Workspace");
         assert_eq!(ws.description, "A test description");
 
@@ -257,24 +279,25 @@ mod tests {
         let app = mock_builder().build(tauri::generate_context!()).unwrap();
         app.manage(DbState(db));
         let state = app.state::<DbState>();
+        let handle = app.handle().clone();
 
         let req = CreateWorkspaceRequest {
             name: "Hidden Test Workspace".to_string(),
             description: None,
         };
-        let ws = create_workspace(state.clone(), req).unwrap();
+        let ws = create_workspace(handle.clone(), state.clone(), req).unwrap();
 
         // Initial state is not hidden
         assert_eq!(list_workspaces(state.clone()).unwrap().len(), 1);
         assert_eq!(list_hidden_workspaces(state.clone()).unwrap().len(), 0);
 
         // Hide it
-        hide_workspace(state.clone(), ws.id.clone()).unwrap();
+        hide_workspace(handle.clone(), state.clone(), ws.id.clone()).unwrap();
         assert_eq!(list_workspaces(state.clone()).unwrap().len(), 0);
         assert_eq!(list_hidden_workspaces(state.clone()).unwrap().len(), 1);
 
         // Unhide it
-        unhide_workspace(state.clone(), ws.id.clone()).unwrap();
+        unhide_workspace(handle.clone(), state.clone(), ws.id.clone()).unwrap();
         assert_eq!(list_workspaces(state.clone()).unwrap().len(), 1);
         assert_eq!(list_hidden_workspaces(state.clone()).unwrap().len(), 0);
     }

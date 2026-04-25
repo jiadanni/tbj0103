@@ -586,6 +586,9 @@ function TitlebarHistoryMenu() {
   const navigate = useNavigate();
   const location = useLocation();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
+  const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
+  const setActiveParentWorkspaceId = useWorkspaceStore((state) => state.setActiveParentWorkspaceId);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -665,7 +668,17 @@ function TitlebarHistoryMenu() {
     };
   }, [open, workspaces]);
 
-  function openSession(sessionId: string) {
+  function openSession(sessionId: string, sessionWorkspaceId: string) {
+    // Switch workspace first if the session belongs to a different one.
+    // Without this, ChatView would detect the session isn't in the current
+    // workspace and immediately clear the route.
+    if (sessionWorkspaceId && sessionWorkspaceId !== activeWorkspaceId) {
+      const { workspaceId, parentWorkspaceId } = resolveWorkspaceSelection(workspaces, sessionWorkspaceId);
+      if (workspaceId) {
+        setActiveParentWorkspaceId(parentWorkspaceId);
+        setActiveWorkspaceId(workspaceId);
+      }
+    }
     navigate(`/chat/${sessionId}`);
     setOpen(false);
   }
@@ -732,7 +745,7 @@ function TitlebarHistoryMenu() {
                   key={session.id}
                   type="button"
                   role="menuitem"
-                  onClick={() => openSession(session.id)}
+                  onClick={() => openSession(session.id, session.workspace_id)}
                   className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
                 >
                   <HistoryIcon size={14} className="shrink-0 text-[var(--text-muted)]" />
