@@ -139,8 +139,8 @@ Tauri has **19 views**. Swift has **29 views**. Comparison:
 - **Gap**: MarkdownPreview as standalone component missing (ReactMarkdown used inline)
 
 ### Database
-- No migration system — `schema.sql` runs `CREATE TABLE IF NOT EXISTS` on every launch (additive only, can't alter columns)
-- Single `Mutex<Connection>` — can bottleneck under concurrent access
+- **Database Migration System** — Implemented in `db/mod.rs` with version tracking in `_migrations` table. Allows for both additive and structural schema changes.
+- **Database Connection Pool** — Implemented via `r2d2_sqlite` for thread-safe concurrent access.
 - No pagination on list endpoints
 
 ---
@@ -180,7 +180,6 @@ Tauri has **19 views**. Swift has **29 views**. Comparison:
 ### P0 — Blocks core workflows
 1. **Audio Transcription** — Add commands + UI for voice recording/transcription (requires cross-platform speech-to-text; consider Whisper via Ollama or a native plugin)
 2. **Biometric Auth Enforcement** — Wire Touch ID on macOS via `tauri-plugin-biometric` or native Rust LAContext bindings; on other platforms, fall back to password
-3. **Database Migrations** — Add a version table + migration runner so schema changes don't require wiping the DB
 
 ### P1 — Significant feature gaps
 4. **AlarmView** — Dedicated UI to manage, edit, and dismiss alarms with notification firing
@@ -220,7 +219,7 @@ This will cause a runtime SQL error. The column name needs to match.
 
 ## 8. ARCHITECTURAL CONCERNS
 
-- **Single Mutex connection** — All commands lock the same `Mutex<Connection>`. Under concurrent UI operations this can block. Consider `r2d2` connection pool or `tokio::sync::RwLock`.
+- **Database Connection Pool** — Implemented via `r2d2_sqlite`. Supports concurrent access across multiple command handlers.
 - **No pagination** — `list_*` commands return all rows. Will degrade with large datasets.
 - **`any[]` in graph algorithms** — `api.graphAlgo.pagerank()` returns untyped arrays. Add proper TypeScript interfaces.
 - **Inconsistent API parameter style** — Some commands use `req: { ... }`, others use flat params. Should standardize.

@@ -42,6 +42,7 @@ interface AppSettings {
   expandChatToWindowWidth: boolean;
   switchWorkspaceToChat: boolean;
   hideNativeMenu: boolean;
+  showUnmanagedModels: boolean;
   modelRefreshCounter: number;
 }
 
@@ -80,6 +81,7 @@ interface SettingsStore extends AppSettings {
   setExpandChatToWindowWidth: (v: boolean) => void;
   setSwitchWorkspaceToChat: (v: boolean) => void;
   setHideNativeMenu: (v: boolean) => void;
+  setShowUnmanagedModels: (v: boolean) => void;
   incrementModelRefreshCounter: () => void;
 }
 
@@ -121,6 +123,7 @@ export const useSettingsStore = create<SettingsStore>()(
       expandChatToWindowWidth: false,
       switchWorkspaceToChat: false,
       hideNativeMenu: false,
+      showUnmanagedModels: true,
       modelRefreshCounter: 0,
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
@@ -156,6 +159,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setExpandChatToWindowWidth: (expandChatToWindowWidth) => set({ expandChatToWindowWidth }),
       setSwitchWorkspaceToChat: (switchWorkspaceToChat) => set({ switchWorkspaceToChat }),
       setHideNativeMenu: (hideNativeMenu) => set({ hideNativeMenu }),
+      setShowUnmanagedModels: (showUnmanagedModels) => set({ showUnmanagedModels }),
       incrementModelRefreshCounter: () => set((state) => ({ modelRefreshCounter: state.modelRefreshCounter + 1 })),
     }),
     {

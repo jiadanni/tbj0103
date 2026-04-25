@@ -12,6 +12,7 @@ function makeModel(overrides: Partial<AiModel>): AiModel {
     priority: 0,
     is_paid: false,
     enabled: true,
+    is_hidden: false,
     tokens_used_total: 0,
     created_at: "2026-03-22T00:00:00Z",
     ...overrides,

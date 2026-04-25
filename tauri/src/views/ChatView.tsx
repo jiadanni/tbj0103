@@ -2985,7 +2985,7 @@ export default function ChatView() {
       });
 
       const enabledModels = aiModels
-        .filter((model) => model.enabled)
+        .filter((model) => model.enabled && !model.is_hidden)
         .sort((a, b) => a.priority - b.priority);
       const enabledInstalledOllamaModels = enabledModels
         .filter((model) => model.provider === "ollama" && installedOllamaModels.includes(model.model_id))
@@ -2994,8 +2994,10 @@ export default function ChatView() {
         .filter((model) => model.provider !== "ollama")
         .map((model) => model.model_id);
       const managedModelIds = aiModels.map((m) => m.model_id);
-      const unmanagedInstalledModels = installedOllamaModels
-        .filter((modelId) => !managedModelIds.includes(modelId));
+      const showUnmanagedModels = useSettingsStore.getState().showUnmanagedModels;
+      const unmanagedInstalledModels = showUnmanagedModels
+        ? installedOllamaModels.filter((modelId) => !managedModelIds.includes(modelId))
+        : [];
 
       const nextAvailableModels = [
         ...enabledInstalledOllamaModels,
@@ -4440,7 +4442,7 @@ export default function ChatView() {
                         )}
 
                         {/* Tool buttons row */}
-                        <div className={`flex flex-wrap items-center gap-1.5 px-1 ${showComposerHeader ? "border-t border-[var(--border-color)]/50 pt-2" : ""}`}>
+                        <div className={`flex flex-wrap items-center gap-1.5 px-1 ${showComposerHeader ? "pt-2" : ""}`}>
                               {/* Active model picker */}
                               <div className="relative" data-active-model-menu>
                                 <button

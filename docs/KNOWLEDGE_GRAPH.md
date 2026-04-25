@@ -67,29 +67,17 @@ No connections
 
 ## Data Models
 
-### ConceptNode
+### ConceptNode (Data Model)
 
-```swift
-@Model
-final class ConceptNode {
-    var id: UUID
-    var name: String                    // "Swift Closures"
-    var conceptDescription: String?     // What it is
-    var nodeType: ConceptNodeType       // topic/technology/person/etc
-    var aliases: [String]               // Alternative names
-    var tags: [String]                  // Categorization
-
-    // Graph relationships
-    var outgoingLinks: [ConceptLink]    // What this links to
-    var incomingLinks: [ConceptLink]    // What links to this (backlinks)
-    var mentions: [ConceptMention]      // Where it's mentioned
-
-    // Metadata
-    var referenceCount: Int             // Popularity
-    var lastReferencedAt: Date          // Recency
-    var relatedGoalIDs: [String]        // Learning goals
-}
-```
+- `id`: UUID (Primary Key)
+- `name`: String (e.g., "Swift Closures")
+- `description`: String (optional)
+- `node_type`: Enum (topic/technology/person/etc)
+- `aliases`: JSON Array of strings
+- `tags`: JSON Array of strings
+- `reference_count`: Integer (Popularity tracking)
+- `hierarchy_level`: Integer (for tree layouts)
+- `workspace_id`: Foreign Key
 
 **Concept Types:**
 - `topic` - General concept or subject
@@ -101,19 +89,14 @@ final class ConceptNode {
 - `resource` - External resources
 - `custom` - User-defined types
 
-### ConceptLink
+### ConceptLink (Data Model)
 
-```swift
-@Model
-final class ConceptLink {
-    var id: UUID
-    var source: ConceptNode              // From
-    var target: ConceptNode              // To
-    var linkType: ConceptLinkType        // Relationship type
-    var strength: Double                 // 0.0 to 1.0
-    var context: String?                 // Where link was created
-}
-```
+- `id`: UUID
+- `source_id`: Foreign Key → `concept_nodes`
+- `target_id`: Foreign Key → `concept_nodes`
+- `link_type`: Enum (related/prerequisite/partOf/etc)
+- `strength`: Double (0.0 to 1.0)
+- `context`: String (optional snippet where link was formed)
 
 **Link Types:**
 - `related` - General relationship
@@ -568,12 +551,12 @@ Concept extraction:
 
 ## Future Enhancements
 
-### Phase 1 (Planned)
+### Phase 1 (Implemented)
 
-- [ ] Real-time link suggestions while typing
-- [ ] Fuzzy concept matching
-- [ ] Concept aliases and synonyms
-- [ ] Link strength learning from usage
+- [x] Real-time link suggestions while typing (CompactMenuSelect)
+- [x] Bidirectional link tracking via `note_links` table
+- [x] D3-based force-directed visualization
+- [x] Workspace-scoped graph isolation
 
 ### Phase 2 (Future)
 

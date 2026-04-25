@@ -65,24 +65,20 @@ SemanticChunker
 
 ### Phase 3: Embedding Generation
 
-```swift
+```rust
 EmbeddingGenerator
-  ├── Current: Placeholder embeddings
-  ├── Near-term: Ollama embeddings API
-  └── Future: MLX embedding models
+  ├── Current: Ollama embeddings API (/api/embed)
+  └── Future: Local MLX/Transformers embedding models
 ```
 
-**Output**: 384-dimensional vectors for semantic search
+**Output**: 384/768-dimensional vectors for semantic search
 
 ### Phase 4: Storage & Indexing
 
-```swift
-SwiftData Models
-  ├── ProjectSource (container)
-  ├── UploadedDocument (metadata)
-  ├── DocumentChunk (searchable units)
-  └── Citations (references in messages)
-```
+**SQLite Persistence:**
+- `sources` (unified container for documents and web captures)
+- `source_chunks` (searchable units with embedding BLOBs)
+- `citations` (references in messages)
 
 **Output**: Queryable document database
 
@@ -333,11 +329,11 @@ RetrievalEngine
 - Citation support
 - Document browser
 
-### Phase 2 (Near-term)
-- [ ] Ollama embeddings integration
-- [ ] Semantic similarity search
-- [ ] Real-time document updates
-- [ ] Collaborative annotations
+### Phase 2 (Current)
+- Ollama embeddings integration
+- Semantic similarity search (Cosine sim via retrieval engine)
+- Real-time document updates
+- Source browser unification
 
 ### Phase 3 (Future)
 - [ ] MLX embedding models
