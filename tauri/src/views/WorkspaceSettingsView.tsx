@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Plus, Trash2, Pencil, Check, X, LayoutGrid, CornerDownRight,
   MessageSquare, FileText, Globe, Brain, CreditCard,
-  Database, Sparkles, Save, Loader2, ChevronRight, ChevronDown
+  Database, Sparkles, Save, Loader2, ChevronRight, ChevronDown, ArrowUpDown
 } from "lucide-react";
 import { api } from "../lib/api";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -20,6 +20,58 @@ import type { DashboardSummary } from "../lib/api";
 type WorkspaceDialogState =
   | { kind: "last-workspace" }
   | { kind: "delete"; workspace: Workspace };
+
+function WorkspaceSortMenu() {
+  const workspaceSortOrder = useWorkspaceStore((state) => state.workspaceSortOrder);
+  const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
+  const [open, setOpen] = useState(false);
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) { return; }
+    function handleDown(e: MouseEvent) { if (!rootRef.current?.contains(e.target as Node)) { setOpen(false); } }
+    function handleEsc(e: KeyboardEvent) { if (e.key === "Escape") { setOpen(false); } }
+    window.addEventListener("mousedown", handleDown);
+    window.addEventListener("keydown", handleEsc);
+    return () => { window.removeEventListener("mousedown", handleDown); window.removeEventListener("keydown", handleEsc); };
+  }, [open]);
+
+  const options = [
+    { id: "name-asc", label: "Name A–Z" },
+    { id: "name-desc", label: "Name Z–A" },
+    { id: "created-newest", label: "Newest First" },
+    { id: "created-oldest", label: "Oldest First" },
+    { id: "updated-newest", label: "Recently Updated" },
+    { id: "updated-oldest", label: "Least Recently Updated" },
+  ] as const;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className={`flex h-8 w-8 items-center justify-center rounded-lg border text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] hover:border-[var(--accent-color)] ${open ? "border-[var(--accent-color)] bg-[var(--bg-hover)]" : "border-[var(--border-color)] bg-[var(--bg-elevated)]"}`}
+        title="Sort order"
+      >
+        <ArrowUpDown size={14} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-9 z-50 w-48 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl py-1">
+          {options.map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => { setWorkspaceSortOrder(opt.id); setOpen(false); }}
+              className={`flex w-full items-center px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] ${
+                workspaceSortOrder === opt.id ? "text-[var(--accent-color)] font-medium" : "text-[var(--text-secondary)]"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function WorkspaceSettingsView() {
   const {
@@ -304,12 +356,15 @@ export default function WorkspaceSettingsView() {
             {rootWorkspaces.length} root workspace{rootWorkspaces.length !== 1 ? "s" : ""} · {workspaces.length - rootWorkspaces.length} child workspace{workspaces.length - rootWorkspaces.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <button
-          onClick={() => openCreateForm(null)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
-        >
-          <Plus size={12} /> New Workspace
-        </button>
+        <div className="flex items-center gap-2">
+          <WorkspaceSortMenu />
+          <button
+            onClick={() => openCreateForm(null)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
+          >
+            <Plus size={12} /> New Workspace
+          </button>
+        </div>
       </div>
 
       {/* New workspace form */}
