@@ -117,13 +117,23 @@ describe("setters", () => {
   });
 
   it("setTheme updates theme", () => {
-    useSettingsStore.getState().setTheme("dark");
-    expect(useSettingsStore.getState().theme).toBe("dark");
+    useSettingsStore.getState().setTheme("noir");
+    expect(useSettingsStore.getState().theme).toBe("noir");
   });
 
-  it("setTheme normalizes legacy oled to dark", () => {
-    useSettingsStore.getState().setTheme("oled" as unknown as "dark");
-    expect(useSettingsStore.getState().theme).toBe("dark");
+  it("setTheme normalizes legacy dark to noir", () => {
+    useSettingsStore.getState().setTheme("dark" as unknown as "noir");
+    expect(useSettingsStore.getState().theme).toBe("noir");
+  });
+
+  it("setTheme normalizes legacy glasscode to noir", () => {
+    useSettingsStore.getState().setTheme("glasscode" as unknown as "noir");
+    expect(useSettingsStore.getState().theme).toBe("noir");
+  });
+
+  it("setTheme normalizes legacy oled to noir", () => {
+    useSettingsStore.getState().setTheme("oled" as unknown as "noir");
+    expect(useSettingsStore.getState().theme).toBe("noir");
   });
 
   it("setAccentColor updates accentColor", () => {
@@ -184,17 +194,30 @@ describe("zustand/persist", () => {
     expect(useSettingsStore.getState().fontSize).toBe(16);
   });
 
-  it("rehydrates legacy oled theme as dark", async () => {
+  it("rehydrates legacy oled theme as noir", async () => {
     localStorage.setItem("aetherium-settings", JSON.stringify({
-      state: {
-        ...SETTINGS_INITIAL,
-        theme: "oled",
-      },
+      state: { ...SETTINGS_INITIAL, theme: "oled" },
       version: 0,
     }));
-
     await useSettingsStore.persist.rehydrate();
+    expect(useSettingsStore.getState().theme).toBe("noir");
+  });
 
-    expect(useSettingsStore.getState().theme).toBe("dark");
+  it("rehydrates legacy dark theme as noir", async () => {
+    localStorage.setItem("aetherium-settings", JSON.stringify({
+      state: { ...SETTINGS_INITIAL, theme: "dark" },
+      version: 0,
+    }));
+    await useSettingsStore.persist.rehydrate();
+    expect(useSettingsStore.getState().theme).toBe("noir");
+  });
+
+  it("rehydrates legacy glasscode theme as noir", async () => {
+    localStorage.setItem("aetherium-settings", JSON.stringify({
+      state: { ...SETTINGS_INITIAL, theme: "glasscode" },
+      version: 0,
+    }));
+    await useSettingsStore.persist.rehydrate();
+    expect(useSettingsStore.getState().theme).toBe("noir");
   });
 });

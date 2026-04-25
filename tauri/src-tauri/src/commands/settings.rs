@@ -113,8 +113,8 @@ const AUTOSTART_ARG: &str = "--autostart";
 
 fn normalize_theme(theme: &str) -> &str {
     match theme {
-        "system" | "light" | "dark" | "sepia" | "hacker" | "glasscode" => theme,
-        "oled" => "dark",
+        "system" | "light" | "noir" | "sepia" | "hacker" => theme,
+        "dark" | "glasscode" | "oled" => "noir",
         _ => "system",
     }
 }

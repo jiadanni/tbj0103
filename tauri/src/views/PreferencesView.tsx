@@ -11,7 +11,7 @@ import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSync
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB, type ModelFit } from "../lib/modelSizing";
-import { ACCENT_COLORS, THEMES, normalizeTheme } from "../lib/theme";
+import { ACCENT_COLORS, THEMES, THEME_DEFAULT_ACCENTS, normalizeTheme } from "../lib/theme";
 import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore";
 import { type NavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
@@ -1401,7 +1401,7 @@ export default function PreferencesView() {
                   {THEMES.map((t) => (
                     <button
                       key={t}
-                      onClick={() => setAppearance("theme", t)}
+                      onClick={() => updateSettings({ theme: t, accent_color: THEME_DEFAULT_ACCENTS[t] })}
                       className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${
                         dbSettings.theme === t
                           ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
