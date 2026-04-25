@@ -7,7 +7,7 @@ import { useLocation } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -182,6 +182,7 @@ export default function PreferencesView() {
   const setComposerMode = useSettingsStore((state) => state.setComposerMode);
   const modelFamilyLabels = useSettingsStore((state) => state.modelFamilyLabels);
   const setModelFamilyLabel = useSettingsStore((state) => state.setModelFamilyLabel);
+  const removeModelFamilyLabel = useSettingsStore((state) => state.removeModelFamilyLabel);
   const modelLabels = useSettingsStore((state) => state.modelLabels);
   const location = useLocation();
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
@@ -308,6 +309,8 @@ export default function PreferencesView() {
   const [confirmPin, setConfirmPin] = useState("");
   const [pinSaving, setPinSaving] = useState(false);
   const [pinMessage, setPinMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [newFamilyPrefix, setNewFamilyPrefix] = useState("");
+  const [newFamilyLabel, setNewFamilyLabel] = useState("");
   useEffect(() => {
     dbSettingsRef.current = dbSettings;
   }, [dbSettings]);
@@ -731,9 +734,10 @@ export default function PreferencesView() {
         <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
       ) : (
         <div className="space-y-3">
-          <div className="hidden grid-cols-[minmax(0,1fr)_28px_110px_40px_40px_20px] items-center gap-3 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)] md:grid">
+          <div className="hidden grid-cols-[minmax(0,1fr)_28px_28px_110px_40px_40px_20px] items-center gap-3 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)] md:grid">
             <span>Model</span>
             <span className="text-center">Background</span>
+            <span className="text-center">Pin</span>
             <span className="text-right">Speed</span>
             <span className="text-center">Active</span>
             <span className="text-center">Visible</span>
@@ -835,7 +839,7 @@ export default function PreferencesView() {
                     }}
                     className={`rounded-lg border ${dragOverModelId === m.id ? "border-[var(--accent-color)] bg-[var(--bg-hover)]" : "border-[var(--border-color)] bg-[var(--bg-primary)]"} px-3 py-2.5 transition-colors`}
                   >
-                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_28px_110px_40px_40px_20px] md:items-start md:gap-3">
+                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_28px_28px_110px_40px_40px_20px] md:items-start md:gap-3">
                       <div className="flex min-w-0 items-start gap-2">
                         <div className="flex items-center pt-1.5 text-[var(--text-muted)] cursor-grab hover:text-[var(--text-primary)]">
                           <GripVertical size={14} />
@@ -927,6 +931,18 @@ export default function PreferencesView() {
                         </label>
                       )}
                       {!isOllamaModel && <div className="hidden md:block md:w-7" />}
+
+                      <button
+                        onClick={() => toggleQuickSearchModel(m.model_id)}
+                        className={`flex items-center justify-center md:w-7 transition-colors ${
+                          dbSettings.quick_search_models.includes(m.model_id)
+                            ? "text-[var(--accent-color)]"
+                            : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                        }`}
+                        title={dbSettings.quick_search_models.includes(m.model_id) ? "Unpin from Quick Send" : "Pin to Quick Send"}
+                      >
+                        <Pin size={14} fill={dbSettings.quick_search_models.includes(m.model_id) ? "currentColor" : "none"} />
+                      </button>
 
                       <div className="text-right text-[10px] leading-5 text-[var(--text-muted)] md:w-[110px]">
                         {m.is_paid && (
@@ -2007,6 +2023,82 @@ export default function PreferencesView() {
                   })()}
                 </div>
               </div>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">Custom family labels</h3>
+                    <p className="text-xs text-[var(--text-muted)] mt-1">
+                      Map model prefixes (like <code>mistral</code>) to display names for grouped composer modes.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  {Object.entries(modelFamilyLabels).length > 0 && (
+                    <div className="space-y-2">
+                      {Object.entries(modelFamilyLabels).map(([prefix, label]) => (
+                        <div key={prefix} className="flex items-center gap-2 group animate-in fade-in slide-in-from-top-1 duration-200">
+                          <div className="w-32 shrink-0 truncate font-mono text-[11px] text-[var(--text-secondary)] bg-[var(--bg-primary)] px-2.5 py-2 rounded-lg border border-[var(--border-color)] shadow-sm">
+                            {prefix}
+                          </div>
+                          <div className="flex-1 relative">
+                            <input
+                              type="text"
+                              value={label}
+                              onChange={(e) => setModelFamilyLabel(prefix, e.target.value)}
+                              placeholder={prefix}
+                              className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] transition-all shadow-sm"
+                            />
+                          </div>
+                          <button
+                            onClick={() => removeModelFamilyLabel(prefix)}
+                            className="p-2 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                            title="Remove label"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className={`flex items-center gap-2 pt-2 ${Object.entries(modelFamilyLabels).length > 0 ? "border-t border-[var(--border-color)]/40 mt-1" : ""}`}>
+                    <input
+                      type="text"
+                      value={newFamilyPrefix}
+                      onChange={(e) => setNewFamilyPrefix(e.target.value)}
+                      placeholder="prefix (e.g. gemma)"
+                      className="w-32 shrink-0 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-2 font-mono text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] transition-all shadow-sm placeholder:text-[var(--text-muted)]"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newFamilyPrefix.trim()) {
+                          setModelFamilyLabel(newFamilyPrefix.trim(), newFamilyLabel.trim() || newFamilyPrefix.trim());
+                          setNewFamilyPrefix("");
+                          setNewFamilyLabel("");
+                        }
+                      }}
+                    />
+                    <input
+                      type="text"
+                      value={newFamilyLabel}
+                      onChange={(e) => setNewFamilyLabel(e.target.value)}
+                      placeholder="display name"
+                      className="min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] transition-all shadow-sm placeholder:text-[var(--text-muted)]"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newFamilyPrefix.trim()) {
+                          setModelFamilyLabel(newFamilyPrefix.trim(), newFamilyLabel.trim() || newFamilyPrefix.trim());
+                          setNewFamilyPrefix("");
+                          setNewFamilyLabel("");
+                        }
+                      }}
+                    />
+                    <div className="w-9" />
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] ml-1">
+                    <Bot size={12} className="shrink-0" />
+                    <span>Press Enter to add. Labels apply to any model ID starting with the prefix.</span>
+                  </div>
+                </div>
+              </div>
 
             </>
           )}
@@ -2101,63 +2193,6 @@ export default function PreferencesView() {
                     </button>
                   ))}
                 </div>
-                {composerMode === "family" && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-[var(--text-muted)]">Custom family labels (prefix → display name)</p>
-                    {Object.entries(modelFamilyLabels).map(([prefix, label]) => (
-                      <div key={prefix} className="flex items-center gap-2">
-                        <span className="w-28 shrink-0 truncate font-mono text-xs text-[var(--text-muted)]">{prefix}</span>
-                        <input
-                          type="text"
-                          value={label}
-                          onChange={(e) => setModelFamilyLabel(prefix, e.target.value)}
-                          placeholder={prefix}
-                          className="min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[rgba(var(--accent-color-rgb),0.5)]"
-                        />
-                      </div>
-                    ))}
-                    <div className="flex items-center gap-2">
-                      <input
-                        id="new-family-prefix"
-                        type="text"
-                        placeholder="family prefix (e.g. gemma4)"
-                        className="w-28 shrink-0 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[rgba(var(--accent-color-rgb),0.5)]"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            const input = e.currentTarget;
-                            const labelInput = input.nextElementSibling as HTMLInputElement | null;
-                            const prefix = input.value.trim();
-                            const lbl = labelInput?.value.trim() ?? "";
-                            if (prefix) {
-                              setModelFamilyLabel(prefix, lbl || prefix);
-                              input.value = "";
-                              if (labelInput) { labelInput.value = ""; }
-                            }
-                          }
-                        }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="display name"
-                        className="min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[rgba(var(--accent-color-rgb),0.5)]"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            const labelInput = e.currentTarget;
-                            const prefixInput = labelInput.previousElementSibling as HTMLInputElement | null;
-                            const prefix = prefixInput?.value.trim() ?? "";
-                            const lbl = labelInput.value.trim();
-                            if (prefix) {
-                              setModelFamilyLabel(prefix, lbl || prefix);
-                              labelInput.value = "";
-                              if (prefixInput) { prefixInput.value = ""; }
-                            }
-                          }
-                        }}
-                      />
-                    </div>
-                    <p className="text-[11px] text-[var(--text-muted)]">Press Enter to add a label</p>
-                  </div>
-                )}
               </div>
 
               {/* Chat Title Auto-Generation */}
@@ -2340,33 +2375,6 @@ export default function PreferencesView() {
                 </p>
               </div>
 
-              <div className="pt-3 space-y-2">
-                <p className="text-xs text-[var(--text-secondary)] font-medium">Quick Send Models</p>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Pin enabled models as alternate actions in the chat composer send-button dropdown. They send the current prompt with that model without changing your main dropdown selection.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {aiModels.filter((model) => model.enabled).map((model) => {
-                    const active = dbSettings.quick_search_models.includes(model.model_id);
-                    return (
-                      <button
-                        key={model.id}
-                        onClick={() => toggleQuickSearchModel(model.model_id)}
-                        className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
-                          active
-                            ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                            : "bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                        }`}
-                      >
-                        {model.name}
-                      </button>
-                    );
-                  })}
-                </div>
-                {aiModels.filter((model) => model.enabled).length === 0 && (
-                  <p className="text-[10px] text-[var(--text-muted)]">Enable models in the AI tab first to add them to the send-button dropdown.</p>
-                )}
-              </div>
             </>
           )}
 
@@ -2419,7 +2427,7 @@ export default function PreferencesView() {
               </div>
 
               {/* ── PIN Passcode ── */}
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
+              <div className={`rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3 transition-opacity ${pinConfigured && !dbSettings.pin_lock_enabled ? "opacity-40 pointer-events-none" : ""}`}>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm text-[var(--text-secondary)]">PIN passcode</p>
@@ -2509,49 +2517,51 @@ export default function PreferencesView() {
               </div>
 
               {/* ── Auto-lock ── */}
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Auto-lock</label>
-                <p className="text-[11px] text-[var(--text-muted)] mb-2">Auto-lock becomes active once a launch lock is enabled.</p>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="auto_lock"
-                      checked={dbSettings.auto_lock_minutes === 0}
-                      onChange={() => set("auto_lock_minutes", 0)}
-                      disabled={!anyLockEnabled}
-                      className="accent-[var(--accent-color)]"
-                    />
-                    <span className="text-[var(--text-secondary)]">Off</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="auto_lock"
-                      checked={dbSettings.auto_lock_minutes > 0}
-                      onChange={() => set("auto_lock_minutes", dbSettings.auto_lock_minutes > 0 ? dbSettings.auto_lock_minutes : 5)}
-                      disabled={!anyLockEnabled}
-                      className="accent-[var(--accent-color)]"
-                    />
-                    <span className="text-[var(--text-secondary)]">Lock after</span>
-                    {dbSettings.auto_lock_minutes > 0 && (
-                      <span className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={1}
-                          max={1440}
-                          value={dbSettings.auto_lock_minutes}
-                          disabled={!anyLockEnabled}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            if (val > 0) {set("auto_lock_minutes", val);}
-                          }}
-                          className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        />
-                        <span className="text-xs text-[var(--text-secondary)]">minutes</span>
-                      </span>
-                    )}
-                  </label>
+              <div className={`space-y-2 transition-opacity ${!anyLockEnabled ? "opacity-40 pointer-events-none" : ""}`}>
+                <div>
+                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Auto-lock</label>
+                  <p className="text-[11px] text-[var(--text-muted)] mb-2">Auto-lock becomes active once a launch lock is enabled.</p>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="auto_lock"
+                        checked={dbSettings.auto_lock_minutes === 0}
+                        onChange={() => set("auto_lock_minutes", 0)}
+                        disabled={!anyLockEnabled}
+                        className="accent-[var(--accent-color)]"
+                      />
+                      <span className="text-[var(--text-secondary)]">Off</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="auto_lock"
+                        checked={dbSettings.auto_lock_minutes > 0}
+                        onChange={() => set("auto_lock_minutes", dbSettings.auto_lock_minutes > 0 ? dbSettings.auto_lock_minutes : 5)}
+                        disabled={!anyLockEnabled}
+                        className="accent-[var(--accent-color)]"
+                      />
+                      <span className="text-[var(--text-secondary)]">Lock after</span>
+                      {dbSettings.auto_lock_minutes > 0 && (
+                        <span className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={1}
+                            max={1440}
+                            value={dbSettings.auto_lock_minutes}
+                            disabled={!anyLockEnabled}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              if (val > 0) {set("auto_lock_minutes", val);}
+                            }}
+                            className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                          />
+                          <span className="text-xs text-[var(--text-secondary)]">minutes</span>
+                        </span>
+                      )}
+                    </label>
+                  </div>
                 </div>
               </div>
             </>

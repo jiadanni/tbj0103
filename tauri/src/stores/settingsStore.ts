@@ -94,6 +94,7 @@ interface SettingsStore extends AppSettings {
   setShowComposerChatFollowUps: (v: boolean) => void;
   setComposerMode: (v: ComposerMode) => void;
   setModelFamilyLabel: (prefix: string, label: string) => void;
+  removeModelFamilyLabel: (prefix: string) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -182,6 +183,11 @@ export const useSettingsStore = create<SettingsStore>()(
       setShowComposerChatFollowUps: (showComposerChatFollowUps) => set({ showComposerChatFollowUps }),
       setComposerMode: (composerMode) => set({ composerMode }),
       setModelFamilyLabel: (prefix, label) => set((state) => ({ modelFamilyLabels: { ...state.modelFamilyLabels, [prefix]: label } })),
+      removeModelFamilyLabel: (prefix) => set((state) => {
+        const next = { ...state.modelFamilyLabels };
+        delete next[prefix];
+        return { modelFamilyLabels: next };
+      }),
     }),
     {
       name: "aetherium-settings",

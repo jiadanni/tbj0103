@@ -7,6 +7,7 @@ import { api, type QuickSearchResult } from "./lib/api";
 import { normalizeTheme } from "./lib/theme";
 import { getPrefsWindowSingleInstance } from "./lib/prefsWindowMode";
 import Layout from "./components/Layout";
+import ZoomIndicator from "./components/ZoomIndicator";
 import AuthenticationView from "./views/AuthenticationView";
 
 /** Listens for native menu-bar events and translates them into navigation/actions. */
@@ -100,11 +101,25 @@ export default function App() {
   const theme = useSettingsStore((state) => state.theme);
   const accentColor = useSettingsStore((state) => state.accentColor);
   const fontSize = useSettingsStore((state) => state.fontSize);
+  const setFontSize = useSettingsStore((state) => state.setFontSize);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
   const setProjectsForWorkspace = useWorkspaceStore((state) => state.setProjectsForWorkspace);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
+  const [zoomVisible, setZoomVisible] = useState(false);
+  const zoomTimeoutRef = useRef<number | null>(null);
+
+  const triggerZoomIndicator = () => {
+    setZoomVisible(true);
+    if (zoomTimeoutRef.current) {
+      window.clearTimeout(zoomTimeoutRef.current);
+    }
+    zoomTimeoutRef.current = window.setTimeout(() => {
+      setZoomVisible(false);
+      zoomTimeoutRef.current = null;
+    }, 1500);
+  };
 
   // Apply theme class to <html> element — also applies font-size and accent-color reactively
   useEffect(() => {
@@ -119,21 +134,58 @@ export default function App() {
     root.style.fontSize = `${fontSize}px`;
   }, [theme, accentColor, fontSize]);
 
-  // F12 to toggle devtools; Ctrl+Shift+, to open Preferences in a separate window
+  // Zoom: Ctrl/Cmd + Scroll; Keyboard shortcuts (Ctrl/Cmd + + / - / 0); F12 for DevTools
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlCmd = e.ctrlKey || e.metaKey;
+
       if (e.key === "F12") {
         e.preventDefault();
         api.system.toggleDevtools().catch(() => {});
       }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === ",") {
+      if (isCtrlCmd && e.shiftKey && e.key === ",") {
         e.preventDefault();
         api.system.openPreferencesWindow(getPrefsWindowSingleInstance()).catch(() => {});
       }
+
+      // Zoom keyboard shortcuts
+      if (isCtrlCmd) {
+        if (e.key === "=" || e.key === "+") {
+          e.preventDefault();
+          const current = useSettingsStore.getState().fontSize;
+          setFontSize(Math.min(current + 2, 48));
+          triggerZoomIndicator();
+        } else if (e.key === "-") {
+          e.preventDefault();
+          const current = useSettingsStore.getState().fontSize;
+          setFontSize(Math.max(current - 2, 10));
+          triggerZoomIndicator();
+        } else if (e.key === "0") {
+          e.preventDefault();
+          setFontSize(16);
+          triggerZoomIndicator();
+        }
+      }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -1 : 1;
+        const current = useSettingsStore.getState().fontSize;
+        const next = Math.min(Math.max(current + delta, 10), 48);
+        setFontSize(next);
+        triggerZoomIndicator();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("wheel", handleWheel);
+    };
+  }, [setFontSize]);
 
   // Boot: load settings + workspaces
   useEffect(() => {
@@ -298,6 +350,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <MenuEventHandler />
+      <ZoomIndicator fontSize={fontSize} visible={zoomVisible} />
       <Routes>
         <Route path="/*" element={<Layout />} />
         <Route path="/" element={<Navigate to="/project" replace />} />
