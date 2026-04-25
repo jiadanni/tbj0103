@@ -205,8 +205,11 @@ pub fn verify_pin_passcode(state: State<DbState>, pin: String) -> Result<bool, S
 }
 
 #[tauri::command]
-pub fn remove_pin_passcode(state: State<DbState>, current_pin: String) -> Result<(), String> {
+pub fn remove_pin_passcode(
     app: AppHandle,
+    state: State<DbState>,
+    current_pin: String,
+) -> Result<(), String> {
     validate_pin(&current_pin)?;
 
     let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -264,5 +267,5 @@ pub async fn authenticate_biometric() -> Result<bool, String> {
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
 pub async fn authenticate_biometric() -> Result<bool, String> {
-    Err("Biometric authentication is not available on this platform.".to_string())
+    Ok(false)
 }
