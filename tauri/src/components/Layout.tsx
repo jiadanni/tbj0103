@@ -4,7 +4,7 @@ import { message } from "@tauri-apps/plugin-dialog";
 import {
   
 } from "react-resizable-panels";
-import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon, Pin } from "lucide-react";
+import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon, Pin, ArrowUpDown } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
@@ -781,6 +781,64 @@ function TitlebarHistoryMenu() {
   );
 }
 
+function TitlebarSortMenu() {
+  const workspaceSortOrder = useWorkspaceStore((state) => state.workspaceSortOrder);
+  const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) { return; }
+    function handleDown(e: MouseEvent) { if (!rootRef.current?.contains(e.target as Node)) { setOpen(false); } }
+    function handleEsc(e: KeyboardEvent) { if (e.key === "Escape") { setOpen(false); } }
+    window.addEventListener("mousedown", handleDown);
+    window.addEventListener("keydown", handleEsc);
+    return () => { window.removeEventListener("mousedown", handleDown); window.removeEventListener("keydown", handleEsc); };
+  }, [open]);
+
+  const options = [
+    { id: "name-asc", label: "Name A–Z" },
+    { id: "name-desc", label: "Name Z–A" },
+    { id: "created-newest", label: "Newest First" },
+    { id: "created-oldest", label: "Oldest First" },
+    { id: "updated-newest", label: "Recently Updated" },
+    { id: "updated-oldest", label: "Least Recently Updated" },
+  ] as const;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        aria-label="Sort Workspaces"
+        title="Sort Workspaces"
+        className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
+          open
+            ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+            : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+        }`}
+      >
+        <ArrowUpDown size={15} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-10 z-50 w-48 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl backdrop-blur-xl py-1">
+          {options.map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => { setWorkspaceSortOrder(opt.id); setOpen(false); }}
+              className={`flex w-full items-center px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] ${
+                workspaceSortOrder === opt.id ? "text-[var(--accent-color)] font-medium" : "text-[var(--text-secondary)]"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorkspaceTabBar({
   onToggleSplit,
   showWorkspaceTabs = true,
@@ -983,6 +1041,7 @@ function WorkspaceTabBar({
           title="Drag window"
         />
         <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
+          <TitlebarSortMenu />
           <TitlebarHistoryMenu />
           {showSplitToggle && (
             <button

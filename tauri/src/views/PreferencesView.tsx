@@ -7,7 +7,7 @@ import { useLocation } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, ChevronUp, ChevronDown, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -228,6 +228,9 @@ export default function PreferencesView() {
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
   const [modelSpeedStats, setModelSpeedStats] = useState<Record<string, ModelSpeedStat>>({});
   const [securityStatus, setSecurityStatus] = useState<SecurityStatus | null>(null);
+
+  const [draggedModelId, setDraggedModelId] = useState<string | null>(null);
+  const [dragOverModelId, setDragOverModelId] = useState<string | null>(null);
   const [showAddModel, setShowAddModel] = useState(false);
   const [newModelId, setNewModelId] = useState("");
   const [newModelName, setNewModelName] = useState("");
@@ -734,9 +737,7 @@ export default function PreferencesView() {
                   {group.label}
                 </div>
               </div>
-              {group.models.map((m, idx) => {
-                const prev = idx > 0 ? group.models[idx - 1] : null;
-                const next = idx < group.models.length - 1 ? group.models[idx + 1] : null;
+              {group.models.map((m, _idx) => {
                 const ollamaMeta = ollamaModels.find((model) => model.name === m.model_id);
                 const speedStat = modelSpeedStats[m.model_id];
                 const speedLabels = formatModelSpeed(speedStat);
@@ -757,36 +758,77 @@ export default function PreferencesView() {
                 const secondaryDisplayName = resolveModelSecondaryDisplayName(m.model_id, m.provider);
 
                 return (
-                  <div key={m.id} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5">
+                  <div
+                    key={m.id}
+                    draggable={!editingModelId}
+                    onDragStart={(e) => {
+                      setDraggedModelId(m.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      // Use a slight opacity for the dragged element
+                      setTimeout(() => {
+                        if (e.target instanceof HTMLElement) {
+                          e.target.style.opacity = "0.5";
+                        }
+                      }, 0);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (m.id !== draggedModelId) {
+                        setDragOverModelId(m.id);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverModelId === m.id) { setDragOverModelId(null); }
+                    }}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      setDragOverModelId(null);
+                      if (e.target instanceof HTMLElement) {
+                        e.target.style.opacity = "1";
+                      }
+                      
+                      if (draggedModelId && draggedModelId !== m.id) {
+                        const draggedIdx = group.models.findIndex(x => x.id === draggedModelId);
+                        const targetIdx = group.models.findIndex(x => x.id === m.id);
+                        
+                        if (draggedIdx !== -1 && targetIdx !== -1) {
+                          const newModels = [...group.models];
+                          const [removed] = newModels.splice(draggedIdx, 1);
+                          newModels.splice(targetIdx, 0, removed);
+                          
+                          const originalPriorities = group.models.map(x => x.priority);
+                          
+                          // Optimistically update UI (optional but good for snap)
+                          // Fire off backend updates
+                          for (let i = 0; i < newModels.length; i++) {
+                            if (newModels[i].priority !== originalPriorities[i]) {
+                              api.aiModel.update(newModels[i].id, { priority: originalPriorities[i] }).catch(() => {});
+                            }
+                          }
+                          
+                          // Reload
+                          setTimeout(() => {
+                            loadAiModels();
+                            incrementModelRefreshCounter();
+                          }, 50);
+                        }
+                      }
+                      setDraggedModelId(null);
+                    }}
+                    onDragEnd={(e) => {
+                      setDraggedModelId(null);
+                      setDragOverModelId(null);
+                      if (e.target instanceof HTMLElement) {
+                        e.target.style.opacity = "1";
+                      }
+                    }}
+                    className={`rounded-lg border ${dragOverModelId === m.id ? "border-[var(--accent-color)] bg-[var(--bg-hover)]" : "border-[var(--border-color)] bg-[var(--bg-primary)]"} px-3 py-2.5 transition-colors`}
+                  >
                     <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_28px_110px_40px_40px_20px] md:items-start md:gap-3">
                       <div className="flex min-w-0 items-start gap-2">
-                        <div className="flex flex-col gap-0.5 pt-0.5">
-                          <button
-                            disabled={!prev}
-                            onClick={async () => {
-                              if (!prev) { return; }
-                              await api.aiModel.update(m.id, { priority: prev.priority });
-                              await api.aiModel.update(prev.id, { priority: m.priority });
-                              loadAiModels();
-                              incrementModelRefreshCounter();
-                            }}
-                            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
-                          >
-                            <ChevronUp size={11} />
-                          </button>
-                          <button
-                            disabled={!next}
-                            onClick={async () => {
-                              if (!next) { return; }
-                              await api.aiModel.update(m.id, { priority: next.priority });
-                              await api.aiModel.update(next.id, { priority: m.priority });
-                              loadAiModels();
-                              incrementModelRefreshCounter();
-                            }}
-                            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-20"
-                          >
-                            <ChevronDown size={11} />
-                          </button>
+                        <div className="flex items-center pt-1.5 text-[var(--text-muted)] cursor-grab hover:text-[var(--text-primary)]">
+                          <GripVertical size={14} />
                         </div>
 
                         <div className="min-w-0 flex-1">
