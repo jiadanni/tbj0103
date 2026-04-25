@@ -628,7 +628,7 @@ export default function PreferencesView() {
           </p>
           <div className="flex items-center gap-2 mt-2">
             <Toggle on={showUnmanagedModels} onToggle={() => setShowUnmanagedModels(!showUnmanagedModels)} />
-            <span className="text-xs text-[var(--text-secondary)]">Show unmanaged models in Chat</span>
+            <span className="text-xs text-[var(--text-secondary)]">Show all Ollama models in Chat (including ones not added here)</span>
           </div>
         </div>
         <button
@@ -940,10 +940,10 @@ export default function PreferencesView() {
             <div className="space-y-1 mt-4 pt-4 border-t border-[var(--border-color)] border-dashed">
               <div className="px-1 pb-2">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                  Other installed Ollama models
+                  Also installed in Ollama
                 </div>
                 <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                  These models are available in your local Ollama but haven&apos;t been added to Aetherium yet.
+                  These models are on your machine but haven&apos;t been added here yet. Add them to set priorities, rename, or hide them from Chat.
                 </p>
               </div>
               {unmanagedOllamaModels.map((m) => {
