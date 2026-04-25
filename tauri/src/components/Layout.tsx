@@ -860,7 +860,6 @@ function WorkspaceTabBar({
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
-  const hideNativeMenu = useSettingsStore((state) => state.hideNativeMenu);
   const titlebarTokenCount = useUIStore((state) => state.titlebarTokenCount);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -995,7 +994,7 @@ function WorkspaceTabBar({
         className={`relative flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
       >
         {showSplitTitlebarWorkspaceNavigation && <SplitTitlebarWorkspaceNavigation />}
-        {(!isMac || hideNativeMenu) && <div className="relative z-10"><AppHeaderMenu /></div>}
+        {!isMac && <div className="relative z-10"><AppHeaderMenu /></div>}
         <div
           data-no-drag
           onWheel={handleHorizontalWheel}
