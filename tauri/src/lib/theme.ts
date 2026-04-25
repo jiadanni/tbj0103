@@ -1,8 +1,10 @@
-export const THEMES = ["system", "light", "dark", "sepia", "hacker", "glasscode"] as const;
+export const THEMES = ["system", "light", "noir", "sepia", "hacker"] as const;
 export type Theme = typeof THEMES[number];
 
 const LEGACY_THEME_ALIASES: Record<string, Theme> = {
-  oled: "dark",
+  dark: "noir",
+  glasscode: "noir",
+  oled: "noir",
 };
 
 export function normalizeTheme(theme: string): Theme {
@@ -29,6 +31,14 @@ export const ACCENT_COLORS = [
   { label: "Cyan", value: "#06b6d4" },
   { label: "Slate", value: "#64748b" },
 ] as const;
+
+export const THEME_DEFAULT_ACCENTS: Record<Theme, string> = {
+  system:  "#007AFF",
+  light:   "#007AFF",
+  noir:    "#6366f1",
+  sepia:   "#f59e0b",
+  hacker:  "#00ff41",
+};
 
 export function hexToRgbChannels(hex: string): string {
   const normalized = hex.trim().replace(/^#/, "");

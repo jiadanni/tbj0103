@@ -75,39 +75,6 @@
   --border-color: #e5e7eb;
 }
 
-/* Dark */
-.theme-dark {
-  --bg-primary: #18181b;
-  --bg-secondary: rgba(39, 39, 42, 0.78);
-  --bg-sidebar: #09090b;
-  --text-primary: #f4f4f5;
-  --text-secondary: #d4d4d8;
-  --text-muted: #a1a1aa;
-  --bg-elevated: rgba(39, 39, 42, 0.9);
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --bg-input: rgba(24, 24, 27, 0.96);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --link-color: color-mix(in srgb, rgb(var(--accent-color-rgb)) 70%, white 30%);
-  --message-user-bg: rgba(var(--accent-color-rgb), 0.14);
-  --message-user-border: rgba(var(--accent-color-rgb), 0.22);
-  --message-user-text: var(--text-primary);
-  --message-assistant-bg: rgba(39, 39, 42, 0.52);
-  --message-assistant-border: rgba(255, 255, 255, 0.05);
-}
-
-/* OLED black */
-.theme-oled {
-  --bg-primary: #000000;
-  --bg-secondary: #0a0a0a;
-  --bg-sidebar: #050505;
-  --text-primary: #ffffff;
-  --text-secondary: #d4d4d8;
-  --text-muted: #71717a;
-  --bg-elevated: #1a1a1a;
-  --bg-hover: #27272a;
-  --bg-input: #000000;
-  --border-color: #27272a;
-}
 
 /* Sepia */
 .theme-sepia {
@@ -137,8 +104,8 @@
   --border-color: #003b00;
 }
 
-/* GlassCode */
-.theme-glasscode {
+/* Noir */
+.theme-noir {
   color-scheme: dark;
   --bg-primary: #0e0e0e;
   --bg-secondary: rgba(255, 255, 255, 0.05);
@@ -199,10 +166,8 @@ body {
 .dark ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.35);
 }
-.theme-dark,
-.theme-oled,
+.theme-noir,
 .theme-hacker,
-.theme-glasscode,
 .theme-sepia {
   scrollbar-color: rgba(255, 255, 255, 0.4) rgba(255, 255, 255, 0.12);
 }
