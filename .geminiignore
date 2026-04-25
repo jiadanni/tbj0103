@@ -1,0 +1,12 @@
+# 🚫 Stop the 7-day cooldown drain
+.git/
+node_modules/
+dist/
+build/
+venv/
+.venv/
+*.log
+package-lock.json
+yarn.lock
+.next/
+.expo/

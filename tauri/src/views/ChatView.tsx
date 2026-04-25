@@ -1,7 +1,7 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy } from "lucide-react";
+import { Send, Plus, Trash2, ArrowDown, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
@@ -2457,6 +2457,7 @@ export default function ChatView() {
   }, []);
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const [atBottom, setAtBottom] = useState(true);
   const prevScrollChatIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pendingSentScrollId = useRef<string | null>(null);
@@ -3059,6 +3060,7 @@ export default function ChatView() {
       virtuosoRef.current?.scrollToIndex({
         index: activeMessages.length - 1,
         behavior: isSessionSwitch ? "auto" : "smooth",
+        align: "end",
       });
     }
   }, [activeChatId, activeMessages, isCurrentlyStreaming, scrollToTopOnSend]);
@@ -4396,7 +4398,7 @@ export default function ChatView() {
 
                   {/* Messages */}
                   <div className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
-                    <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
+                    <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col relative">
                       <Virtuoso
                         ref={virtuosoRef}
                         data={activeMessages}
@@ -4404,6 +4406,7 @@ export default function ChatView() {
                         followOutput={isCurrentlyStreaming ? "auto" : "smooth"}
                         alignToBottom={true}
                         className="w-full min-w-0 overflow-x-hidden py-4"
+                        atBottomStateChange={setAtBottom}
                         computeItemKey={(_, msg) => msg.id}
                         itemContent={(i, msg) => (
                           <div className="pb-4 px-4">
@@ -4448,6 +4451,18 @@ export default function ChatView() {
                         )}
                         components={virtuosoComponents}
                       />
+
+                      {!atBottom && activeMessages.length > 0 && (
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+                          <button
+                            onClick={() => virtuosoRef.current?.scrollToIndex({ index: activeMessages.length - 1, behavior: "smooth", align: "end" })}
+                            className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--bg-elevated)]/90 backdrop-blur-md border border-white/10 text-[var(--text-primary)] shadow-[0_8px_30px_rgba(0,0,0,0.3)] transition-all hover:bg-[var(--accent-color)] hover:text-white hover:border-[var(--accent-color)] hover:scale-110 active:scale-95 group"
+                            title="Jump to bottom"
+                          >
+                            <ArrowDown size={18} className="transition-transform group-hover:translate-y-0.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
