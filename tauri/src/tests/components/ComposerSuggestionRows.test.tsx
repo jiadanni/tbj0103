@@ -22,13 +22,11 @@ const rows: ComposerSuggestionRow[] = [
 ];
 
 describe("ComposerSuggestionRows", () => {
-  it("renders row labels and suggestions", () => {
+  it("renders suggestions", () => {
     render(
       <ComposerSuggestionRows rows={rows} onSuggestionClick={() => undefined} />
     );
 
-    expect(screen.getByText("Workspace")).toBeInTheDocument();
-    expect(screen.getByText("Chat")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "What is Rust?" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Yes" })).toBeInTheDocument();
   });
