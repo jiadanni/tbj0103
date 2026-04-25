@@ -261,7 +261,7 @@ pub fn run() {
                 }
             };
 
-            let should_use_native_menu = cfg!(target_os = "macos") && !hide_native_menu;
+            let should_use_native_menu = cfg!(target_os = "macos");
 
             if should_use_native_menu {
                 let menu = app_menu::build_menu(app.handle())

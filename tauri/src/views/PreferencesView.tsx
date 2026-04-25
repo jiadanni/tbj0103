@@ -1580,18 +1580,7 @@ export default function PreferencesView() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between py-1 mt-4 border-t border-[var(--border-color)] pt-5">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Hide Native Window Menu</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    On macOS, switch between the OS menu bar and the in-app hamburger menu. On Windows and Linux, the in-app menu is always used to keep the custom title bar clean.
-                  </p>
-                </div>
-                <Toggle
-                  on={dbSettings.hide_native_menu}
-                  onToggle={() => set("hide_native_menu", !dbSettings.hide_native_menu)}
-                />
-              </div>
+
             </>
           )}
 
