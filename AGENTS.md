@@ -47,7 +47,7 @@ Files like `src/views/ChatView.tsx` are critical and highly complex.
 
 | Codebase | Language / Framework | Entry point |
 |---|---|---|
-| **Swift / macOS** | Swift 5.9 + SwiftUI + SwiftData | `Sources/Aetherium/` |
+| **Swift / macOS** | Swift 5.9 + SwiftUI + SwiftData | `swift/Sources/Aetherium/` |
 | **Tauri / cross-platform** | Rust (Tauri v2) + React + TypeScript | `tauri/` |
 
 Both apps share the same feature set and data model; the Tauri port is the active development target.
@@ -63,14 +63,14 @@ Both apps share the same feature set and data model; the Tauri port is the activ
 
 ```
 tbj0103/
-├── Sources/Aetherium/          # Swift app (macOS)
+├── swift/Sources/Aetherium/    # Swift app (macOS)
 │   ├── Models/                 # SwiftData models
 │   ├── Views/                  # SwiftUI views
 │   ├── Services/               # Business logic
 │   ├── Demo/                   # Demo mode infrastructure
 │   ├── Managers/               # App-wide managers (theme, shortcuts)
 │   └── Plugins/                # Plugin system
-├── Tests/AetheriumTests/       # Swift tests (XCTest)
+├── swift/Tests/AetheriumTests/ # Swift tests (XCTest)
 ├── tauri/                      # Tauri cross-platform app
 │   ├── src/                    # React + TypeScript frontend
 │   │   ├── views/              # Page-level components
@@ -270,7 +270,7 @@ System/Area 2:
 
 ## Testing
 
-- Swift tests: `Tests/AetheriumTests/`. Run with `swift test`.
+- Swift tests: `swift/Tests/AetheriumTests/`. Run with `cd swift && swift test`.
 - Tauri frontend tests live in `tauri/src/tests/` and run with `npx vitest run` (or the equivalent absolute `node` path if `npx` is not on `PATH`).
 - For Tauri work, manual verification is still important, but `vitest` + `cargo check` + `tsc --noEmit` are the standard gates.
 - When fixing a bug, add or update a Swift test covering the regression if the affected code is in the Swift app.
@@ -312,4 +312,6 @@ System/Area 2:
 - Do **not** call `unwrap()` or `expect()` in Rust command handlers — propagate errors with `?` or map them to `String`.
 - Do **not** store secrets or API keys in source files. Use the `settings` table or environment variables.
 - Do **not** create new markdown documentation files unless explicitly asked.
+- Do **not** refactor or "clean up" code outside the scope of the current task.
+** create new markdown documentation files unless explicitly asked.
 - Do **not** refactor or "clean up" code outside the scope of the current task.

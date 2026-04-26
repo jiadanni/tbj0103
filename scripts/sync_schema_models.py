@@ -3,7 +3,7 @@
 scripts/sync_schema_models.py
 
 Quick utility to compare tauri/schema.sql table columns with SwiftData @Model properties
-in Sources/Aetherium/Models. It produces a best-effort report at
+in swift/Sources/Aetherium/Models. It produces a best-effort report at
 scripts/sync_schema_models_report.txt listing mismatches.
 
 Run from repo root:
@@ -18,7 +18,7 @@ from pathlib import Path
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_GLOB = '**/schema.sql'
-SWIFT_MODELS_DIR = WORKSPACE_ROOT / 'Sources' / 'Aetherium' / 'Models'
+SWIFT_MODELS_DIR = WORKSPACE_ROOT / 'swift' / 'Sources' / 'Aetherium' / 'Models'
 REPORT_PATH = WORKSPACE_ROOT / 'scripts' / 'sync_schema_models_report.txt'
 
 

@@ -17,7 +17,7 @@ Aetherium combines conversational AI, source-grounded research, bidirectional kn
 | **Language** | Swift 5.9 + SwiftUI + SwiftData | Rust (Tauri v2) + React + TypeScript |
 | **Platform** | macOS 14+ only | macOS, Windows, Linux |
 | **Storage** | SwiftData (Core Data) | SQLite via `rusqlite` |
-| **Entry point** | `Sources/Aetherium/` | `tauri/` |
+| **Entry point** | `swift/Sources/Aetherium/` | `tauri/` |
 | **Backends** | Ollama | Ollama, MLX, Llama.cpp |
 | **Status** | Feature-complete | **Active production target** |
 
