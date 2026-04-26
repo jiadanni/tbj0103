@@ -1,6 +1,6 @@
-import React, { Suspense } from "react";
+import React, { Suspense, useMemo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { type PaneId, type PaneView, useWorkspaceStore } from "../stores/workspaceStore";
+import { type PaneId, type PaneView, type Workspace, useWorkspaceStore } from "../stores/workspaceStore";
 import { WorkspacePaneProvider, useScopedWorkspace } from "../lib/workspacePane";
 import { MessageSquare, FileText, BarChart2, LucideIcon, FileEdit, Network } from "lucide-react";
 import CompactMenuSelect from "./CompactMenuSelect";
@@ -73,6 +73,54 @@ function SplitSectionDropdown({ paneId }: { paneId: PaneId }) {
   );
 }
 
+function usePaneSubWorkspaces(paneId: PaneId) {
+  const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
+  const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
+
+  return useMemo(() => {
+    if (!paneWorkspaceId) return { parentId: null, children: [] as Workspace[] };
+    const current = allWorkspaces.find((ws) => ws.id === paneWorkspaceId);
+    if (!current) return { parentId: null, children: [] as Workspace[] };
+
+    const parentId = current.parent_workspace_id ?? current.id;
+    const children = allWorkspaces.filter((ws) => ws.parent_workspace_id === parentId);
+    return { parentId, children };
+  }, [allWorkspaces, paneWorkspaceId]);
+}
+
+function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
+  const { parentId, children } = usePaneSubWorkspaces(paneId);
+  const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
+  const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
+
+  if (!parentId || children.length === 0) {
+    return <div className="h-8 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 shrink-0" />;
+  }
+
+  return (
+    <div className="flex items-center h-8 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-2 shrink-0 select-none">
+      <div className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
+        {children.map((workspace) => (
+          <button
+            key={workspace.id}
+            onClick={() => setPaneWorkspace(paneId, workspace.id)}
+            className={`relative mt-0.5 flex h-[26px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-3 text-xs font-medium whitespace-nowrap transition-all select-none ${
+              paneWorkspaceId === workspace.id
+                ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
+                : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+            }`}
+          >
+            {paneWorkspaceId === workspace.id && (
+              <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+            )}
+            {workspace.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
   const sectionNavigation = useWorkspaceStore((s) => s.sectionNavigation);
   const setPaneView = useWorkspaceStore((s) => s.setPaneView);
@@ -87,6 +135,7 @@ function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
       onFocusCapture={() => setActivePaneId(paneId)}
     >
       <div className="flex flex-col shrink-0 bg-[var(--bg-sidebar)]">
+        <PaneSubWorkspaceTabs paneId={paneId} />
         {resolvedSplitSectionNavigation === "dropdown" ? (
           <SplitSectionDropdown paneId={paneId} />
         ) : (
