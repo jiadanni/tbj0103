@@ -166,7 +166,7 @@ function WorkspaceNavigationTabs({
   }, [menuOpen]);
 
   return (
-    <div className="relative flex h-full min-w-0 flex-1 items-center gap-1" data-no-drag>
+    <div className="relative flex h-full min-w-0 items-center gap-1" data-no-drag>
       <div
         className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none"
         onWheel={handleHorizontalWheel}
@@ -1090,7 +1090,7 @@ function WorkspaceTabBar({
         </div>
         <div
           data-window-drag-handle
-          className="mx-2 hidden h-5 min-w-16 flex-1 rounded-full border border-transparent bg-[var(--bg-hover)]/20 sm:block"
+          className="mx-2 hidden h-5 w-16 shrink-0 rounded-full border border-transparent bg-[var(--bg-hover)]/20 sm:block"
           title="Drag window"
         />
         <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
@@ -1104,6 +1104,16 @@ function WorkspaceTabBar({
           )}
           <TitlebarSortMenu />
           <TitlebarHistoryMenu />
+          {!showSplitTitlebarWorkspaceNavigation && (
+            <button
+              onClick={() => navigate("/preferences")}
+              aria-label="Preferences"
+              title="Preferences"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+            >
+              <SettingsIcon size={15} />
+            </button>
+          )}
           {showSplitToggle && (
             <button
               onClick={onToggleSplit}
@@ -1560,7 +1570,6 @@ export default function Layout() {
           </div>
         )}
       </div>
-      {!hasLeftRail && <PreferencesDockButton />}
       <StatusBar />
       <ArtifactPanel />
     </div>

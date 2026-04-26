@@ -752,7 +752,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       }
     },
     reorderWorkspaces: async (ids) => {
-      const { workspaces, workspaceSortOrder } = get();
+      const { workspaces } = get();
       // Update local state immediately for snappy UI
       const idToIndex = new Map(ids.map((id, index) => [id, index]));
       const nextWorkspaces = workspaces.map(w => ({
@@ -761,7 +761,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       }));
       
       set({ 
-        workspaces: sortWorkspaces(nextWorkspaces, workspaceSortOrder),
+        workspaces: sortWorkspaces(nextWorkspaces, "manual"),
         workspaceSortOrder: "manual" // Switch to manual if reordering
       });
       window.localStorage.setItem("workspaceSortOrder", "manual");

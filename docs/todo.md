@@ -44,10 +44,8 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 
 
 ## 🎮 Demo Mode
-- [/] **Guard destructive actions**: Disable Delete/Edit for demo-prefixed workspaces/sessions.
 - [ ] **"Try Demo" entry**: Allow jumping into demo mode from onboarding without requiring a PIN.
 - [ ] **Scripted AI Mock**: Use a local mock service for AI responses to allow demo functionality without model downloads.
-- [ ] **Curated Scenarios**: High-quality pre-loaded content (e.g., "Japanese Learning", "Bio 101").
 
 ---
 
@@ -58,4 +56,8 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 - [ ] **Focus Drift**: Command Palette/Search Box closing sometimes scrolls the main window to the top on macOS.
 - [ ] **Navigation Stalling**: Occasional view update failure when clicking a search result despite URL changes.
 - [ ] **FTS Multi-word Tags**: Improved quoting needed for complex topic filters (Partially fixed).
-no fifit guidance for gemma 4
+no fit guidance for gemma 4
+cpu status bar multicore
+chat titles truncated unecessarily and missing a tooltip on hover
+left click on icon to open search, right for menu
+scrolling chat to bottom hangs breifly jerky

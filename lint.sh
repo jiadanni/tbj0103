@@ -16,7 +16,7 @@ info() { echo -e "${YELLOW}→ $1${RESET}"; }
 # ── 1. SwiftLint ─────────────────────────────────────────────────────────────
 info "Running SwiftLint..."
 if command -v swiftlint &>/dev/null; then
-  if swiftlint lint --config "$ROOT/.swiftlint.yml" --quiet 2>&1; then
+  if (cd "$ROOT/swift" && swiftlint lint --config ".swiftlint.yml" --quiet 2>&1); then
     pass "SwiftLint"
   else
     fail "SwiftLint"

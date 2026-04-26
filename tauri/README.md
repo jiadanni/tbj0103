@@ -164,7 +164,7 @@ The schema is defined in [src-tauri/src/schema.sql](src-tauri/src/schema.sql) an
 
 ## Relationship to the Swift App
 
-This Tauri port is a functional equivalent of the SwiftUI app in `Sources/Aetherium/`. The data model was ported from SwiftData `@Model` classes to an equivalent SQLite schema. The two apps share no runtime code but maintain feature parity.
+This Tauri port is a functional equivalent of the SwiftUI app in `swift/Sources/Aetherium/`. The data model was ported from SwiftData `@Model` classes to an equivalent SQLite schema. The two apps share no runtime code but maintain feature parity.
 
 ## Development Notes
 
