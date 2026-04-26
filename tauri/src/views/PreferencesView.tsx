@@ -7,7 +7,7 @@ import { useLocation } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -18,6 +18,7 @@ import { type NavigationPresentation, useWorkspaceStore } from "../stores/worksp
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import ImportSettingsSection from "./ImportSettingsSection";
+import MemoryView from "./MemoryView";
 const LogsView = React.lazy(() => import("./LogsView"));
 import CompactMenuSelect from "../components/CompactMenuSelect";
 import { MOD_KEY, isLinux, isMac } from "../lib/platform";
@@ -41,6 +42,7 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "import", label: "Import", Icon: FolderInput },
   { id: "mcp", label: "MCP", Icon: Network },
   { id: "sync", label: "Sync", Icon: GitBranch },
+  { id: "memory", label: "Memory", Icon: Brain },
   { id: "logs", label: "Logs", Icon: ScrollText },
 ];
 
@@ -1625,7 +1627,6 @@ export default function PreferencesView() {
                           <option value="/chat">Chat</option>
                           <option value="/notes">Notes</option>
                           <option value="/sources">Sources</option>
-                          <option value="/memory">Memory</option>
                           <option value="/graph">Knowledge</option>
                           <option value="/history">History</option>
                         </select>
@@ -2858,6 +2859,12 @@ export default function PreferencesView() {
               <React.Suspense fallback={null}>
                 <LogsView />
               </React.Suspense>
+            </div>
+          )}
+
+          {activeTab === "memory" && (
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <MemoryView />
             </div>
           )}
 

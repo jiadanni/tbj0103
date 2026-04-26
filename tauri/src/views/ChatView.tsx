@@ -2486,35 +2486,19 @@ export default function ChatView() {
     [availableModels]
   );
   const groupedModelPickerOptions = useMemo(() => {
-    if (composerMode === "family") {
-      const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
-      modelPickerOptions.forEach((modelId) => {
-        const rawPrefix = modelId.includes(":") ? modelId.split(":")[0] : modelId;
-        const label = modelFamilyLabels[rawPrefix] ?? rawPrefix;
-        const existing = groups.get(label);
-        if (existing) {
-          existing.modelIds.push(modelId);
-          return;
-        }
-        groups.set(label, { key: `family-${label}`, label, order: groups.size, modelIds: [modelId] });
-      });
-      return Array.from(groups.values());
-    }
     const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
-
     modelPickerOptions.forEach((modelId) => {
-      const provider = aiModelList.find((model) => model.model_id === modelId)?.provider;
-      const meta = getModelGroupMeta(provider);
-      const existing = groups.get(meta.key);
+      const rawPrefix = modelId.includes(":") ? modelId.split(":")[0] : modelId;
+      const label = modelFamilyLabels[rawPrefix] ?? rawPrefix;
+      const existing = groups.get(label);
       if (existing) {
         existing.modelIds.push(modelId);
         return;
       }
-      groups.set(meta.key, { ...meta, modelIds: [modelId] });
+      groups.set(label, { key: `family-${label}`, label, order: groups.size, modelIds: [modelId] });
     });
-
-    return Array.from(groups.values()).sort((a, b) => a.order - b.order);
-  }, [aiModelList, modelPickerOptions, composerMode, modelFamilyLabels]);
+    return Array.from(groups.values());
+  }, [modelPickerOptions, modelFamilyLabels]);
   const groupedPinnedQuickSendModels = useMemo(() => {
     const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
 
@@ -4476,9 +4460,6 @@ export default function ChatView() {
                       <div className="flex flex-col gap-2 min-w-0">
                         {showComposerHeader && showComposerTopicTags && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
                           <div className="px-1 pt-0.5">
-                            <div className="px-1.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
-                              General
-                            </div>
                             <TopicChips
                               tags={activeTopicSignature.domain_tags}
                               onChipClick={(tag) => setInput(prev => `[${tag}] ${prev}`)}
@@ -4511,7 +4492,7 @@ export default function ChatView() {
                         )}
 
                         {/* Tool buttons row */}
-                        <div className={`flex flex-wrap items-center gap-1.5 px-1 ${showComposerHeader ? "border-t border-[var(--border-color)]/50 pt-2" : ""}`}>
+                        <div className={`flex flex-wrap items-center gap-1.5 px-1 ${showComposerHeader ? "pt-2" : ""}`}>
                               {/* Active model / family picker */}
                               <div className="relative" data-active-model-menu>
                                 {composerMode === "family" ? (
