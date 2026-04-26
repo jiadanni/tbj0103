@@ -422,6 +422,18 @@ export default function PreferencesView() {
     return Object.values(providerGroups).sort((a, b) => a.order - b.order);
   }, [aiModels, nonEmbeddingOllamaModels, mlxModels, llamacppModels, isMac, composerMode, modelFamilyLabels, customModelFamilies]);
 
+  // Separate local models (AI tab) from web models (Browser Automation tab)
+  const localGroupedAiModels = useMemo(
+    () => groupedAiModels
+      .map((g) => ({ ...g, models: g.models.filter((m) => !m.provider.startsWith("web_")) }))
+      .filter((g) => g.models.length > 0),
+    [groupedAiModels]
+  );
+  const webAiModels = useMemo(
+    () => aiModels.filter((m) => m.provider.startsWith("web_")),
+    [aiModels]
+  );
+
   async function refreshLlamacppModels(paths: string[]) {
     if (paths.length === 0) {
       setLlamacppModels([]);
@@ -937,7 +949,7 @@ export default function PreferencesView() {
 
           <div className="divide-y divide-[var(--border-color)]">
 
-          {groupedAiModels.map((group) => (
+          {localGroupedAiModels.map((group) => (
             <React.Fragment key={group.key}>
               <div
                 data-family-key={group.key}
@@ -1399,6 +1411,19 @@ export default function PreferencesView() {
                         <Toggle
                           on={dbSettings.keep_running_in_tray}
                           onToggle={() => set("keep_running_in_tray", !dbSettings.keep_running_in_tray)}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Hide native menu</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Removes the standard application menu bar (macOS only).
+                          </p>
+                        </div>
+                        <Toggle
+                          on={dbSettings.hide_native_menu}
+                          onToggle={() => set("hide_native_menu", !dbSettings.hide_native_menu)}
                         />
                       </div>
 
@@ -2524,10 +2549,67 @@ export default function PreferencesView() {
                       />
                     </div>
 
+                    {/* Web model list */}
+                    {webAiModels.length > 0 && (
+                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] overflow-hidden">
+                        <div className="grid grid-cols-[minmax(0,1fr)_60px_60px_20px] items-center gap-3 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                          <span>Model</span>
+                          <span className="text-center">Active</span>
+                          <span className="text-center">Visible</span>
+                          <span />
+                        </div>
+                        <div className="divide-y divide-[var(--border-color)]">
+                          {webAiModels.map((m) => {
+                            const displayName = resolveModelDisplayName(m.model_id, modelLabels, aiModels);
+                            const secondaryDisplayName = resolveModelSecondaryDisplayName(m.model_id, m.provider);
+                            return (
+                              <div key={m.id} className="px-4 py-3 hover:bg-[var(--bg-hover)]/5 transition-colors">
+                                <div className="grid grid-cols-[minmax(0,1fr)_60px_60px_20px] items-center gap-3">
+                                  <div className="min-w-0">
+                                    <span className="text-sm font-medium text-[var(--text-primary)] truncate block">{displayName}</span>
+                                    <span className="text-xs text-[var(--text-muted)] truncate block mt-0.5">{secondaryDisplayName}</span>
+                                  </div>
+                                  <div className="flex justify-center">
+                                    <Toggle
+                                      on={m.enabled}
+                                      onToggle={async () => {
+                                        await api.aiModel.update(m.id, { enabled: !m.enabled });
+                                        loadAiModels();
+                                        incrementModelRefreshCounter();
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex justify-center">
+                                    <button
+                                      onClick={async () => {
+                                        await api.aiModel.update(m.id, { is_hidden: !m.is_hidden });
+                                        loadAiModels();
+                                        incrementModelRefreshCounter();
+                                      }}
+                                      className={`p-1 transition-colors ${m.is_hidden ? "text-[var(--text-muted)] hover:text-[var(--text-primary)]" : "text-[var(--accent-color)] hover:opacity-80"}`}
+                                      title={m.is_hidden ? "Show in Chat" : "Hide from Chat"}
+                                    >
+                                      {m.is_hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                  </div>
+                                  <button
+                                    onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); incrementModelRefreshCounter(); }}
+                                    className="p-1 text-[var(--text-muted)] transition-colors hover:text-red-400"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="pt-2 space-y-2">
-                      <p className="text-xs text-[var(--text-secondary)] font-medium">Enabling browser-backed models</p>
+                      <p className="text-xs text-[var(--text-secondary)] font-medium">Using browser targets</p>
                       <p className="text-xs text-[var(--text-muted)]">
-                        Go to the <strong>AI</strong> tab → Ollama models and enable any browser-backed entry to make it appear in the Chat view model dropdown.
+                        Enabled browser targets appear as a dedicated <strong>Globe</strong> button in the Chat composer. Click it to pick a browser target and send your message.
                       </p>
                     </div>
 

@@ -1,6 +1,6 @@
 /**
  * NoteEditorView — browse and edit project notes with full CRUD.
- * Includes internal tabs for Project Notes and Daily Notes.
+ * Includes internal tabs for Workspace Notes and Daily Notes.
  */
 import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "react-router-dom";
@@ -27,7 +27,7 @@ export default function NoteEditorView() {
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
-  const { activeProjectId, activeWorkspaceId } = useScopedWorkspace();
+  const { activeWorkspaceId } = useScopedWorkspace();
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const preferredModel = useSettingsStore((s) => s.preferredModel);
   const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
@@ -49,9 +49,9 @@ export default function NoteEditorView() {
   );
 
   useEffect(() => {
-    if (!activeProjectId) {return;}
-    api.note.list(activeProjectId, { limit: 200, offset: 0 }).then(setNotes).catch(() => {});
-  }, [activeProjectId]);
+    if (!activeWorkspaceId) {return;}
+    api.note.list(activeWorkspaceId, { limit: 200, offset: 0 }).then(setNotes).catch(() => {});
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     if (!selected) {return;}
@@ -83,10 +83,10 @@ export default function NoteEditorView() {
   }, [title, content, tags, autoSave, selected]);
 
   async function createNote() {
-    if (!activeProjectId || creating) {return;}
+    if (!activeWorkspaceId || creating) {return;}
     setCreating(true);
     try {
-      const note = await api.note.create(activeProjectId, "Untitled Note");
+      const note = await api.note.create(activeWorkspaceId, "Untitled Note");
       setNotes((prev) => [note, ...prev]);
       setSelected(note);
     } finally {
@@ -139,7 +139,7 @@ export default function NoteEditorView() {
       {/* Subview tabs */}
       <div className="flex items-center gap-1.5 px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)] flex-shrink-0">
         {[
-          { id: "notes" as NotesSubView, label: "Project Notes", Icon: FileText },
+          { id: "notes" as NotesSubView, label: "Workspace Notes", Icon: FileText },
           { id: "daily" as NotesSubView, label: "Daily Notes", Icon: Calendar },
         ].map(({ id, label, Icon }) => (
           <button
@@ -177,7 +177,7 @@ export default function NoteEditorView() {
           </div>
           <button
             onClick={createNote}
-            disabled={!activeProjectId || creating}
+            disabled={!activeWorkspaceId || creating}
             title="New Note"
             className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--accent-color)] disabled:opacity-40 transition-colors"
           >
@@ -186,8 +186,8 @@ export default function NoteEditorView() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {!activeProjectId ? (
-            <p className="p-4 text-xs text-[var(--text-muted)] text-center">Select a project to view notes.</p>
+          {!activeWorkspaceId ? (
+            <p className="p-4 text-xs text-[var(--text-muted)] text-center">Select a workspace to view notes.</p>
           ) : filtered.length === 0 ? (
             <p className="p-4 text-xs text-[var(--text-muted)] text-center">No notes yet. Click + to create one.</p>
           ) : (
@@ -305,7 +305,7 @@ export default function NoteEditorView() {
           <div className="text-center space-y-2">
             <FileText size={32} className="mx-auto opacity-30" />
             <p className="text-sm">Select a note to edit</p>
-            {activeProjectId && (
+            {activeWorkspaceId && (
               <button
                 onClick={createNote}
                 className="text-xs text-[var(--accent-color)] hover:underline"

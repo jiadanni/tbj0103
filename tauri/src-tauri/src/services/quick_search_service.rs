@@ -87,31 +87,43 @@ pub fn query_filtered(
     let where_sql = where_clauses.join(" AND ");
     // Deduplicate by session_id so one chat only appears once even if many of
     // its rows (messages, summaries) all match the query.
+    // Use a CTE + ROW_NUMBER to avoid GROUP BY with FTS5 functions (bm25/snippet),
+    // which SQLite rejects with "unable to use function bm25 in the requested context".
     let sql = format!(
         r#"
-        SELECT
-            d.doc_id,
-            d.target_id,
-            d.kind,
-            d.title,
-            d.subtitle,
-            d.body,
-            d.workspace_id,
-            COALESCE(w.name, ''),
-            NULLIF(d.project_id, ''),
-            NULLIF(COALESCE(p.name, ''), ''),
-            d.session_id,
-            d.source_session_id,
-            d.updated_at,
-            COALESCE(snippet(quick_search_documents_fts, 2, '', '', ' ... ', 18), ''),
-            bm25(quick_search_documents_fts, 8.0, 2.0, 1.0)
-        FROM quick_search_documents_fts
-        JOIN quick_search_documents d ON d.rowid = quick_search_documents_fts.rowid
-        LEFT JOIN workspaces w ON w.id = d.workspace_id
-        LEFT JOIN projects p ON p.id = d.project_id
-        WHERE {}
-        GROUP BY d.session_id
-        ORDER BY bm25(quick_search_documents_fts, 8.0, 2.0, 1.0) ASC, d.updated_at DESC
+        WITH ranked AS (
+            SELECT
+                d.doc_id,
+                d.target_id,
+                d.kind,
+                d.title,
+                d.subtitle,
+                d.body,
+                d.workspace_id,
+                COALESCE(w.name, '') AS workspace_name,
+                NULLIF(d.project_id, '') AS project_id,
+                NULLIF(COALESCE(p.name, ''), '') AS project_name,
+                d.session_id,
+                d.source_session_id,
+                d.updated_at,
+                COALESCE(snippet(quick_search_documents_fts, 2, '', '', ' ... ', 18), '') AS snip,
+                bm25(quick_search_documents_fts, 8.0, 2.0, 1.0) AS score,
+                ROW_NUMBER() OVER (
+                    PARTITION BY COALESCE(d.session_id, d.doc_id)
+                    ORDER BY bm25(quick_search_documents_fts, 8.0, 2.0, 1.0) ASC, d.updated_at DESC
+                ) AS rn
+            FROM quick_search_documents_fts
+            JOIN quick_search_documents d ON d.rowid = quick_search_documents_fts.rowid
+            LEFT JOIN workspaces w ON w.id = d.workspace_id
+            LEFT JOIN projects p ON p.id = d.project_id
+            WHERE {}
+        )
+        SELECT doc_id, target_id, kind, title, subtitle, body,
+               workspace_id, workspace_name, project_id, project_name,
+               session_id, source_session_id, updated_at, snip, score
+        FROM ranked
+        WHERE rn = 1
+        ORDER BY score ASC, updated_at DESC
         LIMIT ?{}
     "#,
         where_sql,
