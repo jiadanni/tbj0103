@@ -376,6 +376,20 @@ select optgroup {
 }
 
 /* =====================================================
+   CodeMirror — force theme-variable backgrounds
+   ===================================================== */
+
+.cm-editor,
+.cm-editor .cm-scroller {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.cm-editor .cm-line {
+  color: var(--text-primary) !important;
+}
+
+/* =====================================================
    Custom Title Bar — Drag Region
    ===================================================== */
 

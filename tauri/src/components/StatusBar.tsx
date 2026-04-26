@@ -195,11 +195,7 @@ export default function StatusBar() {
 
       {/* Left — active background jobs (visible) */}
       <div className="flex items-center gap-4 min-w-0 overflow-hidden" aria-hidden="true">
-        {jobList.length === 0 ? (
-          <span className="text-xs text-[var(--text-secondary)]/85 leading-none">
-            No background jobs
-          </span>
-        ) : (
+        {jobList.length === 0 ? null : (
           jobList.slice(0, 3).map((type) => <JobPill key={type} taskType={type} />)
         )}
       </div>

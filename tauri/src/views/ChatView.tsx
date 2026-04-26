@@ -2482,9 +2482,17 @@ export default function ChatView() {
     [aiModelList, quickSearchModels, selectedModel]
   );
   const modelPickerOptions = useMemo(
-    () => availableModels,
-    [availableModels]
+    () => availableModels.filter((modelId) => {
+      const meta = aiModelList.find((m) => m.model_id === modelId);
+      return !meta?.provider.startsWith("web_");
+    }),
+    [availableModels, aiModelList]
   );
+  const enabledWebModels = useMemo(
+    () => aiModelList.filter((m) => m.provider.startsWith("web_") && m.enabled && !m.is_hidden),
+    [aiModelList]
+  );
+  const [isWebPickerOpen, setIsWebPickerOpen] = useState(false);
   const groupedModelPickerOptions = useMemo(() => {
     const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
     modelPickerOptions.forEach((modelId) => {
@@ -2613,6 +2621,24 @@ export default function ChatView() {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [isAttachmentMenuOpen]);
+
+  useEffect(() => {
+    if (!isWebPickerOpen) { return; }
+    function handleClick(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-web-model-menu]")) { return; }
+      setIsWebPickerOpen(false);
+    }
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") { setIsWebPickerOpen(false); }
+    }
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isWebPickerOpen]);
 
   useEffect(() => {
     if (!isEmptyStatePrivacyMenuOpen) { return; }
@@ -4500,12 +4526,15 @@ export default function ChatView() {
                                     <button
                                       type="button"
                                       onClick={() => setIsFamilyPickerOpen((open) => !open)}
-                                      className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-sm transition-all hover:border-[rgba(var(--accent-color-rgb),0.4)] hover:bg-[rgba(var(--accent-color-rgb),0.12)]"
+                                      disabled={isStreaming}
+                                      className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-sm transition-all hover:border-[rgba(var(--accent-color-rgb),0.4)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] disabled:cursor-not-allowed disabled:opacity-40"
                                       aria-haspopup="menu"
                                       aria-expanded={isFamilyPickerOpen}
                                     >
                                       <span className="min-w-0 truncate">
-                                        {selectedFamily ? (modelFamilyLabels[selectedFamily] ?? selectedFamily) : "Select family"}
+                                        {selectedFamily
+                                          ? `${modelFamilyLabels[selectedFamily] ?? selectedFamily}${selectedModel && selectedModel.startsWith(selectedFamily) ? ` · ${modelPickerLabel(selectedModel)}` : ""}`
+                                          : "Select family"}
                                       </span>
                                       <ChevronDown size={14} strokeWidth={2.2} />
                                     </button>
@@ -4546,7 +4575,7 @@ export default function ChatView() {
                                     setIsModelSendMenuOpen(false);
                                     setIsModelPickerOpen((open) => !open);
                                   }}
-                                  disabled={modelPickerOptions.length === 0}
+                                  disabled={modelPickerOptions.length === 0 || isStreaming}
                                   className={`inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-sm transition-all hover:border-[rgba(var(--accent-color-rgb),0.4)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] disabled:cursor-not-allowed disabled:opacity-40`}
                                   title={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
                                   aria-label={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
@@ -4606,6 +4635,48 @@ export default function ChatView() {
                               >
                                 <SplitSquareHorizontal size={13} />
                               </button>
+
+                              {/* Browser Assistant picker */}
+                              {enabledWebModels.length > 0 && (
+                                <div className="relative" data-web-model-menu>
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsWebPickerOpen((open) => !open)}
+                                    disabled={!input.trim() || isStreaming}
+                                    title="Send with a browser assistant"
+                                    aria-label="Send with browser assistant"
+                                    aria-haspopup="menu"
+                                    aria-expanded={isWebPickerOpen}
+                                    className={`${composerIconOnlyButtonClass} ${isWebPickerOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
+                                  >
+                                    <Globe size={13} />
+                                  </button>
+                                  {isWebPickerOpen && (
+                                    <div className="absolute left-0 bottom-full z-20 mb-2 min-w-[200px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
+                                      <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                                        Browser Targets
+                                      </div>
+                                      <div className="max-h-48 overflow-y-auto">
+                                        {enabledWebModels.map((m) => (
+                                          <button
+                                            key={m.id}
+                                            type="button"
+                                            onClick={async () => {
+                                              setIsWebPickerOpen(false);
+                                              await sendMessageWithModel(m.model_id);
+                                            }}
+                                            disabled={!input.trim() || isStreaming}
+                                            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                                          >
+                                            <Globe size={14} className="shrink-0 text-[var(--text-muted)]" />
+                                            <span className="min-w-0 truncate">{modelDisplayName(m.model_id)}</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
 
                               {/* Attachment menu */}
                               <div className="relative" data-attachment-menu>
@@ -4854,24 +4925,6 @@ export default function ChatView() {
                                       )}
                                     </div>
                                     )}
-                                    <button
-                                      onClick={async () => {
-                                        if (!input.trim() || !effectiveWorkspaceId || !selectedModel) { return; }
-                                        const ensuredSession = await ensureSessionForChat(selectedModel);
-                                        if (!ensuredSession) { return; }
-                                        await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
-                                          modelName: selectedModel,
-                                          sessionId: ensuredSession.sessionId,
-                                          processAt: new Date(Date.now() + 60_000).toISOString(),
-                                        });
-                                        setInput("");
-                                      }}
-                                      disabled={!input.trim() || !selectedModel}
-                                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.2)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
-                                      title="Schedule for background processing"
-                                    >
-                                      <Clock size={14} strokeWidth={2.2} />
-                                    </button>
                                   </div>
                                 )}
                         </div>
