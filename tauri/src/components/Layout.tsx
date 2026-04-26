@@ -139,6 +139,8 @@ function WorkspaceNavigationTabs({
   const allWorkspaces = useWorkspaceStore((state) => state.workspaces);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
+  const [_draggedWorkspaceId, setDraggedWorkspaceId] = useState<string | null>(null);
+  const reorderWorkspaces = useWorkspaceStore((state) => state.reorderWorkspaces);
   const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -181,7 +183,22 @@ function WorkspaceNavigationTabs({
                 onContextMenu(workspace, event.clientX, event.clientY);
               }
             }}
+            draggable
+            onDragStart={(event) => {
+              event.dataTransfer.setData("application/x-workspace-id", workspace.id);
+              event.dataTransfer.effectAllowed = "move";
+              setDraggedWorkspaceId(workspace.id);
+            }}
+            onDragEnd={() => {
+              setDraggedWorkspaceId(null);
+              setDragOverWorkspaceId(null);
+            }}
             onDragOver={(event) => {
+              if (event.dataTransfer.types.includes("application/x-workspace-id")) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                return;
+              }
               if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
                 return;
               }
@@ -189,6 +206,11 @@ function WorkspaceNavigationTabs({
               event.dataTransfer.dropEffect = "move";
             }}
             onDragEnter={(event) => {
+              if (event.dataTransfer.types.includes("application/x-workspace-id")) {
+                event.preventDefault();
+                setDragOverWorkspaceId(workspace.id);
+                return;
+              }
               if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {
                 return;
               }
@@ -221,6 +243,20 @@ function WorkspaceNavigationTabs({
                 clearTimeout(dragHoverTimerRef.current);
                 dragHoverTimerRef.current = null;
               }
+
+              const wsId = event.dataTransfer.getData("application/x-workspace-id");
+              if (wsId && wsId !== workspace.id) {
+                const sourceIndex = workspaces.findIndex(w => w.id === wsId);
+                const targetIndex = workspaces.findIndex(w => w.id === workspace.id);
+                if (sourceIndex !== -1 && targetIndex !== -1) {
+                  const nextWorkspaces = [...workspaces];
+                  const [removed] = nextWorkspaces.splice(sourceIndex, 1);
+                  nextWorkspaces.splice(targetIndex, 0, removed);
+                  void reorderWorkspaces(nextWorkspaces.map(w => w.id));
+                }
+                return;
+              }
+
               const raw = event.dataTransfer.getData("application/x-chat-session-ids");
               if (!raw) {
                 return;
@@ -798,13 +834,18 @@ function TitlebarSortMenu() {
   }, [open]);
 
   const options = [
+    { id: "manual", label: "Manual Order" },
     { id: "name-asc", label: "Name A–Z" },
     { id: "name-desc", label: "Name Z–A" },
     { id: "created-newest", label: "Newest First" },
     { id: "created-oldest", label: "Oldest First" },
     { id: "updated-newest", label: "Recently Updated" },
+    { id: "last-message-newest", label: "Last Message" },
     { id: "updated-oldest", label: "Least Recently Updated" },
   ] as const;
+
+  const reverseSortOrder = useWorkspaceStore((state) => state.reverseSortOrder);
+  const isReverseApplicable = workspaceSortOrder !== "manual";
 
   return (
     <div ref={rootRef} className="relative">
@@ -834,6 +875,18 @@ function TitlebarSortMenu() {
               {opt.label}
             </button>
           ))}
+          {isReverseApplicable && (
+            <>
+              <div className="my-1 h-px bg-[var(--border-color)]" />
+              <button
+                onClick={() => { reverseSortOrder(); setOpen(false); }}
+                className="flex w-full items-center px-3 py-2 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
+              >
+                <ArrowUpDown size={12} className="mr-2" />
+                Reverse Sort
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -859,7 +912,7 @@ function WorkspaceTabBar({
   const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
-  const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
+  const switchWorkspaceSection = useSettingsStore((state) => state.switchWorkspaceSection);
   const titlebarTokenCount = useUIStore((state) => state.titlebarTokenCount);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -884,7 +937,7 @@ function WorkspaceTabBar({
     const isChanged = nextWorkspaceId !== activeWorkspaceId;
     setActiveParentWorkspaceId(parentWorkspaceId);
     setActiveWorkspaceId(nextWorkspaceId);
-    if (isChanged && switchWorkspaceToChat) { navigate("/chat"); }
+    if (isChanged && switchWorkspaceSection) { navigate(switchWorkspaceSection); }
     setContextMenu(null);
   }
 

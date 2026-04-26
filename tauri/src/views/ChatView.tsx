@@ -1,7 +1,7 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ArrowDown, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy } from "lucide-react";
+import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
@@ -11,7 +11,6 @@ import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Project, type Workspace } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
-import { useUIStore } from "../stores/uiStore";
 import type { ChatSession, Message } from "../stores/chatStore";
 import ComposerSuggestionRows from "../components/ComposerSuggestionRows";
 import { TopicChips } from "../components/TopicChips";
@@ -1934,14 +1933,11 @@ export default function ChatView() {
   const scrollToTopOnSend = useSettingsStore((s) => s.scrollToTopOnSend);
   const chatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
-  const showComposerTopicTags = useSettingsStore((s) => s.showComposerTopicTags);
-  const showComposerWorkspaceSuggestions = useSettingsStore((s) => s.showComposerWorkspaceSuggestions);
-  const showComposerChatFollowUps = useSettingsStore((s) => s.showComposerChatFollowUps);
-  const composerMode = useSettingsStore((s) => s.composerMode);
-  const modelFamilyLabels = useSettingsStore((s) => s.modelFamilyLabels);
   const sidebarWidth = useSettingsStore((state) => state.sidebarWidth);
   const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
   const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
+  const composerMode = useSettingsStore((s) => s.composerMode);
+  const modelFamilyLabels = useSettingsStore((s) => s.modelFamilyLabels);
   const composerSelectClassName = "h-10 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-none outline-none transition-all hover:border-[rgba(var(--accent-color-rgb),0.26)] hover:bg-[var(--bg-hover)] focus:border-[rgba(var(--accent-color-rgb),0.32)] focus:bg-[var(--bg-hover)]";
   const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all";
   const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[rgba(var(--accent-color-rgb),0.24)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
@@ -1962,7 +1958,6 @@ export default function ChatView() {
   const [variationIndex, setVariationIndex] = useState<Map<string, number>>(new Map());
   const [redoPickerOpenForId, setRedoPickerOpenForId] = useState<string | null>(null);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
-  const [isFamilyPickerOpen, setIsFamilyPickerOpen] = useState(false);
   const [isModelSendMenuOpen, setIsModelSendMenuOpen] = useState(false);
   const [activeTierPickerIdx, setActiveTierPickerIdx] = useState<number | null>(null);
   type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
@@ -2457,7 +2452,6 @@ export default function ChatView() {
   }, []);
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const [atBottom, setAtBottom] = useState(true);
   const prevScrollChatIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pendingSentScrollId = useRef<string | null>(null);
@@ -2488,6 +2482,20 @@ export default function ChatView() {
     [availableModels]
   );
   const groupedModelPickerOptions = useMemo(() => {
+    if (composerMode === "family") {
+      const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
+      modelPickerOptions.forEach((modelId) => {
+        const rawPrefix = modelId.includes(":") ? modelId.split(":")[0] : modelId;
+        const label = modelFamilyLabels[rawPrefix] ?? rawPrefix;
+        const existing = groups.get(label);
+        if (existing) {
+          existing.modelIds.push(modelId);
+          return;
+        }
+        groups.set(label, { key: `family-${label}`, label, order: groups.size, modelIds: [modelId] });
+      });
+      return Array.from(groups.values());
+    }
     const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
 
     modelPickerOptions.forEach((modelId) => {
@@ -2502,7 +2510,7 @@ export default function ChatView() {
     });
 
     return Array.from(groups.values()).sort((a, b) => a.order - b.order);
-  }, [aiModelList, modelPickerOptions]);
+  }, [aiModelList, modelPickerOptions, composerMode, modelFamilyLabels]);
   const groupedPinnedQuickSendModels = useMemo(() => {
     const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
 
@@ -2521,7 +2529,6 @@ export default function ChatView() {
   }, [aiModelList, pinnedQuickSendModels]);
   // uses granular selector from above
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
-  const setTitlebarTokenCount = useUIStore((s) => s.setTitlebarTokenCount);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
 
   // Stable Virtuoso Footer — lives inside the scroll area so growing content
@@ -2642,19 +2649,17 @@ export default function ChatView() {
   }, [isEmptyStatePrivacyMenuOpen]);
 
   useEffect(() => {
-    if (!isModelPickerOpen && !isFamilyPickerOpen) { return; }
+    if (!isModelPickerOpen) { return; }
 
     function handleClick(event: MouseEvent) {
       const target = event.target as HTMLElement | null;
       if (target?.closest("[data-active-model-menu]")) { return; }
       setIsModelPickerOpen(false);
-      setIsFamilyPickerOpen(false);
     }
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsModelPickerOpen(false);
-        setIsFamilyPickerOpen(false);
       }
     }
 
@@ -2664,7 +2669,7 @@ export default function ChatView() {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [isModelPickerOpen, isFamilyPickerOpen]);
+  }, [isModelPickerOpen]);
 
   useEffect(() => {
     if (activeTierPickerIdx === null) { return; }
@@ -2996,7 +3001,7 @@ export default function ChatView() {
       });
 
       const enabledModels = aiModels
-        .filter((model) => model.enabled && !model.is_hidden)
+        .filter((model) => model.enabled)
         .sort((a, b) => a.priority - b.priority);
       const enabledInstalledOllamaModels = enabledModels
         .filter((model) => model.provider === "ollama" && installedOllamaModels.includes(model.model_id))
@@ -3005,13 +3010,13 @@ export default function ChatView() {
         .filter((model) => model.provider !== "ollama")
         .map((model) => model.model_id);
       const managedModelIds = aiModels.map((m) => m.model_id);
-      // Include any Ollama models not yet synced to the DB (edge case — sync hook handles this)
-      const unsyncedModels = installedOllamaModels.filter((modelId) => !managedModelIds.includes(modelId));
+      const unmanagedInstalledModels = installedOllamaModels
+        .filter((modelId) => !managedModelIds.includes(modelId));
 
       const nextAvailableModels = [
         ...enabledInstalledOllamaModels,
         ...enabledNonOllamaModels,
-        ...unsyncedModels,
+        ...unmanagedInstalledModels,
       ];
 
       // Keep session model in the list ONLY if it's already selected, 
@@ -3060,7 +3065,6 @@ export default function ChatView() {
       virtuosoRef.current?.scrollToIndex({
         index: activeMessages.length - 1,
         behavior: isSessionSwitch ? "auto" : "smooth",
-        align: "end",
       });
     }
   }, [activeChatId, activeMessages, isCurrentlyStreaming, scrollToTopOnSend]);
@@ -3301,18 +3305,6 @@ export default function ChatView() {
 
   async function sendMessage() {
     await sendMessageWithModel(selectedModel);
-  }
-
-  async function queueWithModel(modelId: string) {
-    if (!input.trim() || !effectiveWorkspaceId || !modelId) { return; }
-    const ensured = await ensureSessionForChat(modelId);
-    if (!ensured) { return; }
-    await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
-      modelName: modelId,
-      sessionId: ensured.sessionId,
-      processAt: new Date(Date.now() + 60_000).toISOString(),
-    });
-    setInput("");
   }
 
   async function handleAttachFiles() {
@@ -4099,42 +4091,9 @@ export default function ChatView() {
     enabledModels.slice(tierSize, tierSize * 2),
     enabledModels.slice(tierSize * 2),
   ].filter((tier) => tier.length > 0);
-  const _activeTierIdx = modelTiers.findIndex((tier) =>
+  const activeTierIdx = modelTiers.findIndex((tier) =>
     tier.some((m) => m.model_id === selectedModel)
   );
-
-  // Family mode: group enabled models by ID prefix
-  const modelFamilies = useMemo(() => {
-    const map = new Map<string, AiModel[]>();
-    enabledModels.forEach((m) => {
-      const prefix = m.model_id.includes(":") ? m.model_id.split(":")[0] : m.model_id;
-      const existing = map.get(prefix);
-      if (existing) { existing.push(m); } else { map.set(prefix, [m]); }
-    });
-    return [...map.entries()].map(([prefix, models]) => ({
-      prefix,
-      label: modelFamilyLabels[prefix] ?? prefix,
-      models: [...models].sort((a, b) => a.priority - b.priority),
-    }));
-  }, [enabledModels, modelFamilyLabels]);
-
-  const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
-
-  // Sync selectedFamily from selectedModel when entering family mode
-  useEffect(() => {
-    if (composerMode !== "family") { return; }
-    if (selectedFamily !== null) { return; }
-    const prefix = selectedModel
-      ? (selectedModel.includes(":") ? selectedModel.split(":")[0] : selectedModel)
-      : null;
-    setSelectedFamily(prefix ?? (modelFamilies[0]?.prefix ?? null));
-  }, [composerMode, selectedFamily, selectedModel, modelFamilies]);
-
-  const activeFamilyModels = useMemo(
-    () => modelFamilies.find((f) => f.prefix === selectedFamily)?.models ?? [],
-    [modelFamilies, selectedFamily]
-  );
-
   const composerSuggestionRows = useMemo(() => {
     const suggestionContext = {
       workspaceName: activeWorkspace?.name ?? null,
@@ -4145,10 +4104,8 @@ export default function ChatView() {
       followUps,
     };
 
-    return [
-      showComposerWorkspaceSuggestions ? buildWorkspaceSuggestionRow(suggestionContext) : null,
-      showComposerChatFollowUps ? buildChatSuggestionRow(suggestionContext) : null,
-    ].filter((row): row is NonNullable<typeof row> => row !== null);
+    return [buildWorkspaceSuggestionRow(suggestionContext), buildChatSuggestionRow(suggestionContext)]
+      .filter((row): row is NonNullable<typeof row> => row !== null);
   }, [
     activeWorkspace,
     activeProject,
@@ -4156,12 +4113,10 @@ export default function ChatView() {
     attachedSources.length,
     activeMessages,
     followUps,
-    showComposerWorkspaceSuggestions,
-    showComposerChatFollowUps,
   ]);
   const [isComposerHeaderCollapsed, setIsComposerHeaderCollapsed] = useState(false);
   const hasComposerHeader =
-    (showComposerTopicTags && (activeTopicSignature?.domain_tags.length ?? 0) > 0) || composerSuggestionRows.length > 0;
+    (activeTopicSignature?.domain_tags.length ?? 0) > 0 || composerSuggestionRows.length > 0;
   const showComposerHeader = hasComposerHeader && !isComposerHeaderCollapsed;
 
   // Map model_id to display name from global labels or priority list
@@ -4183,12 +4138,6 @@ export default function ChatView() {
     : false;
   const isComparePanelOpen = activeSubView === "compare";
   const chatWorkspaceClassName = "flex flex-1 min-w-0 min-h-0 overflow-hidden";
-
-  // Sync session token count to titlebar
-  useEffect(() => {
-    setTitlebarTokenCount(sessionTokensUsed);
-    return () => setTitlebarTokenCount(0);
-  }, [sessionTokensUsed, setTitlebarTokenCount]);
 
   // ── Main render ──────────────────────────────────────────────────────────
   return (
@@ -4398,7 +4347,7 @@ export default function ChatView() {
 
                   {/* Messages */}
                   <div className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
-                    <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col relative">
+                    <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
                       <Virtuoso
                         ref={virtuosoRef}
                         data={activeMessages}
@@ -4406,7 +4355,6 @@ export default function ChatView() {
                         followOutput={isCurrentlyStreaming ? "auto" : "smooth"}
                         alignToBottom={true}
                         className="w-full min-w-0 overflow-x-hidden py-4"
-                        atBottomStateChange={setAtBottom}
                         computeItemKey={(_, msg) => msg.id}
                         itemContent={(i, msg) => (
                           <div className="pb-4 px-4">
@@ -4451,18 +4399,6 @@ export default function ChatView() {
                         )}
                         components={virtuosoComponents}
                       />
-
-                      {!atBottom && activeMessages.length > 0 && (
-                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
-                          <button
-                            onClick={() => virtuosoRef.current?.scrollToIndex({ index: activeMessages.length - 1, behavior: "smooth", align: "end" })}
-                            className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--bg-elevated)]/90 backdrop-blur-md border border-white/10 text-[var(--text-primary)] shadow-[0_8px_30px_rgba(0,0,0,0.3)] transition-all hover:bg-[var(--accent-color)] hover:text-white hover:border-[var(--accent-color)] hover:scale-110 active:scale-95 group"
-                            title="Jump to bottom"
-                          >
-                            <ArrowDown size={18} className="transition-transform group-hover:translate-y-0.5" />
-                          </button>
-                        </div>
-                      )}
                     </div>
                   </div>
 
@@ -4483,8 +4419,11 @@ export default function ChatView() {
                       className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[30px] border border-white/10 bg-[var(--bg-elevated)]/95 ${showComposerHeader ? "p-3" : "p-2"} shadow-[0_16px_40px_-36px_rgba(0,0,0,0.7)]`}
                     >
                       <div className="flex flex-col gap-2 min-w-0">
-                        {showComposerHeader && showComposerTopicTags && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
+                        {showComposerHeader && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
                           <div className="px-1 pt-0.5">
+                            <div className="px-1.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
+                              General
+                            </div>
                             <TopicChips
                               tags={activeTopicSignature.domain_tags}
                               onChipClick={(tag) => setInput(prev => `[${tag}] ${prev}`)}
@@ -4517,110 +4456,64 @@ export default function ChatView() {
                         )}
 
                         {/* Tool buttons row */}
-                        <div className={`flex flex-wrap items-center gap-1.5 px-1 ${showComposerHeader ? "pt-2" : ""}`}>
-                              {/* Active model / family picker */}
+                        <div className={`flex flex-wrap items-center gap-1.5 px-1 ${showComposerHeader ? "border-t border-[var(--border-color)]/50 pt-2" : ""}`}>
+                              {/* Active model picker */}
                               <div className="relative" data-active-model-menu>
-                                {composerMode === "family" ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => setIsFamilyPickerOpen((open) => !open)}
-                                      className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-sm transition-all hover:border-[rgba(var(--accent-color-rgb),0.4)] hover:bg-[rgba(var(--accent-color-rgb),0.12)]"
-                                      aria-haspopup="menu"
-                                      aria-expanded={isFamilyPickerOpen}
-                                    >
-                                      <span className="min-w-0 truncate">
-                                        {selectedFamily ? (modelFamilyLabels[selectedFamily] ?? selectedFamily) : "Select family"}
-                                      </span>
-                                      <ChevronDown size={14} strokeWidth={2.2} />
-                                    </button>
-                                    {isFamilyPickerOpen && modelFamilies.length > 0 && (
-                                      <div className="absolute left-0 bottom-full z-20 mb-2 w-[200px] max-w-[min(80vw,200px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
-                                        <div className="max-h-64 overflow-y-auto">
-                                          {modelFamilies.map((family) => {
-                                            const isSel = family.prefix === selectedFamily;
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (modelPickerOptions.length === 0) { return; }
+                                    setIsModelSendMenuOpen(false);
+                                    setIsModelPickerOpen((open) => !open);
+                                  }}
+                                  disabled={modelPickerOptions.length === 0}
+                                  className={`inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-sm transition-all hover:border-[rgba(var(--accent-color-rgb),0.4)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] disabled:cursor-not-allowed disabled:opacity-40`}
+                                  title={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
+                                  aria-label={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
+                                  aria-haspopup="menu"
+                                  aria-expanded={isModelPickerOpen}
+                                >
+                                  <span className="min-w-0 truncate">
+                                    {selectedModel ? modelPickerLabel(selectedModel) : "Select model"}
+                                  </span>
+                                  <ChevronDown size={14} strokeWidth={2.2} />
+                                </button>
+                                {isModelPickerOpen && modelPickerOptions.length > 0 && (
+                                  <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
+                                    <div className="max-h-72 overflow-y-auto">
+                                      {groupedModelPickerOptions.map((group) => (
+                                        <div key={group.key} className="pb-1 last:pb-0">
+                                          {groupedModelPickerOptions.length > 1 && (
+                                            <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                                              {group.label}
+                                            </div>
+                                          )}
+                                          {group.modelIds.map((modelId) => {
+                                            const isSelected = modelId === selectedModel;
                                             return (
                                               <button
-                                                key={family.prefix}
+                                                key={modelId}
                                                 type="button"
-                                                onClick={() => {
-                                                  setSelectedFamily(family.prefix);
-                                                  setIsFamilyPickerOpen(false);
+                                                onClick={async () => {
+                                                  setSelectedModel(modelId);
+                                                  setIsModelPickerOpen(false);
+                                                  await persistModelChoice(modelId);
                                                 }}
-                                                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
-                                                  isSel
-                                                    ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                                                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                                                }`}
+                                                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${isSelected
+                                                  ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
+                                                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                                  }`}
+                                                title={modelPickerLabel(modelId)}
                                               >
-                                                <div className="min-w-0 truncate">{family.label}</div>
-                                                {isSel && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
+                                                <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
+                                                {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
                                               </button>
                                             );
                                           })}
                                         </div>
-                                      </div>
-                                    )}
-                                  </>
-                                ) : (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (modelPickerOptions.length === 0) { return; }
-                                        setIsModelSendMenuOpen(false);
-                                        setIsModelPickerOpen((open) => !open);
-                                      }}
-                                      disabled={modelPickerOptions.length === 0}
-                                      className={`inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-sm transition-all hover:border-[rgba(var(--accent-color-rgb),0.4)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] disabled:cursor-not-allowed disabled:opacity-40`}
-                                      title={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
-                                      aria-label={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
-                                      aria-haspopup="menu"
-                                      aria-expanded={isModelPickerOpen}
-                                    >
-                                      <span className="min-w-0 truncate">
-                                        {selectedModel ? modelPickerLabel(selectedModel) : "Select model"}
-                                      </span>
-                                      <ChevronDown size={14} strokeWidth={2.2} />
-                                    </button>
-                                    {isModelPickerOpen && modelPickerOptions.length > 0 && (
-                                      <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
-                                        <div className="max-h-72 overflow-y-auto">
-                                          {groupedModelPickerOptions.map((group) => (
-                                            <div key={group.key} className="pb-1 last:pb-0">
-                                              {groupedModelPickerOptions.length > 1 && (
-                                                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                                                  {group.label}
-                                                </div>
-                                              )}
-                                              {group.modelIds.map((modelId) => {
-                                                const isSelected = modelId === selectedModel;
-                                                return (
-                                                  <button
-                                                    key={modelId}
-                                                    type="button"
-                                                    onClick={async () => {
-                                                      setSelectedModel(modelId);
-                                                      setIsModelPickerOpen(false);
-                                                      await persistModelChoice(modelId);
-                                                    }}
-                                                    className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${isSelected
-                                                      ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                                                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                                                      }`}
-                                                    title={modelPickerLabel(modelId)}
-                                                  >
-                                                    <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
-                                                    {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
-                                                  </button>
-                                                );
-                                              })}
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </>
+                                      ))}
+                                    </div>
+                                  </div>
                                 )}
                               </div>
 
@@ -4784,50 +4677,16 @@ export default function ChatView() {
                                   </button>
                                 ) : (
                                   <div className="mb-1 mr-0.5 flex items-center gap-2">
-                                    {/* ── Family send buttons (family mode) ── */}
-                                    {composerMode === "family" && activeFamilyModels.map((m) => {
-                                      const tag = m.model_id.includes(":") ? m.model_id.split(":")[1] : m.model_id;
-                                      const isActive = m.model_id === selectedModel;
-                                      return (
-                                        <button
-                                          key={m.model_id}
-                                          onClick={async (e) => {
-                                            setSelectedModel(m.model_id);
-                                            await persistModelChoice(m.model_id);
-                                            if (e.metaKey || e.ctrlKey) {
-                                              await queueWithModel(m.model_id);
-                                            } else {
-                                              await sendMessageWithModel(m.model_id);
-                                            }
-                                          }}
-                                          disabled={!input.trim() || isStreaming}
-                                          className={`flex h-10 items-center justify-center rounded-2xl border px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${
-                                            isActive
-                                              ? "border-[rgba(var(--accent-color-rgb),0.4)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                                              : "border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.06)] text-[var(--text-secondary)] hover:border-[rgba(var(--accent-color-rgb),0.4)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] hover:text-[var(--text-primary)]"
-                                          }`}
-                                          title={`Send with ${modelPickerLabel(m.model_id)} · Ctrl+click to queue`}
-                                        >
-                                          {tag}
-                                        </button>
-                                      );
-                                    })}
-                                    {/* ── Normal send button (normal mode) ── */}
-                                    {composerMode === "normal" && (
                                     <div className="relative flex flex-shrink-0 items-center" data-send-model-menu>
                                       <button
-                                        onClick={async (e) => {
+                                        onClick={async () => {
                                           setIsModelSendMenuOpen(false);
-                                          if (e.metaKey || e.ctrlKey) {
-                                            await queueWithModel(selectedModel ?? "");
-                                          } else {
-                                            await sendMessage();
-                                          }
+                                          await sendMessage();
                                         }}
                                         disabled={!input.trim() || !selectedModel}
                                         className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--text-primary)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.3)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
                                           }`}
-                                        title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)} · Ctrl+click to queue` : "Send"}
+                                        title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
                                       >
                                         <ArrowUpCircle size={19} strokeWidth={2.2} />
                                       </button>
@@ -4883,7 +4742,24 @@ export default function ChatView() {
                                         </>
                                       )}
                                     </div>
-                                    )}
+                                    <button
+                                      onClick={async () => {
+                                        if (!input.trim() || !effectiveWorkspaceId || !selectedModel) { return; }
+                                        const ensuredSession = await ensureSessionForChat(selectedModel);
+                                        if (!ensuredSession) { return; }
+                                        await api.thoughtQueue.create(effectiveWorkspaceId, input.trim(), {
+                                          modelName: selectedModel,
+                                          sessionId: ensuredSession.sessionId,
+                                          processAt: new Date(Date.now() + 60_000).toISOString(),
+                                        });
+                                        setInput("");
+                                      }}
+                                      disabled={!input.trim() || !selectedModel}
+                                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.2)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                      title="Schedule for background processing"
+                                    >
+                                      <Clock size={14} strokeWidth={2.2} />
+                                    </button>
                                   </div>
 	                                )}
 	                        </div>
@@ -4911,6 +4787,87 @@ export default function ChatView() {
                             </div>
                           )}
 
+	                        {/* ── Composer tool row ─────────────────────────────────────── */}
+	                        <div className="flex items-center gap-2.5 px-1 pt-1 flex-wrap">
+                          {/* ── Model tier picker ── */}
+                          {modelTiers.length >= 2 && (() => {
+                            const tierMeta = [
+                              { label: "Fast",     color: "#34d399", ring: "rgba(52,211,153,0.5)"  },
+                              { label: "Balanced", color: "#fbbf24", ring: "rgba(251,191,36,0.5)"  },
+                              { label: "Powerful", color: "#fb7185", ring: "rgba(251,113,133,0.5)" },
+                            ];
+                            return (
+                              <div className="flex items-center gap-1" data-tier-picker>
+                                {modelTiers.map((tier, idx) => {
+                                  const meta = tierMeta[idx];
+                                  const isActiveTier = idx === activeTierIdx;
+                                  const isOpen = activeTierPickerIdx === idx;
+                                  const byFamily = tier.reduce<Record<string, AiModel[]>>((acc, m) => {
+                                    const fam = m.provider || "Other";
+                                    (acc[fam] ??= []).push(m);
+                                    return acc;
+                                  }, {});
+                                  return (
+                                    <div key={idx} className="relative" data-tier-picker>
+                                      <button
+                                        onClick={() => setActiveTierPickerIdx(isOpen ? null : idx)}
+                                        title={meta.label}
+                                        style={{
+                                          backgroundColor: meta.color,
+                                          boxShadow: isActiveTier
+                                            ? `0 0 0 2px rgba(255,255,255,0.10), 0 0 0 3.5px ${meta.ring}`
+                                            : "none",
+                                          opacity: isActiveTier ? 1 : 0.4,
+                                        }}
+                                        className="h-2.5 w-2.5 rounded-full transition-all hover:opacity-100"
+                                      />
+                                      {isOpen && (
+                                        <div className="absolute left-0 bottom-full z-20 mb-3 w-[200px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]">
+                                          <div className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[rgba(255,255,255,0.3)]">
+                                            {meta.label}
+                                          </div>
+                                          {Object.entries(byFamily).map(([family, models]) => (
+                                            <div key={family}>
+                                              {Object.keys(byFamily).length > 1 && (
+                                                <div className="px-2 py-0.5 text-[10px] font-medium text-[rgba(255,255,255,0.25)]">{family}</div>
+                                              )}
+                                              {models.map((m) => (
+                                                <button
+                                                  key={m.model_id}
+                                                  onClick={() => {
+                                                    setSelectedModel(m.model_id);
+                                                    persistModelChoice(m.model_id);
+                                                    setActiveTierPickerIdx(null);
+                                                  }}
+                                                  className={`w-full rounded-xl px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-[rgba(255,255,255,0.06)] ${
+                                                    m.model_id === selectedModel
+                                                      ? "font-semibold text-white"
+                                                      : "text-[rgba(255,255,255,0.72)]"
+                                                  }`}
+                                                >
+                                                  {modelDisplayName(m.model_id)}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
+
+	                          {sessionTokensUsed > 0 && (
+                            <div className="ml-auto flex h-10 items-center gap-2 rounded-full border border-transparent bg-[rgba(255,255,255,0.04)] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[rgba(255,255,255,0.74)]">
+                              <span className="text-[rgba(255,255,255,0.42)]">Tokens</span>
+                              <span className="font-mono text-[rgba(255,255,255,0.95)]">
+                                {sessionTokensUsed >= 1000 ? `${(sessionTokensUsed / 1000).toFixed(1)}k` : sessionTokensUsed}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 mt-3`}>

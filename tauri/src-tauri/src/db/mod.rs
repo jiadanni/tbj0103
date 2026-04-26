@@ -52,6 +52,9 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v38_workspace_icon",
     "v39_messages_variant_group",
     "v40_ai_models_is_hidden",
+    "v41_workspace_order_index",
+    "v42_workspace_last_message_at",
+    "v43_switch_workspace_section",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1001,6 +1004,83 @@ fn run_migrations(conn: &Connection) -> Result<()> {
     if applied_v40 == 0 {
         let _ = conn.execute_batch("ALTER TABLE ai_models ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0;");
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v40_ai_models_is_hidden');")?;
+    }
+
+    // v41: add order_index to workspaces
+    let applied_v41: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v41_workspace_order_index'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v41 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE workspaces ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0;",
+        );
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v41_workspace_order_index');")?;
+    }
+
+    // v42: add last_message_at to workspaces and a trigger to update it
+    let applied_v42: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v42_workspace_last_message_at'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v42 == 0 {
+        let _ = conn.execute_batch("ALTER TABLE workspaces ADD COLUMN last_message_at TEXT;");
+        
+        // Initial population: set last_message_at for all workspaces based on existing messages
+        conn.execute_batch(
+            "UPDATE workspaces 
+             SET last_message_at = (
+                SELECT m.created_at 
+                FROM messages m
+                JOIN chat_sessions s ON m.session_id = s.id
+                WHERE s.workspace_id = workspaces.id
+                ORDER BY m.created_at DESC
+                LIMIT 1
+             );"
+        )?;
+
+        // Create the trigger
+        conn.execute_batch(
+            "CREATE TRIGGER IF NOT EXISTS update_workspace_last_message_at
+             AFTER INSERT ON messages
+             BEGIN
+                 UPDATE workspaces 
+                 SET last_message_at = NEW.created_at
+                 WHERE id = (SELECT workspace_id FROM chat_sessions WHERE id = NEW.session_id);
+             END;"
+        )?;
+
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v42_workspace_last_message_at');")?;
+    }
+
+    // v43: migrate switch_workspace_to_chat (bool) → switch_workspace_section (string)
+    let applied_v43: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v43_switch_workspace_section'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v43 == 0 {
+        // Convert old boolean value: "true" → "/chat", anything else → ""
+        let old_value: Option<String> = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'switch_workspace_to_chat'",
+                [],
+                |row| row.get(0),
+            )
+            .ok();
+        let new_value = match old_value.as_deref() {
+            Some("true") => "/chat",
+            _ => "",
+        };
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('switch_workspace_section', ?1)",
+            [new_value],
+        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v43_switch_workspace_section');")?;
     }
 
     Ok(())

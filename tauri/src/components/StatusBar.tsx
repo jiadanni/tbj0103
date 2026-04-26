@@ -34,17 +34,17 @@ function barColor(percent: number): string {
 
 function MiniBar({ percent, label }: { percent: number; label: string }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[10px] tabular-nums text-[var(--text-secondary)] leading-none w-[26px] text-right">
+    <div className="flex items-center gap-2">
+      <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none w-[32px] text-right">
         {percent}%
       </span>
-      <div className="relative h-[5px] w-16 rounded-full overflow-hidden bg-[var(--border-color)]/60">
+      <div className="relative h-1.5 w-20 rounded-full overflow-hidden bg-[var(--border-color)]/60">
         <div
           className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ${barColor(percent)}`}
           style={{ width: `${percent}%` }}
         />
       </div>
-      <span className="text-[10px] text-[var(--text-secondary)] leading-none">{label}</span>
+      <span className="text-xs text-[var(--text-secondary)] leading-none">{label}</span>
     </div>
   );
 }
@@ -59,13 +59,13 @@ const JOB_LABELS: Record<string, string> = {
 
 function JobPill({ taskType }: { taskType: string }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-2">
       {/* Pulsing dot */}
-      <span className="relative flex h-[7px] w-[7px]" aria-hidden="true">
+      <span className="relative flex h-2 w-2" aria-hidden="true">
         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-        <span className="relative inline-flex rounded-full h-[7px] w-[7px] bg-emerald-500" />
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
       </span>
-      <span className="text-[10px] text-emerald-400 leading-none font-medium">
+      <span className="text-xs text-emerald-400 leading-none font-medium">
         {JOB_LABELS[taskType] ?? taskType}
       </span>
     </div>
@@ -181,7 +181,7 @@ export default function StatusBar() {
     // discrete job announcements only.
     <div
       aria-label="System status bar"
-      className="shrink-0 flex h-[22px] items-center justify-between gap-4 border-t border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-3 backdrop-blur-sm select-none"
+      className="shrink-0 flex h-7 items-center justify-between gap-5 border-t border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-3 backdrop-blur-sm select-none"
     >
       {/* Hidden live region — announces job state changes only */}
       <span
@@ -194,9 +194,9 @@ export default function StatusBar() {
       </span>
 
       {/* Left — active background jobs (visible) */}
-      <div className="flex items-center gap-3 min-w-0 overflow-hidden" aria-hidden="true">
+      <div className="flex items-center gap-4 min-w-0 overflow-hidden" aria-hidden="true">
         {jobList.length === 0 ? (
-          <span className="text-[10px] text-[var(--text-secondary)]/85 leading-none">
+          <span className="text-xs text-[var(--text-secondary)]/85 leading-none">
             No background jobs
           </span>
         ) : (
@@ -205,25 +205,25 @@ export default function StatusBar() {
       </div>
 
       {/* Right — performance meters (aria-hidden; screen readers get no value from constant churn) */}
-      <div className="flex items-center gap-3 shrink-0" aria-hidden="true">
+      <div className="flex items-center gap-4 shrink-0" aria-hidden="true">
         {/* CPU */}
         <MiniBar percent={cpuPct} label="CPU" />
 
         {/* Divider */}
-        <span className="h-3 w-px bg-[var(--border-color)]" />
+        <span className="h-3.5 w-px bg-[var(--border-color)]" />
 
         {/* RAM */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] tabular-nums text-[var(--text-secondary)] leading-none w-[26px] text-right">
+        <div className="flex items-center gap-2">
+          <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none w-[32px] text-right">
             {ramPct}%
           </span>
-          <div className="relative h-[5px] w-16 rounded-full overflow-hidden bg-[var(--border-color)]/60">
+          <div className="relative h-1.5 w-20 rounded-full overflow-hidden bg-[var(--border-color)]/60">
             <div
               className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ${barColor(ramPct)}`}
               style={{ width: `${ramPct}%` }}
             />
           </div>
-          <span className="text-[10px] text-[var(--text-secondary)] leading-none tabular-nums">
+          <span className="text-xs text-[var(--text-secondary)] leading-none tabular-nums">
             {ramLabel} RAM
           </span>
         </div>
@@ -231,15 +231,15 @@ export default function StatusBar() {
         {/* GPU (only when detected) */}
         {hasGpu && (
           <>
-            <span className="h-3 w-px bg-[var(--border-color)]" />
-            <div className="flex items-center gap-1.5">
+            <span className="h-3.5 w-px bg-[var(--border-color)]" />
+            <div className="flex items-center gap-2">
               {hasLiveUsage && (
-                <span className="text-[10px] tabular-nums text-[var(--text-secondary)] leading-none w-[26px] text-right">
+                <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none w-[32px] text-right">
                   {gpuPct}%
                 </span>
               )}
               {hasLiveUsage && (
-                <div className="relative h-[5px] w-14 rounded-full overflow-hidden bg-[var(--border-color)]/60">
+                <div className="relative h-1.5 w-16 rounded-full overflow-hidden bg-[var(--border-color)]/60">
                   <div
                     className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ${barColor(gpuPct)}`}
                     style={{ width: `${gpuPct}%` }}
@@ -247,7 +247,7 @@ export default function StatusBar() {
                 </div>
               )}
               <span
-                className="text-[10px] text-[var(--text-secondary)] leading-none tabular-nums truncate max-w-[120px]"
+                className="text-xs text-[var(--text-secondary)] leading-none tabular-nums truncate max-w-[120px]"
                 title={stats?.gpu_name ?? undefined}
               >
                 {gpuLabel} VRAM

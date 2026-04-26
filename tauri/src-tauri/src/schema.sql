@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS workspaces (
     icon TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    parent_workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL
+    parent_workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
+    order_index INTEGER NOT NULL DEFAULT 0,
+    last_message_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -410,7 +412,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('confirm_move_to_trash', 'true'),
     ('prompt_instructions', '""'),
     ('hide_native_menu', 'false'),
-    ('switch_workspace_to_chat', 'false'),
+    ('switch_workspace_section', ''),
     ('demo_dismissed', 'false'),
     ('memory_enabled', 'true');
 

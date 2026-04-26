@@ -67,6 +67,7 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     updated_at: "2024-01-01T00:00:00Z",
     parent_workspace_id: null,
     icon: "",
+    order_index: 0, last_message_at: null,
     ...overrides,
   };
 }

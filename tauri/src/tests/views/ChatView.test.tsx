@@ -242,7 +242,7 @@ describe("ChatView", () => {
           },
           signature_updated_at: null,
           parent_workspace_id: null,
-          icon: "",
+          icon: "", order_index: 0, last_message_at: null,
         },
       ],
       activeWorkspaceId: "ws-1",
@@ -355,7 +355,7 @@ describe("ChatView", () => {
 
     expect(row).not.toBeNull();
     expect(
-      Array.from(row?.querySelectorAll("div") ?? []).some((element) => element.className.includes("w-[92px]"))
+      Array.from(row?.querySelectorAll("div") ?? []).some((element) => element.className.includes("w-[44px]"))
     ).toBe(true);
   });
 

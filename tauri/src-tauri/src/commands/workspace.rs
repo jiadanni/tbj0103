@@ -126,6 +126,18 @@ pub fn update_workspace_icon(
 }
 
 #[tauri::command]
+pub fn reorder_workspaces(
+    app: AppHandle,
+    state: State<DbState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    workspace_service::reorder(&conn, ids)?;
+    let _ = app.emit("workspaces-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn recommend_workspace_icon(
     workspace_name: String,
     workspace_description: String,
