@@ -550,7 +550,7 @@ function PreferencesDockButton() {
   const [singleInstance, toggleSingleInstance] = usePrefsWindowMode();
 
   return (
-    <div className="absolute bottom-[34px] left-3 z-30 flex items-center gap-1">
+    <div className="absolute bottom-9 left-3 z-30 flex items-center gap-1">
       <button
         onClick={() => navigate("/preferences")}
         aria-label="Preferences"
