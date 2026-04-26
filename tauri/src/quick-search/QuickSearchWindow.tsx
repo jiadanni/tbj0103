@@ -228,6 +228,7 @@ export default function QuickSearchWindow() {
   return (
     <div className="h-screen w-screen bg-transparent text-[var(--text-primary)]">
       <Command
+        shouldFilter={false}
         className="flex h-full w-full flex-col overflow-hidden rounded-[22px] border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-[0_24px_80px_-32px_rgba(15,23,42,0.8)]"
         onKeyDown={(event) => {
           if (event.key === "Escape") {

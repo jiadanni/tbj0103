@@ -41,7 +41,7 @@ interface AppSettings {
   scrollToTopOnSend: boolean;
   chatMessageStyle: ChatMessageStyle;
   expandChatToWindowWidth: boolean;
-  switchWorkspaceToChat: boolean;
+  switchWorkspaceSection: string;
   hideNativeMenu: boolean;
   showUnmanagedModels: boolean;
   modelRefreshCounter: number;
@@ -50,6 +50,8 @@ interface AppSettings {
   showComposerChatFollowUps: boolean;
   composerMode: ComposerMode;
   modelFamilyLabels: Record<string, string>;
+  customModelFamilies: string[];
+  quickSearchShortcut: string;
 }
 
 interface SettingsStore extends AppSettings {
@@ -85,7 +87,7 @@ interface SettingsStore extends AppSettings {
   setScrollToTopOnSend: (v: boolean) => void;
   setChatMessageStyle: (v: ChatMessageStyle) => void;
   setExpandChatToWindowWidth: (v: boolean) => void;
-  setSwitchWorkspaceToChat: (v: boolean) => void;
+  setSwitchWorkspaceSection: (v: string) => void;
   setHideNativeMenu: (v: boolean) => void;
   setShowUnmanagedModels: (v: boolean) => void;
   incrementModelRefreshCounter: () => void;
@@ -95,6 +97,9 @@ interface SettingsStore extends AppSettings {
   setComposerMode: (v: ComposerMode) => void;
   setModelFamilyLabel: (prefix: string, label: string) => void;
   removeModelFamilyLabel: (prefix: string) => void;
+  addCustomModelFamily: (family: string) => void;
+  removeCustomModelFamily: (family: string) => void;
+  setQuickSearchShortcut: (v: string) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -133,7 +138,7 @@ export const useSettingsStore = create<SettingsStore>()(
       scrollToTopOnSend: false,
       chatMessageStyle: "bubble",
       expandChatToWindowWidth: false,
-      switchWorkspaceToChat: false,
+      switchWorkspaceSection: "",
       hideNativeMenu: false,
       showUnmanagedModels: true,
       modelRefreshCounter: 0,
@@ -142,6 +147,8 @@ export const useSettingsStore = create<SettingsStore>()(
       showComposerChatFollowUps: true,
       composerMode: "normal",
       modelFamilyLabels: {},
+      customModelFamilies: [],
+      quickSearchShortcut: "CmdOrCtrl+Shift+K",
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
@@ -174,7 +181,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setScrollToTopOnSend: (scrollToTopOnSend) => set({ scrollToTopOnSend }),
       setChatMessageStyle: (chatMessageStyle) => set({ chatMessageStyle }),
       setExpandChatToWindowWidth: (expandChatToWindowWidth) => set({ expandChatToWindowWidth }),
-      setSwitchWorkspaceToChat: (switchWorkspaceToChat) => set({ switchWorkspaceToChat }),
+      setSwitchWorkspaceSection: (switchWorkspaceSection) => set({ switchWorkspaceSection }),
       setHideNativeMenu: (hideNativeMenu) => set({ hideNativeMenu }),
       setShowUnmanagedModels: (showUnmanagedModels) => set({ showUnmanagedModels }),
       incrementModelRefreshCounter: () => set((state) => ({ modelRefreshCounter: state.modelRefreshCounter + 1 })),
@@ -188,6 +195,14 @@ export const useSettingsStore = create<SettingsStore>()(
         delete next[prefix];
         return { modelFamilyLabels: next };
       }),
+      addCustomModelFamily: (family) => set((state) => {
+        if (state.customModelFamilies.includes(family)) {return state;}
+        return { customModelFamilies: [...state.customModelFamilies, family] };
+      }),
+      removeCustomModelFamily: (family) => set((state) => ({
+        customModelFamilies: state.customModelFamilies.filter((f) => f !== family),
+      })),
+      setQuickSearchShortcut: (quickSearchShortcut) => set({ quickSearchShortcut }),
     }),
     {
       name: "aetherium-settings",

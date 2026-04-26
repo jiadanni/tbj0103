@@ -343,6 +343,7 @@ pub fn run() {
             commands::workspace::recommend_workspace_icon,
             commands::workspace::hide_workspace,
             commands::workspace::unhide_workspace,
+            commands::workspace::reorder_workspaces,
             // Project commands
             commands::project::create_project,
             commands::project::list_projects,

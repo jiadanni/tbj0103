@@ -14,6 +14,8 @@ export interface Workspace {
   updated_at: string;
   parent_workspace_id: string | null;
   icon: string;
+  order_index: number;
+  last_message_at: string | null;
 }
 
 export interface Project {
@@ -28,7 +30,7 @@ export interface Project {
   updated_at: string;
 }
 
-export type WorkspaceSortOrder = "name-asc" | "name-desc" | "created-newest" | "created-oldest" | "updated-newest" | "updated-oldest";
+export type WorkspaceSortOrder = "manual" | "name-asc" | "name-desc" | "created-newest" | "created-oldest" | "updated-newest" | "updated-oldest" | "last-message-newest" | "last-message-oldest";
 
 export type PaneId = "primary" | "secondary";
 export type NavigationPresentation = "sidebar" | "icon-bar" | "top-tabs" | "top-dropdown";
@@ -149,6 +151,19 @@ function sortWorkspaces(workspaces: Workspace[], order: WorkspaceSortOrder = "na
           || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
       case "updated-oldest":
         return a.updated_at.localeCompare(b.updated_at)
+          || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+      case "manual":
+        return a.order_index - b.order_index
+          || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true })
+          || a.created_at.localeCompare(b.created_at)
+          || a.id.localeCompare(b.id);
+      case "last-message-newest":
+        return (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "")
+          || b.updated_at.localeCompare(a.updated_at)
+          || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+      case "last-message-oldest":
+        return (a.last_message_at ?? "Z").localeCompare(b.last_message_at ?? "Z")
+          || a.updated_at.localeCompare(b.updated_at)
           || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
     }
   });
@@ -302,7 +317,9 @@ interface WorkspaceStore {
   setPaneProject: (paneId: PaneId, projectId: string | null) => void;
   setPaneView: (paneId: PaneId, view: PaneView) => void;
   setPaneChatSession: (paneId: PaneId, chatSessionId: string | null) => void;
-  setPaneNoteSelection: (paneId: PaneId, selection: NoteSelectionState | null) => void;
+  setPaneNoteSelection: (paneId: PaneId, noteSelection: NoteSelectionState | null) => void;
+  reverseSortOrder: () => void;
+  reorderWorkspaces: (ids: string[]) => Promise<void>;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
@@ -717,5 +734,47 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
       return { panes };
     }),
+    reverseSortOrder: () => {
+      const { workspaceSortOrder, setWorkspaceSortOrder } = get();
+      let nextOrder: WorkspaceSortOrder = workspaceSortOrder;
+      switch (workspaceSortOrder) {
+        case "name-asc": nextOrder = "name-desc"; break;
+        case "name-desc": nextOrder = "name-asc"; break;
+        case "created-newest": nextOrder = "created-oldest"; break;
+        case "created-oldest": nextOrder = "created-newest"; break;
+        case "updated-newest": nextOrder = "updated-oldest"; break;
+        case "updated-oldest": nextOrder = "updated-newest"; break;
+        case "last-message-newest": nextOrder = "last-message-oldest"; break;
+        case "last-message-oldest": nextOrder = "last-message-newest"; break;
+      }
+      if (nextOrder !== workspaceSortOrder) {
+        setWorkspaceSortOrder(nextOrder);
+      }
+    },
+    reorderWorkspaces: async (ids) => {
+      const { workspaces, workspaceSortOrder } = get();
+      // Update local state immediately for snappy UI
+      const idToIndex = new Map(ids.map((id, index) => [id, index]));
+      const nextWorkspaces = workspaces.map(w => ({
+        ...w,
+        order_index: idToIndex.get(w.id) ?? w.order_index
+      }));
+      
+      set({ 
+        workspaces: sortWorkspaces(nextWorkspaces, workspaceSortOrder),
+        workspaceSortOrder: "manual" // Switch to manual if reordering
+      });
+      window.localStorage.setItem("workspaceSortOrder", "manual");
+
+      try {
+        const { api } = await import("../lib/api");
+        await api.workspace.reorder(ids);
+      } catch (error) {
+         
+        console.error("Failed to reorder workspaces:", error);
+        // Optionally revert state on error? 
+        // For now, let's assume it works or the next refresh will fix it.
+      }
+    },
   };
 });

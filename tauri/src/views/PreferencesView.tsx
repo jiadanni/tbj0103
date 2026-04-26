@@ -7,7 +7,7 @@ import { useLocation } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -29,19 +29,19 @@ const MAX_FONT_SIZE = 22;
 const DEFAULT_FONT_SIZE = 16;
 
 const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[] = [
-  { id: "app",         label: "App",         Icon: SettingsIcon },
-  { id: "navigation",  label: "Navigation",  Icon: LayoutGrid },
-  { id: "appearance",  label: "Appearance",  Icon: Palette },
-  { id: "chat",        label: "Chat",        Icon: MessageSquare },
-  { id: "ai",          label: "AI",          Icon: Bot },
-  { id: "webai",       label: "Browser Automation", Icon: Globe },
-  { id: "security",    label: "Security",    Icon: ShieldCheck },
-  { id: "workspaces",  label: "Workspaces",  Icon: LayoutGrid },
-  { id: "backup",      label: "Backup",      Icon: HardDrive },
-  { id: "import",      label: "Import",      Icon: FolderInput },
-  { id: "mcp",         label: "MCP",         Icon: Network },
-  { id: "sync",        label: "Sync",        Icon: GitBranch },
-  { id: "logs",        label: "Logs",        Icon: ScrollText },
+  { id: "app", label: "App", Icon: SettingsIcon },
+  { id: "navigation", label: "Navigation", Icon: LayoutGrid },
+  { id: "appearance", label: "Appearance", Icon: Palette },
+  { id: "chat", label: "Chat", Icon: MessageSquare },
+  { id: "ai", label: "AI", Icon: Bot },
+  { id: "webai", label: "Browser Automation", Icon: Globe },
+  { id: "security", label: "Security", Icon: ShieldCheck },
+  { id: "workspaces", label: "Workspaces", Icon: LayoutGrid },
+  { id: "backup", label: "Backup", Icon: HardDrive },
+  { id: "import", label: "Import", Icon: FolderInput },
+  { id: "mcp", label: "MCP", Icon: Network },
+  { id: "sync", label: "Sync", Icon: GitBranch },
+  { id: "logs", label: "Logs", Icon: ScrollText },
 ];
 
 function normalizePreferencesSection(section: string | undefined): PreferencesSection | null {
@@ -64,9 +64,8 @@ function Toggle({ on, onToggle, disabled = false }: { on: boolean; onToggle: () 
       role="switch"
       aria-checked={on}
       aria-disabled={disabled}
-      className={`w-10 h-6 rounded-full transition-colors relative flex-shrink-0 ${
-        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-      } ${on ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`}
+      className={`w-10 h-6 rounded-full transition-colors relative flex-shrink-0 ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+        } ${on ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`}
     >
       <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? "translate-x-4" : "translate-x-0"}`} />
     </div>
@@ -171,7 +170,7 @@ export default function PreferencesView() {
   const setChatMessageStyle = useSettingsStore((state) => state.setChatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((state) => state.expandChatToWindowWidth);
   const setExpandChatToWindowWidth = useSettingsStore((state) => state.setExpandChatToWindowWidth);
-  const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
+  const switchWorkspaceSection = useSettingsStore((state) => state.switchWorkspaceSection);
   const showComposerTopicTags = useSettingsStore((state) => state.showComposerTopicTags);
   const setShowComposerTopicTags = useSettingsStore((state) => state.setShowComposerTopicTags);
   const showComposerWorkspaceSuggestions = useSettingsStore((state) => state.showComposerWorkspaceSuggestions);
@@ -182,7 +181,9 @@ export default function PreferencesView() {
   const setComposerMode = useSettingsStore((state) => state.setComposerMode);
   const modelFamilyLabels = useSettingsStore((state) => state.modelFamilyLabels);
   const setModelFamilyLabel = useSettingsStore((state) => state.setModelFamilyLabel);
-  const removeModelFamilyLabel = useSettingsStore((state) => state.removeModelFamilyLabel);
+  const customModelFamilies = useSettingsStore((state) => state.customModelFamilies);
+  const addCustomModelFamily = useSettingsStore((state) => state.addCustomModelFamily);
+  const _removeCustomModelFamily = useSettingsStore((state) => state.removeCustomModelFamily);
   const modelLabels = useSettingsStore((state) => state.modelLabels);
   const location = useLocation();
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
@@ -242,6 +243,95 @@ export default function PreferencesView() {
 
   const [draggedModelId, setDraggedModelId] = useState<string | null>(null);
   const [dragOverModelId, setDragOverModelId] = useState<string | null>(null);
+  const [draggedFamilyId, setDraggedFamilyId] = useState<string | null>(null);
+  const [dragOverFamilyId, setDragOverFamilyId] = useState<string | null>(null);
+
+  // Refs so document-level pointer listeners can read the latest drag target
+  const dragOverModelIdRef = useRef<string | null>(null);
+  const dragOverFamilyIdRef = useRef<string | null>(null);
+
+  // Pointer-event-based drag engine (HTML5 DnD is broken in WebKitGTK / Linux)
+  useEffect(() => {
+    if (!draggedModelId && !draggedFamilyId) {return;}
+
+    const handlePointerMove = (ev: PointerEvent) => {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      if (!el) {return;}
+
+      if (draggedFamilyId) {
+        // Family drag — look for a family header or a model row (to target its group)
+        const familyEl = el.closest("[data-family-key]") as HTMLElement | null;
+        const modelEl = el.closest("[data-model-id]") as HTMLElement | null;
+        let targetKey: string | null = null;
+        if (familyEl) {targetKey = familyEl.dataset.familyKey ?? null;}
+        else if (modelEl) {targetKey = modelEl.dataset.familyKey ?? null;}
+
+        if (targetKey && targetKey !== draggedFamilyId) {
+          dragOverFamilyIdRef.current = targetKey;
+          setDragOverFamilyId(targetKey);
+        } else {
+          dragOverFamilyIdRef.current = null;
+          setDragOverFamilyId(null);
+        }
+        return;
+      }
+
+      // Model drag
+      const modelEl = el.closest("[data-model-id]") as HTMLElement | null;
+      if (modelEl) {
+        const targetId = modelEl.dataset.modelId ?? null;
+        if (targetId && targetId !== draggedModelId) {
+          dragOverModelIdRef.current = targetId;
+          setDragOverModelId(targetId);
+          // Also set family highlight if in family mode
+          const fKey = modelEl.dataset.familyKey ?? null;
+          dragOverFamilyIdRef.current = fKey;
+          setDragOverFamilyId(fKey);
+        } else {
+          dragOverModelIdRef.current = null;
+          setDragOverModelId(null);
+        }
+      } else {
+        // Maybe hovering a family header — allow cross-family model drops
+        const familyEl = el.closest("[data-family-key]") as HTMLElement | null;
+        if (familyEl) {
+          const fKey = familyEl.dataset.familyKey ?? null;
+          dragOverFamilyIdRef.current = fKey;
+          setDragOverFamilyId(fKey);
+        }
+        dragOverModelIdRef.current = null;
+        setDragOverModelId(null);
+      }
+    };
+
+    const handlePointerUp = () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+      // Dispatch a custom event so the React tree can handle the drop synchronously
+      window.dispatchEvent(new CustomEvent("model-drag-drop", {
+        detail: {
+          draggedModelId,
+          draggedFamilyId,
+          overModelId: dragOverModelIdRef.current,
+          overFamilyId: dragOverFamilyIdRef.current,
+        },
+      }));
+      setDraggedModelId(null);
+      setDraggedFamilyId(null);
+      setDragOverModelId(null);
+      setDragOverFamilyId(null);
+      dragOverModelIdRef.current = null;
+      dragOverFamilyIdRef.current = null;
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [draggedModelId, draggedFamilyId]);
+
   const [showAddModel, setShowAddModel] = useState(false);
   const [newModelId, setNewModelId] = useState("");
   const [newModelName, setNewModelName] = useState("");
@@ -253,20 +343,82 @@ export default function PreferencesView() {
     : null;
   const nonEmbeddingOllamaModels = ollamaModels.filter((model) => !model.name.toLowerCase().includes("embed"));
   const groupedAiModels = useMemo(() => {
-    const groups = new Map<string, { key: string; label: string; order: number; models: AiModel[] }>();
+    // 1. Gather all models (DB + Detected)
+    const allMerged: AiModel[] = [...aiModels];
 
-    aiModels.forEach((model) => {
-      const meta = getModelGroupMeta(model.provider);
-      const existing = groups.get(meta.key);
-      if (existing) {
-        existing.models.push(model);
-        return;
+    const addDetected = (detectedId: string, name: string, provider: string, capabilities: string[] = []) => {
+      const exists = aiModels.some((m) => m.model_id === detectedId && m.provider === provider);
+      if (!exists) {
+        allMerged.push({
+          id: `transient-${provider}-${detectedId}`,
+          name,
+          model_id: detectedId,
+          provider,
+          role_tags: capabilities.includes("vision") ? ["chat", "vision"] : ["chat"],
+          priority: 9999,
+          is_paid: false,
+          enabled: false,
+          is_hidden: false,
+          tokens_used_total: 0,
+          created_at: new Date().toISOString(),
+        });
       }
-      groups.set(meta.key, { ...meta, models: [model] });
+    };
+
+    nonEmbeddingOllamaModels.forEach((om) => addDetected(om.name, om.name, "ollama", om.capabilities || []));
+    if (isMac) { mlxModels.forEach((m) => addDetected(m, m, "mlx")); }
+    llamacppModels.forEach((p) => addDetected(p, p.split("/").pop() || p, "llamacpp"));
+
+    // 2. Group them
+    if (composerMode === "family") {
+      const familyGroups: Record<string, { key: string; label: string; order: number; models: AiModel[] }> = {};
+      allMerged.forEach((m) => {
+        const rawPrefix = m.model_id.includes(":") ? m.model_id.split(":")[0] : m.model_id;
+        const label = modelFamilyLabels[rawPrefix] ?? rawPrefix;
+        
+        if (!familyGroups[label]) {
+          familyGroups[label] = {
+            key: `family-${label.toLowerCase().replace(/\s+/g, "-")}`,
+            label: label,
+            order: 0,
+            models: []
+          };
+        }
+        familyGroups[label].models.push(m);
+      });
+
+      // 3. Add any custom empty groups
+      customModelFamilies.forEach((family) => {
+        if (!familyGroups[family]) {
+          familyGroups[family] = {
+            key: `family-${family.toLowerCase().replace(/\s+/g, "-")}`,
+            label: family,
+            order: 0,
+            models: []
+          };
+        }
+      });
+
+      // Sort families by the lowest priority of their members
+      return Object.values(familyGroups).sort((a, b) => {
+        const minA = Math.min(...a.models.map(m => m.priority));
+        const minB = Math.min(...b.models.map(m => m.priority));
+        return minA - minB;
+      });
+    }
+
+    // Default Provider Grouping
+    const providerGroups: Record<string, { key: string; label: string; order: number; models: AiModel[] }> = {};
+    allMerged.forEach((m) => {
+      const meta = getModelGroupMeta(m.provider);
+      if (!providerGroups[meta.key]) {
+        providerGroups[meta.key] = { ...meta, models: [] };
+      }
+      providerGroups[meta.key].models.push(m);
     });
 
-    return Array.from(groups.values()).sort((a, b) => a.order - b.order);
-  }, [aiModels]);
+    return Object.values(providerGroups).sort((a, b) => a.order - b.order);
+  }, [aiModels, nonEmbeddingOllamaModels, mlxModels, llamacppModels, isMac, composerMode, modelFamilyLabels, customModelFamilies]);
 
   async function refreshLlamacppModels(paths: string[]) {
     if (paths.length === 0) {
@@ -309,8 +461,8 @@ export default function PreferencesView() {
   const [confirmPin, setConfirmPin] = useState("");
   const [pinSaving, setPinSaving] = useState(false);
   const [pinMessage, setPinMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [newFamilyPrefix, setNewFamilyPrefix] = useState("");
-  const [newFamilyLabel, setNewFamilyLabel] = useState("");
+  const [isAddingGroup, setIsAddingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
   useEffect(() => {
     dbSettingsRef.current = dbSettings;
   }, [dbSettings]);
@@ -322,7 +474,11 @@ export default function PreferencesView() {
   }, []);
 
   useEffect(() => {
-    setQuickSearchShortcutDraft(dbSettings?.quick_search_shortcut ?? "");
+    let val = dbSettings?.quick_search_shortcut ?? "";
+    if (val === "CmdOrCtrl+Shift+K") {
+      val = isMac ? "Cmd+Shift+K" : "Ctrl+Shift+K";
+    }
+    setQuickSearchShortcutDraft(val);
   }, [dbSettings?.quick_search_shortcut]);
 
   function syncClientSettings(settings: AppSettings) {
@@ -346,13 +502,14 @@ export default function PreferencesView() {
     settingsStore.setImmediateDelete(settings.immediate_delete);
     settingsStore.setConfirmMoveToTrash(settings.confirm_move_to_trash);
     settingsStore.setPromptInstructions(settings.prompt_instructions);
-    settingsStore.setSwitchWorkspaceToChat(settings.switch_workspace_to_chat);
+    settingsStore.setSwitchWorkspaceSection(settings.switch_workspace_section);
     settingsStore.setHideNativeMenu(settings.hide_native_menu);
     settingsStore.setShowGenInfo(settings.show_gen_info);
     settingsStore.setShowGenInfoTokenCount(settings.show_gen_info_token_count);
     settingsStore.setShowGenInfoDuration(settings.show_gen_info_duration);
     settingsStore.setShowGenInfoSpeed(settings.show_gen_info_speed);
     settingsStore.setShowGenInfoModel(settings.show_gen_info_model);
+    settingsStore.setQuickSearchShortcut(settings.quick_search_shortcut);
   }
 
   function scheduleSavedNoticeReset() {
@@ -369,7 +526,7 @@ export default function PreferencesView() {
     setSaveStatus("saving");
     setSaveError(null);
     saveQueueRef.current = saveQueueRef.current
-      .catch(() => {})
+      .catch(() => { })
       .then(async () => {
         await api.settings.update(nextSettings);
         setSaveStatus("saved");
@@ -383,7 +540,7 @@ export default function PreferencesView() {
 
   function updateSettings(patch: Partial<AppSettings>) {
     const current = dbSettingsRef.current;
-    if (!current) {return;}
+    if (!current) { return; }
 
     const nextSettings = { ...current, ...patch };
     dbSettingsRef.current = nextSettings;
@@ -405,7 +562,7 @@ export default function PreferencesView() {
           useSettingsStore.getState().setModelLabel(m.model_id, m.name);
         }
       });
-    }).catch(() => {});
+    }).catch(() => { });
     api.aiModel.listSpeedStats().then((stats) => {
       setModelSpeedStats(
         stats.reduce<Record<string, ModelSpeedStat>>((acc, stat) => {
@@ -413,7 +570,7 @@ export default function PreferencesView() {
           return acc;
         }, {})
       );
-    }).catch(() => {});
+    }).catch(() => { });
   }
 
   useAiModelSync(
@@ -423,8 +580,104 @@ export default function PreferencesView() {
     loadAiModels
   );
 
+  async function reorderFamilyBeforeGroup(draggedFamilyKey: string, targetGroupKey: string) {
+    const draggedGroup = groupedAiModels.find(g => g.key === draggedFamilyKey);
+    const targetGroup = groupedAiModels.find(g => g.key === targetGroupKey);
+    if (!draggedGroup || !targetGroup) {return;}
+
+    const allModels = groupedAiModels
+      .flatMap(g => g.models)
+      .filter(x => !x.id.startsWith("transient-"))
+      .sort((a, b) => a.priority - b.priority);
+    const draggedModels = draggedGroup.models.filter(x => !x.id.startsWith("transient-"));
+    const targetModels = targetGroup.models.filter(x => !x.id.startsWith("transient-"));
+
+    if (draggedModels.length === 0) {return;}
+
+    const remainingModels = allModels.filter(x => !draggedModels.find(dm => dm.id === x.id));
+    let targetStartIdx = remainingModels.length;
+    if (targetModels.length > 0) {
+      const idx = remainingModels.findIndex(x => x.id === targetModels[0].id);
+      if (idx !== -1) {targetStartIdx = idx;}
+    }
+
+    const reordered = [...remainingModels];
+    reordered.splice(targetStartIdx, 0, ...draggedModels);
+
+    const originalPriorities = allModels.map(x => x.priority);
+    await Promise.all(reordered.map((x, i) => {
+      const newPriority = originalPriorities[i] ?? (i + 1);
+      if (x.priority !== newPriority) {
+        return api.aiModel.update(x.id, { priority: newPriority }).catch(() => {});
+      }
+    }));
+    loadAiModels();
+    incrementModelRefreshCounter();
+  }
+
+  // Handle the custom drop event dispatched by the pointer-based drag engine
+  useEffect(() => {
+    const handleDrop = async (e: Event) => {
+      const { draggedModelId: dModel, draggedFamilyId: dFamily, overModelId, overFamilyId } =
+        (e as CustomEvent).detail as {
+          draggedModelId: string | null;
+          draggedFamilyId: string | null;
+          overModelId: string | null;
+          overFamilyId: string | null;
+        };
+
+      // Family reorder
+      if (dFamily && overFamilyId && dFamily !== overFamilyId) {
+        await reorderFamilyBeforeGroup(dFamily, overFamilyId);
+        return;
+      }
+
+      // Model dropped on a family header (reassign family in family mode)
+      if (dModel && !overModelId && overFamilyId && composerMode === "family") {
+        const m = aiModels.find(x => x.id === dModel);
+        if (m && !m.id.startsWith("transient-")) {
+          const rawPrefix = m.model_id.includes(":") ? m.model_id.split(":")[0] : m.model_id;
+          const targetGroup = groupedAiModels.find(g => g.key === overFamilyId);
+          if (targetGroup) {
+            setModelFamilyLabel(rawPrefix, targetGroup.label);
+            await new Promise(r => setTimeout(r, 50));
+            loadAiModels();
+            incrementModelRefreshCounter();
+          }
+        }
+        return;
+      }
+
+      // Model reorder
+      if (dModel && overModelId && dModel !== overModelId) {
+        const allModels = [...aiModels].sort((a, b) => a.priority - b.priority);
+        const draggedIdx = allModels.findIndex(x => x.id === dModel);
+        const targetIdx = allModels.findIndex(x => x.id === overModelId);
+
+        if (draggedIdx !== -1 && targetIdx !== -1) {
+          const reordered = [...allModels];
+          const [removed] = reordered.splice(draggedIdx, 1);
+          reordered.splice(targetIdx, 0, removed);
+
+          const originalPriorities = allModels.map(x => x.priority);
+          await Promise.all(reordered.map((x, i) => {
+            if (x.priority !== originalPriorities[i]) {
+              return api.aiModel.update(x.id, { priority: originalPriorities[i] }).catch(() => {});
+            }
+          }));
+          loadAiModels();
+          incrementModelRefreshCounter();
+        }
+      }
+    };
+
+    window.addEventListener("model-drag-drop", handleDrop);
+    return () => window.removeEventListener("model-drag-drop", handleDrop);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiModels, groupedAiModels, composerMode]);
+
   function toggleQuickSearchModel(modelId: string) {
-    if (!dbSettings) {return;}
+    if (!dbSettings) { return; }
     const next = dbSettings.quick_search_models.includes(modelId)
       ? dbSettings.quick_search_models.filter((value) => value !== modelId)
       : [...dbSettings.quick_search_models, modelId];
@@ -458,17 +711,17 @@ export default function PreferencesView() {
     const mode = options?.useCache ? api.ollama.listModels : api.ollama.listModelsFresh;
     mode(ollamaUrl || undefined)
       .then((models) => {
-        if (requestId !== ollamaModelsRequestRef.current) {return;}
+        if (requestId !== ollamaModelsRequestRef.current) { return; }
         setOllamaReachable(true);
         setOllamaModels(models);
       })
       .catch(() => {
-        if (requestId !== ollamaModelsRequestRef.current) {return;}
+        if (requestId !== ollamaModelsRequestRef.current) { return; }
         setOllamaReachable(false);
         setOllamaModels([]);
       })
       .finally(() => {
-        if (requestId !== ollamaModelsRequestRef.current) {return;}
+        if (requestId !== ollamaModelsRequestRef.current) { return; }
         setOllamaModelsLoading(false);
         setHasLoadedOllamaModels(true);
       });
@@ -489,15 +742,15 @@ export default function PreferencesView() {
       dbSettingsRef.current = normalizedSettings;
       syncClientSettings(normalizedSettings);
       refreshOllamaModels(normalizedSettings.ollama_base_url, { useCache: true });
-    }).catch(() => {});
+    }).catch(() => { });
     loadSystemSpecs();
     loadAiModels();
-    api.security.getStatus().then(setSecurityStatus).catch(() => {});
-    api.mcp.listServers().then(setMcpServers).catch(() => {});
-    api.gitSync.getStatus().then((s) => { setGitSync(s); setGitSyncUrl(s.remote_url); }).catch(() => {});
+    api.security.getStatus().then(setSecurityStatus).catch(() => { });
+    api.mcp.listServers().then(setMcpServers).catch(() => { });
+    api.gitSync.getStatus().then((s) => { setGitSync(s); setGitSyncUrl(s.remote_url); }).catch(() => { });
 
     // Initial fetch and listen for workspace changes
-    api.workspace.list().then(setWorkspaces).catch(() => {});
+    api.workspace.list().then(setWorkspaces).catch(() => { });
     const unlistenWorkspaces = listen("workspaces-changed", async () => {
       try {
         const workspaces = await api.workspace.list();
@@ -540,7 +793,7 @@ export default function PreferencesView() {
   }
 
   async function handleSetPin() {
-    if (!dbSettings) {return;}
+    if (!dbSettings) { return; }
 
     const hadConfiguredPin = securityStatus?.pin_enabled ?? false;
     setPinMessage(null);
@@ -571,8 +824,8 @@ export default function PreferencesView() {
         text: hadConfiguredPin
           ? "PIN updated."
           : dbSettings.pin_lock_enabled
-          ? "PIN saved."
-          : "PIN saved. Enable app lock to require it on launch.",
+            ? "PIN saved."
+            : "PIN saved. Enable app lock to require it on launch.",
       });
     } catch (err) {
       setPinMessage({ type: "error", text: err instanceof Error ? err.message : "Unable to save PIN." });
@@ -581,7 +834,7 @@ export default function PreferencesView() {
     }
   }
   async function handleRemovePin() {
-    if (!dbSettings) {return;}
+    if (!dbSettings) { return; }
 
     setPinMessage(null);
     if (!/^\d{4,8}$/.test(currentPin)) {
@@ -623,19 +876,16 @@ export default function PreferencesView() {
           key={id}
           onClick={() => setActiveTab(id)}
           title={`${label} (${MOD_KEY}⇧${idx + 1})`}
-          className={`flex items-center gap-2 whitespace-nowrap transition-colors ${
-            settingsNavLayout === "top-tabs"
-              ? `px-3.5 py-2.5 text-sm rounded-t-lg border-b-2 ${
-                  activeTab === id
-                    ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
-                    : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                }`
-              : `w-full rounded-xl px-2.5 py-2 text-left text-sm ${
-                  activeTab === id
-                    ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                    : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
-                }`
-          }`}
+          className={`flex items-center gap-2 whitespace-nowrap transition-colors ${settingsNavLayout === "top-tabs"
+            ? `px-3.5 py-2.5 text-sm rounded-t-lg border-b-2 ${activeTab === id
+              ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
+              : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+            }`
+            : `w-full rounded-xl px-2.5 py-2 text-left text-sm ${activeTab === id
+              ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+              : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+            }`
+            }`}
         >
           <Icon size={15} />
           {label}
@@ -647,110 +897,60 @@ export default function PreferencesView() {
   const autosaveStatus = saveStatus === "saving"
     ? "Saving..."
     : saveStatus === "saved"
-    ? "Saved"
-    : saveStatus === "error"
-    ? "Save failed"
-    : "Changes save automatically";
+      ? "Saved"
+      : saveStatus === "error"
+        ? "Save failed"
+        : "Changes save automatically";
 
   const autosaveStatusClassName = saveStatus === "error"
     ? "text-red-400"
     : saveStatus === "saved"
-    ? "text-emerald-400"
-    : "text-[var(--text-muted)]";
-  const contentWidthClassName = activeTab === "ai" ? "max-w-5xl" : "max-w-lg";
+      ? "text-emerald-400"
+      : "text-[var(--text-muted)]";
+  const contentWidthClassName = activeTab === "ai" ? "max-w-5xl" : "max-w-4xl";
   const ollamaModelsSection = (
     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Ollama models</h3>
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Models</h3>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
-            Manage local models, pick the one used for background tasks, and review capabilities or ordering.
+            Pick which local models to enable, set priority, or review capabilities. New local models are detected automatically.
           </p>
         </div>
-        <button
-          onClick={() => { setShowAddModel(!showAddModel); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); }}
-          className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
-        >
-          <Plus size={11} /> Add Model
-        </button>
       </div>
-
-      {showAddModel && (
-        <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 space-y-2">
-          <div className="relative">
-            <CompactMenuSelect
-              label="Model"
-              value={newModelId}
-              options={[
-                { value: "", label: "Select model..." },
-                ...nonEmbeddingOllamaModels.map((m) => ({ value: m.name, label: m.name, group: "Ollama" })),
-                ...(isMac && mlxModels.length > 0 ? mlxModels.map((m) => ({ value: `mlx:${m}`, label: m, group: "MLX" })) : []),
-                ...llamacppModels.map((p) => ({ value: `llamacpp:${p}`, label: p.split("/").pop() || p, group: "llama.cpp (GGUF)" })),
-              ]}
-              onChange={(val) => {
-                setNewModelId(val);
-                if (!newModelName) {
-                  setNewModelName(val.startsWith("mlx:") || val.startsWith("llamacpp:") ? val.split(":").pop() || val : val);
-                }
-              }}
-              widthClassName="w-full"
-            />
-          </div>
-          <input
-            value={newModelName}
-            onChange={(e) => setNewModelName(e.target.value)}
-            placeholder="Display name"
-            className="w-full px-2 py-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
-          />
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-              <input type="checkbox" checked={newModelIsPaid} onChange={(e) => setNewModelIsPaid(e.target.checked)} className="accent-[var(--accent-color)]" />
-              Paid model
-            </label>
-            <div className="flex gap-2">
-              <button onClick={() => setShowAddModel(false)} className="px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">Cancel</button>
-              <button
-                disabled={!newModelId || !newModelName}
-                onClick={async () => {
-                  const isMlx = newModelId.startsWith("mlx:");
-                  const isLlamacpp = newModelId.startsWith("llamacpp:");
-                  const modelId = isMlx ? newModelId.replace("mlx:", "") : isLlamacpp ? newModelId.replace("llamacpp:", "") : newModelId;
-                  const provider = isMlx ? "mlx" : isLlamacpp ? "llamacpp" : "ollama";
-                  await api.aiModel.add(newModelName, modelId, { provider, is_paid: newModelIsPaid });
-                  loadAiModels();
-                  incrementModelRefreshCounter();
-                  setShowAddModel(false); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false);
-                }}
-                className="px-2 py-1 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
-              >
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {aiModels.length === 0 ? (
         <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
       ) : (
-        <div className="space-y-3">
-          <div className="hidden grid-cols-[minmax(0,1fr)_28px_28px_110px_40px_40px_20px] items-center gap-3 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)] md:grid">
-            <span>Model</span>
-            <span className="text-center">Background</span>
-            <span className="text-center">Pin</span>
-            <span className="text-right">Speed</span>
-            <span className="text-center">Active</span>
-            <span className="text-center">Visible</span>
-            <span />
-          </div>
+      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] overflow-hidden">
+        <div className="grid grid-cols-[minmax(0,1fr)_100px_40px_120px_60px_60px_20px] items-center gap-3 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+          <span>Model</span>
+          <span className="text-center">Background</span>
+          <span className="text-center">Pin</span>
+          <span className="text-right">Speed</span>
+          <span className="text-center">Active</span>
+          <span className="text-center">Visible</span>
+          <span />
+        </div>
+
+          <div className="divide-y divide-[var(--border-color)]">
 
           {groupedAiModels.map((group) => (
-            <div key={group.key} className="space-y-1">
-              <div className="px-1 pt-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                  {group.label}
-                </div>
+            <React.Fragment key={group.key}>
+              <div
+                data-family-key={group.key}
+                onPointerDown={(e) => {
+                  if (composerMode !== "family") {return;}
+                  // Only start family drag from primary button
+                  if (e.button !== 0) {return;}
+                  e.preventDefault();
+                  setDraggedFamilyId(group.key);
+                }}
+                className={`px-4 py-1.5 transition-colors select-none ${dragOverFamilyId === group.key ? "bg-[var(--accent-color)]/20" : "bg-[var(--bg-hover)]/10"} text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)] ${composerMode === "family" ? "cursor-grab active:cursor-grabbing" : ""}`}
+              >
+                {group.label}
               </div>
+
               {group.models.map((m, _idx) => {
                 const ollamaMeta = ollamaModels.find((model) => model.name === m.model_id);
                 const speedStat = modelSpeedStats[m.model_id];
@@ -764,84 +964,33 @@ export default function PreferencesView() {
                 const fitMeta = getModelFitMeta(modelFit);
                 const metadataParts = [formattedParams, formattedStorage].filter(Boolean) as string[];
                 const isOllamaModel = m.provider === "ollama";
+                const isWebModel = m.provider.startsWith("web_");
                 const canBeBackgroundModel = isOllamaModel && m.enabled;
                 const isBackgroundModel = dbSettings.background_model === m.model_id;
-                const providerMeta = getModelGroupMeta(m.provider);
-                const capabilityBadges = isOllamaModel ? ollamaMeta?.capabilities ?? [] : [];
+                const providerMeta = group;
+                const capabilityBadges = (isOllamaModel ? ollamaMeta?.capabilities ?? [] : [])
+                  .filter((c) => c.toLowerCase() !== "completion");
                 const displayName = resolveModelDisplayName(m.model_id, modelLabels, aiModels);
                 const secondaryDisplayName = resolveModelSecondaryDisplayName(m.model_id, m.provider);
 
                 return (
                   <div
                     key={m.id}
-                    draggable={!editingModelId}
-                    onDragStart={(e) => {
-                      setDraggedModelId(m.id);
-                      e.dataTransfer.effectAllowed = "move";
-                      // Use a slight opacity for the dragged element
-                      setTimeout(() => {
-                        if (e.target instanceof HTMLElement) {
-                          e.target.style.opacity = "0.5";
-                        }
-                      }, 0);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "move";
-                      if (m.id !== draggedModelId) {
-                        setDragOverModelId(m.id);
-                      }
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverModelId === m.id) { setDragOverModelId(null); }
-                    }}
-                    onDrop={async (e) => {
-                      e.preventDefault();
-                      setDragOverModelId(null);
-                      if (e.target instanceof HTMLElement) {
-                        e.target.style.opacity = "1";
-                      }
-                      
-                      if (draggedModelId && draggedModelId !== m.id) {
-                        const draggedIdx = group.models.findIndex(x => x.id === draggedModelId);
-                        const targetIdx = group.models.findIndex(x => x.id === m.id);
-                        
-                        if (draggedIdx !== -1 && targetIdx !== -1) {
-                          const newModels = [...group.models];
-                          const [removed] = newModels.splice(draggedIdx, 1);
-                          newModels.splice(targetIdx, 0, removed);
-                          
-                          const originalPriorities = group.models.map(x => x.priority);
-                          
-                          // Optimistically update UI (optional but good for snap)
-                          // Fire off backend updates
-                          for (let i = 0; i < newModels.length; i++) {
-                            if (newModels[i].priority !== originalPriorities[i]) {
-                              api.aiModel.update(newModels[i].id, { priority: originalPriorities[i] }).catch(() => {});
-                            }
-                          }
-                          
-                          // Reload
-                          setTimeout(() => {
-                            loadAiModels();
-                            incrementModelRefreshCounter();
-                          }, 50);
-                        }
-                      }
-                      setDraggedModelId(null);
-                    }}
-                    onDragEnd={(e) => {
-                      setDraggedModelId(null);
-                      setDragOverModelId(null);
-                      if (e.target instanceof HTMLElement) {
-                        e.target.style.opacity = "1";
-                      }
-                    }}
-                    className={`rounded-lg border ${dragOverModelId === m.id ? "border-[var(--accent-color)] bg-[var(--bg-hover)]" : "border-[var(--border-color)] bg-[var(--bg-primary)]"} px-3 py-2.5 transition-colors`}
+                    data-model-id={m.id}
+                    data-family-key={group.key}
+                    className={`transition-colors select-none ${draggedModelId === m.id ? "opacity-50" : ""} ${dragOverModelId === m.id ? "bg-[var(--accent-color)]/10" : "hover:bg-[var(--bg-hover)]/5"} px-4 py-3`}
                   >
-                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_28px_28px_110px_40px_40px_20px] md:items-start md:gap-3">
+                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_100px_40px_120px_60px_60px_20px] md:items-start md:gap-3">
                       <div className="flex min-w-0 items-start gap-2">
-                        <div className="flex items-center pt-1.5 text-[var(--text-muted)] cursor-grab hover:text-[var(--text-primary)]">
+                        <div
+                          className="flex items-center pt-1.5 text-[var(--text-muted)] cursor-grab hover:text-[var(--text-primary)]"
+                          onPointerDown={(e) => {
+                            if (editingModelId || m.id.startsWith("transient-") || e.button !== 0) {return;}
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDraggedModelId(m.id);
+                          }}
+                        >
                           <GripVertical size={14} />
                         </div>
 
@@ -873,18 +1022,20 @@ export default function PreferencesView() {
                               <div className="flex min-w-0 items-center gap-2">
                                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${fitMeta.dotClassName}`} title={fitMeta.title} />
                                 <span className="truncate text-sm font-medium text-[var(--text-primary)]">{displayName}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingModelId(m.id);
-                                    setEditingName(m.name);
-                                  }}
-                                  className="shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[var(--text-primary)]"
-                                  title="Rename model"
-                                  aria-label={`Rename ${displayName}`}
-                                >
-                                  <Pencil size={10} />
-                                </button>
+                                {!m.id.startsWith("transient-") && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingModelId(m.id);
+                                      setEditingName(m.name);
+                                    }}
+                                    className="shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[var(--text-primary)]"
+                                    title="Rename model"
+                                    aria-label={`Rename ${displayName}`}
+                                  >
+                                    <Pencil size={10} />
+                                  </button>
+                                )}
                               </div>
                               <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-[var(--text-muted)]">
                                 {!isOllamaModel && (
@@ -893,6 +1044,14 @@ export default function PreferencesView() {
                                   </span>
                                 )}
                                 <span className="truncate">{secondaryDisplayName}</span>
+                                {capabilityBadges.length > 0 && (
+                                  <div
+                                    className="ml-1 shrink-0 cursor-help text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)]"
+                                    title={`Capabilities: ${capabilityBadges.map(formatCapabilityLabel).join(", ")}`}
+                                  >
+                                    <Info size={12} />
+                                  </div>
+                                )}
                               </div>
                               {(metadataParts.length > 0 || fitMeta.label) && (
                                 <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-secondary)]">
@@ -913,9 +1072,8 @@ export default function PreferencesView() {
 
                       {isOllamaModel && (
                         <label
-                          className={`flex items-center justify-center md:w-7 ${
-                            canBeBackgroundModel ? "cursor-pointer text-[var(--text-secondary)]" : "cursor-not-allowed text-[var(--text-muted)] opacity-60"
-                          }`}
+                          className={`flex items-center justify-center md:w-[100px] ${canBeBackgroundModel ? "cursor-pointer text-[var(--text-secondary)]" : "cursor-not-allowed text-[var(--text-muted)] opacity-60"
+                            }`}
                           title={canBeBackgroundModel ? "Use for background tasks" : "Enable this model to make it selectable for background tasks"}
                         >
                           <input
@@ -934,21 +1092,20 @@ export default function PreferencesView() {
 
                       <button
                         onClick={() => toggleQuickSearchModel(m.model_id)}
-                        className={`flex items-center justify-center md:w-7 transition-colors ${
-                          dbSettings.quick_search_models.includes(m.model_id)
-                            ? "text-[var(--accent-color)]"
-                            : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                        }`}
+                        className={`flex items-center justify-center md:w-10 transition-colors ${dbSettings.quick_search_models.includes(m.model_id)
+                          ? "text-[var(--accent-color)]"
+                          : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                          }`}
                         title={dbSettings.quick_search_models.includes(m.model_id) ? "Unpin from Quick Send" : "Pin to Quick Send"}
                       >
                         <Pin size={14} fill={dbSettings.quick_search_models.includes(m.model_id) ? "currentColor" : "none"} />
                       </button>
 
-                      <div className="text-right text-[10px] leading-5 text-[var(--text-muted)] md:w-[110px]">
+                      <div className="text-right text-[10px] leading-5 text-[var(--text-muted)] md:w-[120px]">
                         {m.is_paid && (
                           <div className="font-medium uppercase tracking-wide text-amber-400">Paid</div>
                         )}
-                        {speedLabels && (
+                        {speedLabels && !isWebModel && (
                           <div
                             className="tabular-nums whitespace-nowrap text-[var(--text-secondary)]"
                             title={`Average generation speed across ${speedStat.chat_count} chats`}
@@ -956,7 +1113,7 @@ export default function PreferencesView() {
                             {speedLabels.chatAverage} avg
                           </div>
                         )}
-                        {speedLabels && (
+                        {speedLabels && !isWebModel && (
                           <div
                             className="tabular-nums whitespace-nowrap text-[var(--text-secondary)]"
                             title="Weighted overall generation speed across all recorded assistant messages"
@@ -964,26 +1121,37 @@ export default function PreferencesView() {
                             {speedLabels.weighted} weighted
                           </div>
                         )}
-                        <div
-                          className="tabular-nums whitespace-nowrap"
-                          title={`${m.tokens_used_total.toLocaleString()} total tokens recorded`}
-                        >
-                          {m.tokens_used_total.toLocaleString()} tok total
-                        </div>
+                        {!isWebModel && (
+                          <div
+                            className="tabular-nums whitespace-nowrap"
+                            title={`${m.tokens_used_total.toLocaleString()} total tokens recorded`}
+                          >
+                            {m.tokens_used_total.toLocaleString()} tok total
+                          </div>
+                        )}
                       </div>
 
-                      <div className="flex justify-center pt-0.5 md:w-10">
+                      <div className="flex justify-center pt-0.5 md:w-[60px]">
                         <Toggle
                           on={m.enabled}
                           onToggle={async () => {
-                            await api.aiModel.update(m.id, { enabled: !m.enabled });
+                            if (m.id.startsWith("transient-")) {
+                              // Auto-add to DB on first enable
+                              await api.aiModel.add(m.name, m.model_id, {
+                                provider: m.provider,
+                                enabled: true,
+                                priority: aiModels.length > 0 ? Math.max(...aiModels.map(x => x.priority)) + 1 : 1
+                              });
+                            } else {
+                              await api.aiModel.update(m.id, { enabled: !m.enabled });
+                            }
                             loadAiModels();
                             incrementModelRefreshCounter();
                           }}
                         />
                       </div>
 
-                      <div className="flex justify-center pt-1 md:w-10">
+                      <div className="flex justify-center pt-1 md:w-[60px]">
                         <button
                           onClick={async () => {
                             await api.aiModel.update(m.id, { is_hidden: !m.is_hidden });
@@ -1004,26 +1172,52 @@ export default function PreferencesView() {
                         <Trash2 size={12} />
                       </button>
                     </div>
-
-                    {capabilityBadges.length > 0 && (
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">Capabilities</span>
-                        {capabilityBadges.map((capability) => (
-                          <span
-                            key={`${m.id}-${capability}`}
-                            className="rounded-md border border-[var(--accent-color)]/25 bg-[var(--accent-color)]/10 px-2 py-0.5 text-[10px] text-[var(--accent-color)]"
-                            title={`${formatCapabilityLabel(capability)} capability reported by Ollama`}
-                          >
-                            {formatCapabilityLabel(capability)}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 );
               })}
-            </div>
+            </React.Fragment>
           ))}
+          </div>
+        </div>
+      )}
+
+      {composerMode === "family" && (
+        <div className="pt-2">
+          {isAddingGroup ? (
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                type="text"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                placeholder="Group name (e.g. Gemma)"
+                className="w-48 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] transition-all shadow-sm"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newGroupName.trim()) {
+                    addCustomModelFamily(newGroupName.trim());
+                    setNewGroupName("");
+                    setIsAddingGroup(false);
+                  } else if (e.key === "Escape") {
+                    setIsAddingGroup(false);
+                    setNewGroupName("");
+                  }
+                }}
+                onBlur={() => {
+                  setIsAddingGroup(false);
+                  setNewGroupName("");
+                }}
+              />
+              <span className="text-[10px] text-[var(--text-muted)]">Press Enter to create</span>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsAddingGroup(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-[var(--accent-color)] hover:text-[var(--accent-color-hover)] transition-colors px-1"
+            >
+              <Plus size={14} />
+              Add Group
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -1139,1698 +1333,1668 @@ export default function PreferencesView() {
         )}
 
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-      {(activeTab === "app" || activeTab === "navigation" || activeTab === "appearance" || activeTab === "chat" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
-      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
-        <div className={`${contentWidthClassName} space-y-5`}>
+          {(activeTab === "app" || activeTab === "navigation" || activeTab === "appearance" || activeTab === "chat" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+              <div className={`${contentWidthClassName} space-y-4`}>
 
-          {/* ── App ── */}
-          {activeTab === "app" && (
-            <>
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Startup & background</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Control how Aetherium launches and whether it stays available after the main window closes.
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      {isLinux ? "Start with desktop session" : "Start at login"}
-                    </p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      {isLinux
-                        ? "Adds Aetherium to your desktop environment's autostart applications"
-                        : "Automatically launch Aetherium when you log in"}
-                    </p>
-                  </div>
-                  <Toggle
-                    on={dbSettings.start_at_login}
-                    onToggle={() => {
-                      const nextStartAtLogin = !dbSettings.start_at_login;
-                      set("start_at_login", nextStartAtLogin);
-                      if (!nextStartAtLogin && dbSettings.open_in_background) {
-                        set("open_in_background", false);
-                      }
-                    }}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className={`text-sm ${dbSettings.start_at_login ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]"}`}>Open in background</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      {dbSettings.start_at_login
-                        ? "Launch without bringing window to front"
-                        : "Available only when Start at login is enabled"}
-                    </p>
-                  </div>
-                  <Toggle
-                    on={dbSettings.open_in_background}
-                    disabled={!dbSettings.start_at_login}
-                    onToggle={() => set("open_in_background", !dbSettings.open_in_background)}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Keep running in tray</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Closing the main window keeps the menu bar or tray app alive so quick search still works.
-                    </p>
-                  </div>
-                  <Toggle
-                    on={dbSettings.keep_running_in_tray}
-                    onToggle={() => set("keep_running_in_tray", !dbSettings.keep_running_in_tray)}
-                  />
-                </div>
-
-                {isDemoMode ? (
-                  <div className="flex items-center justify-between py-1">
-                    <div>
-                      <p className="text-sm text-[var(--text-secondary)]">Exit Demo Mode</p>
-                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                        Exit demo and return to your regular workspaces. All demo data will be deleted.
-                      </p>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        try {
-                          // Mark demo as dismissed to prevent re-auto-activation
-                          await api.settings.update({ ...dbSettings, demo_dismissed: true });
-                          await api.demo.deactivate();
-                          setDemo(false);
-                          window.location.reload();
-                        } catch (e) {
-                          await message(`Failed to exit demo mode.\n${e}`, { title: "Error", kind: "error" });
-                        }
-                      }}
-                      className="rounded-lg border border-red-500/50 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 transition-colors hover:border-red-500 hover:bg-red-500/10"
-                    >
-                      Exit Demo
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between py-1">
-                    <div>
-                      <p className="text-sm text-[var(--text-secondary)]">Start Demo Mode</p>
-                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                        Explore Aetherium with pre-populated examples and a fully featured workspace.
-                      </p>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        try {
-                          // Ensure demo_dismissed is false when manually starting demo
-                          await api.settings.update({ ...dbSettings, demo_dismissed: false });
-                          const demoWorkspaceId = await api.demo.activate();
-                          setDemo(true, demoWorkspaceId);
-                          window.location.reload();
-                        } catch (e) {
-                          await message(`Failed to activate demo mode.\n${e}`, { title: "Error", kind: "error" });
-                        }
-                      }}
-                      className="rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
-                    >
-                      Start Demo
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Features</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Enable or disable optional features across Aetherium.
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Workspace Memory</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Store and use workspace-scoped persistent facts, preferences, and context
-                    </p>
-                  </div>
-                  <Toggle
-                    on={dbSettings.memory_enabled}
-                    onToggle={() => set("memory_enabled", !dbSettings.memory_enabled)}
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Shortcut</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Set the global accelerator used to open quick search from anywhere.
-                  </p>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Quick search shortcut</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Use a Tauri accelerator like <code>CmdOrCtrl+Shift+K</code>. Leave blank to disable the global hotkey.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => set("quick_search_shortcut", quickSearchShortcutDraft.trim())}
-                    className="rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
-                  >
-                    Apply
-                  </button>
-                </div>
-                <input
-                  value={quickSearchShortcutDraft}
-                  onChange={(event) => setQuickSearchShortcutDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      set("quick_search_shortcut", quickSearchShortcutDraft.trim());
-                    }
-                  }}
-                  placeholder="CmdOrCtrl+Shift+K"
-                  className="h-11 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                />
-              </div>
-            </>
-          )}
-
-          {/* ── Navigation ── */}
-          {activeTab === "navigation" && (
-            <>
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Main layout</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Choose how workspace and section switching is presented in the main window.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Workspace Navigation</label>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      { id: "sidebar", label: "Sidebar", description: "Keep workspace switching in the left rail beside the main content." },
-                      { id: "top-tabs", label: "Top Tabs", description: "Show workspaces as visible tabs across the top." },
-                      { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact workspace picker in the top bar." },
-                    ].map((option) => (
-                      <button
-                        key={option.id}
-                        onClick={() => setWorkspaceNavigation(option.id as NavigationPresentation)}
-                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                          workspaceNavigation === option.id
-                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                        }`}
-                      >
-                        <NavPreview workspaceNav={option.id as NavigationPresentation} sectionNav={sectionNavigation} />
-                        <div className="text-xs font-medium">{option.label}</div>
-                        <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Section Navigation</label>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      { id: "sidebar", label: "Sidebar", description: "Keep section navigation in the left rail." },
-                      { id: "top-tabs", label: "Top Tabs", description: "Show sections as visible tabs across the top." },
-                      { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact section picker in the top bar." },
-                    ].map((option) => (
-                      <button
-                        key={option.id}
-                        onClick={() => setSectionNavigation(option.id as NavigationPresentation)}
-                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                          sectionNavigation === option.id
-                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                        }`}
-                      >
-                        <NavPreview workspaceNav={workspaceNavigation} sectionNav={option.id as NavigationPresentation} />
-                        <div className="text-xs font-medium">{option.label}</div>
-                        <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Split view</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Split view now follows the main layout automatically to keep navigation predictable.
-                  </p>
-                </div>
-                <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]/55 px-3.5 py-3 text-xs text-[var(--text-secondary)]">
-                  <p>
-                    Workspace switching mirrors the main layout: <span className="font-medium text-[var(--text-primary)]">{workspaceNavigation === "top-dropdown" ? "Dropdown" : "Tabs"}</span>.
-                  </p>
-                  <p className="mt-2">
-                    Section switching mirrors the main layout: <span className="font-medium text-[var(--text-primary)]">{sectionNavigation === "top-dropdown" ? "Dropdown" : "Tabs"}</span>.
-                  </p>
-                  <p className="mt-2 text-[var(--text-muted)]">
-                    Sidebar layouts collapse to tabs in split view because each pane uses shared top chrome.
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Workspace behavior</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Tune workspace ordering and what happens when you jump between workspaces.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Workspace Sort Order</label>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {([
-                      { id: "name-asc", label: "Name A\u2013Z" },
-                      { id: "name-desc", label: "Name Z\u2013A" },
-                      { id: "created-newest", label: "Newest First" },
-                      { id: "created-oldest", label: "Oldest First" },
-                      { id: "updated-newest", label: "Recently Updated" },
-                      { id: "updated-oldest", label: "Least Recently Updated" },
-                    ] as const).map((option) => (
-                      <button
-                        key={option.id}
-                        onClick={() => setWorkspaceSortOrder(option.id)}
-                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                          workspaceSortOrder === option.id
-                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                        }`}
-                      >
-                        <div className="text-xs font-medium">{option.label}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Open Chats when switching workspace</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Always return to the main Chats view instead of keeping the current section in the new workspace.
-                    </p>
-                  </div>
-                  <Toggle
-                    on={switchWorkspaceToChat}
-                    onToggle={() => set("switch_workspace_to_chat", !switchWorkspaceToChat)}
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Settings Navigation</label>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      { id: "top-tabs", label: "Top Tabs", description: "Keep settings sections across the top." },
-                      { id: "side-tabs", label: "Side Tabs", description: "Keep settings sections in a dedicated side rail." },
-                    ].map((layout) => (
-                      <button
-                        key={layout.id}
-                        onClick={() => setSettingsNavLayout(layout.id as "top-tabs" | "side-tabs")}
-                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                          settingsNavLayout === layout.id
-                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                        }`}
-                      >
-                        {/* Mini preview — shows what the settings panel will look like */}
-                        {layout.id === "top-tabs" ? (
-                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70" style={{ height: 52 }}>
-                            {/* Settings header with horizontal tab bar */}
-                            <div className="flex items-center gap-1 px-2 py-1.5 bg-[var(--bg-secondary)]">
-                              <div className="h-2 w-6 rounded-full bg-[var(--accent-color)] opacity-80" />
-                              <div className="h-2 w-4 rounded-full bg-[var(--text-muted)] opacity-40" />
-                              <div className="h-2 w-5 rounded-full bg-[var(--text-muted)] opacity-40" />
-                              <div className="h-2 w-3 rounded-full bg-[var(--text-muted)] opacity-40" />
-                            </div>
-                            {/* Content area */}
-                            <div className="px-2 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
-                              <div className="h-1.5 w-12 rounded-sm bg-[var(--text-muted)] opacity-30" />
-                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70 flex" style={{ height: 52 }}>
-                            {/* Side rail with section list */}
-                            <div className="flex flex-col gap-1 px-1.5 pt-1.5 bg-[var(--bg-secondary)] w-10 shrink-0">
-                              <div className="h-1.5 w-6 rounded-sm bg-[var(--accent-color)] opacity-80" />
-                              <div className="h-1.5 w-5 rounded-sm bg-[var(--text-muted)] opacity-40" />
-                              <div className="h-1.5 w-7 rounded-sm bg-[var(--text-muted)] opacity-40" />
-                              <div className="h-1.5 w-4 rounded-sm bg-[var(--text-muted)] opacity-40" />
-                            </div>
-                            {/* Content area */}
-                            <div className="flex-1 px-2 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
-                              <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
-                              <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
-                            </div>
-                          </div>
-                        )}
-                        <div className="text-xs font-medium">{layout.label}</div>
-                        <div className="mt-1 text-[11px] opacity-75">{layout.description}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* ── Appearance ── */}
-          {activeTab === "appearance" && (
-            <>
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Theme</label>
-                <div className="flex flex-wrap gap-2">
-                  {THEMES.map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => updateSettings({ theme: t, accent_color: THEME_DEFAULT_ACCENTS[t] })}
-                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${
-                        dbSettings.theme === t
-                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                          : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Accent Color</label>
-                <div className="flex flex-wrap gap-2">
-                  {ACCENT_COLORS.map(({ label, value }) => (
-                    <button
-                      key={value}
-                      onClick={() => setAppearance("accent_color", value)}
-                      title={label}
-                      aria-label={`Use ${label} accent`}
-                      className={`relative h-8 w-8 rounded-full border-2 transition-transform ${
-                        dbSettings.accent_color === value ? "border-white scale-110 shadow-sm" : "border-transparent"
-                      }`}
-                      style={{ backgroundColor: value }}
-                    >
-                      <span className="sr-only">{label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Text Size</label>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAppearance("font_size", Math.max(MIN_FONT_SIZE, dbSettings.font_size - 1))}
-                    disabled={dbSettings.font_size <= MIN_FONT_SIZE}
-                    className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    A-
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAppearance("font_size", Math.min(MAX_FONT_SIZE, dbSettings.font_size + 1))}
-                    disabled={dbSettings.font_size >= MAX_FONT_SIZE}
-                    className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    A+
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAppearance("font_size", DEFAULT_FONT_SIZE)}
-                    disabled={dbSettings.font_size === DEFAULT_FONT_SIZE}
-                    className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    Reset
-                  </button>
-                  <span className="ml-2 text-xs font-medium text-[var(--text-muted)] w-8 text-center bg-[var(--bg-hover)] px-2 py-1 rounded-md">
-                    {dbSettings.font_size}
-                  </span>
-                </div>
-              </div>
-
-
-            </>
-          )}
-
-          {/* ── AI / Ollama ── */}
-          {activeTab === "ai" && (
-            <>
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Detected hardware guidance</p>
-                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                      Based on detected memory and available compute.
-                    </p>
-                  </div>
-                  <button
-                    onClick={loadSystemSpecs}
-                    disabled={systemSpecsLoading}
-                    className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
-                  >
-                    {systemSpecsLoading ? <RefreshCw size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-                    Refresh specs
-                  </button>
-                </div>
-
-                {systemSpecs ? (
+                {/* ── App ── */}
+                {activeTab === "app" && (
                   <>
-                    {systemGuidance && (
-                      <div className="rounded-lg border border-[var(--accent-color)]/20 bg-[var(--accent-color)]/8 px-3 py-2.5">
-                        <p className="text-[11px] font-semibold text-[var(--text-primary)]">{systemGuidance.headline}</p>
-                        <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{systemGuidance.summary}</p>
-                        <p className="mt-1 text-[10px] text-[var(--text-secondary)]">{systemGuidance.basis}</p>
-                      </div>
-                    )}
-
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">System</p>
-                        <p className="mt-0.5 text-xs text-[var(--text-primary)]">{formatSystemName(systemSpecs)}</p>
-                        <p className="text-[10px] text-[var(--text-secondary)]">{systemSpecs.cpu_arch}</p>
-                      </div>
-                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">CPU</p>
-                        <p className="mt-0.5 text-xs text-[var(--text-primary)]">{systemSpecs.cpu_brand}</p>
-                        <p className="text-[10px] text-[var(--text-secondary)]">
-                          {systemSpecs.physical_cores ? `${systemSpecs.physical_cores} physical` : "Physical cores unavailable"} / {systemSpecs.logical_cores} logical
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">Memory</p>
-                        <p className="mt-0.5 text-xs text-[var(--text-primary)]">{formatBytes(systemSpecs.total_memory_bytes)} total</p>
-                        <p className="text-[10px] text-[var(--text-secondary)]">{formatBytes(systemSpecs.available_memory_bytes)} available now</p>
-                      </div>
-                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">
-                          {systemSpecs.gpu_name ? "GPU" : "Swap"}
-                        </p>
-                        <p className="mt-0.5 text-xs text-[var(--text-primary)]">
-                          {systemSpecs.gpu_name
-                            ? systemSpecs.gpu_name
-                            : `${formatBytes(systemSpecs.total_swap_bytes)} configured`}
-                        </p>
-                        <p className="text-[10px] text-[var(--text-secondary)]">
-                          {systemSpecs.gpu_name
-                            ? (systemSpecs.gpu_memory_bytes
-                              ? `${formatBytes(systemSpecs.gpu_memory_bytes)} VRAM`
-                              : (systemSpecs.gpu_detection_source || "GPU memory unavailable"))
-                            : (systemSpecs.host_name ? systemSpecs.host_name : (systemSpecs.kernel_version || "Kernel version unavailable"))}
-                        </p>
-                      </div>
-                    </div>
-
-                    {systemGuidance?.caution && (
-                      <p className="text-[10px] text-[var(--text-secondary)]">{systemGuidance.caution}</p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-[11px] text-[var(--text-secondary)]">
-                    {systemSpecsLoading ? "Reading local system specs..." : (systemSpecsError || "System specs are not available yet.")}
-                  </p>
-                )}
-              </div>
-
-              {ollamaModelsSection}
-
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">Local inference providers</h3>
-                    <p className="text-xs text-[var(--text-muted)] mt-1">
-                      Kept in one place so setup feels like one workflow instead of separate tabs. Ollama is the main path, with MLX and llama.cpp as optional local runtimes.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm text-[var(--text-secondary)]">Ollama</p>
-                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                        Manage the local server, discover installed models, and power the default local chat flow.
-                      </p>
-                    </div>
-                    <Toggle
-                      on={dbSettings.auto_start_ollama}
-                      onToggle={() => set("auto_start_ollama", !dbSettings.auto_start_ollama)}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between gap-3 mb-1">
-                      <label className="text-xs text-[var(--text-secondary)]">Ollama URL</label>
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={async () => {
-                            setStartingOllama(true);
-                            setOllamaTestResult(null);
-                            try {
-                              const status = await api.ollama.ensureRunning(dbSettings.ollama_base_url || undefined);
-                              applyOllamaRuntimeStatus(status);
-                            } catch (error) {
-                              const msg = error instanceof Error ? error.message : "Automatic startup failed.";
-                              setOllamaReachable(false);
-                              setOllamaTestResult({ success: false, msg });
-                            } finally {
-                              setStartingOllama(false);
-                            }
-                          }}
-                          disabled={startingOllama || testingOllama}
-                          className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
-                        >
-                          {startingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Bot size={10} />}
-                          Start Ollama
-                        </button>
-                        <button
-                          onClick={async () => {
-                            setTestingOllama(true);
-                            setOllamaTestResult(null);
-                            try {
-                              const models = await api.ollama.listModelsFresh(dbSettings.ollama_base_url || undefined);
-                              setOllamaReachable(true);
-                              setOllamaModels(models);
-                              setHasLoadedOllamaModels(true);
-                              setOllamaTestResult({ success: true, msg: `Success! ${models.length} model(s) found.` });
-                            } catch (error) {
-                              setOllamaReachable(false);
-                              const msg = error instanceof Error ? error.message : "Connection failed.";
-                              setOllamaTestResult({ success: false, msg });
-                            } finally {
-                              setTestingOllama(false);
-                            }
-                          }}
-                          disabled={testingOllama || startingOllama}
-                          className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
-                        >
-                          {testingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
-                          Test Connection
-                        </button>
-                      </div>
-                    </div>
-                    <input
-                      value={dbSettings.ollama_base_url}
-                      onChange={(e) => {
-                        set("ollama_base_url", e.target.value);
-                        refreshOllamaModels(e.target.value, { clearResult: true });
-                      }}
-                      placeholder="http://localhost:11434"
-                      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                    <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
-                      Enable auto-start to try `ollama serve` on launch when you use the default local address.
-                    </p>
-                    {ollamaTestResult && (
-                      <p className={`text-[10px] mt-1.5 font-medium ${ollamaTestResult.success ? "text-green-400" : "text-red-400"}`}>
-                        {ollamaTestResult.msg}
-                      </p>
-                    )}
-                    {ollamaModelsLoading && (
-                      <p className="text-[10px] mt-1.5 text-[var(--text-muted)]">
-                        Loading available models...
-                      </p>
-                    )}
-                    {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaReachable === false && !testingOllama && !startingOllama && (
-                      <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                        <div className="flex items-center gap-2 text-red-400 mb-1">
-                          <Network size={14} />
-                          <span className="text-xs font-semibold">Ollama unavailable</span>
-                        </div>
-                        <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                          Aetherium could not reach Ollama at this URL. Start it manually with:
-                          <code className="block mt-1.5 p-1.5 rounded bg-[var(--bg-primary)] font-mono text-[10px] text-[var(--text-secondary)]">
-                            ollama serve
-                          </code>
-                          Or enable auto-start above for the default local address.
-                        </p>
-                      </div>
-                    )}
-                    {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaReachable === true && nonEmbeddingOllamaModels.length === 0 && !testingOllama && !startingOllama && (
-                      <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                        <div className="flex items-center gap-2 text-amber-500 mb-1">
-                          <Bot size={14} />
-                          <span className="text-xs font-semibold">No models found</span>
-                        </div>
-                        <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                          Ollama is connected but no models are installed yet. Pull any model you want to use, then refresh the connection.
-                          <code className="block mt-1.5 p-1.5 rounded bg-[var(--bg-primary)] font-mono text-[10px] text-[var(--text-secondary)]">
-                            ollama pull &lt;model-name&gt;
-                          </code>
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {isMac && (
-                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3">
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
                       <div>
-                        <label className="text-sm text-[var(--text-secondary)]">MLX</label>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                          Apple Silicon local inference with unified-memory friendly acceleration.
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Startup & background</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Control how Aetherium launches and whether it stays available after the main window closes.
                         </p>
                       </div>
-                      <button
-                        onClick={async () => {
-                          setTestingMlx(true);
-                          setMlxTestResult(null);
-                          try {
-                            const m = await api.mlx.listModels(dbSettings.mlx_base_url || undefined);
-                            setMlxTestResult({ success: true, msg: `Success! ${m.length} models found.` });
-                            setMlxModels(m.map((model) => model.id));
-                          } catch {
-                            setMlxTestResult({ success: false, msg: "Connection failed. Is MLX server running?" });
-                          } finally {
-                            setTestingMlx(false);
-                          }
-                        }}
-                        disabled={testingMlx}
-                        className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
-                      >
-                        {testingMlx ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
-                        Test Connection
-                      </button>
-                    </div>
-                    <input
-                      value={dbSettings.mlx_base_url}
-                      onChange={(e) => {
-                        set("mlx_base_url", e.target.value);
-                      }}
-                      placeholder="http://localhost:8080"
-                      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                    {mlxTestResult && (
-                      <p className={`text-[10px] mt-1.5 font-medium ${mlxTestResult.success ? "text-green-400" : "text-red-400"}`}>
-                        {mlxTestResult.msg}
-                      </p>
-                    )}
-                    <p className="text-[10px] text-[var(--text-muted)]">
-                      Run via: <code className="bg-[var(--bg-elevated)] px-1 rounded">mlx_lm.server --model ...</code>
-                    </p>
-                  </div>
-                )}
 
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <label className="text-sm text-[var(--text-secondary)]">llama.cpp (GGUF)</label>
-                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                        Add local GGUF files for embedded inference without a separate server.
-                      </p>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const selected = await openDialog({
-                            multiple: true,
-                            filters: [{ name: "GGUF Model", extensions: ["gguf"] }],
-                          });
-                          if (selected && Array.isArray(selected)) {
-                            const currentPaths = dbSettings.llamacpp_model_paths || [];
-                            const newPaths = [...new Set([...currentPaths, ...selected])];
-                            updateSettings({ llamacpp_model_paths: newPaths });
-                          }
-                        } catch (err) {
-                          console.error("Failed to open file picker:", err);
-                        }
-                      }}
-                      className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
-                    >
-                      <Plus size={10} /> Add GGUF File
-                    </button>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    {(dbSettings.llamacpp_model_paths || []).map((path) => (
-                      <div key={path} className="flex items-center justify-between gap-2 p-2 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] group">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <FileText size={12} className="text-[var(--text-muted)] shrink-0" />
-                          <span className="text-[11px] text-[var(--text-primary)] truncate" title={path}>
-                            {path.split("/").pop()}
-                          </span>
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">
+                            {isLinux ? "Start with desktop session" : "Start at login"}
+                          </p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            {isLinux
+                              ? "Adds Aetherium to your desktop environment's autostart applications"
+                              : "Automatically launch Aetherium when you log in"}
+                          </p>
                         </div>
-                        <button
-                          onClick={() => {
-                            const next = dbSettings.llamacpp_model_paths.filter((p) => p !== path);
-                            updateSettings({ llamacpp_model_paths: next });
+                        <Toggle
+                          on={dbSettings.start_at_login}
+                          onToggle={() => {
+                            const nextStartAtLogin = !dbSettings.start_at_login;
+                            set("start_at_login", nextStartAtLogin);
+                            if (!nextStartAtLogin && dbSettings.open_in_background) {
+                              set("open_in_background", false);
+                            }
                           }}
-                          className="p-1 rounded hover:bg-red-400/10 text-[var(--text-muted)] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Trash2 size={11} />
-                        </button>
+                        />
                       </div>
-                    ))}
-                    {(dbSettings.llamacpp_model_paths || []).length === 0 && (
-                      <p className="text-[10px] text-[var(--text-muted)] italic">No GGUF models added yet.</p>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-[var(--text-muted)]">
-                    Embedded inference via llama.cpp with local acceleration when available.
-                  </p>
-                </div>
-              </div>
 
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Dual-model execution</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    Choose whether the draft and refine models run one after the other or at the same time.
-                  </p>
-                </div>
-                <CompactMenuSelect
-                  label="Execution"
-                  value={dbSettings.dual_model_execution_mode}
-                  options={[
-                    { value: "serial", label: "Serial: draft, then refine" },
-                    { value: "parallel", label: "Parallel: draft and refine together" },
-                  ]}
-                  onChange={(val) => set("dual_model_execution_mode", val as AppSettings["dual_model_execution_mode"])}
-                  widthClassName="w-full"
-                />
-                <p className="text-[10px] text-[var(--text-muted)]">
-                  Serial is steadier and uses one Ollama generation at a time. Parallel feels faster overall, but can use more compute and memory.
-                </p>
-              </div>
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className={`text-sm ${dbSettings.start_at_login ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]"}`}>Open in background</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            {dbSettings.start_at_login
+                              ? "Launch without bringing window to front"
+                              : "Available only when Start at login is enabled"}
+                          </p>
+                        </div>
+                        <Toggle
+                          on={dbSettings.open_in_background}
+                          disabled={!dbSettings.start_at_login}
+                          onToggle={() => set("open_in_background", !dbSettings.open_in_background)}
+                        />
+                      </div>
 
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Embedding model</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Choose the model used for embeddings and retrieval.
-                  </p>
-                </div>
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Keep running in tray</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Closing the main window keeps the menu bar or tray app alive so quick search still works.
+                          </p>
+                        </div>
+                        <Toggle
+                          on={dbSettings.keep_running_in_tray}
+                          onToggle={() => set("keep_running_in_tray", !dbSettings.keep_running_in_tray)}
+                        />
+                      </div>
 
-                <div className="space-y-2">
-                  {(() => {
-                    const isModelInstalled = (name: string) =>
-                      ollamaModels.length === 0 ||
-                      ollamaModels.some((model) => model.name === name || model.name.startsWith(`${name}:`));
-                    const nomicInstalled = isModelInstalled("nomic-embed-text");
-                    const isCustom = dbSettings.embedding_model !== "nomic-embed-text";
-                    const customInstalled = !isCustom || isModelInstalled(dbSettings.embedding_model);
-
-                    return (
-                      <>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="embedding_model"
-                            checked={!isCustom}
-                            onChange={() => set("embedding_model", "nomic-embed-text")}
-                            className="accent-[var(--accent-color)]"
-                          />
-                          <span className="text-sm text-[var(--text-primary)]">nomic-embed-text</span>
-                          <span className="text-[10px] text-[var(--text-muted)]">(default)</span>
-                          {!nomicInstalled && hasLoadedOllamaModels && (
-                            <span className="rounded border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
-                              not installed
-                            </span>
-                          )}
-                        </label>
-
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="embedding_model"
-                            checked={isCustom}
-                            onChange={() => set("embedding_model", "")}
-                            className="accent-[var(--accent-color)]"
-                          />
-                          <span className="text-sm text-[var(--text-primary)]">Custom</span>
-                        </label>
-
-                        {isCustom && (
-                          <div className="ml-6 space-y-2">
-                            <input
-                              value={dbSettings.embedding_model}
-                              onChange={(e) => set("embedding_model", e.target.value)}
-                              placeholder="e.g. mxbai-embed-large"
-                              className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                            />
-                            {!customInstalled && dbSettings.embedding_model && hasLoadedOllamaModels && (
-                              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2">
-                                <p className="text-[11px] font-medium text-red-400">Model not installed</p>
-                                <p className="mt-0.5 text-[10px] text-red-400/80">
-                                  Run: <code className="rounded bg-[var(--bg-primary)] px-1">ollama pull {dbSettings.embedding_model}</code>
-                                </p>
-                              </div>
-                            )}
-                            <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 space-y-1">
-                              <p className="text-[11px] font-medium text-amber-400">Before switching</p>
-                              <ul className="ml-3 list-disc space-y-0.5 text-[10px] text-amber-400/80">
-                                <li>Pull the model first: <code className="rounded bg-[var(--bg-primary)] px-1">ollama pull model-name</code></li>
-                                <li>Changing models invalidates existing embeddings for memories, documents, and artifacts</li>
-                                <li>You will need to re-index data for search and deduplication to work correctly</li>
-                              </ul>
-                            </div>
-                          </div>
-                        )}
-
-                        {!isCustom && !nomicInstalled && hasLoadedOllamaModels && (
-                          <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2">
-                            <p className="text-[11px] font-medium text-red-400">Model not installed — embeddings are disabled</p>
-                            <p className="mt-0.5 text-[10px] text-red-400/80">
-                              Run: <code className="rounded bg-[var(--bg-primary)] px-1">ollama pull nomic-embed-text</code>
+                      {isDemoMode ? (
+                        <div className="flex items-center justify-between py-0.5">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Exit Demo Mode</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              Exit demo and return to your regular workspaces. All demo data will be deleted.
                             </p>
                           </div>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">Custom family labels</h3>
-                    <p className="text-xs text-[var(--text-muted)] mt-1">
-                      Map model prefixes (like <code>mistral</code>) to display names for grouped composer modes.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2.5">
-                  {Object.entries(modelFamilyLabels).length > 0 && (
-                    <div className="space-y-2">
-                      {Object.entries(modelFamilyLabels).map(([prefix, label]) => (
-                        <div key={prefix} className="flex items-center gap-2 group animate-in fade-in slide-in-from-top-1 duration-200">
-                          <div className="w-32 shrink-0 truncate font-mono text-[11px] text-[var(--text-secondary)] bg-[var(--bg-primary)] px-2.5 py-2 rounded-lg border border-[var(--border-color)] shadow-sm">
-                            {prefix}
-                          </div>
-                          <div className="flex-1 relative">
-                            <input
-                              type="text"
-                              value={label}
-                              onChange={(e) => setModelFamilyLabel(prefix, e.target.value)}
-                              placeholder={prefix}
-                              className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] transition-all shadow-sm"
-                            />
-                          </div>
                           <button
-                            onClick={() => removeModelFamilyLabel(prefix)}
-                            className="p-2 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                            title="Remove label"
+                            onClick={async () => {
+                              try {
+                                // Mark demo as dismissed to prevent re-auto-activation
+                                await api.settings.update({ ...dbSettings, demo_dismissed: true });
+                                await api.demo.deactivate();
+                                setDemo(false);
+                                window.location.reload();
+                              } catch (e) {
+                                await message(`Failed to exit demo mode.\n${e}`, { title: "Error", kind: "error" });
+                              }
+                            }}
+                            className="rounded-lg border border-red-500/50 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 transition-colors hover:border-red-500 hover:bg-red-500/10"
                           >
-                            <Trash2 size={14} />
+                            Exit Demo
                           </button>
                         </div>
-                      ))}
+                      ) : (
+                        <div className="flex items-center justify-between py-0.5">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Start Demo Mode</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              Explore Aetherium with pre-populated examples and a fully featured workspace.
+                            </p>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              try {
+                                // Ensure demo_dismissed is false when manually starting demo
+                                await api.settings.update({ ...dbSettings, demo_dismissed: false });
+                                const demoWorkspaceId = await api.demo.activate();
+                                setDemo(true, demoWorkspaceId);
+                                window.location.reload();
+                              } catch (e) {
+                                await message(`Failed to activate demo mode.\n${e}`, { title: "Error", kind: "error" });
+                              }
+                            }}
+                            className="rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
+                          >
+                            Start Demo
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
 
-                  <div className={`flex items-center gap-2 pt-2 ${Object.entries(modelFamilyLabels).length > 0 ? "border-t border-[var(--border-color)]/40 mt-1" : ""}`}>
-                    <input
-                      type="text"
-                      value={newFamilyPrefix}
-                      onChange={(e) => setNewFamilyPrefix(e.target.value)}
-                      placeholder="prefix (e.g. gemma)"
-                      className="w-32 shrink-0 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-2 font-mono text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] transition-all shadow-sm placeholder:text-[var(--text-muted)]"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && newFamilyPrefix.trim()) {
-                          setModelFamilyLabel(newFamilyPrefix.trim(), newFamilyLabel.trim() || newFamilyPrefix.trim());
-                          setNewFamilyPrefix("");
-                          setNewFamilyLabel("");
-                        }
-                      }}
-                    />
-                    <input
-                      type="text"
-                      value={newFamilyLabel}
-                      onChange={(e) => setNewFamilyLabel(e.target.value)}
-                      placeholder="display name"
-                      className="min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] transition-all shadow-sm placeholder:text-[var(--text-muted)]"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && newFamilyPrefix.trim()) {
-                          setModelFamilyLabel(newFamilyPrefix.trim(), newFamilyLabel.trim() || newFamilyPrefix.trim());
-                          setNewFamilyPrefix("");
-                          setNewFamilyLabel("");
-                        }
-                      }}
-                    />
-                    <div className="w-9" />
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] ml-1">
-                    <Bot size={12} className="shrink-0" />
-                    <span>Press Enter to add. Labels apply to any model ID starting with the prefix.</span>
-                  </div>
-                </div>
-              </div>
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Features</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Enable or disable optional features across Aetherium.
+                        </p>
+                      </div>
 
-            </>
-          )}
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Workspace Memory</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Store and use workspace-scoped persistent facts, preferences, and context
+                          </p>
+                        </div>
+                        <Toggle
+                          on={dbSettings.memory_enabled}
+                          onToggle={() => set("memory_enabled", !dbSettings.memory_enabled)}
+                        />
+                      </div>
+                    </div>
 
-          {/* ── Chat ── */}
-          {activeTab === "chat" && (
-            <>
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Conversation defaults</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Set the instructions and learning behaviors that apply across chats and notes.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Global Prompt Instructions</label>
-                  <p className="text-[11px] text-[var(--text-muted)] mb-2">
-                    Custom instructions prepended to every chat across all workspaces.
-                  </p>
-                  <textarea
-                    value={dbSettings.prompt_instructions}
-                    onChange={(e) => set("prompt_instructions", e.target.value)}
-                    placeholder="e.g. Always respond in concise bullet points…"
-                    rows={4}
-                    className="w-full text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] resize-y"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Auto-generate Flashcards</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically extract flashcards from chat responses and notes</p>
-                  </div>
-                  <Toggle
-                    on={autoGenerateFlashcards}
-                    onToggle={() => setAutoGenerateFlashcards(!autoGenerateFlashcards)}
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Composer Suggestions</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Manage the suggestion chips shown above the composer input.
-                  </p>
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Topic tags</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Show domain tag chips inferred from the conversation</p>
-                  </div>
-                  <Toggle on={showComposerTopicTags} onToggle={() => setShowComposerTopicTags(!showComposerTopicTags)} />
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Context prompts</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Show workspace-derived suggestion chips</p>
-                  </div>
-                  <Toggle on={showComposerWorkspaceSuggestions} onToggle={() => setShowComposerWorkspaceSuggestions(!showComposerWorkspaceSuggestions)} />
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Follow-up suggestions</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Show chat follow-up chips</p>
-                  </div>
-                  <Toggle on={showComposerChatFollowUps} onToggle={() => setShowComposerChatFollowUps(!showComposerChatFollowUps)} />
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Composer Mode</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Normal: one send button per message. Family: send buttons grouped by model family.
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {(["normal", "family"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setComposerMode(mode)}
-                      className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium capitalize transition-colors ${
-                        composerMode === mode
-                          ? "border-[rgba(var(--accent-color-rgb),0.4)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                          : "border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      }`}
-                    >
-                      {mode}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Chat Title Auto-Generation */}
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Chat Title Auto-Generation</label>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="chat_title_refresh"
-                      checked={dbSettings.chat_title_auto_refresh === "disabled"}
-                      onChange={() => set("chat_title_auto_refresh", "disabled")}
-                      className="accent-[var(--accent-color)]"
-                    />
-                    <span className="text-[var(--text-secondary)]">Disabled</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="chat_title_refresh"
-                      checked={dbSettings.chat_title_auto_refresh === "initial_only"}
-                      onChange={() => set("chat_title_auto_refresh", "initial_only")}
-                      className="accent-[var(--accent-color)]"
-                    />
-                    <span className="text-[var(--text-secondary)]">Initial title only</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="chat_title_refresh"
-                      checked={dbSettings.chat_title_auto_refresh === "periodic"}
-                      onChange={() => set("chat_title_auto_refresh", "periodic")}
-                      className="accent-[var(--accent-color)]"
-                    />
-                    <span className="text-[var(--text-secondary)]">Refresh periodically every</span>
-                  </label>
-                  {dbSettings.chat_title_auto_refresh === "periodic" && (
-                    <div className="ml-5 flex items-center gap-2">
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Shortcut</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Set the global accelerator used to open quick search from anywhere.
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Quick search shortcut</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Use a Tauri accelerator like <code>{isMac ? "Cmd+Shift+K" : "Ctrl+Shift+K"}</code>. Leave blank to disable the global hotkey.
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => set("quick_search_shortcut", quickSearchShortcutDraft.trim())}
+                          className="rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
+                        >
+                          Apply
+                        </button>
+                      </div>
                       <input
-                        type="number"
-                        min={2}
-                        max={50}
-                        value={dbSettings.chat_title_refresh_interval || 5}
-                        onChange={(e) => set("chat_title_refresh_interval", Number(e.target.value))}
-                        className="w-16 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                        value={quickSearchShortcutDraft}
+                        onChange={(event) => setQuickSearchShortcutDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            set("quick_search_shortcut", quickSearchShortcutDraft.trim());
+                          }
+                        }}
+                        placeholder={isMac ? "Cmd+Shift+K" : "Ctrl+Shift+K"}
+                        className="h-11 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                       />
-                      <span className="text-xs text-[var(--text-secondary)]">messages</span>
                     </div>
-                  )}
-                </div>
-                <p className="text-xs text-[var(--text-muted)] mt-2">
-                  AI-generated titles improve chat organization. &apos;Periodic&apos; refreshes the title based on conversation progress.
-                </p>
-              </div>
-
-              {/* Deletion Settings */}
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Immediate Delete</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Bypass recycle bin and delete chats immediately with confirmation</p>
-                </div>
-                <Toggle on={dbSettings.immediate_delete} onToggle={() => set("immediate_delete", !dbSettings.immediate_delete)} />
-              </div>
-
-              {!dbSettings.immediate_delete && (
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Confirm Move to Trash</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Prompt for confirmation before moving chats to the recycle bin</p>
-                  </div>
-                  <Toggle on={dbSettings.confirm_move_to_trash} onToggle={() => set("confirm_move_to_trash", !dbSettings.confirm_move_to_trash)} />
-                </div>
-              )}
-
-              {/* Show Gen Info */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Show Gen Info</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Display token count, duration, and speed (tok/s) below assistant messages</p>
-                  </div>
-                  <Toggle on={showGenInfo} onToggle={() => setShowGenInfo(!showGenInfo)} />
-                </div>
-                {showGenInfo && (
-                  <div className="ml-4 space-y-2 border-l border-[var(--border-color)] pl-4 py-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-[var(--text-secondary)]">Model name</span>
-                      <Toggle on={showGenInfoModel} onToggle={() => setShowGenInfoModel(!showGenInfoModel)} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-[var(--text-secondary)]">Token count</span>
-                      <Toggle on={showGenInfoTokenCount} onToggle={() => setShowGenInfoTokenCount(!showGenInfoTokenCount)} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-[var(--text-secondary)]">Generation duration</span>
-                      <Toggle on={showGenInfoDuration} onToggle={() => setShowGenInfoDuration(!showGenInfoDuration)} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-[var(--text-secondary)]">Generation speed (tok/s)</span>
-                      <Toggle on={showGenInfoSpeed} onToggle={() => setShowGenInfoSpeed(!showGenInfoSpeed)} />
-                    </div>
-                  </div>
+                  </>
                 )}
-              </div>
 
-              {/* Scroll message to top on send */}
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Scroll Message to Top on Send</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">After sending, scroll so your message appears at the top of the view</p>
-                </div>
-                <Toggle on={scrollToTopOnSend} onToggle={() => setScrollToTopOnSend(!scrollToTopOnSend)} />
-              </div>
+                {/* ── Navigation ── */}
+                {activeTab === "navigation" && (
+                  <>
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Main layout</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Choose how workspace and section switching is presented in the main window.
+                        </p>
+                      </div>
 
-              {/* Chat messages style */}
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-2 block">Chat Messages Style</label>
-                <div className="space-y-2">
-                  {(["bubble", "flat"] as ChatMessageStyle[]).map((style) => (
-                    <label key={style} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="radio"
-                        name="chat_message_style"
-                        checked={chatMessageStyle === style}
-                        onChange={() => setChatMessageStyle(style)}
-                        className="accent-[var(--accent-color)]"
-                      />
-                      <span className="text-[var(--text-secondary)] capitalize">{style}</span>
-                    </label>
-                  ))}
-                </div>
-                <p className="text-xs text-[var(--text-muted)] mt-2">
-                  <strong>Bubble:</strong> colored rounded message bubbles. <strong>Flat:</strong> borderless document-style layout.
-                </p>
-              </div>
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block">Workspace Navigation</label>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {[
+                            { id: "sidebar", label: "Sidebar", description: "Keep workspace switching in the left rail beside the main content." },
+                            { id: "top-tabs", label: "Top Tabs", description: "Show workspaces as visible tabs across the top." },
+                            { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact workspace picker in the top bar." },
+                          ].map((option) => (
+                            <button
+                              key={option.id}
+                              onClick={() => setWorkspaceNavigation(option.id as NavigationPresentation)}
+                              className={`rounded-lg border px-3 py-2 text-left transition-colors ${workspaceNavigation === option.id
+                                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                                : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                                }`}
+                            >
+                              <NavPreview workspaceNav={option.id as NavigationPresentation} sectionNav={sectionNavigation} />
+                              <div className="text-xs font-medium">{option.label}</div>
+                              <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
 
-              {/* Expand chat container to window width */}
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Expand Chat Container to Window Width</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Remove the maximum width constraint on the chat area</p>
-                </div>
-                <Toggle on={expandChatToWindowWidth} onToggle={() => setExpandChatToWindowWidth(!expandChatToWindowWidth)} />
-              </div>
-            </>
-          )}
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block">Section Navigation</label>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {[
+                            { id: "sidebar", label: "Sidebar", description: "Keep section navigation in the left rail." },
+                            { id: "top-tabs", label: "Top Tabs", description: "Show sections as visible tabs across the top." },
+                            { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact section picker in the top bar." },
+                          ].map((option) => (
+                            <button
+                              key={option.id}
+                              onClick={() => setSectionNavigation(option.id as NavigationPresentation)}
+                              className={`rounded-lg border px-3 py-2 text-left transition-colors ${sectionNavigation === option.id
+                                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                                : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                                }`}
+                            >
+                              <NavPreview workspaceNav={workspaceNavigation} sectionNav={option.id as NavigationPresentation} />
+                              <div className="text-xs font-medium">{option.label}</div>
+                              <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
 
-          {/* ── Browser Automation ── */}
-          {activeTab === "webai" && (
-            <>
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Manual Browser Targets</h3>
-                <p className="text-xs text-[var(--text-muted)] mb-3">
-                  Use manual browser automation for user-configured web targets. Select an enabled browser-backed model from the Chat view model dropdown to activate it. Requires Node.js and the <code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">playwright</code> npm package (<code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">npm install -g playwright && npx playwright install chromium</code>).
-                </p>
-              </div>
 
-              <div className="flex items-center justify-between py-2 border-b border-[var(--border-color)]">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Preserve browser session</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-sm">
-                    When <strong>off</strong> (default): login cookies are wiped from disk after every query — safest. When <strong>on</strong>: session is saved so you stay logged in between queries.
-                  </p>
-                  {dbSettings.web_session_preserve && (
-                    <p className="mt-1.5 text-[11px] px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 max-w-sm">
-                      ⚠ Login cookies for web AI providers are stored on disk. Disable to wipe credentials after every query.
-                    </p>
-                  )}
-                </div>
-                <Toggle
-                  on={dbSettings.web_session_preserve}
-                  onToggle={() => set("web_session_preserve", !dbSettings.web_session_preserve)}
-                />
-              </div>
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Workspace behavior</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Tune workspace ordering and what happens when you jump between workspaces.
+                        </p>
+                      </div>
 
-              <div className="pt-2 space-y-2">
-                <p className="text-xs text-[var(--text-secondary)] font-medium">Enabling browser-backed models</p>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Go to the <strong>AI</strong> tab → Ollama models and enable any browser-backed entry to make it appear in the Chat view model dropdown.
-                </p>
-              </div>
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block">Workspace Sort Order</label>
+                        <div className="grid gap-2 sm:grid-cols-4">
+                          {([
+                            { id: "manual", label: "Manual Order" },
+                            { id: "name-asc", label: "Name A\u2013Z" },
+                            { id: "name-desc", label: "Name Z\u2013A" },
+                            { id: "created-newest", label: "Newest First" },
+                            { id: "created-oldest", label: "Oldest First" },
+                            { id: "updated-newest", label: "Recently Updated" },
+                            { id: "last-message-newest", label: "Last Message" },
+                            { id: "updated-oldest", label: "Least Recently Updated" },
+                          ] as const).map((option) => (
+                            <button
+                              key={option.id}
+                              onClick={() => setWorkspaceSortOrder(option.id)}
+                              className={`rounded-lg border px-3 py-2 text-left transition-colors ${workspaceSortOrder === option.id
+                                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                                : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                                }`}
+                            >
+                              <div className="text-xs font-medium">{option.label}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
 
-            </>
-          )}
+                      <div className="flex items-center justify-between py-1">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Navigate on workspace switch</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Auto-navigate to a section when switching workspaces, or stay on the current view.
+                          </p>
+                        </div>
+                        <select
+                          value={switchWorkspaceSection}
+                          onChange={(e) => set("switch_workspace_section", e.target.value)}
+                          className="text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                        >
+                          <option value="">Stay on current</option>
+                          <option value="/project">Dashboard</option>
+                          <option value="/chat">Chat</option>
+                          <option value="/notes">Notes</option>
+                          <option value="/sources">Sources</option>
+                          <option value="/memory">Memory</option>
+                          <option value="/graph">Knowledge</option>
+                          <option value="/history">History</option>
+                        </select>
+                      </div>
 
-          {/* ── Security ── */}
-          {activeTab === "security" && (
-            <>
-              {/* ── App Lock ── */}
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] divide-y divide-[var(--border-color)]">
-                <div className={`flex items-center justify-between px-4 py-3 transition-opacity ${!pinConfigured ? "opacity-40" : ""}`}>
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">Require PIN on launch</p>
-                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                      {pinConfigured ? "Lock the app at startup. Touch ID can be used as a shortcut when enabled below." : "Save a PIN first to enable app lock."}
-                    </p>
-                  </div>
-                  <Toggle
-                    on={dbSettings.pin_lock_enabled}
-                    disabled={!pinConfigured}
-                    onToggle={() => {
-                      if (!pinConfigured) {return;}
-                      const next = !dbSettings.pin_lock_enabled;
-                      set("pin_lock_enabled", next);
-                      // Touch ID requires PIN as its fallback — disable it together
-                      if (!next && dbSettings.touch_id_enabled) {
-                        set("touch_id_enabled", false);
-                      }
-                    }}
-                  />
-                </div>
-                {biometricAvailable && (
-                  <div className={`flex items-center justify-between px-4 py-3 transition-opacity ${!dbSettings.pin_lock_enabled ? "opacity-40" : ""}`}>
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block">Settings Navigation</label>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {[
+                            { id: "top-tabs", label: "Top Tabs", description: "Keep settings sections across the top." },
+                            { id: "side-tabs", label: "Side Tabs", description: "Keep settings sections in a dedicated side rail." },
+                          ].map((layout) => (
+                            <button
+                              key={layout.id}
+                              onClick={() => setSettingsNavLayout(layout.id as "top-tabs" | "side-tabs")}
+                              className={`rounded-lg border px-3 py-2 text-left transition-colors ${settingsNavLayout === layout.id
+                                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                                : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                                }`}
+                            >
+                              {/* Mini preview — shows what the settings panel will look like */}
+                              {layout.id === "top-tabs" ? (
+                                <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70" style={{ height: 52 }}>
+                                  {/* Settings header with horizontal tab bar */}
+                                  <div className="flex items-center gap-1 px-2 py-1.5 bg-[var(--bg-secondary)]">
+                                    <div className="h-2 w-6 rounded-full bg-[var(--accent-color)] opacity-80" />
+                                    <div className="h-2 w-4 rounded-full bg-[var(--text-muted)] opacity-40" />
+                                    <div className="h-2 w-5 rounded-full bg-[var(--text-muted)] opacity-40" />
+                                    <div className="h-2 w-3 rounded-full bg-[var(--text-muted)] opacity-40" />
+                                  </div>
+                                  {/* Content area */}
+                                  <div className="px-2 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
+                                    <div className="h-1.5 w-12 rounded-sm bg-[var(--text-muted)] opacity-30" />
+                                    <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70 flex" style={{ height: 52 }}>
+                                  {/* Side rail with section list */}
+                                  <div className="flex flex-col gap-1 px-1.5 pt-1.5 bg-[var(--bg-secondary)] w-10 shrink-0">
+                                    <div className="h-1.5 w-6 rounded-sm bg-[var(--accent-color)] opacity-80" />
+                                    <div className="h-1.5 w-5 rounded-sm bg-[var(--text-muted)] opacity-40" />
+                                    <div className="h-1.5 w-7 rounded-sm bg-[var(--text-muted)] opacity-40" />
+                                    <div className="h-1.5 w-4 rounded-sm bg-[var(--text-muted)] opacity-40" />
+                                  </div>
+                                  {/* Content area */}
+                                  <div className="flex-1 px-2 pt-1.5 flex flex-col gap-1 bg-[var(--bg-primary)]">
+                                    <div className="h-1.5 w-10 rounded-sm bg-[var(--text-muted)] opacity-30" />
+                                    <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-20" />
+                                  </div>
+                                </div>
+                              )}
+                              <div className="text-xs font-medium">{layout.label}</div>
+                              <div className="mt-1 text-[11px] opacity-75">{layout.description}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ── Appearance ── */}
+                {activeTab === "appearance" && (
+                  <>
                     <div>
-                      <p className="text-sm text-[var(--text-secondary)]">{biometricLabel}</p>
-                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                        {dbSettings.pin_lock_enabled
-                          ? `Use ${biometricLabel} as a quick unlock. PIN is always available as a fallback.`
-                          : `Enable PIN lock first to use ${biometricLabel}.`}
+                      <label className="text-xs text-[var(--text-secondary)] mb-2 block">Theme</label>
+                      <div className="flex flex-wrap gap-2">
+                        {THEMES.map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => updateSettings({ theme: t, accent_color: THEME_DEFAULT_ACCENTS[t] })}
+                            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${dbSettings.theme === t
+                              ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                              : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                              }`}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-[var(--text-secondary)] mb-2 block">Accent Color</label>
+                      <div className="flex flex-wrap gap-2">
+                        {ACCENT_COLORS.map(({ label, value }) => (
+                          <button
+                            key={value}
+                            onClick={() => setAppearance("accent_color", value)}
+                            title={label}
+                            aria-label={`Use ${label} accent`}
+                            className={`relative h-8 w-8 rounded-full border-2 transition-transform ${dbSettings.accent_color === value ? "border-white scale-110 shadow-sm" : "border-transparent"
+                              }`}
+                            style={{ backgroundColor: value }}
+                          >
+                            <span className="sr-only">{label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-[var(--text-secondary)] mb-2 block">Text Size</label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAppearance("font_size", Math.max(MIN_FONT_SIZE, dbSettings.font_size - 1))}
+                          disabled={dbSettings.font_size <= MIN_FONT_SIZE}
+                          className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          A-
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAppearance("font_size", Math.min(MAX_FONT_SIZE, dbSettings.font_size + 1))}
+                          disabled={dbSettings.font_size >= MAX_FONT_SIZE}
+                          className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          A+
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAppearance("font_size", DEFAULT_FONT_SIZE)}
+                          disabled={dbSettings.font_size === DEFAULT_FONT_SIZE}
+                          className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Reset
+                        </button>
+                        <span className="ml-2 text-xs font-medium text-[var(--text-muted)] w-8 text-center bg-[var(--bg-hover)] px-2 py-1 rounded-md">
+                          {dbSettings.font_size}
+                        </span>
+                      </div>
+                    </div>
+
+
+                  </>
+                )}
+
+                {/* ── AI / Ollama ── */}
+                {activeTab === "ai" && (
+                  <>
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Detected hardware guidance</p>
+                          <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                            Based on detected memory and available compute.
+                          </p>
+                        </div>
+                        <button
+                          onClick={loadSystemSpecs}
+                          disabled={systemSpecsLoading}
+                          className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
+                        >
+                          {systemSpecsLoading ? <RefreshCw size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                          Refresh specs
+                        </button>
+                      </div>
+
+                      {systemSpecs ? (
+                        <>
+                          {systemGuidance && (
+                            <div className="rounded-lg border border-[var(--accent-color)]/20 bg-[var(--accent-color)]/8 px-3 py-2.5">
+                              <p className="text-[11px] font-semibold text-[var(--text-primary)]">{systemGuidance.headline}</p>
+                              <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{systemGuidance.summary}</p>
+                              <p className="mt-1 text-[10px] text-[var(--text-secondary)]">{systemGuidance.basis}</p>
+                            </div>
+                          )}
+
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">System</p>
+                              <p className="mt-0.5 text-xs text-[var(--text-primary)]">{formatSystemName(systemSpecs)}</p>
+                              <p className="text-[10px] text-[var(--text-secondary)]">{systemSpecs.cpu_arch}</p>
+                            </div>
+                            <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">CPU</p>
+                              <p className="mt-0.5 text-xs text-[var(--text-primary)]">{systemSpecs.cpu_brand}</p>
+                              <p className="text-[10px] text-[var(--text-secondary)]">
+                                {systemSpecs.physical_cores ? `${systemSpecs.physical_cores} physical` : "Physical cores unavailable"} / {systemSpecs.logical_cores} logical
+                              </p>
+                            </div>
+                            <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">Memory</p>
+                              <p className="mt-0.5 text-xs text-[var(--text-primary)]">{formatBytes(systemSpecs.total_memory_bytes)} total</p>
+                              <p className="text-[10px] text-[var(--text-secondary)]">{formatBytes(systemSpecs.available_memory_bytes)} available now</p>
+                            </div>
+                            <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">
+                                {systemSpecs.gpu_name ? "GPU" : "Swap"}
+                              </p>
+                              <p className="mt-0.5 text-xs text-[var(--text-primary)]">
+                                {systemSpecs.gpu_name
+                                  ? systemSpecs.gpu_name
+                                  : `${formatBytes(systemSpecs.total_swap_bytes)} configured`}
+                              </p>
+                              <p className="text-[10px] text-[var(--text-secondary)]">
+                                {systemSpecs.gpu_name
+                                  ? (systemSpecs.gpu_memory_bytes
+                                    ? `${formatBytes(systemSpecs.gpu_memory_bytes)} VRAM`
+                                    : (systemSpecs.gpu_detection_source || "GPU memory unavailable"))
+                                  : (systemSpecs.host_name ? systemSpecs.host_name : (systemSpecs.kernel_version || "Kernel version unavailable"))}
+                              </p>
+                            </div>
+                          </div>
+
+                          {systemGuidance?.caution && (
+                            <p className="text-[10px] text-[var(--text-secondary)]">{systemGuidance.caution}</p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-[11px] text-[var(--text-secondary)]">
+                          {systemSpecsLoading ? "Reading local system specs..." : (systemSpecsError || "System specs are not available yet.")}
+                        </p>
+                      )}
+                    </div>
+
+                    {ollamaModelsSection}
+
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Local inference providers</h3>
+                          <p className="text-xs text-[var(--text-muted)] mt-1">
+                            Kept in one place so setup feels like one workflow. The local server is the main path, with MLX and llama.cpp as optional local runtimes.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Local server</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              Manage the local server, discover installed models, and power the default local chat flow.
+                            </p>
+                          </div>
+                          <Toggle
+                            on={dbSettings.auto_start_ollama}
+                            onToggle={() => set("auto_start_ollama", !dbSettings.auto_start_ollama)}
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between gap-3 mb-1">
+                            <label className="text-xs text-[var(--text-secondary)]">Server URL</label>
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={async () => {
+                                  setStartingOllama(true);
+                                  setOllamaTestResult(null);
+                                  try {
+                                    const status = await api.ollama.ensureRunning(dbSettings.ollama_base_url || undefined);
+                                    applyOllamaRuntimeStatus(status);
+                                  } catch (error) {
+                                    const msg = error instanceof Error ? error.message : "Automatic startup failed.";
+                                    setOllamaReachable(false);
+                                    setOllamaTestResult({ success: false, msg });
+                                  } finally {
+                                    setStartingOllama(false);
+                                  }
+                                }}
+                                disabled={startingOllama || testingOllama}
+                                className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
+                              >
+                                {startingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Bot size={10} />}
+                                Start server
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  setTestingOllama(true);
+                                  setOllamaTestResult(null);
+                                  try {
+                                    const models = await api.ollama.listModelsFresh(dbSettings.ollama_base_url || undefined);
+                                    setOllamaReachable(true);
+                                    setOllamaModels(models);
+                                    setHasLoadedOllamaModels(true);
+                                    setOllamaTestResult({ success: true, msg: `Success! ${models.length} model(s) found.` });
+                                  } catch (error) {
+                                    setOllamaReachable(false);
+                                    const msg = error instanceof Error ? error.message : "Connection failed.";
+                                    setOllamaTestResult({ success: false, msg });
+                                  } finally {
+                                    setTestingOllama(false);
+                                  }
+                                }}
+                                disabled={testingOllama || startingOllama}
+                                className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
+                              >
+                                {testingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
+                                Test Connection
+                              </button>
+                            </div>
+                          </div>
+                          <input
+                            value={dbSettings.ollama_base_url}
+                            onChange={(e) => {
+                              set("ollama_base_url", e.target.value);
+                              refreshOllamaModels(e.target.value, { clearResult: true });
+                            }}
+                            placeholder="http://localhost:11434"
+                            className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                          />
+                          <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
+                            Enable auto-start to try to start the server on launch when you use the default local address.
+                          </p>
+                          {ollamaTestResult && (
+                            <p className={`text-[10px] mt-1.5 font-medium ${ollamaTestResult.success ? "text-green-400" : "text-red-400"}`}>
+                              {ollamaTestResult.msg}
+                            </p>
+                          )}
+                          {ollamaModelsLoading && (
+                            <p className="text-[10px] mt-1.5 text-[var(--text-muted)]">
+                              Loading available models...
+                            </p>
+                          )}
+                          {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaReachable === false && !testingOllama && !startingOllama && (
+                            <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                              <div className="flex items-center gap-2 text-red-400 mb-1">
+                                <Network size={14} />
+                                <span className="text-xs font-semibold">Ollama unavailable</span>
+                              </div>
+                              <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                                Aetherium could not reach Ollama at this URL. Start it manually with:
+                                <code className="block mt-1.5 p-1.5 rounded bg-[var(--bg-primary)] font-mono text-[10px] text-[var(--text-secondary)]">
+                                  ollama serve
+                                </code>
+                                Or enable auto-start above for the default local address.
+                              </p>
+                            </div>
+                          )}
+                          {hasLoadedOllamaModels && !ollamaModelsLoading && ollamaReachable === true && nonEmbeddingOllamaModels.length === 0 && !testingOllama && !startingOllama && (
+                            <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                              <div className="flex items-center gap-2 text-amber-500 mb-1">
+                                <Bot size={14} />
+                                <span className="text-xs font-semibold">No models found</span>
+                              </div>
+                              <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                                Ollama is connected but no models are installed yet. Pull any model you want to use, then refresh the connection.
+                                <code className="block mt-1.5 p-1.5 rounded bg-[var(--bg-primary)] font-mono text-[10px] text-[var(--text-secondary)]">
+                                  ollama pull &lt;model-name&gt;
+                                </code>
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {isMac && (
+                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <div>
+                              <label className="text-sm text-[var(--text-secondary)]">MLX</label>
+                              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                                Apple Silicon local inference with unified-memory friendly acceleration.
+                              </p>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                setTestingMlx(true);
+                                setMlxTestResult(null);
+                                try {
+                                  const m = await api.mlx.listModels(dbSettings.mlx_base_url || undefined);
+                                  setMlxTestResult({ success: true, msg: `Success! ${m.length} models found.` });
+                                  setMlxModels(m.map((model) => model.id));
+                                } catch {
+                                  setMlxTestResult({ success: false, msg: "Connection failed. Is MLX server running?" });
+                                } finally {
+                                  setTestingMlx(false);
+                                }
+                              }}
+                              disabled={testingMlx}
+                              className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
+                            >
+                              {testingMlx ? <RefreshCw size={10} className="animate-spin" /> : <Network size={10} />}
+                              Test Connection
+                            </button>
+                          </div>
+                          <input
+                            value={dbSettings.mlx_base_url}
+                            onChange={(e) => {
+                              set("mlx_base_url", e.target.value);
+                            }}
+                            placeholder="http://localhost:8080"
+                            className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                          />
+                          {mlxTestResult && (
+                            <p className={`text-[10px] mt-1.5 font-medium ${mlxTestResult.success ? "text-green-400" : "text-red-400"}`}>
+                              {mlxTestResult.msg}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-[var(--text-muted)]">
+                            Run via: <code className="bg-[var(--bg-elevated)] px-1 rounded">mlx_lm.server --model ...</code>
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <label className="text-sm text-[var(--text-secondary)]">llama.cpp (GGUF)</label>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              Add local GGUF files for embedded inference without a separate server.
+                            </p>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const selected = await openDialog({
+                                  multiple: true,
+                                  filters: [{ name: "GGUF Model", extensions: ["gguf"] }],
+                                });
+                                if (selected && Array.isArray(selected)) {
+                                  const currentPaths = dbSettings.llamacpp_model_paths || [];
+                                  const newPaths = [...new Set([...currentPaths, ...selected])];
+                                  updateSettings({ llamacpp_model_paths: newPaths });
+                                }
+                              } catch (err) {
+                                console.error("Failed to open file picker:", err);
+                              }
+                            }}
+                            className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1"
+                          >
+                            <Plus size={10} /> Add GGUF File
+                          </button>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {(dbSettings.llamacpp_model_paths || []).map((path) => (
+                            <div key={path} className="flex items-center justify-between gap-2 p-2 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] group">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <FileText size={12} className="text-[var(--text-muted)] shrink-0" />
+                                <span className="text-[11px] text-[var(--text-primary)] truncate" title={path}>
+                                  {path.split("/").pop()}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const next = dbSettings.llamacpp_model_paths.filter((p) => p !== path);
+                                  updateSettings({ llamacpp_model_paths: next });
+                                }}
+                                className="p-1 rounded hover:bg-red-400/10 text-[var(--text-muted)] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          ))}
+                          {(dbSettings.llamacpp_model_paths || []).length === 0 && (
+                            <p className="text-[10px] text-[var(--text-muted)] italic">No GGUF models added yet.</p>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-[var(--text-muted)]">
+                          Embedded inference via llama.cpp with local acceleration when available.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                      <div>
+                        <p className="text-sm text-[var(--text-secondary)]">Dual-model execution</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                          Choose whether the draft and refine models run one after the other or at the same time.
+                        </p>
+                      </div>
+                      <CompactMenuSelect
+                        label="Execution"
+                        value={dbSettings.dual_model_execution_mode}
+                        options={[
+                          { value: "serial", label: "Serial: draft, then refine" },
+                          { value: "parallel", label: "Parallel: draft and refine together" },
+                        ]}
+                        onChange={(val) => set("dual_model_execution_mode", val as AppSettings["dual_model_execution_mode"])}
+                        widthClassName="w-full"
+                      />
+                      <p className="text-[10px] text-[var(--text-muted)]">
+                        Serial is steadier and uses one Ollama generation at a time. Parallel feels faster overall, but can use more compute and memory.
                       </p>
                     </div>
-                    <Toggle
-                      on={dbSettings.touch_id_enabled}
-                      disabled={!dbSettings.pin_lock_enabled}
-                      onToggle={() => {
-                        if (!dbSettings.pin_lock_enabled) {return;}
-                        set("touch_id_enabled", !dbSettings.touch_id_enabled);
-                      }}
-                    />
-                  </div>
+
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Embedding model</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Choose the model used for embeddings and retrieval.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        {(() => {
+                          const isModelInstalled = (name: string) =>
+                            ollamaModels.length === 0 ||
+                            ollamaModels.some((model) => model.name === name || model.name.startsWith(`${name}:`));
+                          const nomicInstalled = isModelInstalled("nomic-embed-text");
+                          const isCustom = dbSettings.embedding_model !== "nomic-embed-text";
+                          const customInstalled = !isCustom || isModelInstalled(dbSettings.embedding_model);
+
+                          return (
+                            <>
+                              <div className="flex flex-row flex-wrap gap-x-6 gap-y-2 mb-1">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name="embedding_model"
+                                    checked={!isCustom}
+                                    onChange={() => set("embedding_model", "nomic-embed-text")}
+                                    className="accent-[var(--accent-color)]"
+                                  />
+                                  <span className="text-sm text-[var(--text-primary)]">nomic-embed-text</span>
+                                  <span className="text-[10px] text-[var(--text-muted)]">(default)</span>
+                                  {!nomicInstalled && hasLoadedOllamaModels && (
+                                    <span className="rounded border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+                                      not installed
+                                    </span>
+                                  )}
+                                </label>
+
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name="embedding_model"
+                                    checked={isCustom}
+                                    onChange={() => set("embedding_model", "")}
+                                    className="accent-[var(--accent-color)]"
+                                  />
+                                  <span className="text-sm text-[var(--text-primary)]">Custom</span>
+                                </label>
+                              </div>
+
+                              {isCustom && (
+                                <div className="ml-6 space-y-2">
+                                  <input
+                                    value={dbSettings.embedding_model}
+                                    onChange={(e) => set("embedding_model", e.target.value)}
+                                    placeholder="e.g. mxbai-embed-large"
+                                    className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                                  />
+                                  {!customInstalled && dbSettings.embedding_model && hasLoadedOllamaModels && (
+                                    <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2">
+                                      <p className="text-[11px] font-medium text-red-400">Model not installed</p>
+                                      <p className="mt-0.5 text-[10px] text-red-400/80">
+                                        Run: <code className="rounded bg-[var(--bg-primary)] px-1">ollama pull {dbSettings.embedding_model}</code>
+                                      </p>
+                                    </div>
+                                  )}
+                                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 space-y-1">
+                                    <p className="text-[11px] font-medium text-amber-400">Before switching</p>
+                                    <ul className="ml-3 list-disc space-y-0.5 text-[10px] text-amber-400/80">
+                                      <li>Pull the model first: <code className="rounded bg-[var(--bg-primary)] px-1">ollama pull model-name</code></li>
+                                      <li>Changing models invalidates existing embeddings for memories, documents, and artifacts</li>
+                                      <li>You will need to re-index data for search and deduplication to work correctly</li>
+                                    </ul>
+                                  </div>
+                                </div>
+                              )}
+
+                              {!isCustom && !nomicInstalled && hasLoadedOllamaModels && (
+                                <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2">
+                                  <p className="text-[11px] font-medium text-red-400">Model not installed — embeddings are disabled</p>
+                                  <p className="mt-0.5 text-[10px] text-red-400/80">
+                                    Run: <code className="rounded bg-[var(--bg-primary)] px-1">ollama pull nomic-embed-text</code>
+                                  </p>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                  </>
                 )}
-              </div>
 
-              {/* ── PIN Passcode ── */}
-              <div className={`rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3 transition-opacity ${pinConfigured && !dbSettings.pin_lock_enabled ? "opacity-40 pointer-events-none" : ""}`}>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm text-[var(--text-secondary)]">PIN passcode</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-sm">
-                      4 to 8 digits. Stored as a hash, never plaintext.
-                    </p>
-                  </div>
-                  <span className={`text-[11px] px-2 py-1 rounded-full border ${
-                    dbSettings.pin_lock_enabled
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                      : pinConfigured
-                      ? "border-sky-500/30 bg-sky-500/10 text-sky-400"
-                      : "border-[var(--border-color)] text-[var(--text-muted)]"
-                  }`}>
-                    {dbSettings.pin_lock_enabled ? "Enabled" : pinConfigured ? "Saved" : "Not set"}
-                  </span>
-                </div>
-
-                {pinConfigured && (
-                  <div>
-                    <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Current PIN</label>
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      value={currentPin}
-                      onChange={(e) => { setCurrentPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
-                      placeholder="Current PIN"
-                      className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                  </div>
-                )}
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">{pinConfigured ? "New PIN" : "PIN"}</label>
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      value={newPin}
-                      onChange={(e) => { setNewPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
-                      placeholder="4 to 8 digits"
-                      className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Confirm PIN</label>
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      value={confirmPin}
-                      onChange={(e) => { setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
-                      placeholder="Repeat PIN"
-                      className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                  </div>
-                </div>
-
-                {pinMessage && (
-                  <p className={`text-xs ${
-                    pinMessage.type === "success" ? "text-emerald-400" : "text-red-400"
-                  }`}>
-                    {pinMessage.text}
-                  </p>
-                )}
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={handleSetPin}
-                    disabled={pinSaving}
-                    className="px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-60"
-                  >
-                    {pinSaving ? "Saving..." : pinConfigured ? "Update PIN" : "Save PIN"}
-                  </button>
-                  {pinConfigured && (
-                    <button
-                      onClick={handleRemovePin}
-                      disabled={pinSaving}
-                      className="px-3.5 py-2 rounded-lg border border-[var(--border-color)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-60"
-                    >
-                      Remove PIN
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* ── Auto-lock ── */}
-              <div className={`space-y-2 transition-opacity ${!anyLockEnabled ? "opacity-40 pointer-events-none" : ""}`}>
-                <div>
-                  <label className="text-xs text-[var(--text-secondary)] mb-2 block">Auto-lock</label>
-                  <p className="text-[11px] text-[var(--text-muted)] mb-2">Auto-lock becomes active once a launch lock is enabled.</p>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="auto_lock"
-                        checked={dbSettings.auto_lock_minutes === 0}
-                        onChange={() => set("auto_lock_minutes", 0)}
-                        disabled={!anyLockEnabled}
-                        className="accent-[var(--accent-color)]"
-                      />
-                      <span className="text-[var(--text-secondary)]">Off</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="auto_lock"
-                        checked={dbSettings.auto_lock_minutes > 0}
-                        onChange={() => set("auto_lock_minutes", dbSettings.auto_lock_minutes > 0 ? dbSettings.auto_lock_minutes : 5)}
-                        disabled={!anyLockEnabled}
-                        className="accent-[var(--accent-color)]"
-                      />
-                      <span className="text-[var(--text-secondary)]">Lock after</span>
-                      {dbSettings.auto_lock_minutes > 0 && (
-                        <span className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min={1}
-                            max={1440}
-                            value={dbSettings.auto_lock_minutes}
-                            disabled={!anyLockEnabled}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              if (val > 0) {set("auto_lock_minutes", val);}
-                            }}
-                            className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                {/* ── Chat ── */}
+                {activeTab === "chat" && (
+                  <>
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Conversation defaults</h3>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Set the instructions and learning behaviors that apply across chats and notes.
+                          </p>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer whitespace-nowrap">
+                          <Toggle
+                            on={autoGenerateFlashcards}
+                            onToggle={() => setAutoGenerateFlashcards(!autoGenerateFlashcards)}
                           />
-                          <span className="text-xs text-[var(--text-secondary)]">minutes</span>
-                        </span>
+                          <span className="text-[var(--text-secondary)]">Auto-generate Flashcards</span>
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-1 block">Global Prompt Instructions</label>
+                        <textarea
+                          value={dbSettings.prompt_instructions}
+                          onChange={(e) => set("prompt_instructions", e.target.value)}
+                          placeholder="e.g. Always respond in concise bullet points…"
+                          rows={3}
+                          className="w-full text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] resize-y"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-2">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Composer Suggestions</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Manage the suggestion chips shown above the composer input.
+                        </p>
+                      </div>
+                      <div className="flex flex-row items-center gap-x-5">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <Toggle on={showComposerTopicTags} onToggle={() => setShowComposerTopicTags(!showComposerTopicTags)} />
+                          <span className="text-[var(--text-secondary)]">Topic tags</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <Toggle on={showComposerWorkspaceSuggestions} onToggle={() => setShowComposerWorkspaceSuggestions(!showComposerWorkspaceSuggestions)} />
+                          <span className="text-[var(--text-secondary)]">Context prompts</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <Toggle on={showComposerChatFollowUps} onToggle={() => setShowComposerChatFollowUps(!showComposerChatFollowUps)} />
+                          <span className="text-[var(--text-secondary)]">Follow-up suggestions</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-2">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Composer Mode</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Normal: one send button per message. Family: send buttons grouped by model family.
+                        </p>
+                      </div>
+                      <div className="flex flex-row items-center gap-x-6">
+                        {(["normal", "family"] as const).map((mode) => (
+                          <label key={mode} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="composer_mode"
+                              checked={composerMode === mode}
+                              onChange={() => setComposerMode(mode)}
+                              className="accent-[var(--accent-color)]"
+                            />
+                            <span className="text-[var(--text-secondary)] capitalize">{mode}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Chat Title Auto-Generation */}
+                    <div>
+                      <label className="text-xs text-[var(--text-secondary)] mb-2 block">Chat Title Auto-Generation</label>
+                      <div className="flex flex-row items-center gap-x-6">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="radio"
+                            name="chat_title_refresh"
+                            checked={dbSettings.chat_title_auto_refresh === "disabled"}
+                            onChange={() => set("chat_title_auto_refresh", "disabled")}
+                            className="accent-[var(--accent-color)]"
+                          />
+                          <span className="text-[var(--text-secondary)]">Disabled</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="radio"
+                            name="chat_title_refresh"
+                            checked={dbSettings.chat_title_auto_refresh === "initial_only"}
+                            onChange={() => set("chat_title_auto_refresh", "initial_only")}
+                            className="accent-[var(--accent-color)]"
+                          />
+                          <span className="text-[var(--text-secondary)]">Initial title only</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
+                          <input
+                            type="radio"
+                            name="chat_title_refresh"
+                            checked={dbSettings.chat_title_auto_refresh === "periodic"}
+                            onChange={() => set("chat_title_auto_refresh", "periodic")}
+                            className="accent-[var(--accent-color)]"
+                          />
+                          <span className="text-[var(--text-secondary)]">Refresh periodically every</span>
+                          {dbSettings.chat_title_auto_refresh === "periodic" && (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min={2}
+                                max={50}
+                                value={dbSettings.chat_title_refresh_interval || 5}
+                                onChange={(e) => set("chat_title_refresh_interval", Number(e.target.value))}
+                                className="w-16 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                              />
+                              <span className="text-xs text-[var(--text-secondary)]">messages</span>
+                            </div>
+                          )}
+                        </label>
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)] mt-2">
+                        AI-generated titles improve chat organization. &apos;Periodic&apos; refreshes the title based on conversation progress.
+                      </p>
+                    </div>
+
+                    {/* Deletion Settings */}
+                    <div className="flex items-center justify-between py-0.5">
+                      <div>
+                        <p className="text-sm text-[var(--text-secondary)]">Immediate Delete</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">Bypass recycle bin and delete chats immediately with confirmation</p>
+                      </div>
+                      <Toggle on={dbSettings.immediate_delete} onToggle={() => set("immediate_delete", !dbSettings.immediate_delete)} />
+                    </div>
+
+                    {!dbSettings.immediate_delete && (
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Confirm Move to Trash</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">Prompt for confirmation before moving chats to the recycle bin</p>
+                        </div>
+                        <Toggle on={dbSettings.confirm_move_to_trash} onToggle={() => set("confirm_move_to_trash", !dbSettings.confirm_move_to_trash)} />
+                      </div>
+                    )}
+
+                    {/* Show Gen Info */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Show Gen Info</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">Display token count, duration, and speed (tok/s) below assistant messages. Speed benchmarks are suppressed for Web AI models.</p>
+                        </div>
+                        <Toggle on={showGenInfo} onToggle={() => setShowGenInfo(!showGenInfo)} />
+                      </div>
+                      {showGenInfo && (
+                        <div className="flex flex-row items-center gap-x-5 ml-4 border-l border-[var(--border-color)] pl-4 py-2">
+                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                            <Toggle on={showGenInfoModel} onToggle={() => setShowGenInfoModel(!showGenInfoModel)} />
+                            <span className="text-[var(--text-secondary)]">Model name</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                            <Toggle on={showGenInfoTokenCount} onToggle={() => setShowGenInfoTokenCount(!showGenInfoTokenCount)} />
+                            <span className="text-[var(--text-secondary)]">Token count</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                            <Toggle on={showGenInfoDuration} onToggle={() => setShowGenInfoDuration(!showGenInfoDuration)} />
+                            <span className="text-[var(--text-secondary)]">Generation duration</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                            <Toggle on={showGenInfoSpeed} onToggle={() => setShowGenInfoSpeed(!showGenInfoSpeed)} />
+                            <span className="text-[var(--text-secondary)]">Generation speed (tok/s)</span>
+                          </label>
+                        </div>
                       )}
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
+                    </div>
 
-          {/* ── Sync ── */}
-          {activeTab === "sync" && (
-            <>
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Multi-device Sync</h3>
-                <p className="text-xs text-[var(--text-muted)] mb-3">
-                  Sync your chats, memories, and settings across devices using a private Git remote.
-                  Requires a private repository (GitHub, GitLab, or any SSH-accessible bare repo) and
-                  Git installed on this machine.
-                </p>
-              </div>
+                    {/* Scroll message to top on send */}
+                    <div className="flex items-center justify-between py-0.5">
+                      <div>
+                        <p className="text-sm text-[var(--text-secondary)]">Scroll Message to Top on Send</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">After sending, scroll so your message appears at the top of the view</p>
+                      </div>
+                      <Toggle on={scrollToTopOnSend} onToggle={() => setScrollToTopOnSend(!scrollToTopOnSend)} />
+                    </div>
 
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">Enable sync</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically sync every 5 minutes in the background</p>
-                </div>
-                <Toggle
-                  on={gitSync?.enabled ?? false}
-                  onToggle={async () => {
-                    if (!gitSync) { return; }
-                    const next = !gitSync.enabled;
-                    setGitSyncSaving(true);
-                    try {
-                      await api.gitSync.configure(gitSyncUrl, next);
-                      setGitSync((s) => s ? { ...s, enabled: next } : s);
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    } catch (e: any) {
-                      setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
-                    } finally {
-                      setGitSyncSaving(false);
-                    }
-                  }}
-                />
-              </div>
+                    {/* Chat messages style */}
+                    <div>
+                      <label className="text-xs text-[var(--text-secondary)] mb-2 block">Chat Messages Style</label>
+                      <div className="flex flex-row flex-wrap gap-x-6 gap-y-2">
+                        {(["bubble", "flat"] as ChatMessageStyle[]).map((style) => (
+                          <label key={style} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="chat_message_style"
+                              checked={chatMessageStyle === style}
+                              onChange={() => setChatMessageStyle(style)}
+                              className="accent-[var(--accent-color)]"
+                            />
+                            <span className="text-[var(--text-secondary)] capitalize">{style}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)] mt-2">
+                        <strong>Bubble:</strong> colored rounded message bubbles. <strong>Flat:</strong> borderless document-style layout.
+                      </p>
+                    </div>
 
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Remote URL</label>
-                <div className="flex gap-2">
-                  <input
-                    value={gitSyncUrl}
-                    onChange={(e) => setGitSyncUrl(e.target.value)}
-                    placeholder="git@github.com:you/aetherium-sync.git"
-                    className="flex-1 px-3 py-1.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] font-mono"
-                  />
-                  <button
-                  disabled={gitSyncSaving || !gitSyncUrl.trim() || !isGitSyncSshUrl}
-                    onClick={async () => {
-                      setGitSyncSaving(true);
-                      try {
-                        await api.gitSync.configure(gitSyncUrl, gitSync?.enabled ?? false);
-                        setGitSync((s) => s ? { ...s, remote_url: gitSyncUrl, last_error: "" } : s);
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      } catch (e: any) {
-                        setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
-                      } finally {
-                        setGitSyncSaving(false);
-                      }
-                    }}
-                    className="px-3 py-1.5 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-50"
-                  >
-                    {gitSyncSaving ? <RefreshCw size={12} className="animate-spin" /> : "Save"}
-                  </button>
-                </div>
-                <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                  SSH remote required. Use `git@...` or `ssh://...` and ensure your key is loaded in `ssh-agent`.
-                </p>
-                {gitSyncUrl.trim() && !isGitSyncSshUrl && (
-                  <p className="text-[11px] text-amber-400 mt-1">
-                    Git sync only accepts SSH remotes.
-                  </p>
+                    {/* Expand chat container to window width */}
+                    <div className="flex items-center justify-between py-1">
+                      <div>
+                        <p className="text-sm text-[var(--text-secondary)]">Expand Chat Container to Window Width</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">Remove the maximum width constraint on the chat area</p>
+                      </div>
+                      <Toggle on={expandChatToWindowWidth} onToggle={() => setExpandChatToWindowWidth(!expandChatToWindowWidth)} />
+                    </div>
+                  </>
                 )}
-              </div>
 
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-xs text-[var(--text-muted)]">Last synced</p>
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    {gitSync?.last_synced_at ? new Date(gitSync.last_synced_at).toLocaleString() : "Never"}
-                  </p>
-                </div>
-                <button
-                  disabled={gitSyncing || !gitSync?.enabled}
-                  onClick={async () => {
-                    setGitSyncing(true);
-                    try {
-                      const s = await api.gitSync.triggerSync();
-                      setGitSync(s);
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    } catch (e: any) {
-                      setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
-                    } finally {
-                      setGitSyncing(false);
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-                >
-                  {gitSyncing ? <RefreshCw size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                  Sync Now
-                </button>
-              </div>
+                {/* ── Browser Automation ── */}
+                {activeTab === "webai" && (
+                  <>
+                    <div className="flex items-start justify-between gap-3 mb-1">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Manual Browser Targets</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Use manual browser automation for user-configured web targets. Select an enabled browser-backed model from the Chat view model dropdown to activate it. Requires Node.js and the <code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">playwright</code> npm package (<code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">npm install -g playwright && npx playwright install chromium</code>).
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => { setShowAddModel(!showAddModel); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false); }}
+                        className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 whitespace-nowrap"
+                      >
+                        <Plus size={11} /> Add Model
+                      </button>
+                    </div>
 
-              {gitSync?.last_error && (
-                <div className="px-3 py-2 rounded bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
-                  {gitSync.last_error}
-                </div>
-              )}
-            </>
-          )}
+                    {showAddModel && (
+                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4 mb-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Provider Target</label>
+                            <CompactMenuSelect
+                              label="Select Provider"
+                              value={newModelId}
+                              options={[
+                                { value: "", label: "Select provider..." },
+                                { value: "chatgpt-web", label: "ChatGPT (Web)" },
+                                { value: "deepseek-web", label: "DeepSeek (Web)" },
+                                { value: "claude-web", label: "Claude (Web)" },
+                                { value: "gemini-web", label: "Gemini (Web)" },
+                              ]}
+                              onChange={(val) => {
+                                setNewModelId(val);
+                                if (!newModelName) {
+                                  const label = val === "chatgpt-web" ? "ChatGPT" : val === "deepseek-web" ? "DeepSeek" : val === "claude-web" ? "Claude" : val === "gemini-web" ? "Gemini" : "";
+                                  setNewModelName(label);
+                                }
+                              }}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Display Name</label>
+                            <input
+                              value={newModelName}
+                              onChange={(e) => setNewModelName(e.target.value)}
+                              placeholder="e.g. Browser Assistant A"
+                              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-2 border-t border-[var(--border-color)]">
+                          <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer">
+                            <input type="checkbox" checked={newModelIsPaid} onChange={(e) => setNewModelIsPaid(e.target.checked)} className="accent-[var(--accent-color)]" />
+                            Requires subscription (Paid)
+                          </label>
+                          <div className="flex gap-2">
+                            <button onClick={() => setShowAddModel(false)} className="px-3 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">Cancel</button>
+                            <button
+                              disabled={!newModelId || !newModelName}
+                              onClick={async () => {
+                                const provider = `web_${newModelId.split("-")[0]}`;
+                                await api.aiModel.add(newModelName, newModelId, {
+                                  provider,
+                                  is_paid: newModelIsPaid,
+                                  enabled: true,
+                                  priority: aiModels.length > 0 ? Math.max(...aiModels.map(m => m.priority)) + 1 : 1
+                                });
+                                loadAiModels();
+                                incrementModelRefreshCounter();
+                                setShowAddModel(false); setNewModelId(""); setNewModelName(""); setNewModelIsPaid(false);
+                              }}
+                              className="px-4 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
+                            >
+                              Add Target
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
-        </div>
-      </div>
-      )}
+                    <div className="flex items-center justify-between py-2 border-b border-[var(--border-color)]">
+                      <div>
+                        <p className="text-sm text-[var(--text-secondary)]">Preserve browser session</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-sm">
+                          When <strong>off</strong> (default): login cookies are wiped from disk after every query — safest. When <strong>on</strong>: session is saved so you stay logged in between queries.
+                        </p>
+                        {dbSettings.web_session_preserve && (
+                          <p className="mt-1.5 text-[11px] px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 max-w-sm">
+                            ⚠ Login cookies for web AI providers are stored on disk. Disable to wipe credentials after every query.
+                          </p>
+                        )}
+                      </div>
+                      <Toggle
+                        on={dbSettings.web_session_preserve}
+                        onToggle={() => set("web_session_preserve", !dbSettings.web_session_preserve)}
+                      />
+                    </div>
 
-      {/* ── Full-bleed tabs (workspaces, backup, import) ── */}
-      {activeTab === "workspaces" && (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <WorkspaceSettingsView />
-        </div>
-      )}
+                    <div className="pt-2 space-y-2">
+                      <p className="text-xs text-[var(--text-secondary)] font-medium">Enabling browser-backed models</p>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Go to the <strong>AI</strong> tab → Ollama models and enable any browser-backed entry to make it appear in the Chat view model dropdown.
+                      </p>
+                    </div>
 
-      {activeTab === "backup" && (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <BackupSettingsSection />
-        </div>
-      )}
+                  </>
+                )}
 
-      {activeTab === "import" && (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <ImportSettingsSection />
-        </div>
-      )}
-      
-      {activeTab === "logs" && (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <React.Suspense fallback={null}>
-            <LogsView />
-          </React.Suspense>
-        </div>
-      )}
+                {/* ── Security ── */}
+                {activeTab === "security" && (
+                  <>
+                    {/* ── App Lock ── */}
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] divide-y divide-[var(--border-color)]">
+                      <div className={`flex items-center justify-between px-4 py-2 transition-opacity ${!pinConfigured ? "opacity-40" : ""}`}>
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Require PIN on launch</p>
+                          <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                            {pinConfigured ? "Lock the app at startup. Touch ID can be used as a shortcut when enabled below." : "Save a PIN first to enable app lock."}
+                          </p>
+                        </div>
+                        <Toggle
+                          on={dbSettings.pin_lock_enabled}
+                          disabled={!pinConfigured}
+                          onToggle={() => {
+                            if (!pinConfigured) { return; }
+                            const next = !dbSettings.pin_lock_enabled;
+                            set("pin_lock_enabled", next);
+                            // Touch ID requires PIN as its fallback — disable it together
+                            if (!next && dbSettings.touch_id_enabled) {
+                              set("touch_id_enabled", false);
+                            }
+                          }}
+                        />
+                      </div>
+                      {biometricAvailable && (
+                        <div className={`flex items-center justify-between px-4 py-2 transition-opacity ${!dbSettings.pin_lock_enabled ? "opacity-40" : ""}`}>
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">{biometricLabel}</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              {dbSettings.pin_lock_enabled
+                                ? `Use ${biometricLabel} as a quick unlock. PIN is always available as a fallback.`
+                                : `Enable PIN lock first to use ${biometricLabel}.`}
+                            </p>
+                          </div>
+                          <Toggle
+                            on={dbSettings.touch_id_enabled}
+                            disabled={!dbSettings.pin_lock_enabled}
+                            onToggle={() => {
+                              if (!dbSettings.pin_lock_enabled) { return; }
+                              set("touch_id_enabled", !dbSettings.touch_id_enabled);
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
 
-      {activeTab === "mcp" && (
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-4xl w-full">
-          <h2 className="text-2xl font-bold mb-4">Model Context Protocol Servers</h2>
+                    {/* ── PIN Passcode ── */}
+                    <div className={`rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3 transition-opacity ${pinConfigured && !dbSettings.pin_lock_enabled ? "opacity-40 pointer-events-none" : ""}`}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">PIN passcode</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-sm">
+                            4 to 8 digits. Stored as a hash, never plaintext.
+                          </p>
+                        </div>
+                        <span className={`text-[11px] px-2 py-1 rounded-full border ${dbSettings.pin_lock_enabled
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                          : pinConfigured
+                            ? "border-sky-500/30 bg-sky-500/10 text-sky-400"
+                            : "border-[var(--border-color)] text-[var(--text-muted)]"
+                          }`}>
+                          {dbSettings.pin_lock_enabled ? "Enabled" : pinConfigured ? "Saved" : "Not set"}
+                        </span>
+                      </div>
 
-          <div className="mb-6">
-            <p className="text-sm text-[var(--text-secondary)] mb-4">
-              Configure external MCP servers to integrate with external knowledge sources and tools.
-            </p>
-          </div>
+                      {pinConfigured && (
+                        <div>
+                          <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Current PIN</label>
+                          <input
+                            type="password"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            value={currentPin}
+                            onChange={(e) => { setCurrentPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
+                            placeholder="Current PIN"
+                            className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                          />
+                        </div>
+                      )}
 
-          <div className="mb-6">
-            <button
-              onClick={() => setShowAddMcpServer(!showAddMcpServer)}
-              className="flex items-center gap-2 px-4 py-2 rounded bg-[var(--accent-color)] text-white hover:opacity-90 transition"
-            >
-              <Plus size={18} /> Add MCP Server
-            </button>
-          </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">{pinConfigured ? "New PIN" : "PIN"}</label>
+                          <input
+                            type="password"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            value={newPin}
+                            onChange={(e) => { setNewPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
+                            placeholder="4 to 8 digits"
+                            className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Confirm PIN</label>
+                          <input
+                            type="password"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            value={confirmPin}
+                            onChange={(e) => { setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
+                            placeholder="Repeat PIN"
+                            className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                          />
+                        </div>
+                      </div>
 
-          {showAddMcpServer && (
-            <div className="mb-6 p-4 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-              <h3 className="font-bold mb-4">New MCP Server</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Server Name</label>
-                  <input
-                    type="text"
-                    value={newMcpName}
-                    onChange={(e) => setNewMcpName(e.target.value)}
-                    className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
-                    placeholder="e.g., my-knowledge-server"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Command</label>
-                  <input
-                    type="text"
-                    value={newMcpCommand}
-                    onChange={(e) => setNewMcpCommand(e.target.value)}
-                    className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
-                    placeholder="e.g., /path/to/server-binary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Arguments (comma-separated)</label>
-                  <input
-                    type="text"
-                    value={newMcpArgs}
-                    onChange={(e) => setNewMcpArgs(e.target.value)}
-                    className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
-                    placeholder="e.g., --config /path/config.json"
-                  />
-                </div>
-                <div className="flex gap-2 justify-end">
-                  <button
-                    onClick={() => {
-                      setShowAddMcpServer(false);
-                      setNewMcpName("");
-                      setNewMcpCommand("");
-                      setNewMcpArgs("");
-                    }}
-                    className="px-4 py-2 rounded border border-[var(--border-color)] hover:bg-[var(--bg-hover)] transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await api.mcp.addServer(
-                          newMcpName,
-                          newMcpCommand,
-                          newMcpArgs.split(",").map((s) => s.trim()).filter(Boolean),
-                          "" // workspace_id
-                        );
-                        const servers = await api.mcp.listServers();
-                        setMcpServers(servers);
-                        setShowAddMcpServer(false);
-                        setNewMcpName("");
-                        setNewMcpCommand("");
-                        setNewMcpArgs("");
-                      } catch (err) {
-                        console.error("Failed to add MCP server:", err);
-                      }
-                    }}
-                    className="px-4 py-2 rounded bg-[var(--accent-color)] text-white hover:opacity-90 transition"
-                  >
-                    Add
-                  </button>
-                </div>
+                      {pinMessage && (
+                        <p className={`text-xs ${pinMessage.type === "success" ? "text-emerald-400" : "text-red-400"
+                          }`}>
+                          {pinMessage.text}
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={handleSetPin}
+                          disabled={pinSaving}
+                          className="px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-60"
+                        >
+                          {pinSaving ? "Saving..." : pinConfigured ? "Update PIN" : "Save PIN"}
+                        </button>
+                        {pinConfigured && (
+                          <button
+                            onClick={handleRemovePin}
+                            disabled={pinSaving}
+                            className="px-3.5 py-2 rounded-lg border border-[var(--border-color)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-60"
+                          >
+                            Remove PIN
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── Auto-lock ── */}
+                    <div className={`space-y-2 transition-opacity ${!anyLockEnabled ? "opacity-40 pointer-events-none" : ""}`}>
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block">Auto-lock</label>
+                        <p className="text-[11px] text-[var(--text-muted)] mb-2">Auto-lock becomes active once a launch lock is enabled.</p>
+                        <div className="flex flex-row flex-wrap gap-x-6 gap-y-2">
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="auto_lock"
+                              checked={dbSettings.auto_lock_minutes === 0}
+                              onChange={() => set("auto_lock_minutes", 0)}
+                              disabled={!anyLockEnabled}
+                              className="accent-[var(--accent-color)]"
+                            />
+                            <span className="text-[var(--text-secondary)]">Off</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="auto_lock"
+                              checked={dbSettings.auto_lock_minutes > 0}
+                              onChange={() => set("auto_lock_minutes", dbSettings.auto_lock_minutes > 0 ? dbSettings.auto_lock_minutes : 5)}
+                              disabled={!anyLockEnabled}
+                              className="accent-[var(--accent-color)]"
+                            />
+                            <span className="text-[var(--text-secondary)]">Lock after</span>
+                            {dbSettings.auto_lock_minutes > 0 && (
+                              <span className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={1440}
+                                  value={dbSettings.auto_lock_minutes}
+                                  disabled={!anyLockEnabled}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    if (val > 0) { set("auto_lock_minutes", val); }
+                                  }}
+                                  className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                                />
+                                <span className="text-xs text-[var(--text-secondary)]">minutes</span>
+                              </span>
+                            )}
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ── Sync ── */}
+                {activeTab === "sync" && (
+                  <>
+                    <div>
+                      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Multi-device Sync</h3>
+                      <p className="text-xs text-[var(--text-muted)] mb-3">
+                        Sync your chats, memories, and settings across devices using a private Git remote.
+                        Requires a private repository (GitHub, GitLab, or any SSH-accessible bare repo) and
+                        Git installed on this machine.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between py-1">
+                      <div>
+                        <p className="text-sm text-[var(--text-secondary)]">Enable sync</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically sync every 5 minutes in the background</p>
+                      </div>
+                      <Toggle
+                        on={gitSync?.enabled ?? false}
+                        onToggle={async () => {
+                          if (!gitSync) { return; }
+                          const next = !gitSync.enabled;
+                          setGitSyncSaving(true);
+                          try {
+                            await api.gitSync.configure(gitSyncUrl, next);
+                            setGitSync((s) => s ? { ...s, enabled: next } : s);
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          } catch (e: any) {
+                            setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
+                          } finally {
+                            setGitSyncSaving(false);
+                          }
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-[var(--text-secondary)] mb-1 block">Remote URL</label>
+                      <div className="flex gap-2">
+                        <input
+                          value={gitSyncUrl}
+                          onChange={(e) => setGitSyncUrl(e.target.value)}
+                          placeholder="git@github.com:you/aetherium-sync.git"
+                          className="flex-1 px-3 py-1.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] font-mono"
+                        />
+                        <button
+                          disabled={gitSyncSaving || !gitSyncUrl.trim() || !isGitSyncSshUrl}
+                          onClick={async () => {
+                            setGitSyncSaving(true);
+                            try {
+                              await api.gitSync.configure(gitSyncUrl, gitSync?.enabled ?? false);
+                              setGitSync((s) => s ? { ...s, remote_url: gitSyncUrl, last_error: "" } : s);
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            } catch (e: any) {
+                              setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
+                            } finally {
+                              setGitSyncSaving(false);
+                            }
+                          }}
+                          className="px-3 py-1.5 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-50"
+                        >
+                          {gitSyncSaving ? <RefreshCw size={12} className="animate-spin" /> : "Save"}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                        SSH remote required. Use `git@...` or `ssh://...` and ensure your key is loaded in `ssh-agent`.
+                      </p>
+                      {gitSyncUrl.trim() && !isGitSyncSshUrl && (
+                        <p className="text-[11px] text-amber-400 mt-1">
+                          Git sync only accepts SSH remotes.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between py-1">
+                      <div>
+                        <p className="text-xs text-[var(--text-muted)]">Last synced</p>
+                        <p className="text-sm text-[var(--text-secondary)]">
+                          {gitSync?.last_synced_at ? new Date(gitSync.last_synced_at).toLocaleString() : "Never"}
+                        </p>
+                      </div>
+                      <button
+                        disabled={gitSyncing || !gitSync?.enabled}
+                        onClick={async () => {
+                          setGitSyncing(true);
+                          try {
+                            const s = await api.gitSync.triggerSync();
+                            setGitSync(s);
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          } catch (e: any) {
+                            setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
+                          } finally {
+                            setGitSyncing(false);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+                      >
+                        {gitSyncing ? <RefreshCw size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        Sync Now
+                      </button>
+                    </div>
+
+                    {gitSync?.last_error && (
+                      <div className="px-3 py-2 rounded bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                        {gitSync.last_error}
+                      </div>
+                    )}
+                  </>
+                )}
+
               </div>
             </div>
           )}
 
-          <div className="space-y-3">
-            {mcpServers.length === 0 ? (
-              <p className="text-sm text-[var(--text-secondary)] italic">No MCP servers configured yet.</p>
-            ) : (
-              mcpServers.map((server) => (
-                <div key={server.id} className="p-4 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h4 className="font-bold">{server.name}</h4>
-                      <p className="text-sm text-[var(--text-secondary)] font-mono">{server.command}</p>
-                      {server.args.length > 0 && (
-                        <p className="text-xs text-[var(--text-secondary)] mt-1">{server.args.join(" ")}</p>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={async () => {
-                          try {
-                            await api.mcp.deleteServer(server.name);
-                            const servers = await api.mcp.listServers();
-                            setMcpServers(servers);
-                          } catch (err) {
-                            console.error("Failed to delete MCP server:", err);
-                          }
-                        }}
-                        className="p-2 rounded hover:bg-[var(--bg-hover)] transition text-red-500"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+          {/* ── Full-bleed tabs (workspaces, backup, import) ── */}
+          {activeTab === "workspaces" && (
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <WorkspaceSettingsView />
+            </div>
+          )}
+
+          {activeTab === "backup" && (
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <BackupSettingsSection />
+            </div>
+          )}
+
+          {activeTab === "import" && (
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <ImportSettingsSection />
+            </div>
+          )}
+
+          {activeTab === "logs" && (
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <React.Suspense fallback={null}>
+                <LogsView />
+              </React.Suspense>
+            </div>
+          )}
+
+          {activeTab === "mcp" && (
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="max-w-4xl w-full">
+                <h2 className="text-2xl font-bold mb-4">Model Context Protocol Servers</h2>
+
+                <div className="mb-6">
+                  <p className="text-sm text-[var(--text-secondary)] mb-4">
+                    Configure external MCP servers to integrate with external knowledge sources and tools.
+                  </p>
+                </div>
+
+                <div className="mb-6">
+                  <button
+                    onClick={() => setShowAddMcpServer(!showAddMcpServer)}
+                    className="flex items-center gap-2 px-4 py-2 rounded bg-[var(--accent-color)] text-white hover:opacity-90 transition"
+                  >
+                    <Plus size={18} /> Add MCP Server
+                  </button>
+                </div>
+
+                {showAddMcpServer && (
+                  <div className="mb-6 p-4 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                    <h3 className="font-bold mb-4">New MCP Server</h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Server Name</label>
+                        <input
+                          type="text"
+                          value={newMcpName}
+                          onChange={(e) => setNewMcpName(e.target.value)}
+                          className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
+                          placeholder="e.g., my-knowledge-server"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Command</label>
+                        <input
+                          type="text"
+                          value={newMcpCommand}
+                          onChange={(e) => setNewMcpCommand(e.target.value)}
+                          className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
+                          placeholder="e.g., /path/to/server-binary"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Arguments (comma-separated)</label>
+                        <input
+                          type="text"
+                          value={newMcpArgs}
+                          onChange={(e) => setNewMcpArgs(e.target.value)}
+                          className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
+                          placeholder="e.g., --config /path/config.json"
+                        />
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={() => {
+                            setShowAddMcpServer(false);
+                            setNewMcpName("");
+                            setNewMcpCommand("");
+                            setNewMcpArgs("");
+                          }}
+                          className="px-4 py-2 rounded border border-[var(--border-color)] hover:bg-[var(--bg-hover)] transition"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await api.mcp.addServer(
+                                newMcpName,
+                                newMcpCommand,
+                                newMcpArgs.split(",").map((s) => s.trim()).filter(Boolean),
+                                "" // workspace_id
+                              );
+                              const servers = await api.mcp.listServers();
+                              setMcpServers(servers);
+                              setShowAddMcpServer(false);
+                              setNewMcpName("");
+                              setNewMcpCommand("");
+                              setNewMcpArgs("");
+                            } catch (err) {
+                              console.error("Failed to add MCP server:", err);
+                            }
+                          }}
+                          className="px-4 py-2 rounded bg-[var(--accent-color)] text-white hover:opacity-90 transition"
+                        >
+                          Add
+                        </button>
+                      </div>
                     </div>
                   </div>
+                )}
+
+                <div className="space-y-3">
+                  {mcpServers.length === 0 ? (
+                    <p className="text-sm text-[var(--text-secondary)] italic">No MCP servers configured yet.</p>
+                  ) : (
+                    mcpServers.map((server) => (
+                      <div key={server.id} className="p-4 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-bold">{server.name}</h4>
+                            <p className="text-sm text-[var(--text-secondary)] font-mono">{server.command}</p>
+                            {server.args.length > 0 && (
+                              <p className="text-xs text-[var(--text-secondary)] mt-1">{server.args.join(" ")}</p>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await api.mcp.deleteServer(server.name);
+                                  const servers = await api.mcp.listServers();
+                                  setMcpServers(servers);
+                                } catch (err) {
+                                  console.error("Failed to delete MCP server:", err);
+                                }
+                              }}
+                              className="p-2 rounded hover:bg-[var(--bg-hover)] transition text-red-500"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
-              ))
-            )}
-          </div>
-          </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
-        </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }

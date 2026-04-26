@@ -41,7 +41,7 @@ pub struct Settings {
     pub immediate_delete: bool,
     pub confirm_move_to_trash: bool,
     pub prompt_instructions: String,
-    pub switch_workspace_to_chat: bool,
+    pub switch_workspace_section: String,
     pub hide_native_menu: bool,
     pub show_gen_info: bool,
     pub show_gen_info_token_count: bool,
@@ -96,7 +96,7 @@ impl Default for Settings {
             immediate_delete: false,
             confirm_move_to_trash: true,
             prompt_instructions: String::new(),
-            switch_workspace_to_chat: false,
+            switch_workspace_section: String::new(),
             hide_native_menu: false,
             show_gen_info: true,
             show_gen_info_token_count: true,
@@ -299,9 +299,13 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         prompt_instructions: get_setting(&conn, "prompt_instructions")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.prompt_instructions),
-        switch_workspace_to_chat: get_setting(&conn, "switch_workspace_to_chat")
-            .map(|v| v == "true")
-            .unwrap_or(def.switch_workspace_to_chat),
+        switch_workspace_section: get_setting(&conn, "switch_workspace_section")
+            .unwrap_or_else(|| {
+                // Migrate legacy boolean: true → "/chat", false → ""
+                get_setting(&conn, "switch_workspace_to_chat")
+                    .map(|v| if v == "true" { "/chat".to_string() } else { String::new() })
+                    .unwrap_or(def.switch_workspace_section.clone())
+            }),
         hide_native_menu: get_setting(&conn, "hide_native_menu")
             .map(|v| v == "true")
             .unwrap_or(def.hide_native_menu),
@@ -517,8 +521,8 @@ pub fn update_settings(
     )?;
     set_setting(
         &conn,
-        "switch_workspace_to_chat",
-        &settings.switch_workspace_to_chat.to_string(),
+        "switch_workspace_section",
+        &settings.switch_workspace_section,
     )?;
     set_setting(
         &conn,

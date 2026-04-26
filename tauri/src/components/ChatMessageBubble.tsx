@@ -148,6 +148,11 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
 
   const varCount = variations?.length ?? 0;
   const varIdx = currentVariationIndex ?? 0;
+  const isWebModel = useMemo(() => {
+    if (!aiModelList || !displayMsg.model_name) {return false;}
+    const model = aiModelList.find((m) => m.model_id === displayMsg.model_name || m.name === displayMsg.model_name);
+    return model?.provider.startsWith("web_") ?? false;
+  }, [aiModelList, displayMsg.model_name]);
 
   return (
     <div
@@ -350,7 +355,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
             {showGenInfo && showGenInfoModel && msg.role === "assistant" && displayMsg.model_name && varCount <= 1 ? (
               <span className="text-[var(--text-secondary)]">{displayMsg.model_name}</span>
             ) : null}
-            {showGenInfo && showGenInfoTokenCount && msg.role === "assistant" && displayMsg.tokens_used ? (
+            {showGenInfo && showGenInfoTokenCount && !isWebModel && msg.role === "assistant" && displayMsg.tokens_used ? (
               <span>{displayMsg.tokens_used.toLocaleString()} tok</span>
             ) : null}
             {showGenInfo && showGenInfoDuration && msg.role === "assistant" && displayMsg.duration_ms ? (
@@ -360,7 +365,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                   : `${displayMsg.duration_ms}ms`}
               </span>
             ) : null}
-            {showGenInfo && showGenInfoSpeed && msg.role === "assistant" && displayMsg.tokens_used && displayMsg.duration_ms && displayMsg.duration_ms > 0 ? (
+            {showGenInfo && showGenInfoSpeed && !isWebModel && msg.role === "assistant" && displayMsg.tokens_used && displayMsg.duration_ms && displayMsg.duration_ms > 0 ? (
               <span className="text-[var(--accent-color)] font-medium">
                 {(displayMsg.tokens_used / (displayMsg.duration_ms / 1000)).toFixed(1)} tok/s
               </span>

@@ -361,7 +361,7 @@ export interface AppSettings {
   immediate_delete: boolean;
   confirm_move_to_trash: boolean;
   prompt_instructions: string;
-  switch_workspace_to_chat: boolean;
+  switch_workspace_section: string;
   hide_native_menu: boolean;
   show_gen_info: boolean;
   show_gen_info_token_count: boolean;
@@ -626,6 +626,7 @@ export const api = {
     recommendIcon: (workspaceName: string, workspaceDescription: string) => invoke<string>("recommend_workspace_icon", { workspaceName, workspaceDescription }),
     hide: (id: string) => invoke<void>("hide_workspace", { id }),
     unhide: (id: string) => invoke<void>("unhide_workspace", { id }),
+    reorder: (ids: string[]) => invoke<void>("reorder_workspaces", { ids }),
   },
 
   project: {

@@ -83,7 +83,7 @@ export default function WorkspaceSettingsView() {
     addWorkspace,
     setWorkspaces,
   } = useWorkspaceStore();
-  const switchWorkspaceToChat = useSettingsStore((state) => state.switchWorkspaceToChat);
+  const switchWorkspaceSection = useSettingsStore((state) => state.switchWorkspaceSection);
   const navigate = useNavigate();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -240,8 +240,8 @@ export default function WorkspaceSettingsView() {
     const isChanged = nextSelection.workspaceId !== activeWorkspaceId;
     setActiveParentWorkspaceId(nextSelection.parentWorkspaceId);
     setActiveWorkspaceId(nextSelection.workspaceId);
-    if (isChanged && switchWorkspaceToChat) {
-      navigate("/chat");
+    if (isChanged && switchWorkspaceSection) {
+      navigate(switchWorkspaceSection);
     }
   }
 

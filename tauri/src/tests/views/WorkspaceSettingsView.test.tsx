@@ -37,8 +37,8 @@ vi.mock("@/lib/api", () => ({
 }));
 
 vi.mock("@/stores/settingsStore", () => ({
-  useSettingsStore: <T,>(selector: (state: { switchWorkspaceToChat: boolean }) => T) =>
-    selector({ switchWorkspaceToChat: false }),
+  useSettingsStore: <T,>(selector: (state: { switchWorkspaceSection: string }) => T) =>
+    selector({ switchWorkspaceSection: "" }),
 }));
 
 const INITIAL = {
@@ -95,6 +95,7 @@ function buildWorkspace(overrides: Partial<{
     updated_at: "2026-04-18T10:00:00.000Z",
     parent_workspace_id: null,
     icon: "",
+    order_index: 0, last_message_at: null,
     ...overrides,
   };
 }

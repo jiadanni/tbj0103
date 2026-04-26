@@ -282,13 +282,14 @@ export default function App() {
         store.setImmediateDelete(settings.immediate_delete);
         store.setConfirmMoveToTrash(settings.confirm_move_to_trash);
         store.setPromptInstructions(settings.prompt_instructions);
-        store.setSwitchWorkspaceToChat(settings.switch_workspace_to_chat);
+        store.setSwitchWorkspaceSection(settings.switch_workspace_section);
         store.setHideNativeMenu(settings.hide_native_menu);
         store.setShowGenInfo(settings.show_gen_info);
         store.setShowGenInfoTokenCount(settings.show_gen_info_token_count);
         store.setShowGenInfoDuration(settings.show_gen_info_duration);
         store.setShowGenInfoSpeed(settings.show_gen_info_speed);
         store.setShowGenInfoModel(settings.show_gen_info_model);
+        store.setQuickSearchShortcut(settings.quick_search_shortcut);
       } catch (err) {
         console.error("Failed to re-fetch settings after change:", err);
       }

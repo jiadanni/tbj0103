@@ -31,6 +31,8 @@ pub struct Workspace {
     pub updated_at: String,
     pub parent_workspace_id: Option<String>,
     pub icon: String,
+    pub order_index: i32,
+    pub last_message_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +71,8 @@ impl Workspace {
             updated_at: now,
             parent_workspace_id: None,
             icon: String::new(),
+            order_index: 0,
+            last_message_at: None,
         }
     }
 }
