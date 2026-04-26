@@ -1,4 +1,5 @@
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy, Pencil, RotateCcw, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, BookOpen, Sparkles, Loader } from "lucide-react";
@@ -140,6 +141,16 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
 
   const assistantProseRef = useRef<HTMLDivElement>(null);
   const wordDefinition = useWordHover(assistantProseRef);
+  const redoToggleRef = useRef<HTMLButtonElement>(null);
+  const [redoPickerStyle, setRedoPickerStyle] = useState<{ bottom: number; right: number } | null>(null);
+  useEffect(() => {
+    if (redoPickerOpen && redoToggleRef.current) {
+      const rect = redoToggleRef.current.getBoundingClientRect();
+      setRedoPickerStyle({ bottom: window.innerHeight - rect.top + 6, right: window.innerWidth - rect.right });
+    } else {
+      setRedoPickerStyle(null);
+    }
+  }, [redoPickerOpen]);
   const messageWidthClassName = expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]";
   const assistantColumnClassName = msg.role === "assistant" ? "w-full self-center" : "";
   const userBubbleWidthClassName = msg.role === "user" ? "w-fit self-end" : "";
@@ -302,41 +313,66 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                   <RotateCcw size={11} strokeWidth={1.5} />
                 </button>
                 <button
+                  ref={redoToggleRef}
                   onClick={() => onToggleRedoPicker?.(msg.id)}
                   className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
                   title="Redo with different model"
                 >
                   <ChevronDown size={10} strokeWidth={1.5} />
                 </button>
-                {redoPickerOpen && availableModels && (
-                  <div className="absolute bottom-full right-0 z-30 mb-1.5 w-[200px] overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-[0_16px_40px_-16px_rgba(15,23,42,0.7)]">
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                      Regenerate with
+                {redoPickerOpen && availableModels && redoPickerStyle && createPortal((() => {
+                  const providerOrder: Record<string, number> = { ollama: 0, mlx: 1, llamacpp: 2, openai: 3 };
+                  const groups = new Map<string, { label: string; order: number; modelIds: string[] }>();
+                  availableModels.forEach((modelId) => {
+                    const meta = aiModelList?.find((m) => m.model_id === modelId);
+                    const provider = meta?.provider ?? "other";
+                    const label = provider === "ollama" ? "Ollama" : provider === "mlx" ? "MLX" : provider === "llamacpp" ? "llama.cpp" : provider.startsWith("web_") ? "Web" : provider;
+                    const existing = groups.get(label);
+                    if (existing) { existing.modelIds.push(modelId); }
+                    else { groups.set(label, { label, order: providerOrder[provider] ?? 99, modelIds: [modelId] }); }
+                  });
+                  const sortedGroups = Array.from(groups.values()).sort((a, b) => a.order - b.order);
+                  return (
+                    <div
+                      data-redo-picker="true"
+                      className="fixed z-[9999] w-[220px] overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-[0_16px_40px_-16px_rgba(15,23,42,0.7)]"
+                      style={{ bottom: redoPickerStyle.bottom, right: redoPickerStyle.right }}
+                    >
+                      <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                        Regenerate with
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {sortedGroups.map((group) => (
+                          <div key={group.label}>
+                            <div className="px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] opacity-60">
+                              {group.label}
+                            </div>
+                            {group.modelIds.map((modelId) => {
+                              const modelMeta = aiModelList?.find((m) => m.model_id === modelId);
+                              const modelName = modelMeta?.name ?? modelId;
+                              const isCurrent = modelId === selectedModel;
+                              return (
+                                <button
+                                  key={modelId}
+                                  type="button"
+                                  onClick={() => onRedoWithModel?.(msg.id, modelId)}
+                                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] transition-colors ${
+                                    isCurrent
+                                      ? "bg-[rgba(var(--accent-color-rgb),0.10)] text-[var(--text-primary)]"
+                                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                  }`}
+                                >
+                                  <span className="min-w-0 truncate">{modelName}</span>
+                                  {isCurrent && <Check size={11} strokeWidth={1.5} className="shrink-0 text-[var(--accent-color)]" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="max-h-48 overflow-y-auto">
-                        {availableModels.map((modelId) => {
-                          const modelMeta = aiModelList?.find((m) => m.model_id === modelId);
-                          const modelName = modelMeta?.name ?? modelId;
-                          const isCurrent = modelId === selectedModel;
-                          return (
-                            <button
-                              key={modelId}
-                              type="button"
-                              onClick={() => onRedoWithModel?.(msg.id, modelId)}
-                            className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] transition-colors ${
-                              isCurrent
-                                ? "bg-[rgba(var(--accent-color-rgb),0.10)] text-[var(--text-primary)]"
-                                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                            }`}
-                          >
-                            <span className="min-w-0 truncate">{modelName}</span>
-                            {isCurrent && <Check size={11} strokeWidth={1.5} className="shrink-0 text-[var(--accent-color)]" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                  );
+                })(), document.body)}
               </div>
             )}
             {msg.role === "assistant" && !isStreaming && onGenerateFlashcards && (
