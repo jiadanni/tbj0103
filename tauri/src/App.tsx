@@ -65,7 +65,7 @@ function MenuEventHandler() {
           if (target.source_session_id) {
             navigateRef.current(`/chat/${target.source_session_id}`);
           } else {
-            navigateRef.current("/memory");
+            navigateRef.current("/preferences", { state: { settingsTab: "memory" } });
           }
           break;
         case "message":

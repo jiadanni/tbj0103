@@ -751,36 +751,42 @@ export default function WorkspaceSettingsView() {
                     label="Conversations"
                     value={stats?.overview.chat_sessions ?? 0}
                     loading={loadingStats}
+                    onClick={() => navigate("/chat")}
                   />
                   <StatCard
                     icon={<FileText size={16} />}
                     label="Notes & Daily"
                     value={stats?.overview.notes ?? 0}
                     loading={loadingStats}
+                    onClick={() => navigate("/notes")}
                   />
                   <StatCard
                     icon={<Globe size={16} />}
                     label="Sources & Docs"
                     value={stats?.overview.sources ?? 0}
                     loading={loadingStats}
+                    onClick={() => navigate("/sources")}
                   />
                   <StatCard
                     icon={<Brain size={16} />}
                     label="Concept Nodes"
                     value={stats?.overview.concepts ?? 0}
                     loading={loadingStats}
+                    onClick={() => navigate("/graph")}
                   />
                   <StatCard
                     icon={<CreditCard size={16} />}
                     label="Flashcards"
                     value={stats?.overview.flashcards ?? 0}
                     loading={loadingStats}
+                    onClick={() => navigate("/flashcards")}
                   />
                   <StatCard
                     icon={<Database size={16} />}
                     label="AI Memories"
                     value={memoryCount}
                     loading={loadingStats}
+                    onClick={() => navigate("/preferences", { state: { settingsTab: "memory" } })}
                   />
                 </div>
               </div>
@@ -880,10 +886,12 @@ export default function WorkspaceSettingsView() {
   );
 }
 
-function StatCard({ icon, label, value, loading }: { icon: React.ReactNode; label: string; value: number; loading: boolean }) {
+function StatCard({ icon, label, value, loading, onClick }: { icon: React.ReactNode; label: string; value: number; loading: boolean; onClick?: () => void }) {
   return (
-    <div className="bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl p-4 flex flex-col gap-2 shadow-sm transition-all hover:border-[var(--border-color-hover)]">
-      <div className="flex items-center justify-between">
+    <div
+      onClick={onClick}
+      className={`bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl p-4 flex flex-col gap-2 shadow-sm transition-all hover:border-[var(--border-color-hover)]${onClick ? " cursor-pointer" : ""}`}
+    >      <div className="flex items-center justify-between">
         <div className="text-[var(--accent-color)] bg-[var(--accent-color)]/10 p-1.5 rounded-lg">
           {icon}
         </div>

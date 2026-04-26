@@ -22,7 +22,6 @@ import { usePrefsWindowMode } from "../lib/prefsWindowMode";
 import { isMac, isLinux, isWindows } from "../lib/platform";
 import SplitPaneLayout from "./SplitPaneLayout";
 import ChatView from "../views/ChatView";
-import MemoryView from "../views/MemoryView";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useChatStore } from "../stores/chatStore";
 import CompactMenuSelect from "./CompactMenuSelect";
@@ -922,7 +921,7 @@ function WorkspaceTabBar({
   const [dialogBusy, setDialogBusy] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
-  const splitUnsupportedRoute = ["/preferences", "/memory"].some((path) => location.pathname.startsWith(path));
+  const splitUnsupportedRoute = ["/preferences"].some((path) => location.pathname.startsWith(path));
   const showSplitTitlebarWorkspaceNavigation = splitMode && !splitUnsupportedRoute;
   const showSinglePaneWorkspaceDropdown = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "top-dropdown";
   const showSplitToggle = !splitUnsupportedRoute || splitMode;
@@ -1450,7 +1449,7 @@ export default function Layout() {
   const setDemo = useWorkspaceStore((state) => state.setDemo);
   const loadArtifact = useArtifactStore((state) => state.loadArtifact);
   const setArtifactPanelOpen = useArtifactStore((state) => state.setPanelOpen);
-  const splitUnsupportedRoute = ["/preferences", "/memory"].some((path) => location.pathname.startsWith(path));
+  const splitUnsupportedRoute = ["/preferences"].some((path) => location.pathname.startsWith(path));
   const showSplitPaneLayout = splitMode && !splitUnsupportedRoute;
   const showSinglePaneNavigation = !showSplitPaneLayout;
   const showSectionSidebar = showSinglePaneNavigation && sectionNavigation === "sidebar";
@@ -1586,7 +1585,6 @@ function AppRoutes() {
       <Route path="/flashcards" element={<FlashcardReviewView />} />
       <Route path="/learning" element={<LearningPathView />} />
       <Route path="/history" element={<HistoryView />} />
-      <Route path="/memory" element={<MemoryView />} />
       <Route path="/logs" element={<LogsView />} />
       <Route path="/preferences" element={<PreferencesView />} />
       
@@ -1604,6 +1602,7 @@ function AppRoutes() {
       <Route path="/workspaces" element={<Navigate to="/preferences" state={{ settingsTab: "workspaces" }} replace />} />
       <Route path="/backup" element={<Navigate to="/preferences" state={{ settingsTab: "backup" }} replace />} />
       <Route path="/import" element={<Navigate to="/preferences" state={{ settingsTab: "import" }} replace />} />
+      <Route path="/memory" element={<Navigate to="/preferences" state={{ settingsTab: "memory" }} replace />} />
     </Routes>
     </Suspense>
   );
