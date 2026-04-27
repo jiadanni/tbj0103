@@ -193,6 +193,53 @@ fn normalize_concept_name(name: &str) -> String {
     }
 }
 
+/// Extract the first complete JSON object `{...}` from `input` by tracking
+/// brace depth, skipping string contents.  Returns `None` if no complete
+/// object is found.
+fn extract_first_json_object(input: &str) -> Option<&str> {
+    extract_first_json_container(input, '{', '}')
+}
+
+/// Extract the first complete JSON array `[...]` from `input` by tracking
+/// bracket depth, skipping string contents.  Returns `None` if no complete
+/// array is found.
+fn extract_first_json_array(input: &str) -> Option<&str> {
+    extract_first_json_container(input, '[', ']')
+}
+
+fn extract_first_json_container(input: &str, open: char, close: char) -> Option<&str> {
+    let start_byte = input.find(open)?;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut depth = 0usize;
+    for (i, ch) in input[start_byte..].char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            depth -= 1;
+            if depth == 0 {
+                let end_byte = start_byte + i + ch.len_utf8();
+                return Some(&input[start_byte..end_byte]);
+            }
+        } else if ch == '"' {
+            in_string = true;
+        }
+    }
+    None
+}
+
 fn repair_truncated_json_object(input: &str) -> Option<String> {
     let mut in_string = false;
     let mut escaped = false;
@@ -448,11 +495,11 @@ Rules:\n\
     }];
     let raw = client.send_message("ai_knowledge", &req.model, messages).await?;
 
-    // 4. Parse JSON — find first { / last }
+    // 4. Parse JSON — extract first complete { } object by depth-tracking
     let trimmed = raw.trim();
-    let json_str = match (trimmed.find('{'), trimmed.rfind('}')) {
-        (Some(s), Some(e)) if e > s => &trimmed[s..=e],
-        _ => {
+    let json_str = match extract_first_json_object(trimmed) {
+        Some(s) => s,
+        None => {
             return Err(format!(
                 "AI response did not contain valid JSON. Raw: {}",
                 &raw[..raw.len().min(300)]
@@ -801,9 +848,9 @@ pub async fn suggest_learning_goals(
     let raw = client.send_message("ai_knowledge", &req.model, messages).await?;
 
     let trimmed = raw.trim();
-    let json_str = match (trimmed.find('['), trimmed.rfind(']')) {
-        (Some(s), Some(e)) if e > s => &trimmed[s..=e],
-        _ => {
+    let json_str = match extract_first_json_array(trimmed) {
+        Some(s) => s,
+        None => {
             return Err(format!(
                 "AI response did not contain valid JSON array. Raw: {}",
                 &raw[..raw.len().min(300)]

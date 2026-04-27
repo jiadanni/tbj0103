@@ -979,7 +979,7 @@ export default function PreferencesView() {
                 const ollamaMeta = ollamaModels.find((model) => model.name === m.model_id);
                 const speedStat = modelSpeedStats[m.model_id];
                 const speedLabels = formatModelSpeed(speedStat);
-                const modelParams = parseModelParamsB(m.model_id) ?? parseModelParamsB(m.name);
+                const modelParams = parseModelParamsB(m.model_id) ?? parseModelParamsB(m.name) ?? parseModelParamsB(ollamaMeta?.details?.parameter_size ?? "");
                 const formattedParams = formatParams(modelParams);
                 const formattedStorage = typeof ollamaMeta?.size === "number" ? formatBytes(ollamaMeta.size) : null;
                 const modelFit = systemGuidance

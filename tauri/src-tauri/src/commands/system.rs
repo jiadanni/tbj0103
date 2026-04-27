@@ -238,6 +238,8 @@ pub fn get_performance_stats() -> Result<crate::models::system::PerformanceStats
     let gpu = query_gpu_vram();
     let usage_available = gpu.is_some() && gpu_vram_usage_is_live();
 
+    let cpu_core_usages: Vec<f32> = sys.cpus().iter().map(|c| c.cpu_usage()).collect();
+
     Ok(crate::models::system::PerformanceStats {
         cpu_usage_percent: cpu_usage,
         memory_used_bytes: memory_used,
@@ -246,6 +248,7 @@ pub fn get_performance_stats() -> Result<crate::models::system::PerformanceStats
         gpu_vram_total_bytes: gpu.as_ref().map(|(_, total, _)| *total),
         gpu_name: gpu.map(|(_, _, name)| name),
         gpu_vram_usage_available: usage_available,
+        cpu_core_usages,
     })
 }
 

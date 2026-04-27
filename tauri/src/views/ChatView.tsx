@@ -1,7 +1,7 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy } from "lucide-react";
+import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
@@ -182,6 +182,7 @@ interface SessionSidebarProps {
   renameSession: (id: string) => void;
   refreshSessionTitle: (session: ChatSession) => void;
   togglePin: (session: ChatSession) => void;
+  toggleExcludeFromAnalytics: (session: ChatSession) => void;
   saveSession: (session: ChatSession) => void;
   deleteSession: (id: string) => void;
   showAlertDialog: (title: string, description: string, tone?: ConfirmDialogState["tone"]) => void;
@@ -277,12 +278,12 @@ function SessionItem({
         />
       ) : (
         <div className="min-w-0 flex flex-1 items-center gap-1.5">
-          <span className={`min-w-0 flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{session.title || "New Chat"}</span>
+          <span className={`min-w-0 flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`} title={session.title || "New Chat"}>{session.title || "New Chat"}</span>
           {session.is_incognito && <Ghost size={isSplitPane ? 12 : 11} className="text-purple-400 shrink-0" />}
           {!session.is_incognito && session.exclude_from_analytics && <Shield size={isSplitPane ? 12 : 11} className="text-sky-400 shrink-0" />}
         </div>
       )}
-      <div className={`relative ml-1 shrink-0 ${isSplitPane ? "h-5 w-[42px]" : "h-5 w-[92px]"}`}>
+      <div className={`relative ml-1 shrink-0 ${isSplitPane ? "h-5 w-[42px]" : "h-5 w-[44px]"}`}>
         <div
           className={`absolute inset-y-0 right-0 flex items-center justify-end transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 ${isRenaming ? "opacity-0" : "opacity-100"
             }`}
@@ -323,6 +324,7 @@ function SessionSidebar({
   renameSession,
   refreshSessionTitle,
   togglePin,
+  toggleExcludeFromAnalytics,
   saveSession,
   deleteSession,
   showAlertDialog,
@@ -1604,6 +1606,19 @@ function SessionSidebar({
                     setCtxMenu(null);
                   }, ctxMenu.y > window.innerHeight * 0.55)}
                 </div>
+                <div className="my-1 border-t border-[var(--border-color)]" />
+                <button
+                  onClick={() => {
+                    void toggleExcludeFromAnalytics(ctxMenu.session);
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  {ctxMenu.session.exclude_from_analytics
+                    ? <><BarChart2 size={11} /> Include in analytics</>
+                    : <><BarChart2 size={11} /> Exclude from analytics</>
+                  }
+                </button>
                 <div className="my-1 border-t border-[var(--border-color)]" />
                 <button
                   onClick={() => {
@@ -3060,12 +3075,16 @@ export default function ChatView() {
   }, [ollamaUrl, activeChatId, activeSession?.model_name, preferredModel, modelRefreshCounter]);
 
   // Scroll to bottom on new messages or session switch.
-  // Does NOT depend on streamingContent — a separate interval handles that.
+  // During active streaming, followOutput="auto" on the Virtuoso component owns
+  // scroll-pinning via the Footer; firing scrollToIndex at the same time causes
+  // competing animations that make the view jerk.
   useEffect(() => {
-    const isSessionSwitch = prevScrollChatIdRef.current !== activeChatId;
     prevScrollChatIdRef.current = activeChatId;
 
-    if (scrollToTopOnSend && pendingSentScrollId.current && !isCurrentlyStreaming && !isSessionSwitch) {
+    // Let followOutput="auto" handle pinning while tokens are arriving.
+    if (isCurrentlyStreaming) { return; }
+
+    if (scrollToTopOnSend && pendingSentScrollId.current) {
       const msgId = pendingSentScrollId.current;
       pendingSentScrollId.current = null;
       const msgIndex = activeMessages.findIndex((m) => m.id === msgId);
@@ -3080,7 +3099,7 @@ export default function ChatView() {
     if (activeMessages.length > 0) {
       virtuosoRef.current?.scrollToIndex({
         index: activeMessages.length - 1,
-        behavior: isSessionSwitch ? "auto" : "smooth",
+        behavior: "auto",
       });
     }
   }, [activeChatId, activeMessages, isCurrentlyStreaming, scrollToTopOnSend]);
@@ -3675,6 +3694,14 @@ export default function ChatView() {
     setSidebarSessions((prev) => prev.map((item) => item.id === session.id ? { ...item, is_pinned: !item.is_pinned } : item));
   }
 
+  async function toggleExcludeFromAnalytics(session: ChatSession) {
+    if (!effectiveWorkspaceId) { return; }
+    const next = !session.exclude_from_analytics;
+    await api.chat.updateSession(effectiveWorkspaceId, session.id, { exclude_from_analytics: next });
+    replaceSessions(sessions.map((s) => s.id === session.id ? { ...s, exclude_from_analytics: next } : s));
+    setSidebarSessions((prev) => prev.map((item) => item.id === session.id ? { ...item, exclude_from_analytics: next } : item));
+  }
+
   async function renameSession(id: string) {
     if (!renameTitle.trim() || !effectiveWorkspaceId) { setRenamingId(null); return; }
     await api.chat.updateSession(effectiveWorkspaceId, id, { title: renameTitle });
@@ -4250,6 +4277,7 @@ export default function ChatView() {
         renameSession={renameSession}
         refreshSessionTitle={refreshSessionTitle}
         togglePin={togglePin}
+        toggleExcludeFromAnalytics={toggleExcludeFromAnalytics}
         saveSession={saveSession}
         deleteSession={deleteSession}
         showAlertDialog={openAlertDialog}
@@ -4427,7 +4455,7 @@ export default function ChatView() {
                         ref={virtuosoRef}
                         data={activeMessages}
                         initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
-                        followOutput={isCurrentlyStreaming ? "auto" : "smooth"}
+                        followOutput={isCurrentlyStreaming ? "auto" : false}
                         alignToBottom={true}
                         className="w-full min-w-0 overflow-x-hidden py-4"
                         computeItemKey={(_, msg) => msg.id}

@@ -508,6 +508,8 @@ export interface PerformanceStats {
    * False when only total capacity is known (macOS system_profiler).
    */
   gpu_vram_usage_available: boolean;
+  /** Per-logical-core CPU usage, 0–100. Empty array when unavailable. */
+  cpu_core_usages: number[];
 }
 
 export interface DashboardRoute {
@@ -656,8 +658,8 @@ export const api = {
       invoke<ChatSession[]>("search_chat_sessions", { req: { workspace_id: workspaceId, query, project_id: projectId ?? null } }),
     getSession: (workspaceId: string, id: string) => invoke<ChatSession | null>("get_chat_session", { workspaceId, id }),
     deleteSession: (workspaceId: string, id: string) => invoke<void>("delete_chat_session", { workspaceId, id }),
-    updateSession: (workspaceId: string, id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string; model_name?: string }) =>
-      invoke<void>("update_chat_session", { workspaceId, id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt, modelName: fields.model_name }),
+    updateSession: (workspaceId: string, id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string; model_name?: string; exclude_from_analytics?: boolean }) =>
+      invoke<void>("update_chat_session", { workspaceId, id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt, modelName: fields.model_name, excludeFromAnalytics: fields.exclude_from_analytics }),
     moveSessions: (sessionIds: string[], targetWorkspaceId: string, targetProjectId?: string) =>
       invoke<void>("move_chat_sessions", { sessionIds, targetWorkspaceId, targetProjectId }),
     batchMoveSessions: (sessionIds: string[], targetWorkspaceId: string, preserveFolderStructure: boolean) =>

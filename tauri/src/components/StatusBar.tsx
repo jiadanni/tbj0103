@@ -21,10 +21,10 @@ function pct(used: number, total: number): number {
 }
 
 function barColor(percent: number): string {
-  if (percent >= 90) {
+  if (percent >= 95) {
     return "bg-red-500/70";
   }
-  if (percent >= 70) {
+  if (percent >= 85) {
     return "bg-amber-400/70";
   }
   return "bg-[var(--accent-color)]/60";
@@ -32,19 +32,56 @@ function barColor(percent: number): string {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function MiniBar({ percent, label }: { percent: number; label: string }) {
+/** Label: [bar] N%  — used for RAM/GPU fallback */
+function MiniBar({ percent, label, sublabel }: { percent: number; label: string; sublabel?: string }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none w-[32px] text-right">
-        {percent}%
-      </span>
-      <div className="relative h-1.5 w-20 rounded-full overflow-hidden bg-[var(--border-color)]/60">
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">{label}:</span>
+      <div className="relative h-1.5 w-16 rounded-full overflow-hidden bg-[var(--border-color)]/60">
         <div
           className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ${barColor(percent)}`}
           style={{ width: `${percent}%` }}
         />
       </div>
-      <span className="text-xs text-[var(--text-secondary)] leading-none">{label}</span>
+      <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none">
+        {sublabel ?? `${percent}%`}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * CPU:  [core bars]  N%
+ * One vertical bar per logical core; bars grouped in sets of 2 for readability.
+ * Caps at 32 cores. Aggregate % shown after the bars.
+ */
+function CoreBars({ cores, aggregate }: { cores: number[]; aggregate: number }) {
+  const displayed = cores.slice(0, 32);
+  const barW = displayed.length > 16 ? 2 : 3;
+  const tooltipText = `${displayed.length} cores — ${displayed.map((v) => Math.round(v) + "%").join(" · ")}`;
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">CPU:</span>
+      {/* Core columns */}
+      <div
+        className="flex items-end gap-px"
+        style={{ height: "14px" }}
+        title={tooltipText}
+      >
+        {displayed.map((v, i) => (
+          <div
+            key={i}
+            className={`rounded-[1px] transition-all duration-700 ${barColor(Math.round(v))}`}
+            style={{
+              width: `${barW}px`,
+              height: `${Math.max(2, Math.round((v / 100) * 14))}px`,
+            }}
+          />
+        ))}
+      </div>
+      <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none">
+        {aggregate}%
+      </span>
     </div>
   );
 }
@@ -143,6 +180,7 @@ export default function StatusBar() {
   }, []);
 
   const cpuPct = stats ? Math.round(stats.cpu_usage_percent) : 0;
+  const cpuCores = stats?.cpu_core_usages ?? [];
   const ramPct = stats ? pct(stats.memory_used_bytes, stats.memory_total_bytes) : 0;
   const ramLabel = stats
     ? `${formatBytes(stats.memory_used_bytes)} / ${formatBytes(stats.memory_total_bytes)}`
@@ -202,53 +240,36 @@ export default function StatusBar() {
 
       {/* Right — performance meters (aria-hidden; screen readers get no value from constant churn) */}
       <div className="flex items-center gap-4 shrink-0" aria-hidden="true">
-        {/* CPU */}
-        <MiniBar percent={cpuPct} label="CPU" />
+        {/* CPU — per-core bars when available, fallback to aggregate */}
+        {cpuCores.length > 0
+          ? <CoreBars cores={cpuCores} aggregate={cpuPct} />
+          : <MiniBar percent={cpuPct} label="CPU" />
+        }
 
         {/* Divider */}
         <span className="h-3.5 w-px bg-[var(--border-color)]" />
 
-        {/* RAM */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none w-[32px] text-right">
-            {ramPct}%
-          </span>
-          <div className="relative h-1.5 w-20 rounded-full overflow-hidden bg-[var(--border-color)]/60">
-            <div
-              className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ${barColor(ramPct)}`}
-              style={{ width: `${ramPct}%` }}
-            />
-          </div>
-          <span className="text-xs text-[var(--text-secondary)] leading-none tabular-nums">
-            {ramLabel} RAM
-          </span>
-        </div>
+        {/* RAM — RAM: [bar] used / total */}
+        <MiniBar percent={ramPct} label="RAM" sublabel={ramLabel} />
 
         {/* GPU (only when detected) */}
         {hasGpu && (
           <>
             <span className="h-3.5 w-px bg-[var(--border-color)]" />
-            <div className="flex items-center gap-2">
-              {hasLiveUsage && (
-                <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none w-[32px] text-right">
-                  {gpuPct}%
-                </span>
-              )}
-              {hasLiveUsage && (
-                <div className="relative h-1.5 w-16 rounded-full overflow-hidden bg-[var(--border-color)]/60">
-                  <div
-                    className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ${barColor(gpuPct)}`}
-                    style={{ width: `${gpuPct}%` }}
-                  />
+            {hasLiveUsage
+              ? <MiniBar percent={gpuPct} label="VRAM" sublabel={gpuLabel} />
+              : (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">VRAM:</span>
+                  <span
+                    className="text-xs text-[var(--text-secondary)] leading-none tabular-nums truncate max-w-[100px]"
+                    title={stats?.gpu_name ?? undefined}
+                  >
+                    {gpuLabel}
+                  </span>
                 </div>
-              )}
-              <span
-                className="text-xs text-[var(--text-secondary)] leading-none tabular-nums truncate max-w-[120px]"
-                title={stats?.gpu_name ?? undefined}
-              >
-                {gpuLabel} VRAM
-              </span>
-            </div>
+              )
+            }
           </>
         )}
       </div>

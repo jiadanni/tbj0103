@@ -595,6 +595,7 @@ pub fn update_session(
     is_pinned: Option<bool>,
     system_prompt: Option<String>,
     model_name: Option<String>,
+    exclude_from_analytics: Option<bool>,
 ) -> Result<(), String> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
@@ -603,13 +604,15 @@ pub fn update_session(
             is_pinned = COALESCE(?2, is_pinned),
             system_prompt = COALESCE(?3, system_prompt),
             model_name = COALESCE(?4, model_name),
-            updated_at = ?5
-         WHERE id = ?6",
+            exclude_from_analytics = COALESCE(?5, exclude_from_analytics),
+            updated_at = ?6
+         WHERE id = ?7",
         rusqlite::params![
             title,
             is_pinned.map(|value| value as i32),
             system_prompt,
             model_name,
+            exclude_from_analytics.map(|v| v as i32),
             now,
             id,
         ],

@@ -36,4 +36,6 @@ pub struct PerformanceStats {
     /// True when `gpu_vram_used_bytes` reflects live usage.
     /// False when only total capacity is known (e.g. macOS system_profiler).
     pub gpu_vram_usage_available: bool,
+    /// Per-logical-core CPU usage, 0–100. Empty when unavailable.
+    pub cpu_core_usages: Vec<f32>,
 }
