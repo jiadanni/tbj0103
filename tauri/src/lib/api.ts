@@ -370,6 +370,7 @@ export interface AppSettings {
   show_gen_info_model: boolean;
   demo_dismissed: boolean;
   memory_enabled: boolean;
+  menubar_icon_style: "monochrome" | "white" | "black";
 }
 
 export interface GitSyncStatus {
@@ -1185,6 +1186,7 @@ export const api = {
   settings: {
     get: () => invoke<AppSettings>("get_settings"),
     update: (settings: AppSettings) => invoke<void>("update_settings", { settings }),
+    reloadTrayIcon: () => invoke<void>("reload_tray_icon"),
   },
 
   graphAlgo: {

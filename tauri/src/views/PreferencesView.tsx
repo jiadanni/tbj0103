@@ -421,7 +421,7 @@ export default function PreferencesView() {
     });
 
     return Object.values(providerGroups).sort((a, b) => a.order - b.order);
-  }, [aiModels, nonEmbeddingOllamaModels, mlxModels, llamacppModels, isMac, composerMode, modelFamilyLabels, customModelFamilies]);
+  }, [aiModels, nonEmbeddingOllamaModels, mlxModels, llamacppModels, composerMode, modelFamilyLabels, customModelFamilies]);
 
   // Separate local models (AI tab) from web models (Browser Automation tab)
   const localGroupedAiModels = useMemo(
@@ -543,7 +543,16 @@ export default function PreferencesView() {
     saveQueueRef.current = saveQueueRef.current
       .catch(() => { })
       .then(async () => {
+        const changedMenubarStyle = dbSettingsRef.current?.menubar_icon_style !== nextSettings.menubar_icon_style;
         await api.settings.update(nextSettings);
+        if (changedMenubarStyle && isMac) {
+          try {
+            await api.settings.reloadTrayIcon();
+          } catch (err) {
+            // Ignore errors from tray icon reload
+            console.warn("Failed to reload tray icon:", err);
+          }
+        }
         setSaveStatus("saved");
         scheduleSavedNoticeReset();
       })
@@ -1788,6 +1797,25 @@ export default function PreferencesView() {
                       </div>
                     </div>
 
+                    {isMac && (
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block">Menubar Icon Style</label>
+                        <div className="flex flex-wrap gap-2">
+                          {["monochrome", "white", "black"].map((style) => (
+                            <button
+                              key={style}
+                              onClick={() => updateSettings({ menubar_icon_style: style as "monochrome" | "white" | "black" })}
+                              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${dbSettings.menubar_icon_style === style
+                                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                                : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                                }`}
+                            >
+                              {style}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                   </>
                 )}
