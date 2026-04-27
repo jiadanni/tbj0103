@@ -4139,6 +4139,16 @@ export default function ChatView() {
   }, [enabledModels, modelFamilyLabels]);
 
   const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
+  const [showFamilyVariant, setShowFamilyVariant] = useState(false);
+
+  // Revert the family picker label back to family-level once generation ends
+  const prevIsStreamingRef = useRef(false);
+  useEffect(() => {
+    if (prevIsStreamingRef.current && !isStreaming && composerMode === "family") {
+      setShowFamilyVariant(false);
+    }
+    prevIsStreamingRef.current = isStreaming;
+  }, [isStreaming, composerMode]);
 
   // Sync selectedFamily from selectedModel when entering family mode
   useEffect(() => {
@@ -4533,7 +4543,7 @@ export default function ChatView() {
                                     >
                                       <span className="min-w-0 truncate">
                                         {selectedFamily
-                                          ? `${modelFamilyLabels[selectedFamily] ?? selectedFamily}${selectedModel && selectedModel.startsWith(selectedFamily) ? ` · ${modelPickerLabel(selectedModel)}` : ""}`
+                                          ? `${modelFamilyLabels[selectedFamily] ?? selectedFamily}${showFamilyVariant && selectedModel && selectedModel.startsWith(selectedFamily) ? ` · ${modelPickerLabel(selectedModel)}` : ""}`
                                           : "Select family"}
                                       </span>
                                       <ChevronDown size={14} strokeWidth={2.2} />
@@ -4838,6 +4848,7 @@ export default function ChatView() {
                                           key={m.model_id}
                                           onClick={async (e) => {
                                             setSelectedModel(m.model_id);
+                                            setShowFamilyVariant(true);
                                             await persistModelChoice(m.model_id);
                                             if (e.metaKey || e.ctrlKey) {
                                               await queueWithModel(m.model_id);

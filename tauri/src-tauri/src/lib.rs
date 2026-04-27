@@ -14,7 +14,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 #[cfg(not(target_os = "linux"))]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 #[cfg(target_os = "linux")]
 use tauri::PhysicalPosition;
 #[cfg(target_os = "linux")]
@@ -182,7 +182,8 @@ pub fn run() {
 
             ensure_quick_search_window(app)
                 .map_err(|e| format!("Failed to create quick search window: {e}"))?;
-            build_tray_icon(app)
+            let tray_handle = app.handle().clone();
+            build_tray_icon(&tray_handle)
                 .map_err(|e| format!("Failed to create tray icon: {e}"))?;
 
             {
@@ -626,12 +627,17 @@ fn ensure_quick_search_window(app: &tauri::App) -> Result<(), String> {
     Ok(())
 }
 
-pub fn build_tray_icon(app: &tauri::App) -> Result<(), String> {
+pub fn build_tray_icon(app: &AppHandle) -> Result<(), String> {
     // Try to load the menubar icon based on settings
     let tray_icon = load_tray_icon(app);
     let icon = tray_icon.or_else(|_| {
         // Fallback to default window icon if menubar icon not found
-        app.default_window_icon().cloned().ok_or_else(|| "No icon available".to_string())
+        app.default_window_icon()
+            .map(|icon| {
+                use tauri::image::Image;
+                Image::new_owned(icon.rgba().to_owned(), icon.width(), icon.height())
+            })
+            .ok_or_else(|| "No icon available".to_string())
     })?;
 
     let tray_menu = Menu::with_items(
@@ -690,13 +696,12 @@ pub fn build_tray_icon(app: &tauri::App) -> Result<(), String> {
     Ok(())
 }
 
-fn load_tray_icon(app: &tauri::App) -> Result<tauri::image::Image, String> {
+fn load_tray_icon(app: &AppHandle) -> Result<tauri::image::Image<'static>, String> {
     use tauri::image::Image;
     
     // Get the menubar icon style from settings (default to monochrome)
     let icon_style = {
-        let app_handle = app.handle();
-        let db_state = app_handle.state::<crate::db::DbState>();
+        let db_state = app.state::<crate::db::DbState>();
         match db_state.0.get() {
             Ok(conn) => {
                 commands::settings::get_setting(&conn, "menubar_icon_style")
@@ -719,8 +724,13 @@ fn load_tray_icon(app: &tauri::App) -> Result<tauri::image::Image, String> {
         if let Ok(resource_path) = app.path().resource_dir() {
             let icon_path = resource_path.join(icon_filename);
             if icon_path.exists() {
-                return Image::from_path(&icon_path)
-                    .map_err(|e| format!("Failed to load tray icon: {}", e));
+                let bytes = std::fs::read(&icon_path)
+                    .map_err(|e| format!("Failed to read icon file: {}", e))?;
+                let img = image::load_from_memory(&bytes)
+                    .map_err(|e| format!("Failed to decode icon: {}", e))?
+                    .into_rgba8();
+                let (width, height) = img.dimensions();
+                return Ok(Image::new_owned(img.into_raw(), width, height));
             }
         }
     }
@@ -729,7 +739,7 @@ fn load_tray_icon(app: &tauri::App) -> Result<tauri::image::Image, String> {
     create_monochrome_tray_icon(&icon_style)
 }
 
-fn create_monochrome_tray_icon(style: &str) -> Result<tauri::image::Image, String> {
+fn create_monochrome_tray_icon(style: &str) -> Result<tauri::image::Image<'static>, String> {
     // Create a 22x22 PNG icon in memory
     // For now, we'll use a simple RGB implementation
     const SIZE: usize = 22;
@@ -745,7 +755,7 @@ fn create_monochrome_tray_icon(style: &str) -> Result<tauri::image::Image, Strin
 
     // Draw a simple circle in the center
     let center = SIZE as i32 / 2;
-    let radius = (SIZE as i32 / 3);
+    let radius = SIZE as i32 / 3;
 
     for y in 0..SIZE {
         for x in 0..SIZE {
@@ -763,6 +773,5 @@ fn create_monochrome_tray_icon(style: &str) -> Result<tauri::image::Image, Strin
         }
     }
 
-    tauri::image::Image::new(&rgba_data, SIZE as u32, SIZE as u32, 4)
-        .map_err(|e| format!("Failed to create tray icon: {}", e))
+    Ok(tauri::image::Image::new_owned(rgba_data, SIZE as u32, SIZE as u32))
 }
