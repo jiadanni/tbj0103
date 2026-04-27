@@ -462,6 +462,8 @@ pub fn run() {
             commands::backup::list_backups,
             commands::backup::restore_backup,
             commands::backup::delete_backup,
+            commands::backup::create_global_backup,
+            commands::backup::restore_global_backup,
             // Settings commands
             commands::settings::get_settings,
             commands::settings::update_settings,

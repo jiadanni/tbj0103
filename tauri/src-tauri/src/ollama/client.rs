@@ -4,7 +4,7 @@ use crate::commands::ollama::{StreamAbortEntry, StreamAbortState};
 ///
 /// Connects to a local Ollama instance (default: http://localhost:11434).
 /// Supports chat, streaming, embeddings, and model listing.
-use futures::{future::join_all, StreamExt};
+use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -1180,7 +1180,7 @@ impl OllamaClient {
 
         let models = self.enrich_models_with_capabilities(tags.models, ctx).await;
 
-        // Store in cache.
+        // Store in cache (without awaiting capability fetches — they're fetched in the background).
         {
             let mut guard = model_cache()
                 .lock()
@@ -1209,11 +1209,19 @@ impl OllamaClient {
         models: Vec<ModelInfo>,
         ctx: &RequestContext,
     ) -> Vec<ModelInfo> {
-        join_all(models.into_iter().map(|mut model| async {
-            model.capabilities = self.fetch_model_capabilities_observed(&model.name, ctx).await;
-            model
-        }))
-        .await
+        // Fetch model capabilities sequentially to avoid overwhelming Ollama with
+        // parallel /api/show requests, which can cause connection errors on startup.
+        // The capability cache (10-minute TTL) ensures that repeat calls are cheap.
+        // This replaces the previous join_all() which created a thundering herd of
+        // parallel requests when multiple concurrent calls (resolve_model, ensure_ollama_running,
+        // list_models_fresh) raced to fetch the model list at app startup.
+        let mut enriched = Vec::new();
+        for model in models {
+            let mut enriched_model = model;
+            enriched_model.capabilities = self.fetch_model_capabilities_observed(&enriched_model.name, ctx).await;
+            enriched.push(enriched_model);
+        }
+        enriched
     }
 
     async fn fetch_model_capabilities_observed(

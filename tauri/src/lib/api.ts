@@ -1178,6 +1178,8 @@ export const api = {
     list: () => invoke<any[]>("list_backups"),
     restore: (backupJson: string) => invoke<string>("restore_backup", { backupJson }),
     delete: (id: string) => invoke<void>("delete_backup", { id }),
+    createGlobal: () => invoke<string>("create_global_backup"),
+    restoreGlobal: (backupJson: string) => invoke<string[]>("restore_global_backup", { backupJson }),
   },
 
   settings: {

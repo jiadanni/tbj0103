@@ -153,3 +153,14 @@ pub struct NoteTemplateBackup {
     pub content: String,
     pub is_built_in: bool,
 }
+
+/// Global backup containing all workspaces and app settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalBackupSnapshot {
+    pub id: String,
+    pub created_at: String,
+    pub app_version: String,
+    pub workspaces: Vec<WorkspaceBackup>,
+    pub settings: serde_json::Value, // App-wide settings
+    pub stats: serde_json::Value,     // Overall statistics
+}
