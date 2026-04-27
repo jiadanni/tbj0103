@@ -467,6 +467,7 @@ pub fn run() {
             // Settings commands
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::settings::reload_tray_icon,
             commands::system::get_system_specs,
             commands::system::get_performance_stats,
             commands::system::toggle_devtools,
@@ -625,10 +626,13 @@ fn ensure_quick_search_window(app: &tauri::App) -> Result<(), String> {
     Ok(())
 }
 
-fn build_tray_icon(app: &tauri::App) -> Result<(), String> {
-    let Some(icon) = app.default_window_icon().cloned() else {
-        return Ok(());
-    };
+pub fn build_tray_icon(app: &tauri::App) -> Result<(), String> {
+    // Try to load the menubar icon based on settings
+    let tray_icon = load_tray_icon(app);
+    let icon = tray_icon.or_else(|_| {
+        // Fallback to default window icon if menubar icon not found
+        app.default_window_icon().cloned().ok_or_else(|| "No icon available".to_string())
+    })?;
 
     let tray_menu = Menu::with_items(
         app,
@@ -684,4 +688,81 @@ fn build_tray_icon(app: &tauri::App) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+fn load_tray_icon(app: &tauri::App) -> Result<tauri::image::Image, String> {
+    use tauri::image::Image;
+    
+    // Get the menubar icon style from settings (default to monochrome)
+    let icon_style = {
+        let app_handle = app.handle();
+        let db_state = app_handle.state::<crate::db::DbState>();
+        match db_state.0.get() {
+            Ok(conn) => {
+                commands::settings::get_setting(&conn, "menubar_icon_style")
+                    .unwrap_or_else(|| "monochrome".to_string())
+            }
+            Err(_) => "monochrome".to_string(),
+        }
+    };
+
+    // Map icon style to filename
+    let icon_filename = match icon_style.as_str() {
+        "white" => "icon-white.png",
+        "black" => "icon-black.png",
+        "monochrome" | _ => "icon-monochrome.png",
+    };
+
+    // Try to load from resources
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(resource_path) = app.path().resource_dir() {
+            let icon_path = resource_path.join(icon_filename);
+            if icon_path.exists() {
+                return Image::from_path(&icon_path)
+                    .map_err(|e| format!("Failed to load tray icon: {}", e));
+            }
+        }
+    }
+
+    // Fallback: create a basic icon dynamically
+    create_monochrome_tray_icon(&icon_style)
+}
+
+fn create_monochrome_tray_icon(style: &str) -> Result<tauri::image::Image, String> {
+    // Create a 22x22 PNG icon in memory
+    // For now, we'll use a simple RGB implementation
+    const SIZE: usize = 22;
+    const STRIDE: usize = SIZE * 4; // RGBA
+    let mut rgba_data = vec![0u8; STRIDE * SIZE];
+
+    // Determine the color based on style
+    let (r, g, b) = match style {
+        "white" => (255u8, 255u8, 255u8),
+        "black" => (0u8, 0u8, 0u8),
+        "monochrome" | _ => (0u8, 0u8, 0u8), // Default to black (will invert on dark menubar)
+    };
+
+    // Draw a simple circle in the center
+    let center = SIZE as i32 / 2;
+    let radius = (SIZE as i32 / 3);
+
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let dx = (x as i32) - center;
+            let dy = (y as i32) - center;
+            let dist_sq = dx * dx + dy * dy;
+
+            if dist_sq <= radius * radius {
+                let idx = (y * SIZE + x) * 4;
+                rgba_data[idx] = r;
+                rgba_data[idx + 1] = g;
+                rgba_data[idx + 2] = b;
+                rgba_data[idx + 3] = 255; // Alpha
+            }
+        }
+    }
+
+    tauri::image::Image::new(&rgba_data, SIZE as u32, SIZE as u32, 4)
+        .map_err(|e| format!("Failed to create tray icon: {}", e))
 }

@@ -122,8 +122,7 @@ export default function SmartTextEditor({
     ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
       backgroundColor: "rgba(var(--accent-color-rgb), 0.22)",
     },
-  }, { dark: true })];
-
+  }, { dark: true }), []);
 
   const extensions = useMemo(() => [
     markdown({ base: markdownLanguage, codeLanguages: languages }),

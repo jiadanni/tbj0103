@@ -50,6 +50,7 @@ pub struct Settings {
     pub show_gen_info_model: bool,
     pub demo_dismissed: bool,
     pub memory_enabled: bool,
+    pub menubar_icon_style: String,
 }
 
 impl Default for Settings {
@@ -105,6 +106,7 @@ impl Default for Settings {
             show_gen_info_model: true,
             demo_dismissed: false,
             memory_enabled: true,
+            menubar_icon_style: "monochrome".to_string(),
         }
     }
 }
@@ -564,6 +566,11 @@ pub fn update_settings(
         "demo_dismissed",
         &settings.demo_dismissed.to_string(),
     )?;
+    set_setting(
+        &conn,
+        "menubar_icon_style",
+        &serde_json::to_string(&settings.menubar_icon_style).unwrap(),
+    )?;
 
     if settings.start_at_login {
         if let Err(err) = app.autolaunch().enable() {
@@ -648,3 +655,15 @@ pub fn should_keep_running_in_tray(app: &AppHandle) -> bool {
         Err(_) => false,
     }
 }
+
+#[tauri::command]
+pub fn reload_tray_icon(app: AppHandle) -> Result<(), String> {
+    // Remove the old tray icon if it exists
+    if let Ok(tray) = app.tray_by_id("aetherium-tray") {
+        let _ = tray.remove();
+    }
+
+    // Rebuild the tray icon with the new style
+    crate::build_tray_icon(&app)
+}
+
