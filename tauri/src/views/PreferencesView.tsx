@@ -17,6 +17,7 @@ import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore
 import { type NavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
+import GlobalBackupSection from "./GlobalBackupSection";
 import ImportSettingsSection from "./ImportSettingsSection";
 import MemoryView from "./MemoryView";
 const LogsView = React.lazy(() => import("./LogsView"));
@@ -2925,8 +2926,21 @@ export default function PreferencesView() {
           )}
 
           {activeTab === "backup" && (
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <BackupSettingsSection />
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <div className="space-y-8 p-5">
+                  {/* Workspace backup section */}
+                  <div>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Workspace Backup</h2>
+                    <BackupSettingsSection />
+                  </div>
+                  {/* Global backup section */}
+                  <div className="border-t border-[var(--border-color)] pt-8">
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Global Backup</h2>
+                    <GlobalBackupSection />
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

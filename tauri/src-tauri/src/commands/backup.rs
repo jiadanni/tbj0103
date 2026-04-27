@@ -523,3 +523,173 @@ fn json_to_sql_value(value: &serde_json::Value) -> Result<Value, String> {
         }
     }
 }
+
+/// Create a global backup containing all workspaces
+#[tauri::command]
+pub fn create_global_backup(state: State<DbState>) -> Result<String, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+
+    // Get all workspaces
+    let mut stmt = conn
+        .prepare("SELECT id FROM workspaces ORDER BY created_at ASC")
+        .map_err(|e| e.to_string())?;
+    let workspace_ids: Vec<String> = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut workspaces = Vec::new();
+    for workspace_id in workspace_ids {
+        let workspace = query_optional_json_row(
+            &conn,
+            "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at
+             FROM workspaces
+             WHERE id = ?1",
+            &workspace_id,
+        )?
+        .ok_or_else(|| format!("Workspace {workspace_id} not found"))?;
+
+        let mut data = serde_json::Map::new();
+        for (table, query) in BACKUP_TABLES {
+            data.insert(
+                table.to_string(),
+                query_rows_as_json(&conn, query, &workspace_id)?,
+            );
+        }
+
+        for (table, query) in OPTIONAL_BACKUP_TABLES {
+            if table_exists(&conn, table)? {
+                data.insert(
+                    table.to_string(),
+                    query_rows_as_json(&conn, query, &workspace_id)?,
+                );
+            }
+        }
+
+        let project_count = data
+            .get("projects")
+            .and_then(|rows| rows.as_array())
+            .map_or(0, |rows| rows.len());
+        let chat_count = data
+            .get("chat_sessions")
+            .and_then(|rows| rows.as_array())
+            .map_or(0, |rows| rows.len());
+
+        workspaces.push(serde_json::json!({
+            "workspace": workspace,
+            "data": data,
+            "project_count": project_count,
+            "chat_count": chat_count,
+        }));
+    }
+
+    // Get app settings (from settings table if it exists)
+    let settings = if table_exists(&conn, "settings")? {
+        let mut stmt = conn
+            .prepare("SELECT key, value FROM settings ORDER BY key ASC")
+            .map_err(|e| e.to_string())?;
+        let mut settings_map = serde_json::Map::new();
+        let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let key: String = row.get(0).map_err(|e| e.to_string())?;
+            let value: String = row.get(1).map_err(|e| e.to_string())?;
+            settings_map.insert(key, serde_json::Value::String(value));
+        }
+        serde_json::Value::Object(settings_map)
+    } else {
+        serde_json::json!({})
+    };
+
+    let total_projects: usize = workspaces
+        .iter()
+        .filter_map(|w| w.get("project_count").and_then(|c| c.as_u64()))
+        .map(|c| c as usize)
+        .sum();
+    let total_chats: usize = workspaces
+        .iter()
+        .filter_map(|w| w.get("chat_count").and_then(|c| c.as_u64()))
+        .map(|c| c as usize)
+        .sum();
+
+    let backup = serde_json::json!({
+        "id": uuid::Uuid::new_v4().to_string(),
+        "version": "2.0",
+        "created_at": chrono::Utc::now().to_rfc3339(),
+        "app_version": env!("CARGO_PKG_VERSION"),
+        "is_global": true,
+        "workspaces": workspaces.iter().filter_map(|w| w.get("workspace")).collect::<Vec<_>>(),
+        "data": workspaces,
+        "settings": settings,
+        "stats": {
+            "workspace_count": workspaces.len(),
+            "total_project_count": total_projects,
+            "total_chat_count": total_chats,
+        }
+    });
+
+    serde_json::to_string_pretty(&backup).map_err(|e| e.to_string())
+}
+
+/// Restore from a global backup (all workspaces)
+#[tauri::command]
+pub fn restore_global_backup(state: State<DbState>, backup_json: String) -> Result<Vec<String>, String> {
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
+    let backup: serde_json::Value =
+        serde_json::from_str(&backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
+
+    let is_global = backup.get("is_global").and_then(|v| v.as_bool()).unwrap_or(false);
+    if !is_global {
+        return Err("This backup is not marked as a global backup".to_string());
+    }
+
+    let workspaces_data = backup
+        .get("data")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "Backup is missing workspace data".to_string())?;
+
+    let mut restored_ids = Vec::new();
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    for workspace_data in workspaces_data {
+        let workspace = workspace_data
+            .get("workspace")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| "Backup entry is missing workspace object".to_string())?;
+
+        let workspace_id = workspace
+            .get("id")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| "Backup workspace is missing an id".to_string())?
+            .to_string();
+
+        let data = workspace_data
+            .get("data")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| "Backup workspace is missing table data".to_string())?;
+
+        // Delete existing workspace
+        tx.execute("DELETE FROM workspaces WHERE id = ?1", [&workspace_id])
+            .map_err(|e| e.to_string())?;
+
+        // Insert workspace
+        insert_value_object(
+            &tx,
+            "workspaces",
+            &serde_json::Value::Object(workspace.clone()),
+        )?;
+
+        // Restore tables in order
+        for table in RESTORE_TABLE_ORDER {
+            if let Some(rows) = data.get(table) {
+                insert_json_rows(&tx, table, rows)?;
+            }
+        }
+
+        restored_ids.push(workspace_id);
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(restored_ids)
+}
