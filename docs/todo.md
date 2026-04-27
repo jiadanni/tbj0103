@@ -56,8 +56,8 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 - [ ] **Focus Drift**: Command Palette/Search Box closing sometimes scrolls the main window to the top on macOS.
 - [ ] **Navigation Stalling**: Occasional view update failure when clicking a search result despite URL changes.
 - [ ] **FTS Multi-word Tags**: Improved quoting needed for complex topic filters (Partially fixed).
-no fit guidance for gemma 4
+no fit guidance for gemma 4 ✓
 cpu status bar multicore
 chat titles truncated unecessarily and missing a tooltip on hover
-left click on icon to open search, right for menu
+left click on icon to open search, right for menu ✓
 scrolling chat to bottom hangs breifly jerky

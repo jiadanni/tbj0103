@@ -677,17 +677,14 @@ pub fn build_tray_icon(app: &AppHandle) -> Result<(), String> {
             }
             _ => {}
         })
-        .on_tray_icon_event(|_tray, _event| {
-            #[cfg(not(target_os = "linux"))]
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
             {
-                if let TrayIconEvent::Click {
-                    button: MouseButton::Left,
-                    button_state: MouseButtonState::Up,
-                    ..
-                } = _event
-                {
-                    let _ = commands::quick_search::toggle_window(_tray.app_handle());
-                }
+                let _ = commands::quick_search::show_window(tray.app_handle());
             }
         })
         .build(app)

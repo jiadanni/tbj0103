@@ -21,6 +21,18 @@ describe("parseModelParamsB", () => {
   it("returns null when no obvious size token exists", () => {
     expect(parseModelParamsB("granite")).toBeNull();
   });
+
+  it("returns null for versioned model names where the number is not a size", () => {
+    expect(parseModelParamsB("gemma4:latest")).toBeNull();
+    expect(parseModelParamsB("gemma4")).toBeNull();
+    expect(parseModelParamsB("Gemma 4")).toBeNull();
+  });
+
+  it("parses parameter_size strings from Ollama model details", () => {
+    expect(parseModelParamsB("4.3B")).toBe(4.3);
+    expect(parseModelParamsB("9B")).toBe(9);
+    expect(parseModelParamsB("27B")).toBe(27);
+  });
 });
 
 describe("inferHardwareModelGuidance", () => {
