@@ -209,18 +209,6 @@ export default function LogsView() {
 
         <div className="flex items-center gap-1 ml-auto">
           <button
-            onClick={() => setAutoScroll(!autoScroll)}
-            className={`p-1.5 rounded transition-colors ${
-              autoScroll 
-                ? "bg-[var(--accent-color)] text-white shadow-sm" 
-                : "hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]"
-            }`}
-            title={autoScroll ? "Stop Tailing" : "Jump to Bottom & Tail"}
-          >
-            <ArrowDownToLine size={14} />
-          </button>
-
-          <button
             onClick={fetchLogs}
             className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]"
             title="Refresh"
@@ -247,10 +235,11 @@ export default function LogsView() {
       </div>
 
       {/* Log entries */}
+      <div className="relative flex-1 min-h-0">
       <div 
         ref={scrollRef} 
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto font-mono text-xs"
+        className="h-full overflow-y-auto font-mono text-xs"
       >
         {logs.length === 0 && !loading ? (
           <div className="flex items-center justify-center h-full text-[var(--text-muted)]">
@@ -303,6 +292,24 @@ export default function LogsView() {
             </tbody>
           </table>
         )}
+      </div>
+      {!autoScroll && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+          <button
+            onClick={() => {
+              setAutoScroll(true);
+              if (scrollRef.current) {
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--accent-color)] text-white text-xs shadow-lg hover:opacity-90 transition-opacity"
+            title="Jump to Bottom & Tail"
+          >
+            <ArrowDownToLine size={13} />
+            <span>Scroll to bottom</span>
+          </button>
+        </div>
+      )}
       </div>
       {showClearConfirm && (
         <ConfirmDialog

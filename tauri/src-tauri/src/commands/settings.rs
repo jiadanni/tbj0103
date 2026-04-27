@@ -133,7 +133,7 @@ fn biometric_available() -> bool {
     }
 }
 
-fn get_setting(conn: &rusqlite::Connection, key: &str) -> Option<String> {
+pub(crate) fn get_setting(conn: &rusqlite::Connection, key: &str) -> Option<String> {
     conn.query_row(
         "SELECT value FROM settings WHERE key = ?1",
         rusqlite::params![key],
@@ -332,6 +332,8 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         memory_enabled: get_setting(&conn, "memory_enabled")
             .map(|v| v == "true")
             .unwrap_or(def.memory_enabled),
+        menubar_icon_style: get_setting(&conn, "menubar_icon_style")
+            .unwrap_or_else(|| def.menubar_icon_style.clone()),
     })
 }
 
@@ -659,8 +661,8 @@ pub fn should_keep_running_in_tray(app: &AppHandle) -> bool {
 #[tauri::command]
 pub fn reload_tray_icon(app: AppHandle) -> Result<(), String> {
     // Remove the old tray icon if it exists
-    if let Ok(tray) = app.tray_by_id("aetherium-tray") {
-        let _ = tray.remove();
+    if let Some(tray) = app.tray_by_id("aetherium-tray") {
+        let _ = tray.set_visible(false);
     }
 
     // Rebuild the tray icon with the new style
