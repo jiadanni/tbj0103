@@ -660,7 +660,7 @@ pub fn build_tray_icon(app: &AppHandle) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
 
-    TrayIconBuilder::with_id("aetherium-tray")
+    let builder = TrayIconBuilder::with_id("aetherium-tray")
         .icon(icon)
         .tooltip("Aetherium")
         .menu(&tray_menu)
@@ -676,26 +676,26 @@ pub fn build_tray_icon(app: &AppHandle) -> Result<(), String> {
                 app.exit(0);
             }
             _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                let _ = commands::quick_search::show_window(tray.app_handle());
-            }
-        })
-        .build(app)
-        .map_err(|e| e.to_string())?;
+        });
+
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.on_tray_icon_event(|tray, event| {
+        if let TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+        } = event
+        {
+            let _ = commands::quick_search::show_window(tray.app_handle());
+        }
+    });
+
+    builder.build(app).map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
 fn load_tray_icon(app: &AppHandle) -> Result<tauri::image::Image<'static>, String> {
-    use tauri::image::Image;
-    
     // Get the menubar icon style from settings (default to monochrome)
     let icon_style = {
         let db_state = app.state::<crate::db::DbState>();
@@ -708,16 +708,16 @@ fn load_tray_icon(app: &AppHandle) -> Result<tauri::image::Image<'static>, Strin
         }
     };
 
-    // Map icon style to filename
-    let icon_filename = match icon_style.as_str() {
-        "white" => "icon-white.png",
-        "black" => "icon-black.png",
-        "monochrome" | _ => "icon-monochrome.png",
-    };
-
-    // Try to load from resources
+    // Try to load from resources (macOS only — icon files are bundled there)
     #[cfg(target_os = "macos")]
     {
+        use tauri::image::Image;
+        // Map icon style to filename
+        let icon_filename = match icon_style.as_str() {
+            "white" => "icon-white.png",
+            "black" => "icon-black.png",
+            "monochrome" | _ => "icon-monochrome.png",
+        };
         if let Ok(resource_path) = app.path().resource_dir() {
             let icon_path = resource_path.join(icon_filename);
             if icon_path.exists() {
