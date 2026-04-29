@@ -17,6 +17,7 @@ import { useUIStore } from "../stores/uiStore";
 import AppHeaderMenu from "./AppHeaderMenu";
 import ArtifactPanel from "./ArtifactPanel";
 import ConfirmDialog from "./ConfirmDialog";
+import PromptDialog from "./PromptDialog";
 import { api } from "../lib/api";
 import { usePrefsWindowMode } from "../lib/prefsWindowMode";
 import { isMac, isLinux, isWindows } from "../lib/platform";
@@ -545,6 +546,7 @@ function SplitTitlebarWorkspaceNavigation() {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function PreferencesDockButton() {
   const navigate = useNavigate();
   const [singleInstance, toggleSingleInstance] = usePrefsWindowMode();
@@ -919,6 +921,7 @@ function WorkspaceTabBar({
   const [contextMenu, setContextMenu] = useState<{ workspace: Workspace; x: number; y: number } | null>(null);
   const [dialogState, setDialogState] = useState<WorkspaceDialogState | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
+  const [promptDialog, setPromptDialog] = useState<{ kind: "create-sub" | "rename"; workspace?: Workspace } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const splitUnsupportedRoute = ["/preferences"].some((path) => location.pathname.startsWith(path));
@@ -944,10 +947,14 @@ function WorkspaceTabBar({
     activateWorkspace(workspaceId);
   }
 
-  async function createSubWorkspace() {
+  function createSubWorkspace() {
     if (!activeParentWorkspaceId) { return; }
-    const name = window.prompt("Sub-workspace name")?.trim();
-    if (!name) { return; }
+    setPromptDialog({ kind: "create-sub" });
+  }
+
+  async function handleCreateSubWorkspace(name: string) {
+    if (!activeParentWorkspaceId) { return; }
+    setPromptDialog(null);
     const ws = await api.workspace.createChild(activeParentWorkspaceId, name);
     addWorkspace(ws);
     activateSubWorkspace(ws.id);
@@ -962,16 +969,19 @@ function WorkspaceTabBar({
     resetCreateWorkspaceForm();
   }
 
-  async function renameWorkspace(workspace: Workspace) {
-    const nextName = window.prompt("Rename workspace", workspace.name)?.trim();
-    if (!nextName || nextName === workspace.name) {
-      setContextMenu(null);
+  function renameWorkspace(workspace: Workspace) {
+    setContextMenu(null);
+    setPromptDialog({ kind: "rename", workspace });
+  }
+
+  async function handleRenameWorkspace(workspace: Workspace, nextName: string) {
+    if (nextName === workspace.name) {
+      setPromptDialog(null);
       return;
     }
-
+    setPromptDialog(null);
     await api.workspace.update(workspace.id, nextName, workspace.description, workspace.prompt_instructions);
     setWorkspaces(workspaces.map((item) => item.id === workspace.id ? { ...item, name: nextName } : item));
-    setContextMenu(null);
   }
 
   async function performDeleteWorkspace(workspace: Workspace) {
@@ -1223,6 +1233,23 @@ function WorkspaceTabBar({
           }}
         />
       )}
+      {promptDialog && (
+        <PromptDialog
+          title={promptDialog.kind === "create-sub" ? "New Sub-workspace" : "Rename Workspace"}
+          description={promptDialog.kind === "create-sub" ? "Enter a name for the new sub-workspace." : undefined}
+          defaultValue={promptDialog.kind === "rename" && promptDialog.workspace ? promptDialog.workspace.name : ""}
+          placeholder={promptDialog.kind === "create-sub" ? "Sub-workspace name" : "Workspace name"}
+          confirmLabel={promptDialog.kind === "create-sub" ? "Create" : "Rename"}
+          onCancel={() => setPromptDialog(null)}
+          onConfirm={(value) => {
+            if (promptDialog.kind === "create-sub") {
+              handleCreateSubWorkspace(value);
+            } else if (promptDialog.kind === "rename" && promptDialog.workspace) {
+              handleRenameWorkspace(promptDialog.workspace, value);
+            }
+          }}
+        />
+      )}
       {creating && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
@@ -1463,7 +1490,7 @@ export default function Layout() {
   const showSplitPaneLayout = splitMode && !splitUnsupportedRoute;
   const showSinglePaneNavigation = !showSplitPaneLayout;
   const showSectionSidebar = showSinglePaneNavigation && sectionNavigation === "sidebar";
-  const hasLeftRail = showSectionSidebar;
+  const _hasLeftRail = showSectionSidebar;
 
   const handleExitDemo = async () => {
     try {

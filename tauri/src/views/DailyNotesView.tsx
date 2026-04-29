@@ -124,6 +124,16 @@ export default function DailyNotesView() {
     api.note.listTemplates(activeWorkspaceId).then(setTemplates).catch(() => {});
   }, [activeWorkspaceId]);
 
+  // --- ESC to close template picker ---
+  useEffect(() => {
+    if (!showTemplatePicker) { return; }
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") { setShowTemplatePicker(false); }
+    }
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, [showTemplatePicker]);
+
   const saveNote = useCallback(async () => {
     if (!note) {return;}
     setSaving(true);

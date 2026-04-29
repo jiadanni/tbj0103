@@ -416,27 +416,33 @@ export default function SourceBrowserView() {
 
   async function renameSource() {
     if (!renaming || !renameValue.trim()) { return; }
-    await api.source.update(renaming.id, { title: renameValue.trim() });
-    setSources((prev) => prev.map((s) => s.id === renaming.id ? { ...s, title: renameValue.trim() } : s));
-    if (selected?.id === renaming.id) { setSelected((s) => s ? { ...s, title: renameValue.trim() } : s); }
-    setRenaming(null);
+    try {
+      await api.source.update(renaming.id, { title: renameValue.trim() });
+      setSources((prev) => prev.map((s) => s.id === renaming.id ? { ...s, title: renameValue.trim() } : s));
+      if (selected?.id === renaming.id) { setSelected((s) => s ? { ...s, title: renameValue.trim() } : s); }
+    } finally {
+      setRenaming(null);
+    }
   }
 
   async function moveSource() {
     if (!moving) { return; }
     const folder = moveFolderValue.trim() || undefined;
-    await api.source.update(moving.id, { folder: folder ?? "" });
-    setSources((prev) => prev.map((s) => s.id === moving.id ? { ...s, folder } : s));
-    if (selected?.id === moving.id) { setSelected((s) => s ? { ...s, folder } : s); }
-    if (folder) {
-      const parts = folder.split("/").filter(Boolean);
-      let path = "";
-      for (const p of parts) {
-        path = path ? `${path}/${p}` : p;
-        setExpanded((prev) => new Set(prev).add(path));
+    try {
+      await api.source.update(moving.id, { folder: folder ?? "" });
+      setSources((prev) => prev.map((s) => s.id === moving.id ? { ...s, folder } : s));
+      if (selected?.id === moving.id) { setSelected((s) => s ? { ...s, folder } : s); }
+      if (folder) {
+        const parts = folder.split("/").filter(Boolean);
+        let path = "";
+        for (const p of parts) {
+          path = path ? `${path}/${p}` : p;
+          setExpanded((prev) => new Set(prev).add(path));
+        }
       }
+    } finally {
+      setMoving(null);
     }
-    setMoving(null);
   }
 
   function handleContextMenu(e: React.MouseEvent, source: Source) {
@@ -598,8 +604,14 @@ export default function SourceBrowserView() {
 
       {/* Upload dialog (choose folder) */}
       {showUploadDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-96 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => { setShowUploadDialog(false); setUploadFolder(""); }}
+        >
+          <div
+            className="w-96 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">Upload Document</h3>
             <div>
               <label className="text-xs text-[var(--text-muted)] mb-1 block">Folder (optional, use / for nesting)</label>
@@ -607,6 +619,7 @@ export default function SourceBrowserView() {
                 autoFocus
                 value={uploadFolder}
                 onChange={(e) => setUploadFolder(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") { setShowUploadDialog(false); setUploadFolder(""); } }}
                 placeholder="e.g. Tech/Web"
                 list="folder-suggestions-upload"
                 className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
@@ -636,13 +649,20 @@ export default function SourceBrowserView() {
 
       {/* Add Web Capture modal */}
       {showAddCapture && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-96 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => { setShowAddCapture(false); setNewUrl(""); setNewTitle(""); setNewFolder(""); }}
+        >
+          <div
+            className="w-96 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">Add Web Capture</h3>
             <input
               autoFocus
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") { setShowAddCapture(false); setNewUrl(""); setNewTitle(""); setNewFolder(""); } }}
               placeholder="URL (required)"
               className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />
@@ -685,14 +705,20 @@ export default function SourceBrowserView() {
 
       {/* Rename modal */}
       {renaming && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-80 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setRenaming(null)}
+        >
+          <div
+            className="w-80 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">Rename Source</h3>
             <input
               autoFocus
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { renameSource(); } }}
+              onKeyDown={(e) => { if (e.key === "Enter") { renameSource(); } else if (e.key === "Escape") { setRenaming(null); } }}
               className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
             />
             <div className="flex gap-2">
@@ -716,15 +742,21 @@ export default function SourceBrowserView() {
 
       {/* Move to folder modal */}
       {moving && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-80 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setMoving(null)}
+        >
+          <div
+            className="w-80 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">Move to Folder</h3>
             <p className="text-xs text-[var(--text-muted)]">Use / to nest folders (e.g. Tech/Web). Leave empty for root.</p>
             <input
               autoFocus
               value={moveFolderValue}
               onChange={(e) => setMoveFolderValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { moveSource(); } }}
+              onKeyDown={(e) => { if (e.key === "Enter") { moveSource(); } else if (e.key === "Escape") { setMoving(null); } }}
               placeholder="Folder path"
               list="folder-suggestions-move"
               className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
