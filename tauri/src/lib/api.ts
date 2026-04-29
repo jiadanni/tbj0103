@@ -218,6 +218,13 @@ export interface QuickSearchContext {
 
 export interface OllamaModelDetails { parameter_size?: string; }
 export interface OllamaModel { name: string; size?: number; modified_at?: string; details?: OllamaModelDetails; capabilities?: string[]; }
+export interface LoadedModel {
+  name: string;
+  size?: number | null;
+  size_vram?: number | null;
+  expires_at?: string | null;
+  digest?: string | null;
+}
 export interface OllamaRuntimeStatus {
   available: boolean;
   launched: boolean;
@@ -463,6 +470,8 @@ export interface AiModel {
   role_tags: string[];
   priority: number; is_paid: boolean; enabled: boolean; is_hidden: boolean;
   tokens_used_total: number; created_at: string;
+  /** Per-model `num_ctx` override. `null`/missing means use the global default. */
+  context_size?: number | null;
 }
 
 export interface ModelSpeedStat {
@@ -1150,6 +1159,10 @@ export const api = {
       );
     },
     stopStream: (sessionId: string) => invoke<void>("stop_stream", { sessionId }),
+    unloadModel: (model: string, ollamaUrl?: string) =>
+      invoke<void>("unload_model", { model, ollamaUrl }),
+    listLoadedModels: (ollamaUrl?: string) =>
+      invoke<LoadedModel[]>("list_loaded_models", { ollamaUrl }),
   },
 
   mlx: {
@@ -1238,7 +1251,7 @@ export const api = {
     listSpeedStats: () => invoke<ModelSpeedStat[]>("list_model_speed_stats"),
     add: (name: string, modelId: string, opts?: { provider?: string; role_tags?: string[]; is_paid?: boolean; priority?: number; enabled?: boolean; is_hidden?: boolean }) =>
       invoke<AiModel>("add_ai_model", { req: { name, model_id: modelId, ...opts } }),
-    update: (id: string, fields: { name?: string; role_tags?: string[]; priority?: number; is_paid?: boolean; enabled?: boolean; is_hidden?: boolean }) =>
+    update: (id: string, fields: { name?: string; role_tags?: string[]; priority?: number; is_paid?: boolean; enabled?: boolean; is_hidden?: boolean; context_size?: number | null }) =>
       invoke<AiModel>("update_ai_model", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_ai_model", { id }),
     getDefault: () => invoke<AiModel>("get_default_model"),

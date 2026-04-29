@@ -52,6 +52,7 @@ interface AppSettings {
   modelFamilyLabels: Record<string, string>;
   customModelFamilies: string[];
   quickSearchShortcut: string;
+  suppressedOversizedModels: string[];
 }
 
 interface SettingsStore extends AppSettings {
@@ -100,6 +101,8 @@ interface SettingsStore extends AppSettings {
   addCustomModelFamily: (family: string) => void;
   removeCustomModelFamily: (family: string) => void;
   setQuickSearchShortcut: (v: string) => void;
+  addSuppressedOversizedModel: (model: string) => void;
+  clearSuppressedOversizedModels: () => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -149,6 +152,7 @@ export const useSettingsStore = create<SettingsStore>()(
       modelFamilyLabels: {},
       customModelFamilies: [],
       quickSearchShortcut: "CmdOrCtrl+Shift+K",
+      suppressedOversizedModels: [],
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
@@ -203,6 +207,12 @@ export const useSettingsStore = create<SettingsStore>()(
         customModelFamilies: state.customModelFamilies.filter((f) => f !== family),
       })),
       setQuickSearchShortcut: (quickSearchShortcut) => set({ quickSearchShortcut }),
+      addSuppressedOversizedModel: (model) => set((state) => (
+        state.suppressedOversizedModels.includes(model)
+          ? state
+          : { suppressedOversizedModels: [...state.suppressedOversizedModels, model] }
+      )),
+      clearSuppressedOversizedModels: () => set({ suppressedOversizedModels: [] }),
     }),
     {
       name: "aetherium-settings",

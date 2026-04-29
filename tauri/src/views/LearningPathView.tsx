@@ -128,8 +128,14 @@ export default function LearningPathView() {
 
       {/* Create modal */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-96 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setShowCreate(false)}
+        >
+          <div
+            className="w-96 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">New Learning Goal</h3>
             <input
               autoFocus

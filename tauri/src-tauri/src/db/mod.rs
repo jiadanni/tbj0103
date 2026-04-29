@@ -55,6 +55,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v41_workspace_order_index",
     "v42_workspace_last_message_at",
     "v43_switch_workspace_section",
+    "v44_ai_models_context_size",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1081,6 +1082,19 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             [new_value],
         )?;
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v43_switch_workspace_section');")?;
+    }
+
+    // v44: per-model num_ctx override. NULL means "use default".
+    let applied_v44: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v44_ai_models_context_size'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v44 == 0 {
+        // ALTER TABLE will fail if the column already exists (idempotency for
+        // databases created from a newer schema.sql). Ignore that specific error.
+        let _ = conn.execute_batch("ALTER TABLE ai_models ADD COLUMN context_size INTEGER;");
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v44_ai_models_context_size');")?;
     }
 
     Ok(())

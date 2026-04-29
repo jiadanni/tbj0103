@@ -447,6 +447,8 @@ pub fn run() {
             commands::ollama::extract_topics,
             commands::ollama::generate_follow_ups,
             commands::ollama::stop_stream,
+            commands::ollama::unload_model,
+            commands::ollama::list_loaded_models,
             // MLX commands
             commands::mlx::send_mlx_message,
             commands::mlx::list_mlx_models,

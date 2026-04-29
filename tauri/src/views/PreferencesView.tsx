@@ -940,6 +940,11 @@ export default function PreferencesView() {
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             Pick which local models to enable, set priority, or review capabilities. New local models are detected automatically.
           </p>
+          {composerMode === "family" && (
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              <span className="font-medium text-[var(--text-secondary)]">Tip:</span> drag a model to the top of its family to make it the default — that is the model that runs when you hit Enter in family mode.
+            </p>
+          )}
         </div>
       </div>
 
@@ -1152,6 +1157,34 @@ export default function PreferencesView() {
                           >
                             {m.tokens_used_total.toLocaleString()} tok total
                           </div>
+                        )}
+                      </div>
+
+                      <div className="flex justify-center pt-0.5 md:w-[80px]">
+                        {!isWebModel && !m.id.startsWith("transient-") && (
+                          <input
+                            type="number"
+                            min={512}
+                            max={1048576}
+                            step={512}
+                            defaultValue={m.context_size ?? ""}
+                            placeholder="auto"
+                            className="w-[72px] rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1 py-0.5 text-center text-[10px] tabular-nums text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                            title="Per-model num_ctx override (tokens). Leave blank for the global default."
+                            aria-label={`Context window for ${m.name}`}
+                            onBlur={async (e) => {
+                              const raw = e.currentTarget.value.trim();
+                              const parsed = raw === "" ? null : Number.parseInt(raw, 10);
+                              const next = parsed === null
+                                ? null
+                                : Number.isFinite(parsed) && parsed > 0
+                                  ? Math.min(1_048_576, Math.max(512, parsed))
+                                  : null;
+                              if ((m.context_size ?? null) === next) {return;}
+                              await api.aiModel.update(m.id, { context_size: next });
+                              loadAiModels();
+                            }}
+                          />
                         )}
                       </div>
 
