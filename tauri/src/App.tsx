@@ -9,6 +9,22 @@ import { getPrefsWindowSingleInstance } from "./lib/prefsWindowMode";
 import Layout from "./components/Layout";
 import ZoomIndicator from "./components/ZoomIndicator";
 import AuthenticationView from "./views/AuthenticationView";
+import { useNavigationHistory } from "./hooks/useNavigationHistory";
+import { useNavigationHotkeys } from "./hooks/useNavigationHotkeys";
+
+/** Manages browser-like navigation with back/forward support via keyboard and gestures. */
+function NavigationManager() {
+  const { goBack, goForward, canGoBack, canGoForward } = useNavigationHistory();
+
+  useNavigationHotkeys({
+    onBack: goBack,
+    onForward: goForward,
+    canGoBack,
+    canGoForward,
+  });
+
+  return null;
+}
 
 /** Listens for native menu-bar events and translates them into navigation/actions. */
 function MenuEventHandler() {
@@ -350,6 +366,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <NavigationManager />
       <MenuEventHandler />
       <ZoomIndicator fontSize={fontSize} visible={zoomVisible} />
       <Routes>
