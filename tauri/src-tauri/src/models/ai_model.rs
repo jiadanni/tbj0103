@@ -13,6 +13,9 @@ pub struct AiModel {
     pub is_hidden: bool,
     pub tokens_used_total: i64,
     pub created_at: String,
+    /// Per-model `num_ctx` override. `None` means use the global default.
+    #[serde(default)]
+    pub context_size: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,4 +47,7 @@ pub struct UpdateAiModelRequest {
     pub is_paid: Option<bool>,
     pub enabled: Option<bool>,
     pub is_hidden: Option<bool>,
+    /// Optional per-model `num_ctx`. `Some(None)` clears the override.
+    #[serde(default)]
+    pub context_size: Option<Option<i64>>,
 }

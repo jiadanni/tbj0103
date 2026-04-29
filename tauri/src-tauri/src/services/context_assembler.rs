@@ -2,6 +2,8 @@ use crate::models::context::{ContextSources, TokenBudget};
 use crate::ollama::client::OllamaMessage;
 use crate::services::vector_index;
 use rusqlite::Connection;
+use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
 
 const MEMORY_SIMILARITY_THRESHOLD: f32 = 0.3;
 const MEMORY_RETRIEVAL_TOP_K: usize = 5;
@@ -9,6 +11,46 @@ const MEMORY_RETRIEVAL_TOP_K: usize = 5;
 /// Default context window size used when the model's actual limit is unknown.
 /// Ollama defaults to 2048; this value is 4× larger and safe for most models.
 pub const DEFAULT_CONTEXT_SIZE: usize = 8192;
+
+/// Process-global registry of per-model `num_ctx` overrides. Populated by the
+/// `ai_model` commands whenever the model list is read or updated, so the
+/// `OllamaClient` (which has no DB handle) can still pick up overrides.
+/// Key: model_id (e.g. "llama3.1:8b"). Value: clamped num_ctx in tokens.
+static MODEL_CONTEXT_OVERRIDES: OnceLock<RwLock<HashMap<String, usize>>> = OnceLock::new();
+
+fn override_map() -> &'static RwLock<HashMap<String, usize>> {
+    MODEL_CONTEXT_OVERRIDES.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+/// Replace the override map atomically. Called whenever the AI model list is
+/// loaded so removed/cleared overrides are reflected immediately.
+pub fn replace_model_context_overrides(overrides: HashMap<String, usize>) {
+    if let Ok(mut guard) = override_map().write() {
+        *guard = overrides;
+    }
+}
+
+/// Set or clear a single model's override.
+pub fn set_model_context_override(model_id: &str, value: Option<usize>) {
+    if let Ok(mut guard) = override_map().write() {
+        match value {
+            Some(v) => { guard.insert(model_id.to_string(), v); }
+            None => { guard.remove(model_id); }
+        }
+    }
+}
+
+/// Resolve `num_ctx` for the given model name. Falls back to `DEFAULT_CONTEXT_SIZE`.
+/// Looks up by exact match first, then by base name (`name` matching `name:tag`).
+pub fn context_size_for_model(model_name: &str) -> usize {
+    let Ok(guard) = override_map().read() else {
+        return DEFAULT_CONTEXT_SIZE;
+    };
+    if let Some(v) = guard.get(model_name) { return *v; }
+    let base = model_name.split(':').next().unwrap_or(model_name);
+    if let Some(v) = guard.get(base) { return *v; }
+    DEFAULT_CONTEXT_SIZE
+}
 
 pub fn budget_for_context_window(context_size: usize) -> TokenBudget {
     let safe_total = (context_size as f64 * 0.90) as usize; // 10% safety margin
