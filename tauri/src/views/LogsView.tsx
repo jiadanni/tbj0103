@@ -123,9 +123,11 @@ export default function LogsView() {
     if (!scrollRef.current) { return; }
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 20;
-    
+
     if (autoScroll && !isAtBottom) {
       setAutoScroll(false);
+    } else if (!autoScroll && isAtBottom) {
+      setAutoScroll(true);
     }
   };
 
@@ -235,11 +237,11 @@ export default function LogsView() {
       </div>
 
       {/* Log entries */}
-      <div className="relative flex-1 min-h-0">
+      <div className="flex-1 min-h-0 flex flex-col">
       <div 
         ref={scrollRef} 
         onScroll={handleScroll}
-        className="h-full overflow-y-auto font-mono text-xs"
+        className="flex-1 min-h-0 overflow-y-auto font-mono text-xs"
       >
         {logs.length === 0 && !loading ? (
           <div className="flex items-center justify-center h-full text-[var(--text-muted)]">
@@ -294,7 +296,7 @@ export default function LogsView() {
         )}
       </div>
       {!autoScroll && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+        <div className="flex justify-center py-2 border-t border-[var(--border-color)] bg-[var(--bg-primary)] shrink-0">
           <button
             onClick={() => {
               setAutoScroll(true);
@@ -302,7 +304,7 @@ export default function LogsView() {
                 scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
               }
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--accent-color)] text-white text-xs shadow-lg hover:opacity-90 transition-opacity"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--accent-color)] text-white text-xs shadow hover:opacity-90 transition-opacity"
             title="Jump to Bottom & Tail"
           >
             <ArrowDownToLine size={13} />
