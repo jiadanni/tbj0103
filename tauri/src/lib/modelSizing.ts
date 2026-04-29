@@ -182,3 +182,41 @@ export function classifyModelFit(paramsB: number | null, recommendedMaxParamsB: 
   if (paramsB <= recommendedMaxParamsB * 1.5) {return "stretch";}
   return "too-large";
 }
+
+/**
+ * Approximate memory footprint of a model in bytes.
+ * Assumes ~1.1 GB per billion params for a typical 4-bit quantized GGUF —
+ * this is intentionally rough and only used to compare against available RAM.
+ */
+export function estimateModelMemoryBytes(paramsB: number | null): number | null {
+  if (paramsB === null || !Number.isFinite(paramsB) || paramsB <= 0) {return null;}
+  return paramsB * 1.1 * (1024 ** 3);
+}
+
+/**
+ * Refine a fit classification using *currently available* memory rather than
+ * total RAM. Catches the multitasking case where a system that nominally
+ * supports a model can no longer load it because other apps hold the RAM.
+ *
+ * Escalation rules:
+ * - When estimated footprint exceeds available memory ⇒ "too-large".
+ * - When footprint exceeds 80% of available memory and current fit is "good"
+ *   ⇒ "stretch". (Leaves some headroom for KV cache and OS.)
+ * Otherwise returns the original classification.
+ */
+export function classifyModelFitWithAvailable(
+  paramsB: number | null,
+  recommendedMaxParamsB: number,
+  availableMemoryBytes: number | null | undefined,
+): ModelFit {
+  const baseline = classifyModelFit(paramsB, recommendedMaxParamsB);
+  if (baseline === "unknown" || baseline === "too-large") {return baseline;}
+  if (!availableMemoryBytes || availableMemoryBytes <= 0) {return baseline;}
+
+  const footprint = estimateModelMemoryBytes(paramsB);
+  if (footprint === null) {return baseline;}
+
+  if (footprint > availableMemoryBytes) {return "too-large";}
+  if (baseline === "good" && footprint > availableMemoryBytes * 0.8) {return "stretch";}
+  return baseline;
+}

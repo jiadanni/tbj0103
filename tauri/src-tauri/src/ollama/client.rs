@@ -56,6 +56,13 @@ fn capability_cache() -> &'static Mutex<CapabilityCache> {
 // avoids redundant TCP/TLS handshakes.
 static SHARED_HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
+// Streaming requires a different timeout posture: long generations on slower
+// hardware can legitimately exceed any fixed body timeout. We give the
+// streaming client a generous connect timeout (so unreachable Ollama still
+// fails fast) but no overall request timeout, since the per-chunk select
+// loop in `stream_with_prefix` already enforces idle/abort handling.
+static STREAMING_HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
+
 fn shared_http_client() -> &'static Client {
     SHARED_HTTP_CLIENT.get_or_init(|| {
         Client::builder()
@@ -63,6 +70,16 @@ fn shared_http_client() -> &'static Client {
             .pool_max_idle_per_host(4)
             .build()
             .expect("Failed to build shared HTTP client")
+    })
+}
+
+fn streaming_http_client() -> &'static Client {
+    STREAMING_HTTP_CLIENT.get_or_init(|| {
+        Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .pool_max_idle_per_host(2)
+            .build()
+            .expect("Failed to build streaming HTTP client")
     })
 }
 
@@ -134,6 +151,27 @@ pub struct TagsResponse {
     pub models: Vec<ModelInfo>,
 }
 
+/// Single entry returned by Ollama's `/api/ps` endpoint.
+/// Fields mirror Ollama's response shape; missing fields are tolerated.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadedModelInfo {
+    pub name: String,
+    #[serde(default)]
+    pub size: Option<i64>,
+    #[serde(default)]
+    pub size_vram: Option<i64>,
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    #[serde(default)]
+    pub digest: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LoadedModelsResponse {
+    #[serde(default)]
+    pub models: Vec<LoadedModelInfo>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ShowModelRequest {
     pub model: String,
@@ -169,6 +207,16 @@ pub struct RequestContext {
 pub struct OllamaClient {
     client: Client,
     pub base_url: String,
+}
+
+impl Clone for OllamaClient {
+    // reqwest::Client is internally Arc'd, so cloning is cheap.
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            base_url: self.base_url.clone(),
+        }
+    }
 }
 
 fn normalize_capabilities(capabilities: Option<Vec<String>>) -> Option<Vec<String>> {
@@ -517,11 +565,12 @@ impl OllamaClient {
         let resolved_model = self.resolve_model(model).await?;
         let url = format!("{}/api/chat", self.base_url);
         let started_at = Instant::now();
+        let num_ctx = crate::services::context_assembler::context_size_for_model(&resolved_model);
         let mut body = json!({
             "model": resolved_model,
             "messages": messages,
             "stream": false,
-            "options": { "num_ctx": crate::services::context_assembler::DEFAULT_CONTEXT_SIZE }
+            "options": { "num_ctx": num_ctx }
         });
         if let Some(ka) = keep_alive {
             body.as_object_mut()
@@ -601,21 +650,27 @@ impl OllamaClient {
         let resolved_model = self.resolve_model(model).await?;
         let url = format!("{}/api/chat", self.base_url);
         let started_at = Instant::now();
+        let num_ctx = crate::services::context_assembler::context_size_for_model(&resolved_model);
         let body = json!({
             "model": resolved_model,
             "messages": messages,
             "stream": true,
-            "options": { "num_ctx": crate::services::context_assembler::DEFAULT_CONTEXT_SIZE }
+            "options": { "num_ctx": num_ctx }
         });
 
-        let response = self
-            .client
+        // Use the streaming-tuned client so a long generation can't be killed
+        // by the 300-second body timeout that applies to the shared client.
+        let response = streaming_http_client()
             .post(&url)
             .json(&body)
             .send()
             .await
             .map_err(|e| {
-                let message = format!("Ollama connection error: {e}");
+                let message = if e.is_connect() {
+                    format!("Ollama is not reachable at {}: {e}", self.base_url)
+                } else {
+                    format!("Ollama connection error: {e}")
+                };
                 self.log_http_error(
                     "POST",
                     "/api/chat",
@@ -692,18 +747,40 @@ impl OllamaClient {
             let Some(chunk_result) = chunk_result else {
                 break;
             };
-            let chunk = chunk_result.map_err(|e| {
-                let message = format!("Stream error: {e}");
-                self.log_http_error(
-                    "POST",
-                    "/api/chat",
-                    started_at.elapsed(),
-                    ctx,
-                    &message,
-                    &[],
-                );
-                message
-            })?;
+            let chunk = match chunk_result {
+                Ok(chunk) => chunk,
+                Err(e) => {
+                    // If the stream errors before we've parsed any chunks, the
+                    // most likely cause is the model OOMing during load.
+                    // Surface a more actionable message in that case.
+                    let elapsed = started_at.elapsed();
+                    let message = if full_response.is_empty() {
+                        format!(
+                            "Stream error after {:.1}s before any output — model '{}' likely failed to load (out of memory or runner crashed). {e}",
+                            elapsed.as_secs_f64(),
+                            resolved_model
+                        )
+                    } else {
+                        format!("Stream error: {e}")
+                    };
+                    self.log_http_error(
+                        "POST",
+                        "/api/chat",
+                        elapsed,
+                        ctx,
+                        &message,
+                        &[],
+                    );
+                    // Free the runner — most stream errors here are caused by
+                    // the model OOMing or being killed, which leaves the entry
+                    // in /api/ps until keep_alive expires.
+                    self.unload_model_in_background("stream_error", &resolved_model);
+                    if manage_abort_flag {
+                        let _ = Self::clear_abort_flag(app, session_id);
+                    }
+                    return Err(message);
+                }
+            };
             byte_buf.extend_from_slice(&chunk);
             // Drain all complete newline-terminated lines from the buffer.
             // Any trailing bytes that don't yet end in '\n' stay in the buffer
@@ -782,8 +859,12 @@ impl OllamaClient {
         let mut extras = Vec::new();
         if aborted {
             extras.push(("outcome", "aborted".to_string()));
+            // User asked to stop — unload to free RAM rather than leaving the
+            // model resident for keep_alive's default 5 minutes.
+            self.unload_model_in_background("stream_aborted", &resolved_model);
         } else if !stream_done {
             extras.push(("outcome", "incomplete".to_string()));
+            self.unload_model_in_background("stream_incomplete", &resolved_model);
         } else {
             extras.push(("outcome", "completed".to_string()));
         }
@@ -1415,6 +1496,154 @@ impl OllamaClient {
         }];
         let title = self.send_message_observed(model, messages, ctx).await?;
         Ok(title.trim().to_string())
+    }
+
+    /// Unload a model from Ollama's runner cache by issuing an empty generate
+    /// request with `keep_alive: 0`. Frees the RAM/VRAM the model was holding
+    /// without restarting the Ollama process. Errors are returned but callers
+    /// often treat this as best-effort cleanup.
+    pub async fn unload_model(&self, source: &'static str, model: &str) -> Result<(), String> {
+        let ctx = RequestContext {
+            source: Some(source),
+            model: Some(model.to_string()),
+            ..Default::default()
+        };
+        self.unload_model_observed(model, &ctx).await
+    }
+
+    pub async fn unload_model_observed(
+        &self,
+        model: &str,
+        ctx: &RequestContext,
+    ) -> Result<(), String> {
+        let url = format!("{}/api/generate", self.base_url);
+        let started_at = Instant::now();
+        let body = json!({
+            "model": model,
+            "prompt": "",
+            "keep_alive": 0,
+            "stream": false,
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| {
+                let message = format!("Unload request failed: {e}");
+                self.log_http_error(
+                    "POST",
+                    "/api/generate",
+                    started_at.elapsed(),
+                    ctx,
+                    &message,
+                    &[("model", model.to_string()), ("op", "unload".to_string())],
+                );
+                message
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            let message = format!("Ollama unload error {status}: {text}");
+            self.log_http_error(
+                "POST",
+                "/api/generate",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[
+                    ("model", model.to_string()),
+                    ("op", "unload".to_string()),
+                    ("status", status.as_u16().to_string()),
+                ],
+            );
+            return Err(message);
+        }
+
+        // Drain the body (response is a final JSON object with done=true).
+        let _ = response.text().await;
+
+        self.log_http_success(
+            "POST",
+            "/api/generate",
+            status.as_u16(),
+            started_at.elapsed(),
+            ctx,
+            &[("model", model.to_string()), ("op", "unload".to_string())],
+        );
+        Ok(())
+    }
+
+    /// Best-effort fire-and-forget unload. Spawns a task and discards errors.
+    /// Used from streaming error/abort paths where we don't want to block.
+    pub fn unload_model_in_background(&self, source: &'static str, model: &str) {
+        let client = self.clone();
+        let model = model.to_string();
+        tokio::spawn(async move {
+            let _ = client.unload_model(source, &model).await;
+        });
+    }
+
+    /// Query Ollama `/api/ps` for the currently-loaded model list.
+    /// Returned models include `size_vram` so the UI can display memory use.
+    pub async fn list_loaded_models(&self, source: &'static str) -> Result<Vec<LoadedModelInfo>, String> {
+        let ctx = RequestContext {
+            source: Some(source),
+            ..Default::default()
+        };
+        self.list_loaded_models_observed(&ctx).await
+    }
+
+    pub async fn list_loaded_models_observed(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<Vec<LoadedModelInfo>, String> {
+        let url = format!("{}/api/ps", self.base_url);
+        let started_at = Instant::now();
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            let message = format!("Failed to query loaded models: {e}");
+            self.log_http_error(
+                "GET",
+                "/api/ps",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[],
+            );
+            message
+        })?;
+
+        if !response.status().is_success() {
+            let message = format!("Ollama returned status {} for /api/ps", response.status());
+            self.log_http_error(
+                "GET",
+                "/api/ps",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[("status", response.status().as_u16().to_string())],
+            );
+            return Err(message);
+        }
+
+        let status = response.status().as_u16();
+        let parsed: LoadedModelsResponse = response.json().await.map_err(|e| {
+            let message = format!("Failed to parse /api/ps: {e}");
+            self.log_http_error(
+                "GET",
+                "/api/ps",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[],
+            );
+            message
+        })?;
+        self.log_http_success("GET", "/api/ps", status, started_at.elapsed(), ctx, &[]);
+        Ok(parsed.models)
     }
 }
 
