@@ -16,21 +16,40 @@ fn row_to_model(row: &rusqlite::Row) -> rusqlite::Result<AiModel> {
         is_hidden: row.get::<_, i32>(8)? != 0,
         tokens_used_total: row.get(9)?,
         created_at: row.get(10)?,
+        context_size: row.get(11)?,
     })
 }
+
+// Single source of truth for the column list — every SELECT in this module
+// uses it so column indexes line up with `row_to_model` above.
+const SELECT_COLUMNS: &str =
+    "id, name, model_id, provider, role_tags, priority, is_paid, enabled, is_hidden, tokens_used_total, created_at, context_size";
 
 #[tauri::command]
 pub fn list_ai_models(state: State<DbState>) -> Result<Vec<AiModel>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, is_hidden, tokens_used_total, created_at
-         FROM ai_models ORDER BY priority ASC"
-    ).map_err(|e| e.to_string())?;
+    let sql = format!("SELECT {SELECT_COLUMNS} FROM ai_models ORDER BY priority ASC");
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
         .query_map([], row_to_model)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+
+    // Refresh the global num_ctx override map so OllamaClient picks up changes
+    // without needing a DB handle. Clamped to a sensible range to guard against
+    // user error or accidental zero values.
+    let mut overrides: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for m in &items {
+        if let Some(value) = m.context_size {
+            if value > 0 {
+                let clamped = (value as usize).clamp(512, 1_048_576);
+                overrides.insert(m.model_id.clone(), clamped);
+            }
+        }
+    }
+    crate::services::context_assembler::replace_model_context_overrides(overrides);
+
     Ok(items)
 }
 
@@ -43,10 +62,11 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
     let is_paid = req.is_paid.unwrap_or(false);
     let enabled = req.enabled.unwrap_or(true);
 
+    let existing_sql = format!(
+        "SELECT {SELECT_COLUMNS} FROM ai_models WHERE model_id = ?1 AND provider = ?2"
+    );
     let existing = conn.query_row(
-        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, is_hidden, tokens_used_total, created_at
-         FROM ai_models
-         WHERE model_id = ?1 AND provider = ?2",
+        &existing_sql,
         rusqlite::params![&req.model_id, &provider],
         row_to_model,
     );
@@ -88,6 +108,7 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
         is_hidden,
         tokens_used_total: 0,
         created_at: now,
+        context_size: None,
     })
 }
 
@@ -102,6 +123,11 @@ pub fn update_ai_model(
         .as_ref()
         .map(|tags| serde_json::to_string(tags).map_err(|e| e.to_string()))
         .transpose()?;
+    // `context_size` uses double-Option semantics: outer None = "don't change";
+    // inner None = "clear the override". Convert to a JSON-friendly form for SQL.
+    let context_size_param: Option<Option<i64>> = req.context_size;
+    let context_size_should_update = context_size_param.is_some();
+    let context_size_value: Option<i64> = context_size_param.flatten();
     conn.execute(
         "UPDATE ai_models SET
             name = COALESCE(?1, name),
@@ -109,7 +135,8 @@ pub fn update_ai_model(
             priority = COALESCE(?3, priority),
             is_paid = COALESCE(?4, is_paid),
             enabled = COALESCE(?5, enabled),
-            is_hidden = COALESCE(?6, is_hidden)
+            is_hidden = COALESCE(?6, is_hidden),
+            context_size = CASE WHEN ?8 = 1 THEN ?9 ELSE context_size END
          WHERE id = ?7",
         rusqlite::params![
             req.name,
@@ -119,16 +146,27 @@ pub fn update_ai_model(
             req.enabled.map(|v| v as i32),
             req.is_hidden.map(|v| v as i32),
             req.id,
+            context_size_should_update as i32,
+            context_size_value,
         ],
     )
     .map_err(|e| e.to_string())?;
 
+    let select_sql = format!("SELECT {SELECT_COLUMNS} FROM ai_models WHERE id = ?1");
     let model = conn.query_row(
-        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, is_hidden, tokens_used_total, created_at
-         FROM ai_models WHERE id = ?1",
+        &select_sql,
         rusqlite::params![req.id],
         row_to_model,
     ).map_err(|e| e.to_string())?;
+
+    // Keep the in-memory override map in sync immediately so the next chat call
+    // uses the new value without waiting for a `list_ai_models` refresh.
+    if context_size_should_update {
+        let value = context_size_value
+            .filter(|v| *v > 0)
+            .map(|v| (v as usize).clamp(512, 1_048_576));
+        crate::services::context_assembler::set_model_context_override(&model.model_id, value);
+    }
 
     Ok(model)
 }
@@ -144,9 +182,11 @@ pub fn delete_ai_model(state: State<DbState>, id: String) -> Result<(), String> 
 #[tauri::command]
 pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
+    let default_sql = format!(
+        "SELECT {SELECT_COLUMNS} FROM ai_models WHERE enabled = 1 ORDER BY priority ASC LIMIT 1"
+    );
     let result = conn.query_row(
-        "SELECT id, name, model_id, provider, role_tags, priority, is_paid, enabled, is_hidden, tokens_used_total, created_at
-         FROM ai_models WHERE enabled = 1 ORDER BY priority ASC LIMIT 1",
+        &default_sql,
         [],
         row_to_model,
     );
@@ -175,6 +215,7 @@ pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
                 is_hidden: false,
                 tokens_used_total: 0,
                 created_at: String::new(),
+                context_size: None,
             })
         }
         Err(e) => Err(e.to_string()),

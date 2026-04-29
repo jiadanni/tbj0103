@@ -1,12 +1,13 @@
 /**
  * ImportSettingsSection — external conversation imports.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { Check, CheckSquare, FolderInput, RefreshCw, Square, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import PromptDialog from "../components/PromptDialog";
 
 /**
  * If a workspace with the given name already exists, prompt the user
@@ -16,6 +17,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 async function resolveWorkspaceNameConflict(
   name: string,
   workspaces: { name: string }[],
+  promptForName: (defaultValue: string) => Promise<string | null>,
 ): Promise<string | null> {
   const normalised = name.trim().toLowerCase();
   const exists = workspaces.some(
@@ -30,12 +32,12 @@ async function resolveWorkspaceNameConflict(
 
   if (merge) { return name; } // merge into existing
 
-  // Ask for a new name
-  const newName = window.prompt("Enter a new workspace name:", `${name} (2)`);
-  if (!newName || !newName.trim()) { return null; } // user cancelled
+  // Ask for a new name via styled prompt dialog
+  const newName = await promptForName(`${name} (2)`);
+  if (!newName) { return null; } // user cancelled
 
   // Recurse in case the new name also conflicts
-  return resolveWorkspaceNameConflict(newName.trim(), workspaces);
+  return resolveWorkspaceNameConflict(newName.trim(), workspaces, promptForName);
 }
 
 export default function ImportSettingsSection() {
@@ -100,6 +102,15 @@ export default function ImportSettingsSection() {
   const [selectedProjectImportIds, setSelectedProjectImportIds] = useState<Set<string>>(new Set());
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [promptState, setPromptState] = useState<{ defaultValue: string } | null>(null);
+  const promptResolveRef = useRef<((value: string | null) => void) | null>(null);
+
+  const promptForName = useCallback((defaultValue: string): Promise<string | null> => {
+    return new Promise((resolve) => {
+      promptResolveRef.current = resolve;
+      setPromptState({ defaultValue });
+    });
+  }, []);
 
   function resetLmStudioPreview() {
     setLmStudioFolder(null);
@@ -163,7 +174,7 @@ export default function ImportSettingsSection() {
 
       // Derive workspace name from folder and check for conflicts
       const defaultName = lmStudioFolder.split(/[/\\]/).filter(Boolean).pop() ?? "Imported Chats";
-      const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces);
+      const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces, promptForName);
       if (!resolvedName) {return;} // user cancelled
 
       const selectedProjectIds = [...lmStudioSelectedProjects];
@@ -286,7 +297,7 @@ export default function ImportSettingsSection() {
       if (!filePath) {return;}
 
       const defaultName = "Imported Browser Chats";
-      const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces);
+      const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces, promptForName);
       if (!resolvedName) {return;}
 
       const result = await api.chatFile.importGeminiTakeout(
@@ -451,7 +462,7 @@ export default function ImportSettingsSection() {
 
     try {
       const defaultName = "Imported Conversations";
-      const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces);
+      const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces, promptForName);
       if (!resolvedName) { return; }
 
       const selectedIds = [...claudeSelected];
@@ -1116,6 +1127,25 @@ export default function ImportSettingsSection() {
           </section>
         </div>
       </div>
+      {promptState && (
+        <PromptDialog
+          title="Rename Workspace"
+          description="Enter a new workspace name to avoid the conflict."
+          defaultValue={promptState.defaultValue}
+          placeholder="Workspace name"
+          confirmLabel="Use This Name"
+          onCancel={() => {
+            setPromptState(null);
+            promptResolveRef.current?.(null);
+            promptResolveRef.current = null;
+          }}
+          onConfirm={(value) => {
+            setPromptState(null);
+            promptResolveRef.current?.(value);
+            promptResolveRef.current = null;
+          }}
+        />
+      )}
     </div>
   );
 }

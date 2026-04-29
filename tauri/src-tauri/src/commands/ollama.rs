@@ -497,6 +497,31 @@ pub async fn stop_stream(
     Ok(())
 }
 
+/// Unload a single model from Ollama's runner cache, freeing its RAM/VRAM.
+/// Issues an empty generate with `keep_alive: 0`. Returns Ok even when the
+/// model wasn't actually loaded — Ollama's response is identical.
+#[tauri::command]
+pub async fn unload_model(
+    model: String,
+    ollama_url: Option<String>,
+    request_id: Option<String>,
+) -> Result<(), String> {
+    let client = OllamaClient::new(ollama_url)?;
+    let ctx = context(request_id, "unload_model", None, Some(&model), Some(false));
+    client.unload_model_observed(&model, &ctx).await
+}
+
+/// Return the list of models Ollama currently has resident (live `/api/ps`).
+#[tauri::command]
+pub async fn list_loaded_models(
+    ollama_url: Option<String>,
+    request_id: Option<String>,
+) -> Result<Vec<crate::ollama::client::LoadedModelInfo>, String> {
+    let client = OllamaClient::new(ollama_url)?;
+    let ctx = context(request_id, "list_loaded_models", None, None, Some(false));
+    client.list_loaded_models_observed(&ctx).await
+}
+
 fn runtime_status(models: Vec<ModelInfo>, launched: bool) -> OllamaRuntimeStatus {
     let model_count = models.len();
     let message = if launched {

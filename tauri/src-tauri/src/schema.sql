@@ -360,6 +360,7 @@ CREATE TABLE IF NOT EXISTS ai_models (
     is_hidden INTEGER NOT NULL DEFAULT 0,
     tokens_used_total INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    context_size INTEGER,
     UNIQUE(model_id, provider)
 );
 

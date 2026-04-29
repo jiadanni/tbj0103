@@ -328,8 +328,15 @@ export default function FlashcardReviewView() {
 
       {/* Manual create card modal */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-96 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setShowCreate(false)}
+          onKeyDown={(e) => { if (e.key === "Escape") { setShowCreate(false); } }}
+        >
+          <div
+            className="w-96 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">Add Card Manually</h3>
             <textarea
               autoFocus
