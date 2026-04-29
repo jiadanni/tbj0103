@@ -11,16 +11,6 @@ import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Project, type Workspace } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
-import { useUIStore } from "../stores/uiStore";
-import {
-  classifyModelFitWithAvailable,
-  estimateModelMemoryBytes,
-  formatBytes,
-  formatParams,
-  inferHardwareModelGuidance,
-  parseModelParamsB,
-} from "../lib/modelSizing";
-import { fetchSystemSpecs } from "../hooks/useSystemSpecs";
 import type { ChatSession, Message } from "../stores/chatStore";
 import ComposerSuggestionRows from "../components/ComposerSuggestionRows";
 import { TopicChips } from "../components/TopicChips";
@@ -1966,8 +1956,6 @@ export default function ChatView() {
   const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
   const composerMode = useSettingsStore((s) => s.composerMode);
   const modelFamilyLabels = useSettingsStore((s) => s.modelFamilyLabels);
-  const suppressedOversizedModels = useSettingsStore((s) => s.suppressedOversizedModels);
-  const addSuppressedOversizedModel = useSettingsStore((s) => s.addSuppressedOversizedModel);
   const composerSelectClassName = "h-10 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-none outline-none transition-all hover:border-[rgba(var(--accent-color-rgb),0.26)] hover:bg-[var(--bg-hover)] focus:border-[rgba(var(--accent-color-rgb),0.32)] focus:bg-[var(--bg-hover)]";
   const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all";
   const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[rgba(var(--accent-color-rgb),0.24)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
@@ -2181,19 +2169,6 @@ export default function ChatView() {
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Oversized-model warning dialog (Phase 1 hardware fit guardrail).
-  const [oversizedDialog, setOversizedDialog] = useState<{
-    modelId: string;
-    paramsLabel: string | null;
-    headline: string;
-    body: string;
-    availableLabel: string | null;
-    estimatedLabel: string | null;
-  } | null>(null);
-  const [oversizedDontAsk, setOversizedDontAsk] = useState(false);
-  const oversizedResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
-
-
   const openConfirmDialog = useCallback((options: ConfirmDialogState) => {
     setConfirmDialog(options);
     return new Promise<boolean>((resolve) => {
@@ -2216,63 +2191,6 @@ export default function ChatView() {
     confirmResolverRef.current = null;
     setConfirmDialog(null);
   }, []);
-
-  const closeOversizedDialog = useCallback((confirmed: boolean) => {
-    if (confirmed && oversizedDialog && oversizedDontAsk) {
-      addSuppressedOversizedModel(oversizedDialog.modelId);
-    }
-    oversizedResolverRef.current?.(confirmed);
-    oversizedResolverRef.current = null;
-    setOversizedDialog(null);
-    setOversizedDontAsk(false);
-  }, [oversizedDialog, oversizedDontAsk, addSuppressedOversizedModel]);
-
-  /**
-   * Returns true when sending should proceed.
-   *
-   * Skips the warning when:
-   *   - The user previously dismissed it for this model.
-   *   - The model size is unknown (parseModelParamsB returns null).
-   *   - System specs cannot be detected.
-   *   - The model fits the hardware (after available-RAM escalation).
-   */
-  const confirmOversizedModelOrAccept = useCallback(async (modelId: string): Promise<boolean> => {
-    if (suppressedOversizedModels.includes(modelId)) { return true; }
-
-    const paramsB = parseModelParamsB(modelId);
-    if (paramsB === null) { return true; }
-
-    let specs;
-    try {
-      specs = await fetchSystemSpecs();
-    } catch {
-      return true;
-    }
-
-    const guidance = inferHardwareModelGuidance(specs);
-    const fit = classifyModelFitWithAvailable(
-      paramsB,
-      guidance.recommendedMaxParamsB,
-      specs.available_memory_bytes,
-    );
-    if (fit !== "too-large") { return true; }
-
-    const estimated = estimateModelMemoryBytes(paramsB);
-
-    setOversizedDialog({
-      modelId,
-      paramsLabel: formatParams(paramsB),
-      headline: `${modelId} may not fit available memory`,
-      body: `${guidance.headline}. ${guidance.basis}`,
-      availableLabel: specs.available_memory_bytes > 0 ? formatBytes(specs.available_memory_bytes) : null,
-      estimatedLabel: estimated !== null ? formatBytes(estimated) : null,
-    });
-    setOversizedDontAsk(false);
-
-    return new Promise<boolean>((resolve) => {
-      oversizedResolverRef.current = resolve;
-    });
-  }, [suppressedOversizedModels]);
 
   async function handleCreateFolder(nameOverride?: string) {
     if (creatingFolderRequestRef.current) { return; }
@@ -3079,40 +2997,6 @@ export default function ChatView() {
       });
   }, [activeChatId, activeSessionWorkspaceId, hasLoadedActiveMessages, setMessages]);
 
-  // Maintain titlebar token count for the active chat. Mirrors backend
-  // estimate_tokens (chars / 4) over current messages plus any in-flight
-  // streamed assistant content. Resets to 0 when no chat is active.
-  const setTitlebarTokenCount = useUIStore((state) => state.setTitlebarTokenCount);
-  useEffect(() => {
-    if (!activeChatId) {
-      setTitlebarTokenCount(0);
-      return;
-    }
-
-    const computeTokens = () => {
-      let total = 0;
-      for (const m of activeMessages) {
-        total += Math.ceil((m.content?.length ?? 0) / 4);
-      }
-      if (isCurrentlyStreaming) {
-        total += Math.ceil((useChatStore.getState().streamingContent?.length ?? 0) / 4);
-      }
-      setTitlebarTokenCount(total);
-    };
-
-    computeTokens();
-
-    if (!isCurrentlyStreaming) { return; }
-
-    // While streaming, keep the count in sync with streamingContent.
-    const unsubscribe = useChatStore.subscribe((state, prev) => {
-      if (state.streamingContent === prev.streamingContent) { return; }
-      computeTokens();
-    });
-    return () => { unsubscribe(); };
-  }, [activeChatId, activeMessages, isCurrentlyStreaming, setTitlebarTokenCount]);
-
-
   // Load AI model priority list + fallback to raw Ollama models
   useEffect(() => {
     const sessionModel = activeSession?.model_name?.trim() ?? "";
@@ -3583,16 +3467,6 @@ export default function ChatView() {
     const isMlxProvider = modelMeta?.provider === "mlx";
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const oneOffWebProviderKey = isOneOffWebProvider ? modelMeta!.provider.replace("web_", "") : "";
-
-    // Hardware fit guardrail (Ollama only). Warns when the selected model's
-    // estimated footprint exceeds available RAM at the time of sending —
-    // catches the multitasking case where total RAM is sufficient but free
-    // RAM is not. Users can permanently dismiss the warning per model.
-    const isOllamaProvider = !isOneOffWebProvider && !isLlamacppProvider && !isMlxProvider;
-    if (isOllamaProvider) {
-      const proceed = await confirmOversizedModelOrAccept(modelId);
-      if (!proceed) { return; }
-    }
 
     const ensuredSession = await ensureSessionForChat(modelId);
     if (!ensuredSession) { return; }
@@ -4317,19 +4191,6 @@ export default function ChatView() {
     () => modelFamilies.find((f) => f.prefix === selectedFamily)?.models ?? [],
     [modelFamilies, selectedFamily]
   );
-
-  // In family mode, the top-priority model of the active family is the default —
-  // that is the model run when hitting Enter. Reordering models in AI Preferences
-  // (drag a model to the top of its family) updates this automatically. The user
-  // can still pick a sibling variant via the family-row buttons during streaming.
-  useEffect(() => {
-    if (composerMode !== "family") { return; }
-    if (showFamilyVariant) { return; }
-    const top = activeFamilyModels[0]?.model_id;
-    if (!top || top === selectedModel) { return; }
-    setSelectedModel(top);
-    void persistModelChoice(top);
-  }, [composerMode, activeFamilyModels, showFamilyVariant, selectedModel, persistModelChoice]);
 
   const composerSuggestionRows = useMemo(() => {
     const suggestionContext = {
@@ -5421,78 +5282,6 @@ export default function ChatView() {
                   }`}
               >
                 {confirmDialog.confirmLabel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Oversized-model warning (hardware fit guardrail) */}
-      {oversizedDialog && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={() => closeOversizedDialog(false)}
-          onKeyDown={(e) => { if (e.key === "Escape") { closeOversizedDialog(false); } }}
-        >
-          <div
-            className="mx-4 flex w-full max-w-md flex-col gap-5 rounded-3xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500/12 text-amber-400">
-                <Zap size={18} />
-              </div>
-              <div className="flex flex-1 flex-col gap-2">
-                <h3 className="text-base font-semibold text-[var(--text-primary)]">{oversizedDialog.headline}</h3>
-                <p className="text-sm leading-6 text-[var(--text-secondary)]">{oversizedDialog.body}</p>
-                <dl className="mt-1 space-y-1 text-xs text-[var(--text-muted)]">
-                  {oversizedDialog.paramsLabel && (
-                    <div className="flex justify-between gap-4">
-                      <dt>Model size</dt>
-                      <dd className="font-mono text-[var(--text-secondary)]">{oversizedDialog.paramsLabel}</dd>
-                    </div>
-                  )}
-                  {oversizedDialog.estimatedLabel && (
-                    <div className="flex justify-between gap-4">
-                      <dt>Estimated footprint</dt>
-                      <dd className="font-mono text-[var(--text-secondary)]">~{oversizedDialog.estimatedLabel}</dd>
-                    </div>
-                  )}
-                  {oversizedDialog.availableLabel && (
-                    <div className="flex justify-between gap-4">
-                      <dt>Available RAM right now</dt>
-                      <dd className="font-mono text-[var(--text-secondary)]">{oversizedDialog.availableLabel}</dd>
-                    </div>
-                  )}
-                </dl>
-                <p className="text-xs leading-5 text-[var(--text-muted)]">
-                  Closing other apps before sending usually frees enough memory. Sending anyway may cause the model to fail to load or be killed mid-stream.
-                </p>
-              </div>
-            </div>
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <span className={`flex h-4 w-4 items-center justify-center rounded border ${oversizedDontAsk ? "border-[var(--accent-color)] bg-[var(--accent-color)]" : "border-[var(--border-color)] bg-[var(--bg-input)]"}`}>
-                {oversizedDontAsk && <svg viewBox="0 0 12 12" className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth={2}><path d="M2 6l3 3 5-5" /></svg>}
-              </span>
-              <input
-                type="checkbox"
-                checked={oversizedDontAsk}
-                onChange={(e) => setOversizedDontAsk(e.target.checked)}
-                className="sr-only"
-              />
-              <span className="text-xs text-[var(--text-secondary)]">Don&apos;t warn me again for this model</span>
-            </label>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => closeOversizedDialog(false)}
-                className="rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => closeOversizedDialog(true)}
-                className="rounded-xl px-4 py-2 text-sm text-white hover:opacity-90 bg-amber-500"
-              >
-                Send anyway
               </button>
             </div>
           </div>

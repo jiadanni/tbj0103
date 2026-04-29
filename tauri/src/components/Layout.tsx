@@ -4,7 +4,7 @@ import { message } from "@tauri-apps/plugin-dialog";
 import {
   
 } from "react-resizable-panels";
-import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon, Pin, ArrowUpDown } from "lucide-react";
+import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon, Pin, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
@@ -27,6 +27,7 @@ import { useArtifactStore } from "../stores/artifactStore";
 import { useChatStore } from "../stores/chatStore";
 import CompactMenuSelect from "./CompactMenuSelect";
 import StatusBar from "./StatusBar";
+import { useNavigationHistory } from "../hooks/useNavigationHistory";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
@@ -620,6 +621,34 @@ function mergeRecentSessions(sessions: ChatSession[]) {
   ).values()).slice(0, 8);
 }
 
+/** Back/Forward navigation buttons in the titlebar */
+function BackForwardNavigation() {
+  const { goBack, goForward, canGoBack, canGoForward } = useNavigationHistory();
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={goBack}
+        disabled={!canGoBack}
+        aria-label="Go back"
+        title="Go back (Escape)"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <ChevronLeft size={15} />
+      </button>
+      <button
+        onClick={goForward}
+        disabled={!canGoForward}
+        aria-label="Go forward"
+        title="Go forward (Alt+Right / Cmd+Right)"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <ChevronRight size={15} />
+      </button>
+    </div>
+  );
+}
+
 function TitlebarHistoryMenu() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -1112,6 +1141,7 @@ function WorkspaceTabBar({
               </span>
             </div>
           )}
+          <BackForwardNavigation />
           <TitlebarSortMenu />
           <TitlebarHistoryMenu />
           {!showSplitTitlebarWorkspaceNavigation && (

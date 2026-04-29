@@ -12,10 +12,11 @@ import {
 import { api } from "../lib/api";
 import ConfirmDialog from "../components/ConfirmDialog";
 import CompactMenuSelect from "../components/CompactMenuSelect";
+import { TopicsSection } from "../components/TopicsSection";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
-import type { DashboardSummary } from "../lib/api";
+import type { DashboardSummary, TopicSignature } from "../lib/api";
 
 type WorkspaceDialogState =
   | { kind: "last-workspace" }
@@ -107,6 +108,7 @@ export default function WorkspaceSettingsView() {
   const [editPrompt, setEditPrompt] = useState("");
   const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+  const [topicSignaturesByWorkspace, setTopicSignaturesByWorkspace] = useState<Record<string, TopicSignature | null>>({});
 
   const selectedWorkspace = useMemo(() =>
     workspaces.find(w => w.id === selectedId),
@@ -158,12 +160,14 @@ export default function WorkspaceSettingsView() {
       if (!selectedId) {return;}
       setLoadingStats(true);
       try {
-        const [summary, memories] = await Promise.all([
+        const [summary, memories, topicSig] = await Promise.all([
           api.dashboard.getSummary(selectedId),
-          api.memory.list(selectedId)
+          api.memory.list(selectedId),
+          api.topicSignature.get(selectedId).catch(() => null)
         ]);
         setStats(summary);
         setMemoryCount(memories.length);
+        setTopicSignaturesByWorkspace(prev => ({ ...prev, [selectedId]: topicSig }));
       } catch (err) {
         console.error("Failed to load workspace stats:", err);
       } finally {
@@ -821,6 +825,23 @@ export default function WorkspaceSettingsView() {
                 <p className="text-[11px] text-[var(--text-muted)] leading-relaxed italic">
                   Note: These instructions are prepended to the system prompt of every new chat session started within this workspace.
                 </p>
+              </div>
+
+              {/* Topics Manager */}
+              <div className="space-y-4 pt-4">
+                <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+                  <Brain size={12} /> Workspace Topics
+                </h3>
+                <TopicsSection
+                  workspaceId={selectedWorkspace.id}
+                  topicSignature={topicSignaturesByWorkspace[selectedWorkspace.id] ?? null}
+                  onUpdate={(updated) => {
+                    setTopicSignaturesByWorkspace(prev => ({
+                      ...prev,
+                      [selectedWorkspace.id]: updated
+                    }));
+                  }}
+                />
               </div>
             </div>
           ) : (

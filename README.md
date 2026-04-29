@@ -37,7 +37,9 @@ The Tauri port is the primary development target and receives all new features.
 - **Multi-pane Workspaces**: Split-view support for working on different chats or documents side-by-side
 - **Contextual Navigation**: Link related conversations via "Related Chat Excerpts" that automatically surface past knowledge
 - **Model Context Protocol (MCP)**: Dynamic tool and resource integration for AI models via external servers
-- **AI Models Registry**: Manage local models and web providers (ChatGPT, Claude, DeepSeek, Gemini)
+- **AI Models Registry**: Manage local models and web providers (ChatGPT, Claude, DeepSeek, Gemini); set a per-model context-window override (`num_ctx`) directly in Preferences
+- **Oversized-model guardrail**: Pre-send dialog warns when a model's estimated VRAM/RAM footprint exceeds available memory, with a per-model "don't ask again" option
+- **Model unloading**: Manually free VRAM/RAM by unloading idle Ollama models; automatic unload on stream error or abort
 - **Chat-to-Note / Chat-to-Document conversion**: One-click export of a session to a summarized note or document, with LLM-based concept extraction that auto-populates the knowledge graph
 - Chat session history with rename / soft-delete; Recycle Bin for restoration
 - **History view**: Dedicated browser for all past sessions, grouped by date with instant search
@@ -186,7 +188,7 @@ tauri/
 | `learning_cards` | Spaced-repetition items (SM-2) |
 | `sources` | Unified storage for Documents and Web Captures |
 | `mcp_servers` | Configured AI Model Context Protocol servers |
-| `ai_models` | Local and Web AI provider registry |
+| `ai_models` | Local and Web AI provider registry with per-model context-size overrides |
 | `thought_queue` | Background task orchestration |
 | `settings` | Global application preferences |
 
