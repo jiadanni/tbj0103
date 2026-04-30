@@ -51,6 +51,16 @@ export default function LearningPathView() {
     const surveyText = formatSurveyForPrompt(survey);
     const model = preferredModel;
 
+    // Merge survey context into prompt_instructions, replacing any prior survey block.
+    const SURVEY_START = "<!-- survey-context -->";
+    const SURVEY_END = "<!-- /survey-context -->";
+    const surveyBlock = `${SURVEY_START}\n${surveyText}\n${SURVEY_END}`;
+    const existing = activeWorkspace.prompt_instructions ?? "";
+    const stripped = existing
+      .replace(new RegExp(`${SURVEY_START}[\\s\\S]*?${SURVEY_END}\\n?`, "g"), "")
+      .trimEnd();
+    const mergedInstructions = stripped ? `${stripped}\n\n${surveyBlock}` : surveyBlock;
+
     try {
       // 1. Persist survey + update prompt_instructions
       setGenerateStep("save");
@@ -58,7 +68,7 @@ export default function LearningPathView() {
         activeWorkspaceId,
         activeWorkspace.name,
         activeWorkspace.description,
-        surveyText,
+        mergedInstructions,
         surveyJson,
       );
 
