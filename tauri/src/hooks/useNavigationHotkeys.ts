@@ -41,13 +41,6 @@ export function useNavigationHotkeys(options: NavigationHotkeysOptions) {
         return;
       }
 
-      // Escape key for back navigation
-      if (e.key === "Escape" && canGoBackRef.current && onBackRef.current) {
-        e.preventDefault();
-        onBackRef.current();
-        return;
-      }
-
       // Alt+Left or Cmd+Left for back (macOS browser convention)
       if ((e.metaKey || e.altKey) && e.key === "ArrowLeft" && canGoBackRef.current && onBackRef.current) {
         e.preventDefault();

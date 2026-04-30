@@ -32,6 +32,7 @@ export default function PromptDialog({
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.preventDefault();
         onCancel();
       }
     }

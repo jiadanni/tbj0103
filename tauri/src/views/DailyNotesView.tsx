@@ -128,7 +128,7 @@ export default function DailyNotesView() {
   useEffect(() => {
     if (!showTemplatePicker) { return; }
     function handleEsc(e: KeyboardEvent) {
-      if (e.key === "Escape") { setShowTemplatePicker(false); }
+      if (e.key === "Escape") { e.preventDefault(); setShowTemplatePicker(false); }
     }
     document.addEventListener("keydown", handleEsc);
     return () => document.removeEventListener("keydown", handleEsc);

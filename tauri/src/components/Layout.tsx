@@ -630,7 +630,7 @@ function BackForwardNavigation() {
         onClick={goBack}
         disabled={!canGoBack}
         aria-label="Go back"
-        title="Go back (Escape)"
+        title="Go back (Alt+Left / Cmd+Left)"
         className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <ChevronLeft size={15} />
