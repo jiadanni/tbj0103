@@ -242,9 +242,13 @@ export default function App() {
         }
 
         // Auto-authenticate if neither lock method is active
-        if (!settings.touch_id_enabled && !settings.pin_lock_enabled) {setIsAuthenticated(true);}
+        if (!settings.touch_id_enabled && !settings.pin_lock_enabled) {
+          await api.security.unlockApp();
+          setIsAuthenticated(true);
+        }
       } catch {
         // First run or Ollama not available — still OK
+        await api.security.unlockApp().catch(() => {});
         setIsAuthenticated(true);
       } finally {
         if (!cancelled) {

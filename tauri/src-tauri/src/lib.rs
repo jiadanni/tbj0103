@@ -163,6 +163,7 @@ pub fn run() {
             let (bg_cancel_tx, _) = tokio::sync::watch::channel(0u64);
             app.manage(commands::ollama::BackgroundInferenceCancel(bg_cancel_tx));
             app.manage(commands::quick_search::QuickSearchRuntimeState::default());
+            app.manage(commands::security::AuthState::default());
 
             #[cfg(feature = "llamacpp")]
             {
@@ -480,6 +481,8 @@ pub fn run() {
             commands::security::verify_pin_passcode,
             commands::security::remove_pin_passcode,
             commands::security::authenticate_biometric,
+            commands::security::unlock_app,
+            commands::security::lock_app,
             // Graph algorithm commands
             commands::graph::compute_pagerank,
             commands::graph::find_shortest_path,
