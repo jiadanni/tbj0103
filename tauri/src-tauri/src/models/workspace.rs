@@ -33,6 +33,7 @@ pub struct Workspace {
     pub icon: String,
     pub order_index: i32,
     pub last_message_at: Option<String>,
+    pub survey_data: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +55,7 @@ pub struct UpdateWorkspaceRequest {
     pub name: String,
     pub description: Option<String>,
     pub prompt_instructions: Option<String>,
+    pub survey_data: Option<String>,
 }
 
 impl Workspace {
@@ -73,6 +75,7 @@ impl Workspace {
             icon: String::new(),
             order_index: 0,
             last_message_at: None,
+            survey_data: None,
         }
     }
 }
