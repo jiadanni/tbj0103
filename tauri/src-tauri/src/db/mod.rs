@@ -56,6 +56,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v42_workspace_last_message_at",
     "v43_switch_workspace_section",
     "v44_ai_models_context_size",
+    "v45_workspaces_survey_data",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1095,6 +1096,17 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         // databases created from a newer schema.sql). Ignore that specific error.
         let _ = conn.execute_batch("ALTER TABLE ai_models ADD COLUMN context_size INTEGER;");
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v44_ai_models_context_size');")?;
+    }
+
+    // v45: workspace survey data (JSON blob).
+    let applied_v45: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v45_workspaces_survey_data'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v45 == 0 {
+        let _ = conn.execute_batch("ALTER TABLE workspaces ADD COLUMN survey_data TEXT;");
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v45_workspaces_survey_data');")?;
     }
 
     Ok(())

@@ -95,7 +95,7 @@ function buildWorkspace(overrides: Partial<{
     updated_at: "2026-04-18T10:00:00.000Z",
     parent_workspace_id: null,
     icon: "",
-    order_index: 0, last_message_at: null,
+    order_index: 0, last_message_at: null, survey_data: null,
     ...overrides,
   };
 }

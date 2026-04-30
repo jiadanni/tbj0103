@@ -463,6 +463,7 @@ export interface AiModel {
   role_tags: string[];
   priority: number; is_paid: boolean; enabled: boolean; is_hidden: boolean;
   tokens_used_total: number; created_at: string;
+  context_size?: number | null;
 }
 
 export interface ModelSpeedStat {
@@ -622,7 +623,7 @@ export const api = {
     listChildren: (parentId: string) => invoke<Workspace[]>("list_child_workspaces", { parentId }),
     listHidden: () => invoke<Workspace[]>("list_hidden_workspaces"),
     get: (id: string) => invoke<Workspace | null>("get_workspace", { id }),
-    update: (id: string, name: string, description?: string, promptInstructions?: string) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions } }),
+    update: (id: string, name: string, description?: string, promptInstructions?: string, surveyData?: string) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions, survey_data: surveyData } }),
     setParent: (id: string, parentId: string | null) => invoke<void>("set_workspace_parent", { id, parentId }),
     delete: (id: string) => invoke<void>("delete_workspace", { id }),
     updateIcon: (id: string, icon: string) => invoke<void>("update_workspace_icon", { id, icon }),
@@ -1238,7 +1239,7 @@ export const api = {
     listSpeedStats: () => invoke<ModelSpeedStat[]>("list_model_speed_stats"),
     add: (name: string, modelId: string, opts?: { provider?: string; role_tags?: string[]; is_paid?: boolean; priority?: number; enabled?: boolean; is_hidden?: boolean }) =>
       invoke<AiModel>("add_ai_model", { req: { name, model_id: modelId, ...opts } }),
-    update: (id: string, fields: { name?: string; role_tags?: string[]; priority?: number; is_paid?: boolean; enabled?: boolean; is_hidden?: boolean }) =>
+    update: (id: string, fields: { name?: string; role_tags?: string[]; priority?: number; is_paid?: boolean; enabled?: boolean; is_hidden?: boolean; context_size?: number | null }) =>
       invoke<AiModel>("update_ai_model", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_ai_model", { id }),
     getDefault: () => invoke<AiModel>("get_default_model"),
@@ -1255,18 +1256,19 @@ export const api = {
   },
 
   knowledge: {
-    analyzeWorkspace: (workspaceId: string, model: string, opts?: { ollamaUrl?: string; focusTopic?: string }) =>
+    analyzeWorkspace: (workspaceId: string, model: string, opts?: { ollamaUrl?: string; focusTopic?: string; surveyContext?: string }) =>
       invoke<AnalysisResult>("analyze_workspace", {
         req: {
           workspace_id: workspaceId,
           model,
           ollama_url: opts?.ollamaUrl,
           focus_topic: opts?.focusTopic,
+          survey_context: opts?.surveyContext,
         },
       }),
-    suggestGoals: (workspaceId: string, model: string, ollamaUrl?: string) =>
+    suggestGoals: (workspaceId: string, model: string, ollamaUrl?: string, surveyContext?: string) =>
       invoke<SuggestedGoal[]>("suggest_learning_goals", {
-        req: { workspace_id: workspaceId, model, ollama_url: ollamaUrl },
+        req: { workspace_id: workspaceId, model, ollama_url: ollamaUrl, survey_context: surveyContext },
       }),
   },
 

@@ -29,6 +29,7 @@ pub struct AnalyzeWorkspaceRequest {
     pub model: String,
     pub ollama_url: Option<String>,
     pub focus_topic: Option<String>,
+    pub survey_context: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +37,7 @@ pub struct SuggestGoalsRequest {
     pub workspace_id: String,
     pub model: String,
     pub ollama_url: Option<String>,
+    pub survey_context: Option<String>,
 }
 
 struct WorkspaceContentSnapshot {
@@ -446,10 +448,10 @@ pub async fn analyze_workspace(
         gather_workspace_content(&conn, &req.workspace_id)
     };
 
-    if snapshot.text.trim().is_empty() {
+    if snapshot.text.trim().is_empty() && req.survey_context.is_none() {
         return Err("No content found in this workspace to analyze. Please add some notes, documents, or chat messages first.".to_string());
     }
-    if snapshot.source_items < 6 || snapshot.text.len() < 1200 {
+    if req.survey_context.is_none() && (snapshot.source_items < 6 || snapshot.text.len() < 1200) {
         return Err("Not enough workspace material yet to build a useful graph. Add a bit more chat, notes, or documents, then analyze again.".to_string());
     }
 
@@ -461,16 +463,31 @@ pub async fn analyze_workspace(
         .map(|t| format!(" Focus especially on concepts related to: {t}."))
         .unwrap_or_default();
 
+    let survey_clause = req
+        .survey_context
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| format!("\n\nLearner context (use to guide concept relevance):\n{s}"))
+        .unwrap_or_default();
+
     let content = if snapshot.text.len() > 22_000 {
         &snapshot.text[..22_000]
     } else {
         &snapshot.text
     };
 
+    // When the workspace is sparse but we have survey context, use the survey as primary material.
+    let (content_section, source_label) = if content.trim().is_empty() {
+        (String::new(), String::new())
+    } else {
+        (format!("Content:\n{content}\n\n"), String::new())
+    };
+    let _ = source_label;
+
     let prompt = format!(
         "You are a knowledge graph assistant helping a learner build a personal knowledge base. \
-Analyze the content below and extract SPECIFIC, NAMED concepts — not generic categories.{focus}\n\n\
-Content:\n{content}\n\n\
+Analyze the content below and extract SPECIFIC, NAMED concepts — not generic categories.{focus}{survey}\n\n\
+{content_section}\
 Respond with ONLY raw JSON:\n\
 {{\"chapters\":[{{\"name\":\"...\",\"description\":\"...\",\"sections\":[{{\"name\":\"...\",\"description\":\"...\",\"concepts\":[{{\"name\":\"...\",\"description\":\"one clear sentence\",\"type\":\"definition\"}}]}}]}}],\"relationships\":[{{\"source\":\"exact concept name\",\"target\":\"exact concept name\",\"type\":\"prerequisite\",\"description\":\"why\"}}]}}\n\n\
 Rules:\n\
@@ -484,7 +501,8 @@ Rules:\n\
 - Each description should define the concept in one clear sentence, not just restate the name\n\
 - No markdown, only raw JSON",
         focus = focus_clause,
-        content = content,
+        survey = survey_clause,
+        content_section = content_section,
     );
 
     // 3. Call Ollama (no DB lock held)
@@ -815,7 +833,7 @@ pub async fn suggest_learning_goals(
         (concepts, goals)
     };
 
-    if concept_names.is_empty() {
+    if concept_names.is_empty() && req.survey_context.is_none() {
         return Ok(vec![]);
     }
 
@@ -828,17 +846,41 @@ pub async fn suggest_learning_goals(
         )
     };
 
-    let prompt = format!(
-        "You are a learning coach. Based on the following concepts a learner has been studying, suggest 3-5 concrete learning goals.\n\
-        Concepts: {concepts}{existing}\n\n\
-        Respond with ONLY valid JSON array (no markdown):\n\
-        [{{\"title\":\"...\",\"description\":\"...\",\"related_concepts\":[\"...\",\"...\"]}}]\n\
-        - title: actionable goal (start with a verb)\n\
-        - description: 1-2 sentences\n\
-        - related_concepts: 2-4 concepts from the list above",
-        concepts = concept_names.join(", "),
-        existing = existing_clause,
-    );
+    let prompt = if concept_names.is_empty() {
+        // Survey-only path: generate goals purely from the learner context
+        let survey = req.survey_context.as_deref().unwrap_or("");
+        format!(
+            "You are a learning coach helping a learner set their first goals for a new workspace.\n\
+            Learner context:\n{survey}{existing}\n\n\
+            Suggest 3-5 concrete, actionable learning goals tailored to this learner.\n\
+            Respond with ONLY valid JSON array (no markdown):\n\
+            [{{\"title\":\"...\",\"description\":\"...\",\"related_concepts\":[\"...\",\"...\"]}}]\n\
+            - title: actionable goal (start with a verb)\n\
+            - description: 1-2 sentences\n\
+            - related_concepts: 2-4 specific topics from the learner context",
+            survey = survey,
+            existing = existing_clause,
+        )
+    } else {
+        let survey_clause = req
+            .survey_context
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| format!("\nLearner context:\n{s}\n"))
+            .unwrap_or_default();
+        format!(
+            "You are a learning coach. Based on the following concepts a learner has been studying, suggest 3-5 concrete learning goals.\n\
+            Concepts: {concepts}{survey}{existing}\n\n\
+            Respond with ONLY valid JSON array (no markdown):\n\
+            [{{\"title\":\"...\",\"description\":\"...\",\"related_concepts\":[\"...\",\"...\"]}}]\n\
+            - title: actionable goal (start with a verb)\n\
+            - description: 1-2 sentences\n\
+            - related_concepts: 2-4 concepts from the list above",
+            concepts = concept_names.join(", "),
+            survey = survey_clause,
+            existing = existing_clause,
+        )
+    };
 
     let client = OllamaClient::new(req.ollama_url)?;
     let messages = vec![OllamaMessage {

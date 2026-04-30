@@ -13,7 +13,6 @@ import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
-import { useUIStore } from "../stores/uiStore";
 import AppHeaderMenu from "./AppHeaderMenu";
 import ArtifactPanel from "./ArtifactPanel";
 import ConfirmDialog from "./ConfirmDialog";
@@ -943,7 +942,6 @@ function WorkspaceTabBar({
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const switchWorkspaceSection = useSettingsStore((state) => state.switchWorkspaceSection);
-  const titlebarTokenCount = useUIStore((state) => state.titlebarTokenCount);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -1133,14 +1131,6 @@ function WorkspaceTabBar({
           title="Drag window"
         />
         <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
-          {titlebarTokenCount > 0 && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)]" title="Session token count">
-              <span className="opacity-60">Tokens</span>
-              <span className="font-mono tabular-nums">
-                {titlebarTokenCount >= 1000 ? `${(titlebarTokenCount / 1000).toFixed(1)}k` : titlebarTokenCount}
-              </span>
-            </div>
-          )}
           <BackForwardNavigation />
           <TitlebarSortMenu />
           <TitlebarHistoryMenu />
