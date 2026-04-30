@@ -17,6 +17,7 @@ import { TopicChips } from "../components/TopicChips";
 import { RelatedChatPills } from "../components/RelatedChatPills";
 import { WorkspaceMigrationBanner } from "../components/WorkspaceMigrationBanner";
 import ChatMessageBubble from "../components/ChatMessageBubble";
+import ChatMinimap from "../components/ChatMinimap";
 import ConvertChatModal, { type ConvertKind } from "../components/ConvertChatModal";
 import { useScopedChat, useScopedProjects, useScopedWorkspace, useWorkspacePane } from "../lib/workspacePane";
 import {
@@ -1908,6 +1909,7 @@ export default function ChatView() {
   const appendStreamChunk = useChatStore((s) => s.appendStreamChunk);
   const finalizeStream = useChatStore((s) => s.finalizeStream);
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
+  const streamingContentForMinimap = useChatStore((s) => s.streamingContent);
   const updateMessage = useChatStore((s) => s.updateMessage);
 
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
@@ -4454,7 +4456,7 @@ export default function ChatView() {
                   )}
 
                   {/* Messages */}
-                  <div className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
+                  <div data-testid="chat-messages-area" className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden relative ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
                     <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
                       <Virtuoso
                         ref={virtuosoRef}
@@ -4508,6 +4510,12 @@ export default function ChatView() {
                         components={virtuosoComponents}
                       />
                     </div>
+                    <ChatMinimap
+                      messages={activeMessages}
+                      virtuosoRef={virtuosoRef}
+                      streamingContent={streamingContentForMinimap}
+                      isStreaming={isCurrentlyStreaming}
+                    />
                   </div>
 
                   {toolbarState && (
