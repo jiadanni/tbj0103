@@ -917,6 +917,7 @@ function SessionSidebar({
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.preventDefault();
         setCtxMenu(null);
       }
     }
@@ -2539,7 +2540,7 @@ export default function ChatView() {
     return Array.from(groups.values()).sort((a, b) => a.order - b.order);
   }, [aiModelList, pinnedQuickSendModels]);
   // uses granular selector from above
-  const sessionTokenCount = useMemo(() => activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0), [activeMessages]);
+  const _sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
 
   // Stable Virtuoso Footer — lives inside the scroll area so growing content
@@ -2602,6 +2603,7 @@ export default function ChatView() {
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.preventDefault();
         setIsModelSendMenuOpen(false);
       }
     }
@@ -2625,6 +2627,7 @@ export default function ChatView() {
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.preventDefault();
         setIsAttachmentMenuOpen(false);
       }
     }
@@ -2645,7 +2648,7 @@ export default function ChatView() {
       setIsWebPickerOpen(false);
     }
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") { setIsWebPickerOpen(false); }
+      if (event.key === "Escape") { event.preventDefault(); setIsWebPickerOpen(false); }
     }
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleEscape);
@@ -2665,6 +2668,7 @@ export default function ChatView() {
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.preventDefault();
         setIsEmptyStatePrivacyMenuOpen(false);
       }
     }
@@ -2689,6 +2693,7 @@ export default function ChatView() {
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.preventDefault();
         setIsModelPickerOpen(false);
         setIsFamilyPickerOpen(false);
       }
@@ -4376,7 +4381,7 @@ export default function ChatView() {
                 <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
                   {/* Slim title bar */}
                   <div className="flex min-w-0 items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
                         <span className="truncate">{activeWorkspaceName}</span>
                         {effectiveProjectName && (
@@ -4386,7 +4391,7 @@ export default function ChatView() {
                           </>
                         )}
                       </div>
-                      <span className="mt-0.5 flex min-w-0 items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
+                      <span className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-sm font-medium text-[var(--text-primary)]">
                         <span className="truncate">{activeSession?.title || "New Chat"}</span>
                         {activeSession?.is_incognito && (
                           <span title="Incognito thread"><Ghost size={14} className="text-purple-400" /></span>
@@ -4400,7 +4405,7 @@ export default function ChatView() {
                       <button
                         onClick={() => { if (canRefreshActiveSessionTitle) { refreshSessionTitle(activeSession); } }}
                         disabled={!canRefreshActiveSessionTitle}
-                        className={`p-1.5 rounded-lg text-[var(--text-muted)] transition-colors flex-shrink-0 ${canRefreshActiveSessionTitle
+                        className={`p-1.5 rounded-lg text-[var(--text-muted)] transition-colors ${canRefreshActiveSessionTitle
                           ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
                           : "cursor-not-allowed opacity-40"
                           }`}
@@ -4409,15 +4414,6 @@ export default function ChatView() {
                         <RefreshCw size={14} />
                       </button>
                     )}
-                    {sessionTokenCount > 0 && (
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)] flex-shrink-0" title="Session token count">
-                        <span className="opacity-60">Tokens</span>
-                        <span className="font-mono tabular-nums">
-                          {sessionTokenCount >= 1000 ? `${(sessionTokenCount / 1000).toFixed(1)}k` : sessionTokenCount}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex-1" />
                     {availableModels.length === 0 && ollamaModelStatus === "unreachable" && (
                       <span className="text-xs text-red-400">Ollama unavailable</span>
                     )}
@@ -5301,7 +5297,7 @@ export default function ChatView() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
           onClick={cancelOpenLink}
-          onKeyDown={(e) => { if (e.key === "Escape") { cancelOpenLink(); } }}
+          onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); cancelOpenLink(); } }}
         >
           <div
             className="bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl shadow-2xl max-w-sm w-full mx-4 p-6"
