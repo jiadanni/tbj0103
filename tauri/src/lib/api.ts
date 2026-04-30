@@ -804,6 +804,8 @@ export const api = {
     verifyPin: (pin: string) => invoke<boolean>("verify_pin_passcode", { pin }),
     removePin: (currentPin: string) => invoke<void>("remove_pin_passcode", { currentPin }),
     authenticateBiometric: () => invoke<boolean>("authenticate_biometric"),
+    unlockApp: () => invoke<void>("unlock_app"),
+    lockApp: () => invoke<void>("lock_app"),
   },
 
   graph: {

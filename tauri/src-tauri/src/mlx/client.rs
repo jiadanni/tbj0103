@@ -71,15 +71,48 @@ pub struct MlxClient {
 }
 
 impl MlxClient {
-    pub fn new(base_url: Option<String>) -> Self {
+    pub fn new(base_url: Option<String>) -> Result<Self, String> {
+        let validated_url = Self::validate_base_url(base_url)?;
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(300))
             .build()
-            .expect("Failed to build HTTP client");
-        Self {
+            .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+        Ok(Self {
             client,
-            base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
+            base_url: validated_url,
+        })
+    }
+
+    fn validate_base_url(base_url: Option<String>) -> Result<String, String> {
+        let candidate = base_url
+            .map(|url| url.trim().to_string())
+            .filter(|url| !url.is_empty())
+            .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+
+        let parsed =
+            reqwest::Url::parse(&candidate).map_err(|e| format!("Invalid MLX base URL: {e}"))?;
+
+        match parsed.scheme() {
+            "http" | "https" => {}
+            other => {
+                return Err(format!(
+                    "Invalid MLX base URL scheme: {other}. Only http and https are allowed."
+                ));
+            }
         }
+
+        let Some(host) = parsed.host_str() else {
+            return Err("Invalid MLX base URL: missing host".to_string());
+        };
+
+        let is_local = matches!(host, "localhost" | "127.0.0.1" | "::1");
+        if !is_local {
+            return Err(format!(
+                "Invalid MLX base URL host: {host}. Only localhost, 127.0.0.1, or ::1 are allowed."
+            ));
+        }
+
+        Ok(parsed.to_string().trim_end_matches('/').to_string())
     }
 
     fn should_abort(app: &AppHandle, session_id: &str) -> Result<bool, String> {
