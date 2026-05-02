@@ -8,7 +8,7 @@ import { api, type Source } from "../lib/api";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { open as openShell } from "@tauri-apps/plugin-shell";
-import { useScopedWorkspace } from "../lib/workspacePane";
+import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 
 // ── Folder tree helpers ─────────────────────────────────────────────────
 
@@ -248,6 +248,7 @@ function FolderTreeNode({
 
 export default function SourceBrowserView() {
   const { activeWorkspaceId } = useScopedWorkspace();
+  const includeDescendants = useBubbleUpFlag();
   const [sources, setSources] = useState<Source[]>([]);
   const [selected, setSelected] = useState<Source | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -285,7 +286,7 @@ export default function SourceBrowserView() {
 
   useEffect(() => {
     if (!activeWorkspaceId) { return; }
-    api.source.list(activeWorkspaceId, undefined, { includeDescendants: true }).then((items) => {
+    api.source.list(activeWorkspaceId, undefined, { includeDescendants }).then((items) => {
       setSources(items);
       // Auto-expand all folders
       const folders = new Set<string>();
@@ -300,7 +301,7 @@ export default function SourceBrowserView() {
       }
       setExpanded(folders);
     }).catch(() => {});
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, includeDescendants]);
 
   const toggleExpanded = useCallback((path: string) => {
     setExpanded((prev) => {

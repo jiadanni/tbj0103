@@ -6,6 +6,7 @@ import { message } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import type { ChatSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useBubbleUpFlag } from "../lib/workspacePane";
 
 interface DateGroup {
   label: string;
@@ -56,6 +57,7 @@ export default function HistoryView() {
   const navigate = useNavigate();
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const isDemoMode = useWorkspaceStore((s) => s.isDemoMode);
+  const includeDescendants = useBubbleUpFlag();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -65,13 +67,13 @@ export default function HistoryView() {
     setLoading(true);
     try {
       const results = query.trim()
-        ? await api.chat.searchSessions(activeWorkspaceId, query, null, { includeDescendants: true })
-        : await api.chat.listSessions(activeWorkspaceId, null, { includeDescendants: true });
+        ? await api.chat.searchSessions(activeWorkspaceId, query, null, { includeDescendants })
+        : await api.chat.listSessions(activeWorkspaceId, null, { includeDescendants });
       setSessions(results.filter((s) => !s.is_deleted));
     } finally {
       setLoading(false);
     }
-  }, [activeWorkspaceId, query]);
+  }, [activeWorkspaceId, query, includeDescendants]);
 
   useEffect(() => {
     const timer = setTimeout(loadSessions, query ? 150 : 0);
