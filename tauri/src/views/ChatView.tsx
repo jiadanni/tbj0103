@@ -203,7 +203,7 @@ type WorkspaceProjectFlyoutState = {
 
 type SessionSidebarRow =
   | { type: "session"; key: string; session: ChatSession; depth: number; showProjectBorder: boolean }
-  | { type: "project"; key: string; project: Project; isOpen: boolean }
+  | { type: "project"; key: string; project: Project; isOpen: boolean; expandKey: string; depth: number }
   | { type: "workspace"; key: string; workspace: Workspace; isOpen: boolean };
 
 function SessionItem({
@@ -571,8 +571,21 @@ function SessionSidebar({
         isOpen: expanded[`ws-${ws.id}`] ?? false,
       }];
       if (expanded[`ws-${ws.id}`] ?? false) {
+        const wsSessions = byWorkspace[ws.id] ?? [];
+        const wsProjects = projectsByWorkspace[ws.id] ?? [];
+        // Sub-group workspace sessions by project
+        const wsByProject: Record<string, ChatSession[]> = {};
+        const wsUngrouped: ChatSession[] = [];
+        for (const session of wsSessions) {
+          if (session.project_id) {
+            (wsByProject[session.project_id] ??= []).push(session);
+          } else {
+            wsUngrouped.push(session);
+          }
+        }
+        // Ungrouped sessions first
         wsRows.push(
-          ...(byWorkspace[ws.id] ?? []).map((session) => ({
+          ...wsUngrouped.map((session) => ({
             type: "session" as const,
             key: session.id,
             session,
@@ -580,6 +593,31 @@ function SessionSidebar({
             showProjectBorder: true,
           })),
         );
+        // Then project folders
+        for (const proj of wsProjects) {
+          if (!(wsByProject[proj.id]?.length)) continue;
+          const projKey = `ws-${ws.id}-project-${proj.id}`;
+          const projOpen = expanded[projKey] ?? true;
+          wsRows.push({
+            type: "project" as const,
+            key: projKey,
+            project: proj,
+            isOpen: projOpen,
+            expandKey: projKey,
+            depth: 1,
+          });
+          if (projOpen) {
+            wsRows.push(
+              ...(wsByProject[proj.id] ?? []).map((session) => ({
+                type: "session" as const,
+                key: session.id,
+                session,
+                depth: 2,
+                showProjectBorder: true,
+              })),
+            );
+          }
+        }
       }
       return wsRows;
     }),
@@ -596,6 +634,8 @@ function SessionSidebar({
         key: `project-${project.id}`,
         project,
         isOpen: expanded[project.id] ?? true,
+        expandKey: project.id,
+        depth: 0,
       }];
 
       if (expanded[project.id] ?? true) {
@@ -1417,7 +1457,7 @@ function SessionSidebar({
                   );
                 }
 
-                const { project, isOpen } = row;
+                const { project, isOpen, expandKey, depth: projectDepth } = row;
                 return (
                   <button
                     onContextMenu={(event) => {
@@ -1448,7 +1488,7 @@ function SessionSidebar({
                         toggleProjectSelection(project.id);
                         return;
                       }
-                      setExpanded((prev) => ({ ...prev, [project.id]: !isOpen }));
+                      setExpanded((prev) => ({ ...prev, [expandKey]: !isOpen }));
                     }}
                     className={`w-full flex items-center gap-1.5 rounded-xl border px-3 py-2 text-left transition-colors ${dragOverProjectId === project.id
                       ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
@@ -1456,6 +1496,7 @@ function SessionSidebar({
                         ? "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                         : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                       }`}
+                    style={{ paddingLeft: projectDepth > 0 ? `${projectDepth * 12 + 12}px` : undefined }}
                   >
                     {selectMode && (
                       <button
