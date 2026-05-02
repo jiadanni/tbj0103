@@ -19,8 +19,14 @@
       "Bash(git stash:*)",
       "Bash(npx vitest:*)",
       "Bash(/home/urljenkins/.nvm/versions/node/v22.22.1/bin/npx vitest:*)",
+<<<<<<< Updated upstream
       "Bash($HOME/.nvm/versions/node/v22.22.1/bin/npx tsc:*)",
       "Bash($HOME/.nvm/versions/node/v22.22.1/bin/npx vitest:*)"
+=======
+      "Read(//home/urljenkins/Source/tbj0103/**)",
+      "Bash(for commit:*)",
+      "Bash(do echo:*)"
+>>>>>>> Stashed changes
     ]
   },
   "outputStyle": "Learning",
