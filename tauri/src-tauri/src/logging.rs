@@ -1,13 +1,50 @@
 use chrono::Local;
 use rusqlite::Connection;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 
 fn timestamp() -> String {
-    Local::now().format("%H:%M:%S").to_string()
+    Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%:z").to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic log levels
+// ---------------------------------------------------------------------------
+
+/// Numeric encoding: 0=debug, 1=info, 2=warn, 3=error
+static MIN_LOG_LEVEL: AtomicU8 = AtomicU8::new(1); // default: info
+
+/// Set the minimum log level. Entries below this level are silently dropped.
+/// Accepts `"debug"`, `"info"`, `"warn"`, `"error"`. Unknown values default to `"info"`.
+pub fn set_min_log_level(level: &str) {
+    let l = level_to_u8(level);
+    MIN_LOG_LEVEL.store(l, Ordering::Relaxed);
+}
+
+pub fn get_min_log_level() -> String {
+    match MIN_LOG_LEVEL.load(Ordering::Relaxed) {
+        0 => "debug",
+        2 => "warn",
+        3 => "error",
+        _ => "info",
+    }.to_string()
+}
+
+fn level_to_u8(level: &str) -> u8 {
+    match level {
+        "debug" => 0,
+        "warn"  => 2,
+        "error" => 3,
+        _       => 1,
+    }
+}
+
+fn should_log(level: &str) -> bool {
+    level_to_u8(level) >= MIN_LOG_LEVEL.load(Ordering::Relaxed)
 }
 
 pub fn stderr(message: impl AsRef<str>) {
@@ -27,6 +64,9 @@ pub fn init_pool(pool: Pool<SqliteConnectionManager>) {
 }
 
 fn persist(level: &str, source: &str, message: &str, metadata: &str) {
+    if !should_log(level) {
+        return;
+    }
     if let Some(pool) = DB_POOL.get() {
         if let Ok(conn) = pool.get() {
             let _ = conn.execute(
@@ -37,26 +77,41 @@ fn persist(level: &str, source: &str, message: &str, metadata: &str) {
     }
 }
 
+/// Delete log rows older than `days` days.
+pub fn prune_old_logs(conn: &Connection, days: u32) {
+    let _ = conn.execute(
+        "DELETE FROM app_logs WHERE timestamp < datetime('now', ?1)",
+        rusqlite::params![format!("-{days} days")],
+    );
+}
+
 pub fn log_debug(source: &str, message: impl AsRef<str>) {
     let msg = message.as_ref();
-    eprintln!("[{}] [DEBUG] [{}] {}", timestamp(), source, msg);
-    persist("debug", source, msg, "{}");
+    if should_log("debug") {
+        eprintln!("[{}] [DEBUG] [{}] {}", timestamp(), source, msg);
+        persist("debug", source, msg, "{}");
+    }
 }
 
 pub fn log_info(source: &str, message: impl AsRef<str>) {
     let msg = message.as_ref();
-    eprintln!("[{}] [INFO]  [{}] {}", timestamp(), source, msg);
-    persist("info", source, msg, "{}");
+    if should_log("info") {
+        eprintln!("[{}] [INFO]  [{}] {}", timestamp(), source, msg);
+        persist("info", source, msg, "{}");
+    }
 }
 
 pub fn log_warn(source: &str, message: impl AsRef<str>) {
     let msg = message.as_ref();
-    eprintln!("[{}] [WARN]  [{}] {}", timestamp(), source, msg);
-    persist("warn", source, msg, "{}");
+    if should_log("warn") {
+        eprintln!("[{}] [WARN]  [{}] {}", timestamp(), source, msg);
+        persist("warn", source, msg, "{}");
+    }
 }
 
 pub fn log_error(source: &str, message: impl AsRef<str>) {
     let msg = message.as_ref();
+    // errors always bypass the level filter — we never want to miss them
     eprintln!("[{}] [ERROR] [{}] {}", timestamp(), source, msg);
     persist("error", source, msg, "{}");
 }
@@ -227,6 +282,10 @@ pub fn log_buffered(level: &str, source: &str, message: &str, metadata: &str) {
         return;
     }
 
+    if !should_log(level) {
+        return;
+    }
+
     let tag = match level {
         "debug" => "DEBUG",
         "warn" => "WARN",
@@ -255,6 +314,10 @@ pub fn log_buffered_aggregated(level: &str, source: &str, message_template: &str
         let tag = "ERROR";
         eprintln!("[{}] [{}] [{}] {}", timestamp(), tag, source, message_template);
         persist(level, source, message_template, metadata);
+        return;
+    }
+
+    if !should_log(level) {
         return;
     }
 
@@ -301,13 +364,54 @@ pub fn persist_batch(entries: &[(String, String, String, String, String)]) {
     let _ = tx.commit();
 }
 
-/// Spawn a background timer that periodically flushes the buffered logger.
+/// Spawn a background timer that periodically flushes the buffered logger
+/// and prunes logs older than `retention_days` (default 7) once per day.
 /// Call once during app setup, after `init_pool`.
 pub fn start_flush_timer() {
-    std::thread::spawn(|| {
+    start_flush_timer_with_retention(7);
+}
+
+pub fn start_flush_timer_with_retention(retention_days: u32) {
+    std::thread::spawn(move || {
+        // Prune immediately on startup.
+        if let Some(pool) = DB_POOL.get() {
+            if let Ok(conn) = pool.get() {
+                prune_old_logs(&conn, retention_days);
+            }
+        }
+
+        let mut last_prune = Instant::now();
         loop {
             std::thread::sleep(FLUSH_INTERVAL);
             flush_buffered();
+
+            // Prune once every 24 hours.
+            if last_prune.elapsed() >= Duration::from_secs(86_400) {
+                if let Some(pool) = DB_POOL.get() {
+                    if let Ok(conn) = pool.get() {
+                        prune_old_logs(&conn, retention_days);
+                        last_prune = Instant::now();
+                    }
+                }
+            }
         }
     });
+}
+
+// ---------------------------------------------------------------------------
+// Typed metadata macro
+// ---------------------------------------------------------------------------
+
+/// Convenience macro for attaching structured key/value metadata to a log call.
+///
+/// # Examples
+/// ```ignore
+/// app_log_meta!("info", "chat", "Session started", session_id = session.id, model = &model);
+/// ```
+#[macro_export]
+macro_rules! app_log_meta {
+    ($level:expr, $source:expr, $msg:expr $(, $key:ident = $val:expr)* $(,)?) => {{
+        let meta = ::serde_json::json!({ $(stringify!($key): $val),* }).to_string();
+        $crate::logging::log_with_meta($level, $source, $msg, &meta);
+    }};
 }

@@ -108,6 +108,21 @@ export function installConsoleTimestamps(): void {
     }) as Console[ConsoleMethod];
   }
 
+  // Catch unhandled exceptions and rejected promises that bypass console.error
+  if (typeof window !== "undefined") {
+    window.addEventListener("error", (event) => {
+      if (forwardToBackend) {
+        bufferLogEntry("error", "window", `Unhandled error: ${event.message}`);
+      }
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      if (forwardToBackend) {
+        bufferLogEntry("error", "promise", `Unhandled promise rejection: ${String(event.reason)}`);
+      }
+    });
+  }
+
   consoleWithFlag[PATCH_FLAG] = true;
   /* eslint-enable no-console */
 }

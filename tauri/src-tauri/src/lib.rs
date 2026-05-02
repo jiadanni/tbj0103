@@ -91,6 +91,27 @@ fn apply_saved_main_window_state(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Register a panic hook that flushes buffered logs before the process exits,
+    // ensuring the crash cause is captured in the SQLite log table.
+    std::panic::set_hook(Box::new(|info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<&'static str>()
+            .copied()
+            .or_else(|| {
+                info.payload()
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str())
+            })
+            .unwrap_or("Box<dyn Any>");
+        let location = info
+            .location()
+            .map(|loc| format!("{}:{}", loc.file(), loc.line()))
+            .unwrap_or_else(|| "unknown".to_string());
+        crate::logging::log_error("panic", format!("Panic at {location}: {msg}"));
+        crate::logging::flush_buffered();
+    }));
+
     let run_result = tauri::Builder::default()
         .on_menu_event(app_menu::handle_menu_event)
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -151,6 +172,19 @@ pub fn run() {
 
             // Initialize persistent logging with the DB pool
             crate::logging::init_pool(pool.clone());
+            // Apply persisted log level before starting the flush timer.
+            {
+                let log_conn = pool.get().map_err(|e| format!("Failed to get DB connection: {e}"))?;
+                if let Ok(row) = log_conn.query_row(
+                    "SELECT value FROM settings WHERE key = 'log_level'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                ) {
+                    if let Ok(level) = serde_json::from_str::<String>(&row) {
+                        crate::logging::set_min_log_level(&level);
+                    }
+                }
+            }
             crate::logging::start_flush_timer();
 
             app.manage(db::DbState(pool));
@@ -601,6 +635,8 @@ pub fn run() {
             commands::log::clear_logs,
             commands::log::log_frontend_event,
             commands::log::log_frontend_events_batch,
+            commands::log::set_log_level,
+            commands::log::get_log_level,
         ])
         .run(tauri::generate_context!());
 

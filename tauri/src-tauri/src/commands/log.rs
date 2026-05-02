@@ -141,6 +141,22 @@ pub fn clear_logs(
 }
 
 #[tauri::command]
+pub fn set_log_level(level: String) -> Result<(), String> {
+    match level.as_str() {
+        "debug" | "info" | "warn" | "error" => {
+            crate::logging::set_min_log_level(&level);
+            Ok(())
+        }
+        other => Err(format!("Invalid log level '{other}'. Must be debug, info, warn, or error.")),
+    }
+}
+
+#[tauri::command]
+pub fn get_log_level() -> String {
+    crate::logging::get_min_log_level()
+}
+
+#[tauri::command]
 pub fn log_frontend_event(
     state: State<DbState>,
     req: LogFrontendEventRequest,
