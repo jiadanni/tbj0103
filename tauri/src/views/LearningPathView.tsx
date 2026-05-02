@@ -74,15 +74,17 @@ export default function LearningPathView() {
         surveyJson,
       );
 
-      // 2. Analyze workspace (seeds concept graph; works even on empty workspaces)
+      // 2. Analyze workspace (seeds concept graph; skip on root/overview workspaces)
       setGenerateStep("analyze");
-      try {
-        await api.knowledge.analyzeWorkspace(activeWorkspaceId, model, {
-          ollamaUrl: ollamaUrl || undefined,
-          surveyContext: surveyText,
-        });
-      } catch {
-        // analyze may fail on truly empty workspaces without survey content for JSON — not fatal
+      if (!includeDescendants) {
+        try {
+          await api.knowledge.analyzeWorkspace(activeWorkspaceId, model, {
+            ollamaUrl: ollamaUrl || undefined,
+            surveyContext: surveyText,
+          });
+        } catch {
+          // analyze may fail on truly empty workspaces without survey content for JSON — not fatal
+        }
       }
 
       // 3. Suggest learning goals
