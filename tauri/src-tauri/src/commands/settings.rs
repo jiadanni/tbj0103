@@ -51,6 +51,8 @@ pub struct Settings {
     pub show_gen_info_model: bool,
     pub demo_dismissed: bool,
     pub memory_enabled: bool,
+    pub memory_extraction_threshold: u32,
+    pub memory_extraction_idle_minutes: u32,
     pub menubar_icon_style: String,
 }
 
@@ -107,6 +109,8 @@ impl Default for Settings {
             show_gen_info_model: true,
             demo_dismissed: false,
             memory_enabled: true,
+            memory_extraction_threshold: 5,
+            memory_extraction_idle_minutes: 5,
             menubar_icon_style: "monochrome".to_string(),
         }
     }
@@ -333,6 +337,12 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         memory_enabled: get_setting(&conn, "memory_enabled")
             .map(|v| v == "true")
             .unwrap_or(def.memory_enabled),
+        memory_extraction_threshold: get_setting(&conn, "memory_extraction_threshold")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.memory_extraction_threshold),
+        memory_extraction_idle_minutes: get_setting(&conn, "memory_extraction_idle_minutes")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.memory_extraction_idle_minutes),
         menubar_icon_style: get_setting(&conn, "menubar_icon_style")
             .unwrap_or_else(|| def.menubar_icon_style.clone()),
     })
@@ -565,6 +575,16 @@ pub fn update_settings(
         &conn,
         "memory_enabled",
         &settings.memory_enabled.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "memory_extraction_threshold",
+        &settings.memory_extraction_threshold.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "memory_extraction_idle_minutes",
+        &settings.memory_extraction_idle_minutes.to_string(),
     )?;
     set_setting(
         &conn,

@@ -3,24 +3,48 @@ use crate::models::chat::Message;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::model_settings::{get_configured_chat_model, get_embedding_model};
 
+/// Read a configurable threshold from settings (default: 5).
+fn get_extraction_threshold(state: &DbState) -> usize {
+    let conn = match state.0.get() {
+        Ok(c) => c,
+        Err(_) => return 5,
+    };
+    crate::commands::settings::get_setting(&conn, "memory_extraction_threshold")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5)
+}
+
+/// Read a configurable idle window from settings (default: 5 minutes).
+fn get_extraction_idle_minutes(state: &DbState) -> u32 {
+    let conn = match state.0.get() {
+        Ok(c) => c,
+        Err(_) => return 5,
+    };
+    crate::commands::settings::get_setting(&conn, "memory_extraction_idle_minutes")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5)
+}
+
 /// Auto-extract memories if the session has new unextracted messages.
-/// This checks if the session length is a multiple of 5.
 pub async fn process_auto_memory_extraction(
     state: &DbState,
     ollama_url: Option<String>,
 ) -> Result<(), String> {
+    let threshold = get_extraction_threshold(state);
+    let idle_minutes = get_extraction_idle_minutes(state);
     let sessions = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        // Only process sessions updated in the last 5 minutes that are not private.
-        let mut stmt = conn.prepare(
-            "SELECT id, workspace_id, project_id, last_processed_message_count FROM chat_sessions 
-             WHERE datetime(updated_at) > datetime('now', '-5 minutes') 
-             AND is_incognito = 0
-             AND exclude_from_analytics = 0
-             AND is_imported = 0
-             ORDER BY updated_at DESC
-             LIMIT 5"
-        ).map_err(|e| e.to_string())?;
+        let sql = format!(
+            "SELECT id, workspace_id, project_id, last_processed_message_count FROM chat_sessions \
+             WHERE datetime(updated_at) > datetime('now', '-{} minutes') \
+             AND is_incognito = 0 \
+             AND exclude_from_analytics = 0 \
+             AND is_imported = 0 \
+             ORDER BY updated_at DESC \
+             LIMIT 5",
+            idle_minutes
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let sessions = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -66,7 +90,7 @@ pub async fn process_auto_memory_extraction(
         };
 
         if !messages.is_empty()
-            && messages.len() >= 5
+            && messages.len() >= threshold
             && messages.len() > last_count as usize
             && extract_and_store_memories(
                 state,
@@ -113,10 +137,17 @@ pub async fn extract_and_store_memories(
     }
 
     let prompt = format!(
-        "Extract any important facts, preferences, or context about the user from the following conversation.\n\
-        Format as a JSON list of strings. Only include facts that are meant to be remembered long-term.\n\
-        If there is nothing to remember, return an empty list [].\n\n\
-        Conversation:\n{}",
+        "You are a memory extraction system. Read the conversation below and output ONLY a JSON list of short, factual statements about the user.\n\n\
+        RULES:\n\
+        - Each item must be a single concise sentence (under 20 words).\n\
+        - Write facts ABOUT THE USER, not explanations or conversation quotes.\n\
+        - Do NOT copy or paraphrase assistant responses.\n\
+        - Do NOT include greetings, filler, or conversational text.\n\
+        - Good: \"User is learning Python\"\n\
+        - Bad: \"You are absolutely correct! In Python, keyword arguments are evaluated before positional arguments.\"\n\
+        - If there is nothing worth remembering, return []\n\n\
+        Conversation:\n{}\n\n\
+        Output ONLY a JSON array of strings, nothing else.",
         conversation_text
     );
 

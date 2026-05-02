@@ -57,11 +57,14 @@ pub fn start_scheduler(app: AppHandle) {
 
             let is_active_chatting = {
                 if let Ok(conn) = db.0.get() {
-                    let count: i64 = conn.query_row(
-                        "SELECT COUNT(*) FROM chat_sessions WHERE datetime(last_accessed_at) >= datetime('now', '-5 minutes')",
-                        [],
-                        |row| row.get(0),
-                    ).unwrap_or(0);
+                    let idle_minutes: u32 = crate::commands::settings::get_setting(&conn, "memory_extraction_idle_minutes")
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(5);
+                    let sql = format!(
+                        "SELECT COUNT(*) FROM chat_sessions WHERE datetime(last_accessed_at) >= datetime('now', '-{} minutes')",
+                        idle_minutes
+                    );
+                    let count: i64 = conn.query_row(&sql, [], |row| row.get(0)).unwrap_or(0);
                     count > 0
                 } else {
                     false
