@@ -1367,6 +1367,8 @@ export const api = {
     clear: (before?: string) => invoke<number>("clear_logs", { before }),
     logFrontendEvent: (level: string, source: string, message: string, metadata?: string) =>
       invoke<void>("log_frontend_event", { req: { level, source, message, metadata } }),
+    logFrontendEventsBatch: (events: Array<{ level: string; source: string; message: string; metadata?: string }>) =>
+      invoke<void>("log_frontend_events_batch", { req: { events } }),
   },
 };
 

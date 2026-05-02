@@ -154,3 +154,31 @@ pub fn log_frontend_event(
     crate::logging::log_with_conn(&conn, level, &req.source, &req.message, metadata);
     Ok(())
 }
+
+#[derive(Debug, Deserialize)]
+pub struct LogFrontendEventBatchRequest {
+    pub events: Vec<LogFrontendEventRequest>,
+}
+
+#[tauri::command]
+pub fn log_frontend_events_batch(
+    req: LogFrontendEventBatchRequest,
+) -> Result<(), String> {
+    let entries: Vec<(String, String, String, String, String)> = req
+        .events
+        .iter()
+        .map(|e| {
+            let level = match e.level.as_str() {
+                "debug" | "info" | "warn" | "error" => e.level.clone(),
+                _ => "info".to_string(),
+            };
+            let metadata = e.metadata.clone().unwrap_or_else(|| "{}".to_string());
+            let ts = chrono::Local::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3f%:z")
+                .to_string();
+            (ts, level, e.source.clone(), e.message.clone(), metadata)
+        })
+        .collect();
+    crate::logging::persist_batch(&entries);
+    Ok(())
+}

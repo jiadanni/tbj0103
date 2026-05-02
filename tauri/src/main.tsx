@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
-import { installConsoleTimestamps, enableLogForwarding } from "./lib/consoleTimestamps";
+import { installConsoleTimestamps, enableBatchLogForwarding } from "./lib/consoleTimestamps";
 import { isLinux } from "./lib/platform";
 import { api } from "./lib/api";
 import "./styles/globals.css";
@@ -15,10 +15,15 @@ const queryClient = new QueryClient({
 
 installConsoleTimestamps();
 
-// Forward console.warn/error to persistent backend log store
-enableLogForwarding((level, source, message) => {
-  api.logs.logFrontendEvent(level, source, message).catch(() => {});
-});
+// Forward console.warn/error to persistent backend log store (batched)
+enableBatchLogForwarding(
+  (level, source, message) => {
+    api.logs.logFrontendEvent(level, source, message).catch(() => {});
+  },
+  (events) => {
+    api.logs.logFrontendEventsBatch(events).catch(() => {});
+  },
+);
 
 if (isLinux) {
   document.documentElement.dataset.platform = "linux";
