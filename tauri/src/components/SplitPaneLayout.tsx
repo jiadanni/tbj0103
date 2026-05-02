@@ -1,4 +1,4 @@
-import React, { Suspense, useMemo } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { type PaneId, type PaneView, type Workspace, useWorkspaceStore } from "../stores/workspaceStore";
 import { WorkspacePaneProvider, useScopedWorkspace } from "../lib/workspacePane";
@@ -93,6 +93,19 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
   const { parent, children } = usePaneSubWorkspaces(paneId);
   const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
   const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) { return; }
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpen]);
 
   if (!parent) {
     return <div className="h-8 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 shrink-0" />;
@@ -101,22 +114,51 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
   return (
     <div className="flex items-center h-8 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-2 shrink-0 select-none">
       <div className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
-        {/* Pinned parent tab */}
-        <button
-          data-testid={`pane-pinned-tab-${paneId}`}
-          onClick={() => setPaneWorkspace(paneId, parent.id)}
-          className={`relative mt-0.5 flex h-[26px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-3 text-xs font-medium whitespace-nowrap transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
-            paneWorkspaceId === parent.id
-              ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
-              : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
-          }`}
-        >
-          {paneWorkspaceId === parent.id && (
-            <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+        {/* Pinned parent dot — opens a dropdown of all children */}
+        <div className="relative" ref={menuRef}>
+          <button
+            data-testid={`pane-pinned-tab-${paneId}`}
+            onClick={() => setMenuOpen((v) => !v)}
+            title={parent.name}
+            className={`relative mt-0.5 flex h-[26px] w-[26px] items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
+              menuOpen
+                ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
+                : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+            }`}
+          >
+            <svg data-testid="pinned-dot" width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+          </button>
+          {menuOpen && (
+            <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl backdrop-blur-xl">
+              {/* Parent entry */}
+              <button
+                onClick={() => { setPaneWorkspace(paneId, parent.id); setMenuOpen(false); }}
+                className={`flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider transition-colors ${
+                  paneWorkspaceId === parent.id
+                    ? "text-[var(--accent-color)]"
+                    : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+                {parent.name}
+              </button>
+              {/* Child entries */}
+              {children.map((workspace) => (
+                <button
+                  key={workspace.id}
+                  onClick={() => { setPaneWorkspace(paneId, workspace.id); setMenuOpen(false); }}
+                  className={`flex w-full items-center rounded py-1.5 pl-6 pr-3 text-left text-sm transition-colors ${
+                    paneWorkspaceId === workspace.id
+                      ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  {workspace.name}
+                </button>
+              ))}
+            </div>
           )}
-          <svg data-testid="pinned-dot" width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
-          {parent.name}
-        </button>
+        </div>
         {children.map((workspace) => (
           <button
             key={workspace.id}
