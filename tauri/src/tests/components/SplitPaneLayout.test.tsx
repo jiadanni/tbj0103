@@ -123,6 +123,20 @@ describe("SplitPaneLayout — PaneSubWorkspaceTabs", () => {
     expect(state.panes.primary.workspaceId).toBe("ws-child2");
   });
 
+  it("selecting the parent in the dropdown switches pane to the parent workspace", () => {
+    render(<SplitPaneLayout />);
+    const pinnedTab = screen.getByTestId("pane-pinned-tab-primary");
+    fireEvent.click(pinnedTab);
+    // Click "Parent Workspace" in the dropdown
+    const parentButton = screen.getAllByText("Parent Workspace").find(
+      (el) => el.tagName === "BUTTON" && el.closest("[class*='absolute']")
+    );
+    expect(parentButton).toBeTruthy();
+    if (parentButton) { fireEvent.click(parentButton); }
+    const state = useWorkspaceStore.getState();
+    expect(state.panes.primary.workspaceId).toBe("ws-parent");
+  });
+
   it("pinned dot appears before child workspace tabs in the DOM", () => {
     render(<SplitPaneLayout />);
     const pinnedTab = screen.getByTestId("pane-pinned-tab-primary");
