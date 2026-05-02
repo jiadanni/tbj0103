@@ -57,6 +57,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v43_switch_workspace_section",
     "v44_ai_models_context_size",
     "v45_workspaces_survey_data",
+    "v46_fix_workspace_last_message_at_trigger",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1107,6 +1108,43 @@ fn run_migrations(conn: &Connection) -> Result<()> {
     if applied_v45 == 0 {
         let _ = conn.execute_batch("ALTER TABLE workspaces ADD COLUMN survey_data TEXT;");
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v45_workspaces_survey_data');")?;
+    }
+
+    // v46: fix update_workspace_last_message_at trigger to never walk backwards
+    let applied_v46: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v46_fix_workspace_last_message_at_trigger'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v46 == 0 {
+        // Drop the old (buggy) trigger and recreate it with a MAX() guard so that
+        // inserting a message with an older created_at (e.g. during import) can
+        // never walk last_message_at backwards.
+        conn.execute_batch(
+            "DROP TRIGGER IF EXISTS update_workspace_last_message_at;
+             CREATE TRIGGER update_workspace_last_message_at
+             AFTER INSERT ON messages
+             BEGIN
+                 UPDATE workspaces
+                 SET last_message_at = NEW.created_at
+                 WHERE id = (SELECT workspace_id FROM chat_sessions WHERE id = NEW.session_id)
+                   AND (last_message_at IS NULL OR NEW.created_at > last_message_at);
+             END;"
+        )?;
+
+        // Correct any values that may have been set backwards by the old trigger:
+        // re-compute last_message_at as the actual MAX message timestamp per workspace.
+        conn.execute_batch(
+            "UPDATE workspaces
+             SET last_message_at = (
+                 SELECT MAX(m.created_at)
+                 FROM messages m
+                 JOIN chat_sessions s ON m.session_id = s.id
+                 WHERE s.workspace_id = workspaces.id
+             );"
+        )?;
+
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v46_fix_workspace_last_message_at_trigger');")?;
     }
 
     Ok(())
