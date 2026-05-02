@@ -5,7 +5,6 @@ import {
   BarChart2,
   CheckCircle2,
   Clock3,
-  FolderOpen,
   MessageSquare,
   RefreshCw,
   Search,
@@ -90,7 +89,7 @@ function normalizeKnowledgeRoute(route: DashboardRoute): DashboardRoute {
 
 export default function ProjectDashboardView() {
   const navigate = useNavigate();
-  const { activeWorkspaceId, setActiveWorkspaceId } = useScopedWorkspace();
+  const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -100,12 +99,6 @@ export default function ProjectDashboardView() {
   const workspace = useMemo(
     () => workspaces.find((item) => item.id === activeWorkspaceId) ?? null,
     [workspaces, activeWorkspaceId],
-  );
-  const childWorkspaces = useMemo(
-    () => includeDescendants && activeWorkspaceId
-      ? workspaces.filter((ws) => ws.parent_workspace_id === activeWorkspaceId)
-      : [],
-    [workspaces, activeWorkspaceId, includeDescendants],
   );
   const continueLearning = summary?.continue_learning ?? null;
 
@@ -250,30 +243,6 @@ export default function ProjectDashboardView() {
             </div>
           </div>
         </header>
-
-        {childWorkspaces.length > 0 && (
-          <Section title="Spaces" eyebrow="Sub-workspaces">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {childWorkspaces.map((child) => (
-                <button
-                  key={child.id}
-                  onClick={() => setActiveWorkspaceId(child.id)}
-                  className="flex items-center gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
-                    <FolderOpen size={18} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-[var(--text-primary)] truncate">{child.name}</div>
-                    {child.description && (
-                      <div className="mt-0.5 text-xs text-[var(--text-secondary)] truncate">{child.description}</div>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </Section>
-        )}
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard label="Due Review" value={effectiveSummary.review.due_today} accent="bg-amber-400" />
