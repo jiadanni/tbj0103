@@ -1,7 +1,7 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2 } from "lucide-react";
+import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderOpen, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
@@ -203,7 +203,8 @@ type WorkspaceProjectFlyoutState = {
 
 type SessionSidebarRow =
   | { type: "session"; key: string; session: ChatSession; depth: number; showProjectBorder: boolean }
-  | { type: "project"; key: string; project: Project; isOpen: boolean };
+  | { type: "project"; key: string; project: Project; isOpen: boolean }
+  | { type: "workspace"; key: string; workspace: Workspace };
 
 function SessionItem({
   session, activeChatId, selectMode, isSelected, renamingId, renameTitle,
@@ -332,6 +333,13 @@ function SessionSidebar({
 }: SessionSidebarProps) {
   const isSplitPane = useWorkspacePane() !== null;
   const includeDescendants = useBubbleUpFlag();
+  const { activeWorkspaceId: scopedWsId, setActiveWorkspaceId: setScopedWsId } = useScopedWorkspace();
+  const childWorkspaces = useMemo(
+    () => includeDescendants && scopedWsId
+      ? workspaces.filter((ws) => ws.parent_workspace_id === scopedWsId)
+      : [],
+    [workspaces, scopedWsId, includeDescendants],
+  );
   const clampedSidebarWidth = clampSessionSidebarWidth(sidebarWidth, isSplitPane);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectMode, setSelectMode] = useState(false);
@@ -522,6 +530,11 @@ function SessionSidebar({
   }
 
   const sessionSidebarRows: SessionSidebarRow[] = [
+    ...childWorkspaces.map((ws) => ({
+      type: "workspace" as const,
+      key: `ws-${ws.id}`,
+      workspace: ws,
+    })),
     ...ungrouped.map((session) => ({
       type: "session" as const,
       key: session.id,
@@ -1334,6 +1347,18 @@ function SessionSidebar({
               itemContent={(_, row) => {
                 if (row.type === "session") {
                   return renderSessionRow(row.session, row.depth, row.showProjectBorder);
+                }
+
+                if (row.type === "workspace") {
+                  return (
+                    <button
+                      onClick={() => setScopedWsId(row.workspace.id)}
+                      className="w-full flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] text-[var(--text-secondary)] mb-0.5"
+                    >
+                      <FolderOpen size={isSplitPane ? 14 : 13} className="text-[var(--accent-color)] shrink-0" />
+                      <span className={`truncate font-medium ${isSplitPane ? "text-xs" : "text-[11px]"}`}>{row.workspace.name}</span>
+                    </button>
+                  );
                 }
 
                 const { project, isOpen } = row;
