@@ -440,17 +440,10 @@ function SubWorkspaceTabBar({
             </button>
             {dotMenuOpen && (
               <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl backdrop-blur-xl">
-                <button
-                  onClick={() => { onSelect(parent.id); setDotMenuOpen(false); }}
-                  className={`flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider transition-colors ${
-                    activeWorkspaceId === parent.id
-                      ? "text-[var(--accent-color)]"
-                      : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                  }`}
-                >
+                <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                   <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
                   {parent.name}
-                </button>
+                </div>
                 {children.map((workspace) => (
                   <button
                     key={workspace.id}
