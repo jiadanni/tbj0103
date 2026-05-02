@@ -1,13 +1,15 @@
 use crate::db::DbState;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 /// AI-powered knowledge graph analysis commands.
 /// analyze_workspace — infers concepts & relationships from workspace content via Ollama.
 /// suggest_learning_goals — proposes goals from the existing concept landscape.
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct AnalysisResult {
     pub concepts_created: usize,
     pub links_created: usize,
@@ -442,9 +444,16 @@ pub async fn analyze_workspace(
     state: State<'_, DbState>,
     req: AnalyzeWorkspaceRequest,
 ) -> Result<AnalysisResult, String> {
+    analyze_workspace_impl(&state.0, req).await
+}
+
+pub async fn analyze_workspace_impl(
+    pool: &Pool<SqliteConnectionManager>,
+    req: AnalyzeWorkspaceRequest,
+) -> Result<AnalysisResult, String> {
     // 1. Gather content — acquire + release lock before async call
     let snapshot = {
-        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let conn = pool.get().map_err(|e| e.to_string())?;
         gather_workspace_content(&conn, &req.workspace_id)
     };
 
@@ -589,7 +598,7 @@ Rules:\n\
     };
 
     // 5. Insert hierarchy + relationships — re-acquire lock
-    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let conn = pool.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
 
     let mut name_to_id: std::collections::HashMap<String, String> =
@@ -795,6 +804,139 @@ Rules:\n\
         chapters_created,
         sections_created,
     })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AnalyzeDescendantsRequest {
+    pub workspace_id: String,
+    pub model: String,
+    pub ollama_url: Option<String>,
+    pub focus_topic: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DescendantAnalysisProgress {
+    pub workspace_id: String,
+    pub workspace_name: String,
+    pub index: usize,
+    pub total: usize,
+    pub status: String, // "started" | "completed" | "skipped" | "failed"
+    pub error: Option<String>,
+    pub result: Option<AnalysisResult>,
+}
+
+#[tauri::command]
+pub async fn analyze_descendants(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    req: AnalyzeDescendantsRequest,
+) -> Result<Vec<DescendantAnalysisProgress>, String> {
+    use crate::commands::ollama::BackgroundInferenceCancel;
+
+    // Get direct child workspaces
+    let children: Vec<(String, String)> = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name FROM workspaces WHERE parent_workspace_id = ?1 ORDER BY order_index, name",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(rusqlite::params![req.workspace_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+        rows
+    };
+
+    if children.is_empty() {
+        return Err("No child workspaces found to analyze.".to_string());
+    }
+
+    let total = children.len();
+    let mut results: Vec<DescendantAnalysisProgress> = Vec::with_capacity(total);
+
+    // Subscribe to cancellation — yield if user starts chatting
+    let cancel_rx = app
+        .state::<BackgroundInferenceCancel>()
+        .0
+        .subscribe();
+
+    for (index, (ws_id, ws_name)) in children.iter().enumerate() {
+        // Check cancellation before each child
+        if cancel_rx.has_changed().unwrap_or(false) {
+            // User started chatting — stop analysis
+            let progress = DescendantAnalysisProgress {
+                workspace_id: ws_id.clone(),
+                workspace_name: ws_name.clone(),
+                index,
+                total,
+                status: "skipped".to_string(),
+                error: Some("Yielded to active chat".to_string()),
+                result: None,
+            };
+            let _ = app.emit("descendant-analysis-progress", &progress);
+            results.push(progress);
+            break;
+        }
+
+        // Emit started
+        let started = DescendantAnalysisProgress {
+            workspace_id: ws_id.clone(),
+            workspace_name: ws_name.clone(),
+            index,
+            total,
+            status: "started".to_string(),
+            error: None,
+            result: None,
+        };
+        let _ = app.emit("descendant-analysis-progress", &started);
+
+        // Run analysis for this child
+        let child_req = AnalyzeWorkspaceRequest {
+            workspace_id: ws_id.clone(),
+            model: req.model.clone(),
+            ollama_url: req.ollama_url.clone(),
+            focus_topic: req.focus_topic.clone(),
+            survey_context: None,
+        };
+
+        match analyze_workspace_impl(&state.0, child_req).await {
+            Ok(result) => {
+                let progress = DescendantAnalysisProgress {
+                    workspace_id: ws_id.clone(),
+                    workspace_name: ws_name.clone(),
+                    index,
+                    total,
+                    status: "completed".to_string(),
+                    error: None,
+                    result: Some(result),
+                };
+                let _ = app.emit("descendant-analysis-progress", &progress);
+                results.push(progress);
+            }
+            Err(err) => {
+                let progress = DescendantAnalysisProgress {
+                    workspace_id: ws_id.clone(),
+                    workspace_name: ws_name.clone(),
+                    index,
+                    total,
+                    status: if err.contains("No content found") || err.contains("Not enough workspace material") {
+                        "skipped".to_string()
+                    } else {
+                        "failed".to_string()
+                    },
+                    error: Some(err),
+                    result: None,
+                };
+                let _ = app.emit("descendant-analysis-progress", &progress);
+                results.push(progress);
+            }
+        }
+    }
+
+    Ok(results)
 }
 
 #[tauri::command]

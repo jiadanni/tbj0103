@@ -33,6 +33,7 @@ import {
   type DashboardActivity,
   type DashboardRoute,
   type DashboardSummary,
+  type DescendantAnalysisProgress,
   type LearningCard,
   type LearningPathItem,
 } from "../lib/api";
@@ -245,6 +246,7 @@ export default function KnowledgeGraphView() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState("");
   const [analyzeResult, setAnalyzeResult] = useState<AnalysisResult | null>(null);
+  const [descendantProgress, setDescendantProgress] = useState<DescendantAnalysisProgress | null>(null);
 
   const [conceptSearch, setConceptSearch] = useState("");
   const [selectedConcept, setSelectedConcept] = useState<ConceptNode | null>(null);
@@ -510,6 +512,7 @@ export default function KnowledgeGraphView() {
 
     setIsAnalyzing(true);
     setAnalyzeError("");
+    setDescendantProgress(null);
     try {
       if (demoWithoutModels) {
         await new Promise((resolve) => window.setTimeout(resolve, 450));
@@ -517,6 +520,35 @@ export default function KnowledgeGraphView() {
         await Promise.all([loadGraph(), loadSummary()]);
         return;
       }
+
+      if (includeDescendants) {
+        // Fan-out: analyze each child workspace sequentially
+        const unlisten = await api.knowledge.listenDescendantProgress((event) => {
+          setDescendantProgress(event);
+        });
+        try {
+          const results = await api.knowledge.analyzeDescendants(activeWorkspaceId, selectedModel, {
+            ollamaUrl,
+            focusTopic: focusTopic.trim() || undefined,
+          });
+          const completed = results.filter((r) => r.status === "completed");
+          const totalConcepts = completed.reduce((sum, r) => sum + (r.result?.concepts_created ?? 0), 0);
+          const totalLinks = completed.reduce((sum, r) => sum + (r.result?.links_created ?? 0), 0);
+          setAnalyzeResult({
+            concepts_created: totalConcepts,
+            links_created: totalLinks,
+            concepts_skipped: completed.reduce((sum, r) => sum + (r.result?.concepts_skipped ?? 0), 0),
+            chapters_created: completed.reduce((sum, r) => sum + (r.result?.chapters_created ?? 0), 0),
+            sections_created: completed.reduce((sum, r) => sum + (r.result?.sections_created ?? 0), 0),
+          });
+        } finally {
+          unlisten();
+          setDescendantProgress(null);
+        }
+        await Promise.all([loadGraph(), loadSummary()]);
+        return;
+      }
+
       const result = await api.knowledge.analyzeWorkspace(activeWorkspaceId, selectedModel, {
         ollamaUrl,
         focusTopic: focusTopic.trim() || undefined,
@@ -630,12 +662,20 @@ export default function KnowledgeGraphView() {
   const hasModels = availableModels.length > 0;
   const isDemoWithoutModels = isDemoMode && !hasModels;
   const canRunAiActions = hasModels || isDemoWithoutModels;
-  const analyzeButtonLabel = isAnalyzing ? "Analyzing..." : isDemoWithoutModels ? "Simulate Analysis" : "Analyze Workspace";
+  const analyzeButtonLabel = isAnalyzing
+    ? (descendantProgress
+      ? `Analyzing ${descendantProgress.workspace_name} (${descendantProgress.index + 1}/${descendantProgress.total})…`
+      : "Analyzing...")
+    : isDemoWithoutModels ? "Simulate Analysis"
+    : includeDescendants ? "Analyze All Sub-Workspaces"
+    : "Analyze Workspace";
   const analyzeHelpText = isDemoWithoutModels
     ? "Demo data is preloaded. No local models are installed on this machine, so AI actions use simulated demo output."
-    : hasModels
-      ? "Use this to extract concepts and links from what you have already read, asked, and captured."
-      : "No local AI models are available yet. Install or connect a model to analyze this workspace.";
+    : includeDescendants
+      ? "Runs analysis on each sub-workspace sequentially. The merged graph updates as each workspace completes. Yields to active chat."
+      : hasModels
+        ? "Use this to extract concepts and links from what you have already read, asked, and captured."
+        : "No local AI models are available yet. Install or connect a model to analyze this workspace.";
   const cardHelpText = isDemoWithoutModels
     ? "Demo mode can generate sample flashcards locally for this concept."
     : hasModels

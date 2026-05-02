@@ -327,6 +327,16 @@ export interface BackgroundTaskEvent {
   message: string;
 }
 
+export interface DescendantAnalysisProgress {
+  workspace_id: string;
+  workspace_name: string;
+  index: number;
+  total: number;
+  status: 'started' | 'completed' | 'skipped' | 'failed';
+  error?: string;
+  result?: AnalysisResult;
+}
+
 export interface GraphStatistics {
   id: string; workspace_id?: string; total_concepts: number;
   total_links: number; avg_degree: number; density: number; updated_at: string;
@@ -1275,6 +1285,19 @@ export const api = {
       invoke<SuggestedGoal[]>("suggest_learning_goals", {
         req: { workspace_id: workspaceId, model, ollama_url: ollamaUrl, survey_context: surveyContext },
       }),
+    analyzeDescendants: (workspaceId: string, model: string, opts?: { ollamaUrl?: string; focusTopic?: string }) =>
+      invoke<DescendantAnalysisProgress[]>("analyze_descendants", {
+        req: {
+          workspace_id: workspaceId,
+          model,
+          ollama_url: opts?.ollamaUrl,
+          focus_topic: opts?.focusTopic,
+        },
+      }),
+    listenDescendantProgress: (onEvent: (event: DescendantAnalysisProgress) => void): Promise<UnlistenFn> =>
+      listen<DescendantAnalysisProgress>("descendant-analysis-progress", (event) => {
+        onEvent(event.payload);
+      }),
   },
 
   thoughtQueue: {
@@ -1307,6 +1330,10 @@ export const api = {
     update: (id: string, fields: { content?: string; memory_type?: Memory["memory_type"]; is_pinned?: boolean; is_active?: boolean }) =>
       invoke<Memory>("update_memory", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_memory", { id }),
+    deleteAll: (workspaceId: string, scope: Memory["scope"]) =>
+      invoke<void>("delete_all_memories", { workspaceId, scope }),
+    deactivateAll: (workspaceId: string, scope: Memory["scope"]) =>
+      invoke<void>("deactivate_all_memories", { workspaceId, scope }),
   },
 
   webAI: {

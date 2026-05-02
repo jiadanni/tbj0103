@@ -83,6 +83,18 @@ export default function MemoryView() {
     setMemories((prev) => prev.filter((memory) => memory.id !== id));
   }
 
+  async function deactivateAll() {
+    if (!activeWorkspaceId && scopeTab === "workspace") { return; }
+    await api.memory.deactivateAll(activeWorkspaceId ?? "", scopeTab);
+    loadMemories();
+  }
+
+  async function deleteAll() {
+    if (!activeWorkspaceId && scopeTab === "workspace") { return; }
+    await api.memory.deleteAll(activeWorkspaceId ?? "", scopeTab);
+    setMemories([]);
+  }
+
   const isWorkspaceDisabled = scopeTab === "workspace" && !activeWorkspaceId;
 
   return (
@@ -141,9 +153,29 @@ export default function MemoryView() {
               <Globe size={13} />
               Global
             </button>
+
+            {memories.length > 0 && (
+              <>
+                <button
+                  onClick={deactivateAll}
+                  disabled={counts.active === 0}
+                  className="flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] px-3 py-2 text-xs font-medium text-[var(--text-muted)] transition-colors hover:border-amber-500/50 hover:text-amber-400 disabled:opacity-40"
+                >
+                  <ToggleLeft size={13} />
+                  Deactivate All
+                </button>
+                <button
+                  onClick={deleteAll}
+                  className="flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] px-3 py-2 text-xs font-medium text-[var(--text-muted)] transition-colors hover:border-red-500/50 hover:text-red-400"
+                >
+                  <Trash2 size={13} />
+                  Delete All
+                </button>
+              </>
+            )}
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
             <textarea
               value={newContent}
               onChange={(e) => setNewContent(e.target.value)}
@@ -151,7 +183,7 @@ export default function MemoryView() {
                 ? "Add something worth remembering across all workspaces..."
                 : "Add something worth remembering about this workspace..."}
               rows={4}
-              className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+              className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] lg:flex-1"
             />
             <CompactMenuSelect
               label="Type"
@@ -161,12 +193,12 @@ export default function MemoryView() {
                 label: type[0].toUpperCase() + type.slice(1),
               }))}
               onChange={(val) => setNewType(val as Memory["memory_type"])}
-              widthClassName="w-full"
+              widthClassName="lg:w-[180px]"
             />
             <button
               onClick={createMemory}
               disabled={submitting || !newContent.trim() || isWorkspaceDisabled}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40 lg:w-[180px]"
             >
               <Plus size={14} />
               {submitting ? "Saving..." : "Add memory"}

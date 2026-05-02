@@ -1543,43 +1543,48 @@ export default function PreferencesView() {
                           onToggle={() => set("memory_enabled", !dbSettings.memory_enabled)}
                         />
                       </div>
+                    </div>
 
-                      {dbSettings.memory_enabled && (
-                        <>
-                          <div className="flex items-center justify-between py-0.5">
-                            <div>
-                              <p className="text-sm text-[var(--text-secondary)]">Extraction threshold</p>
-                              <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                                Minimum messages in a session before memories are extracted
-                              </p>
-                            </div>
-                            <input
-                              type="number"
-                              min={2}
-                              max={50}
-                              value={dbSettings.memory_extraction_threshold}
-                              onChange={(e) => set("memory_extraction_threshold", Math.max(2, Math.min(50, Number(e.target.value) || 5)))}
-                              className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                            />
-                          </div>
-                          <div className="flex items-center justify-between py-0.5">
-                            <div>
-                              <p className="text-sm text-[var(--text-secondary)]">Idle window (minutes)</p>
-                              <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                                How long after the last chat activity before extraction runs
-                              </p>
-                            </div>
-                            <input
-                              type="number"
-                              min={1}
-                              max={60}
-                              value={dbSettings.memory_extraction_idle_minutes}
-                              onChange={(e) => set("memory_extraction_idle_minutes", Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
-                              className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                            />
-                          </div>
-                        </>
-                      )}
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Background Jobs</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Configure automatic background processing tasks like memory extraction and summarization.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Memory extraction threshold</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Minimum messages in a session before memories are auto-extracted
+                          </p>
+                        </div>
+                        <input
+                          type="number"
+                          min={2}
+                          max={50}
+                          value={dbSettings.memory_extraction_threshold}
+                          onChange={(e) => set("memory_extraction_threshold", Math.max(2, Math.min(50, Number(e.target.value) || 5)))}
+                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Idle window (minutes)</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            How long after the last chat activity before extraction runs
+                          </p>
+                        </div>
+                        <input
+                          type="number"
+                          min={1}
+                          max={60}
+                          value={dbSettings.memory_extraction_idle_minutes}
+                          onChange={(e) => set("memory_extraction_idle_minutes", Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
+                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                        />
+                      </div>
                     </div>
 
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">

@@ -211,6 +211,50 @@ pub fn get_active_memories(
 }
 
 #[tauri::command]
+pub fn delete_all_memories(
+    state: State<DbState>,
+    workspace_id: String,
+    scope: String,
+) -> Result<(), String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    if scope == "global" {
+        conn.execute("DELETE FROM memories WHERE scope = 'global'", [])
+            .map_err(|e| e.to_string())?;
+    } else {
+        conn.execute(
+            "DELETE FROM memories WHERE workspace_id = ?1 AND scope = 'workspace'",
+            rusqlite::params![workspace_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn deactivate_all_memories(
+    state: State<DbState>,
+    workspace_id: String,
+    scope: String,
+) -> Result<(), String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    if scope == "global" {
+        conn.execute(
+            "UPDATE memories SET is_active = 0, updated_at = ?1 WHERE scope = 'global' AND is_active = 1",
+            rusqlite::params![now],
+        )
+        .map_err(|e| e.to_string())?;
+    } else {
+        conn.execute(
+            "UPDATE memories SET is_active = 0, updated_at = ?1 WHERE workspace_id = ?2 AND scope = 'workspace' AND is_active = 1",
+            rusqlite::params![now, workspace_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn extract_memories(
     state: State<'_, DbState>,
     req: ExtractMemoriesRequest,
