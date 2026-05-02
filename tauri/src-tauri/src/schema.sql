@@ -975,3 +975,15 @@ CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs(level, timestamp DESC)
 
 -- Message variants support (v39)
 CREATE INDEX IF NOT EXISTS idx_messages_variant_group ON messages(variant_group_id);
+
+-- Workspace last_message_at trigger (v42 + v46 fix)
+-- Only advances last_message_at; never walks it backwards for out-of-order inserts.
+DROP TRIGGER IF EXISTS update_workspace_last_message_at;
+CREATE TRIGGER update_workspace_last_message_at
+AFTER INSERT ON messages
+BEGIN
+    UPDATE workspaces
+    SET last_message_at = NEW.created_at
+    WHERE id = (SELECT workspace_id FROM chat_sessions WHERE id = NEW.session_id)
+      AND (last_message_at IS NULL OR NEW.created_at > last_message_at);
+END;
