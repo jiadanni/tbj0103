@@ -49,8 +49,15 @@ const CHILD_WS = {
   parent_workspace_id: "ws-parent",
 };
 
+const CHILD_WS2 = {
+  ...PARENT_WS,
+  id: "ws-child2",
+  name: "Child Workspace 2",
+  parent_workspace_id: "ws-parent",
+};
+
 const INITIAL_STORE = {
-  workspaces: [PARENT_WS, CHILD_WS],
+  workspaces: [PARENT_WS, CHILD_WS, CHILD_WS2],
   activeWorkspaceId: "ws-parent",
   activeParentWorkspaceId: null,
   activeProjectId: null,
@@ -89,19 +96,20 @@ describe("SplitPaneLayout — PaneSubWorkspaceTabs", () => {
     expect(dots.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("clicking the pinned tab sets the pane workspace to the parent id", () => {
-    render(<SplitPaneLayout />);
-    // First click into child to move away from parent
+  it("clicking the pinned tab navigates to the parent group's home child", () => {
+    // Start primary pane on the second child so clicking the pinned tab produces a real change
     useWorkspaceStore.setState({
       panes: {
         ...INITIAL_STORE.panes,
-        primary: { ...INITIAL_STORE.panes.primary, workspaceId: "ws-child" },
+        primary: { ...INITIAL_STORE.panes.primary, workspaceId: "ws-child2" },
       },
     });
+    render(<SplitPaneLayout />);
     const pinnedTab = screen.getByTestId("pane-pinned-tab-primary");
     fireEvent.click(pinnedTab);
     const state = useWorkspaceStore.getState();
-    expect(state.panes.primary.workspaceId).toBe("ws-parent");
+    // setPaneWorkspace("primary", "ws-parent") normalizes to the first child of ws-parent
+    expect(state.panes.primary.workspaceId).toBe("ws-child");
   });
 
   it("pinned parent tab appears before child workspace tabs in the DOM", () => {
