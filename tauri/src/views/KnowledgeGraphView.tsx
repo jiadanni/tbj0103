@@ -38,7 +38,7 @@ import {
 } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
-import { useScopedWorkspace } from "../lib/workspacePane";
+import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import {
   buildTreeFromLinks,
   computeRadialTreeLayout,
@@ -229,6 +229,7 @@ function makeDemoCards(concept: ConceptNode, workspaceId: string): LearningCard[
 export default function KnowledgeGraphView() {
   const navigate = useNavigate();
   const { activeWorkspaceId } = useScopedWorkspace();
+  const includeDescendants = useBubbleUpFlag();
   const { preferredModel, ollamaUrl } = useSettingsStore();
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
 
@@ -304,14 +305,14 @@ export default function KnowledgeGraphView() {
     }
 
     const [nextNodes, nextLinks, nextPath] = await Promise.all([
-      api.graph.listConcepts(activeWorkspaceId, undefined, undefined, { includeDescendants: true }),
-      api.graph.listLinks(activeWorkspaceId, undefined, undefined, { includeDescendants: true }),
+      api.graph.listConcepts(activeWorkspaceId, undefined, undefined, { includeDescendants }),
+      api.graph.listLinks(activeWorkspaceId, undefined, undefined, { includeDescendants }),
       api.graph.getLearningPath(activeWorkspaceId).catch(() => [] as LearningPathItem[]),
     ]);
     setNodes(nextNodes);
     setLinks(nextLinks);
     setLearningPath(nextPath);
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, includeDescendants]);
 
   const loadSummary = useCallback(async () => {
     if (!activeWorkspaceId) {

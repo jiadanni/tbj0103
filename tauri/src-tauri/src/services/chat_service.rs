@@ -953,4 +953,63 @@ mod tests {
         assert_eq!(messages[1].content, "Hi there!");
         assert_eq!(messages[1].tokens_used, Some(10));
     }
+
+    #[test]
+    fn test_list_sessions_with_include_descendants_true() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        // Parent workspace with a child
+        let parent_id = setup_workspace(&conn);
+        let child = workspace_service::create_child(&conn, crate::models::workspace::CreateChildWorkspaceRequest {
+            parent_id: parent_id.clone(),
+            name: "Child WS".to_string(),
+            description: None,
+        }).unwrap();
+        // Create a session in the child workspace
+        create_session(&conn, CreateChatSessionRequest {
+            workspace_id: child.id.clone(),
+            project_id: "".to_string(),
+            title: Some("Child Session".to_string()),
+            model_name: None,
+            system_prompt: None,
+            is_incognito: None,
+            exclude_from_analytics: None,
+            parent_session_id: None,
+            branch_message_id: None,
+        }).unwrap();
+        // Without bubbling: parent sees 0 sessions
+        let exact = list_sessions(&conn, &parent_id, "", None, None, false).unwrap();
+        assert_eq!(exact.len(), 0, "parent should not see child sessions without bubbling");
+        // With bubbling: parent sees the child's session
+        let bubbled = list_sessions(&conn, &parent_id, "", None, None, true).unwrap();
+        assert_eq!(bubbled.len(), 1, "parent should see child sessions with bubbling");
+        assert_eq!(bubbled[0].title, "Child Session");
+    }
+
+    #[test]
+    fn test_list_sessions_does_not_bubble_down() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let parent_id = setup_workspace(&conn);
+        let child = workspace_service::create_child(&conn, crate::models::workspace::CreateChildWorkspaceRequest {
+            parent_id: parent_id.clone(),
+            name: "Child WS".to_string(),
+            description: None,
+        }).unwrap();
+        // Create a session in the parent workspace
+        create_session(&conn, CreateChatSessionRequest {
+            workspace_id: parent_id.clone(),
+            project_id: "".to_string(),
+            title: Some("Parent Session".to_string()),
+            model_name: None,
+            system_prompt: None,
+            is_incognito: None,
+            exclude_from_analytics: None,
+            parent_session_id: None,
+            branch_message_id: None,
+        }).unwrap();
+        // Child with bubbling should only see its own sessions (none), not the parent's
+        let child_view = list_sessions(&conn, &child.id, "", None, None, true).unwrap();
+        assert_eq!(child_view.len(), 0, "child should never see parent sessions even with bubbling");
+    }
 }

@@ -175,3 +175,24 @@ export function useScopedProjects() {
     ),
   );
 }
+
+/**
+ * Returns `true` when the active workspace is a root workspace (no parent),
+ * meaning descendant content should bubble up into this view.
+ * Returns `false` when the user is viewing a child workspace (exact-scope only).
+ */
+export function useBubbleUpFlag(): boolean {
+  const pane = useWorkspacePane();
+  const paneId = pane?.paneId ?? null;
+
+  return useWorkspaceStore(
+    useCallback(
+      (s) => {
+        const wsId = paneId ? s.panes[paneId].workspaceId : s.activeWorkspaceId;
+        const ws = wsId ? s.workspaces.find((w) => w.id === wsId) : null;
+        return ws ? ws.parent_workspace_id == null : false;
+      },
+      [paneId],
+    ),
+  );
+}

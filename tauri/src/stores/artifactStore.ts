@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api, type ArtifactSummary, type Artifact, type CreateArtifactRequest } from '../lib/api';
+import { useWorkspaceStore } from './workspaceStore';
 
 interface ArtifactState {
   artifacts: ArtifactSummary[];
@@ -30,7 +31,9 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
   loadArtifacts: async (workspaceId) => {
     set({ isLoading: true });
     try {
-      const artifacts = await api.artifact.list(workspaceId, undefined, undefined, { includeDescendants: true });
+      const ws = useWorkspaceStore.getState().workspaces.find((w) => w.id === workspaceId);
+      const includeDescendants = ws ? ws.parent_workspace_id == null : false;
+      const artifacts = await api.artifact.list(workspaceId, undefined, undefined, { includeDescendants });
       set({ artifacts });
     } catch (e) {
       console.error('Failed to load artifacts:', e);

@@ -337,4 +337,36 @@ mod tests {
         let ws2_projects = list(&conn, &ws2_id, false).unwrap();
         assert_eq!(ws2_projects.len(), 1);
     }
+
+    #[test]
+    fn test_list_projects_with_descendants() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let parent_id = setup_workspace(&conn, "Parent WS");
+        let child = workspace_service::create_child(&conn, crate::models::workspace::CreateChildWorkspaceRequest {
+            parent_id: parent_id.clone(),
+            name: "Child WS".to_string(),
+            description: None,
+        }).unwrap();
+        // Create a project in the child workspace
+        create(&conn, CreateProjectRequest {
+            workspace_id: child.id.clone(),
+            name: "Child Project".to_string(),
+            project_description: None,
+            custom_instructions: None,
+            color: None,
+            icon: None,
+        }).unwrap();
+        // Without bubbling: parent sees 0 projects
+        let exact = list(&conn, &parent_id, false).unwrap();
+        assert_eq!(exact.len(), 0, "parent should not see child projects without bubbling");
+        // With bubbling: parent sees child's project
+        let bubbled = list(&conn, &parent_id, true).unwrap();
+        assert_eq!(bubbled.len(), 1, "parent should see child projects with bubbling");
+        assert_eq!(bubbled[0].name, "Child Project");
+        // Child with bubbling sees only its own projects (no upward leak)
+        let child_view = list(&conn, &child.id, true).unwrap();
+        assert_eq!(child_view.len(), 1, "child should see its own project");
+        assert_eq!(child_view[0].workspace_id, child.id);
+    }
 }

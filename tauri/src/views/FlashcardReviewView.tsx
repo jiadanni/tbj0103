@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2 } from "lucide-react";
 import { api, type LearningCard, type ReviewStats } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
-import { useScopedWorkspace } from "../lib/workspacePane";
+import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import CompactMenuSelect from "../components/CompactMenuSelect";
 
 const QUALITY_LABELS = [
@@ -21,6 +21,7 @@ const QUALITY_LABELS = [
 
 export default function FlashcardReviewView() {
   const { activeWorkspaceId } = useScopedWorkspace();
+  const includeDescendants = useBubbleUpFlag();
   const { preferredModel, ollamaUrl } = useSettingsStore();
 
   const [cards, setCards] = useState<LearningCard[]>([]);
@@ -73,7 +74,7 @@ export default function FlashcardReviewView() {
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
     Promise.all([
-      api.flashcard.listDue(activeWorkspaceId, { limit: 200, offset: 0, includeDescendants: true }),
+      api.flashcard.listDue(activeWorkspaceId, { limit: 200, offset: 0, includeDescendants }),
       api.flashcard.getStats(activeWorkspaceId),
     ]).then(([due, s]) => {
       setCards(due);
@@ -81,7 +82,7 @@ export default function FlashcardReviewView() {
       setCurrentIndex(0);
       setIsFlipped(false);
     }).catch(() => {});
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, includeDescendants]);
 
   async function review(quality: number) {
     if (!currentCard) {return;}

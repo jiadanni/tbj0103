@@ -7,6 +7,7 @@ import { Plus, Trash2, Globe, Search, ExternalLink, RefreshCw } from "lucide-rea
 import { ask } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useBubbleUpFlag } from "../lib/workspacePane";
 
 interface WebCapture {
   id: string;
@@ -21,6 +22,7 @@ interface WebCapture {
 
 export default function WebCaptureView() {
   const { activeWorkspaceId } = useWorkspaceStore();
+  const includeDescendants = useBubbleUpFlag();
   const [captures, setCaptures] = useState<WebCapture[]>([]);
   const [selected, setSelected] = useState<WebCapture | null>(null);
   const [query, setQuery] = useState("");
@@ -32,8 +34,8 @@ export default function WebCaptureView() {
 
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
-    api.webCapture.list(activeWorkspaceId, { limit: 200, offset: 0, includeDescendants: true }).then(setCaptures).catch(() => {});
-  }, [activeWorkspaceId]);
+    api.webCapture.list(activeWorkspaceId, { limit: 200, offset: 0, includeDescendants }).then(setCaptures).catch(() => {});
+  }, [activeWorkspaceId, includeDescendants]);
 
   const filtered = captures.filter(
     (c) =>

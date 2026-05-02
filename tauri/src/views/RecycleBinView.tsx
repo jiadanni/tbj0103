@@ -7,11 +7,12 @@ import { api } from "../lib/api";
 import { useChatStore, type ChatSession } from "../stores/chatStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
-import { useScopedWorkspace } from "../lib/workspacePane";
+import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 
 export default function RecycleBinView() {
   const navigate = useNavigate();
   const { activeWorkspaceId, isSplitPane } = useScopedWorkspace();
+  const includeDescendants = useBubbleUpFlag();
   const { setSessions } = useChatStore();
   const { modelLabels } = useSettingsStore();
   const isDemoMode = useWorkspaceStore((s) => s.isDemoMode);
@@ -24,7 +25,7 @@ export default function RecycleBinView() {
       if (!activeWorkspaceId) {return;}
       setLoading(true);
       try {
-        const sessions = await api.chat.listDeletedSessions(activeWorkspaceId, { includeDescendants: true });
+        const sessions = await api.chat.listDeletedSessions(activeWorkspaceId, { includeDescendants });
         setDeletedSessions(sessions);
       } catch (e) {
         console.error(e);
@@ -33,7 +34,7 @@ export default function RecycleBinView() {
       }
     }
     loadDeletedSessions();
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, includeDescendants]);
 
   async function restoreSession(id: string) {
     if (!activeWorkspaceId) {return;}
@@ -41,7 +42,7 @@ export default function RecycleBinView() {
       await api.chat.restoreSession(activeWorkspaceId, id);
       setDeletedSessions(prev => prev.filter(s => s.id !== id));
       // Refresh the main sessions list in the store
-      const refreshed = await api.chat.listSessions(activeWorkspaceId, null, { limit: 200, offset: 0, includeDescendants: true });
+      const refreshed = await api.chat.listSessions(activeWorkspaceId, null, { limit: 200, offset: 0, includeDescendants });
       setSessions(refreshed);
     } catch (e) {
       console.error(e);

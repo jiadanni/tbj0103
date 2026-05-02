@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api, type QuickSearchResult } from "../lib/api";
 import { useChatStore, type ChatSession } from "../stores/chatStore";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Search, Clock, MessageSquare, FileText, Brain, Sparkles, RefreshCw } from "lucide-react";
 import type { ChatSubView, NotesSubView, PreferencesSection } from "./navigationItems";
 
@@ -63,20 +64,22 @@ export default function CommandPalette({ workspaceId, onClose }: Props) {
   const [searchResults, setSearchResults] = useState<QuickSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const setActiveChatId = useChatStore((state) => state.setActiveChatId);
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
+  const includeDescendants = workspaces.find((w) => w.id === workspaceId)?.parent_workspace_id == null;
 
   useEffect(() => {
     if (!workspaceId) { return; }
-    api.chat.getRecentSessions(workspaceId, 8, { includeDescendants: true })
+    api.chat.getRecentSessions(workspaceId, 8, { includeDescendants })
       .then(setRecentSessions)
       .catch(console.error);
-  }, [workspaceId]);
+  }, [workspaceId, includeDescendants]);
 
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed) {
       const t = setTimeout(() => {
-        setSearchResults([]);
-        setIsLoading(false);
+        setSearchResults((prev) => (prev.length ? [] : prev));
+        setIsLoading((prev) => (prev ? false : prev));
       }, 0);
       return () => clearTimeout(t);
     }

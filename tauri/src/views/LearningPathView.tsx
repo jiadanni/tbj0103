@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Plus, Check, Trash2, Target, Sparkles, Loader2 } from "lucide-react";
 import { api, type LearningGoal } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useBubbleUpFlag } from "../lib/workspacePane";
 import { useSettingsStore } from "../stores/settingsStore";
 import WorkspaceSurveyModal, {
   type WorkspaceSurvey,
@@ -16,6 +17,7 @@ type GenerateStep = "analyze" | "suggest" | "save" | null;
 
 export default function LearningPathView() {
   const { activeWorkspaceId, workspaces } = useWorkspaceStore();
+  const includeDescendants = useBubbleUpFlag();
   const { preferredModel, ollamaUrl } = useSettingsStore();
   const [goals, setGoals] = useState<LearningGoal[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -38,8 +40,8 @@ export default function LearningPathView() {
 
   useEffect(() => {
     if (!activeWorkspaceId) { return; }
-    api.learningGoal.list(activeWorkspaceId, { includeDescendants: true }).then(setGoals).catch(() => {});
-  }, [activeWorkspaceId]);
+    api.learningGoal.list(activeWorkspaceId, { includeDescendants }).then(setGoals).catch(() => {});
+  }, [activeWorkspaceId, includeDescendants]);
 
   async function handleSurveySubmit(survey: WorkspaceSurvey) {
     if (!activeWorkspaceId || !activeWorkspace) { return; }

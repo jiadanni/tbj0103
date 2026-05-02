@@ -10,7 +10,7 @@ import { message } from "@tauri-apps/plugin-dialog";
 import { api, type ProjectNote } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
-import { useScopedWorkspace } from "../lib/workspacePane";
+import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import SmartTextEditor from "../components/SmartTextEditor";
 import DailyNotesView from "./DailyNotesView";
 import type { NotesSubView } from "../components/navigationItems";
@@ -28,6 +28,7 @@ export default function NoteEditorView() {
     }
   }, [location.state]);
   const { activeWorkspaceId } = useScopedWorkspace();
+  const includeDescendants = useBubbleUpFlag();
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const preferredModel = useSettingsStore((s) => s.preferredModel);
   const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
@@ -50,8 +51,8 @@ export default function NoteEditorView() {
 
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
-    api.note.list(activeWorkspaceId, { limit: 200, offset: 0, includeDescendants: true }).then(setNotes).catch(() => {});
-  }, [activeWorkspaceId]);
+    api.note.list(activeWorkspaceId, { limit: 200, offset: 0, includeDescendants }).then(setNotes).catch(() => {});
+  }, [activeWorkspaceId, includeDescendants]);
 
   useEffect(() => {
     if (!selected) {return;}

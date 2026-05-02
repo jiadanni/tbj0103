@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { api, type DailyNote, type NoteTemplate } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useBubbleUpFlag } from "../lib/workspacePane";
 import SmartTextEditor from "../components/SmartTextEditor";
 
 // Mood options matching Swift's DailyNoteMetadataView
@@ -47,6 +48,7 @@ function moodToEmoji(mood: number | undefined): string {
 
 export default function DailyNotesView() {
   const { activeWorkspaceId } = useWorkspaceStore();
+  const includeDescendants = useBubbleUpFlag();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [note, setNote] = useState<DailyNote | null>(null);
@@ -99,10 +101,10 @@ export default function DailyNotesView() {
     if (!activeWorkspaceId) {return;}
     const start = format(startOfMonth(currentMonth), "yyyy-MM-dd");
     const end = format(endOfMonth(currentMonth), "yyyy-MM-dd");
-    api.note.listDailyNotesInRange(activeWorkspaceId, start, end, { includeDescendants: true })
+    api.note.listDailyNotesInRange(activeWorkspaceId, start, end, { includeDescendants })
       .then(setMonthNotes)
       .catch(() => {});
-  }, [activeWorkspaceId, currentMonth]);
+  }, [activeWorkspaceId, currentMonth, includeDescendants]);
 
   // --- Load selected date note ---
   useEffect(() => {
@@ -121,8 +123,8 @@ export default function DailyNotesView() {
   // --- Load templates ---
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
-    api.note.listTemplates(activeWorkspaceId, { includeDescendants: true }).then(setTemplates).catch(() => {});
-  }, [activeWorkspaceId]);
+    api.note.listTemplates(activeWorkspaceId, { includeDescendants }).then(setTemplates).catch(() => {});
+  }, [activeWorkspaceId, includeDescendants]);
 
   // --- ESC to close template picker ---
   useEffect(() => {
@@ -144,14 +146,14 @@ export default function DailyNotesView() {
       if (activeWorkspaceId) {
         const start = format(startOfMonth(currentMonth), "yyyy-MM-dd");
         const end = format(endOfMonth(currentMonth), "yyyy-MM-dd");
-        api.note.listDailyNotesInRange(activeWorkspaceId, start, end, { includeDescendants: true })
+        api.note.listDailyNotesInRange(activeWorkspaceId, start, end, { includeDescendants })
           .then(setMonthNotes)
           .catch(() => {});
       }
     } finally {
       setSaving(false);
     }
-  }, [note, content, mood, productivity, activeWorkspaceId, currentMonth]);
+  }, [note, content, mood, productivity, activeWorkspaceId, currentMonth, includeDescendants]);
 
   // --- Auto-save debounce ---
   useEffect(() => {

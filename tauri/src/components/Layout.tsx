@@ -600,13 +600,13 @@ function formatHistoryTimestamp(value: string) {
 
 const HISTORY_MENU_WORKSPACE_TIMEOUT_MS = 1500;
 
-async function getRecentSessionsForWorkspace(workspaceId: string, limit: number) {
+async function getRecentSessionsForWorkspace(workspaceId: string, limit: number, includeDescendants: boolean) {
   const timeoutPromise = new Promise<ChatSession[]>((resolve) => {
     window.setTimeout(() => resolve([]), HISTORY_MENU_WORKSPACE_TIMEOUT_MS);
   });
 
   return Promise.race([
-    api.chat.getRecentSessions(workspaceId, limit, { includeDescendants: true }).catch(() => [] as ChatSession[]),
+    api.chat.getRecentSessions(workspaceId, limit, { includeDescendants }).catch(() => [] as ChatSession[]),
     timeoutPromise,
   ]);
 }
@@ -707,7 +707,7 @@ function TitlebarHistoryMenu() {
     }, HISTORY_MENU_WORKSPACE_TIMEOUT_MS + 200);
 
     workspaces.forEach((workspace) => {
-      void getRecentSessionsForWorkspace(workspace.id, 8)
+      void getRecentSessionsForWorkspace(workspace.id, 8, workspace.parent_workspace_id == null)
         .then((recentSessions) => {
           if (cancelled) {
             return;
