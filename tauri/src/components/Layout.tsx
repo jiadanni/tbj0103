@@ -393,9 +393,23 @@ function SubWorkspaceTabBar({
   onAdd?: () => void;
 }) {
   const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
+  const parent = parentWorkspaceId ? allWorkspaces.find((ws) => ws.id === parentWorkspaceId) : null;
   const children = parentWorkspaceId
     ? allWorkspaces.filter((ws) => ws.parent_workspace_id === parentWorkspaceId)
     : [];
+  const [dotMenuOpen, setDotMenuOpen] = useState(false);
+  const dotMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!dotMenuOpen) { return; }
+    function handleClick(e: MouseEvent) {
+      if (dotMenuRef.current && !dotMenuRef.current.contains(e.target as Node)) {
+        setDotMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [dotMenuOpen]);
 
   if (!parentWorkspaceId) { return null; }
 
@@ -410,6 +424,50 @@ function SubWorkspaceTabBar({
         className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none"
         onWheel={handleHorizontalWheel}
       >
+        {/* Pinned parent dot — opens a dropdown of all children */}
+        {parent && (
+          <div className="relative" ref={dotMenuRef}>
+            <button
+              onClick={() => setDotMenuOpen((v) => !v)}
+              title={parent.name}
+              className={`relative mt-0.5 flex h-[30px] w-[26px] items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
+                dotMenuOpen
+                  ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
+                  : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+            </button>
+            {dotMenuOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl backdrop-blur-xl">
+                <button
+                  onClick={() => { onSelect(parent.id); setDotMenuOpen(false); }}
+                  className={`flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider transition-colors ${
+                    activeWorkspaceId === parent.id
+                      ? "text-[var(--accent-color)]"
+                      : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+                  {parent.name}
+                </button>
+                {children.map((workspace) => (
+                  <button
+                    key={workspace.id}
+                    onClick={() => { onSelect(workspace.id); setDotMenuOpen(false); }}
+                    className={`flex w-full items-center rounded py-1.5 pl-6 pr-3 text-left text-sm transition-colors ${
+                      activeWorkspaceId === workspace.id
+                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    {workspace.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {children.map((workspace) => (
           <button
             key={workspace.id}
