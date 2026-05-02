@@ -7,7 +7,7 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 
 fn timestamp() -> String {
-    Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%:z").to_string()
+    Local::now().format("%H:%M:%S").to_string()
 }
 
 pub fn stderr(message: impl AsRef<str>) {

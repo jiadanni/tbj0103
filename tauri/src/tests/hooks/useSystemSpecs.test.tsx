@@ -14,12 +14,12 @@ describe("useSystemSpecs", () => {
   const mockSpecs = {
     os_name: "linux",
     os_version: "1.0",
-    cpu_architecture: "x86_64",
+    cpu_brand: "AMD Ryzen",
+    cpu_arch: "x86_64",
+    logical_cores: 16,
     total_memory_bytes: 16000000000,
     available_memory_bytes: 8000000000,
-    has_metal: false,
-    has_cuda: false,
-    has_rocm: true,
+    total_swap_bytes: 0,
   };
 
   beforeEach(() => {
