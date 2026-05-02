@@ -2,7 +2,11 @@ use crate::ollama::client::{ModelInfo, OllamaClient, OllamaMessage};
 use serde::{Deserialize, Serialize};
 use std::process::{Command, Stdio};
 use tauri::{AppHandle, Manager};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, OnceCell};
+
+// Deduplicates concurrent ensure_ollama_running calls (e.g. from HMR re-mounts).
+// The first caller does the real work; all others await the same result.
+static OLLAMA_STARTUP_ONCE: OnceCell<OllamaRuntimeStatus> = OnceCell::const_new();
 
 pub struct StreamAbortEntry {
     pub aborted: bool,
@@ -142,35 +146,44 @@ pub async fn ensure_ollama_running(
         .trim_end_matches('/')
         .to_string();
 
-    let client = OllamaClient::new(Some(normalized_url.clone()))?;
-    let ctx = context(
-        request_id.clone(),
-        "ensure_ollama_running",
-        None,
-        None,
-        Some(false),
-    );
-    if let Ok(models) = client.list_models_observed(&ctx).await {
-        return Ok(runtime_status(models, false));
-    }
+    // Deduplicate concurrent calls (e.g. from HMR re-mounts). The first caller
+    // performs the real startup check; all others await its result.
+    let status = OLLAMA_STARTUP_ONCE
+        .get_or_try_init(|| async {
+            let client = OllamaClient::new(Some(normalized_url.clone()))?;
+            let ctx = context(
+                request_id.clone(),
+                "ensure_ollama_running",
+                None,
+                None,
+                Some(false),
+            );
+            if let Ok(models) = client.list_models_observed(&ctx).await {
+                return Ok(runtime_status(models, false));
+            }
 
-    if normalized_url != DEFAULT_OLLAMA_URL {
-        return Err(format!(
-            "Ollama is not reachable at {normalized_url}. Automatic startup is only supported for {DEFAULT_OLLAMA_URL}."
-        ));
-    }
+            if normalized_url != DEFAULT_OLLAMA_URL {
+                return Err(format!(
+                    "Ollama is not reachable at {normalized_url}. Automatic startup is only supported for {DEFAULT_OLLAMA_URL}."
+                ));
+            }
 
-    launch_ollama_process()?;
+            launch_ollama_process()?;
 
-    for _ in 0..10 {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let retry_client = OllamaClient::new(Some(normalized_url.clone()))?;
-        if let Ok(models) = retry_client.list_models_observed(&ctx).await {
-            return Ok(runtime_status(models, true));
-        }
-    }
+            for _ in 0..10 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let retry_client = OllamaClient::new(Some(normalized_url.clone()))?;
+                if let Ok(models) = retry_client.list_models_observed(&ctx).await {
+                    return Ok(runtime_status(models, true));
+                }
+            }
 
-    Err("Tried to launch Ollama, but it did not become reachable. Run `ollama serve` manually and try again.".to_string())
+            Err("Tried to launch Ollama, but it did not become reachable. Run `ollama serve` manually and try again.".to_string())
+        })
+        .await
+        .map_err(|e| e.clone())?;
+
+    Ok(status.clone())
 }
 
 #[tauri::command]

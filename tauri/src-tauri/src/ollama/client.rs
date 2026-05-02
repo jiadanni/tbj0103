@@ -327,12 +327,12 @@ impl OllamaClient {
         let severity = Self::severity(path, duration, false, false, ctx);
         let fields = Self::summary_fields(ctx, method, path, Some(duration), Some(status), extras);
         let message = format!(
-            "[AETHERIUM -> OLLAMA][{}] {}",
+            "[{}] {}",
             severity,
             fields.join(" ")
         );
-        // Route non-critical successes through the buffered logger.
-        crate::logging::log_buffered("info", "ollama", &message, "{}");
+        // Route non-critical successes through the buffered logger at debug level.
+        crate::logging::log_buffered("debug", "ollama", &message, "{}");
     }
 
     #[cfg(debug_assertions)]
@@ -349,7 +349,7 @@ impl OllamaClient {
         extra_parts.push(("error", error.to_string()));
         let fields = Self::summary_fields(ctx, method, path, Some(duration), None, &extra_parts);
         // Errors persist immediately (log_buffered short-circuits for "error" level).
-        crate::logging::log_buffered("error", "ollama", &format!("[AETHERIUM -> OLLAMA][ERR] {}", fields.join(" ")), "{}");
+        crate::logging::log_buffered("error", "ollama", &format!("[ERR] {}", fields.join(" ")), "{}");
     }
 
     #[cfg(debug_assertions)]
@@ -361,7 +361,7 @@ impl OllamaClient {
         crate::logging::log_buffered_aggregated(
             "debug",
             "ollama",
-            &format!("[AETHERIUM -> OLLAMA][CACHE] {}", fields.join(" ")),
+            &format!("[CACHE] {}", fields.join(" ")),
             "{}",
         );
     }
@@ -1344,7 +1344,7 @@ impl OllamaClient {
             "info",
             "ollama",
             &format!(
-                "[AETHERIUM -> OLLAMA][CAPABILITY_REFRESH] models_checked={} success={} cached={} failed={} duration={}",
+                "[CAPABILITY_REFRESH] models_checked={} success={} cached={} failed={} duration={}",
                 total,
                 success_count,
                 cache_count,
