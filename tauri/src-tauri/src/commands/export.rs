@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth, AuthState};
 use crate::db::DbState;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -12,7 +13,8 @@ pub struct ExportRequest {
 }
 
 #[tauri::command]
-pub fn export_markdown(state: State<DbState>, req: ExportRequest) -> Result<String, String> {
+pub fn export_markdown(auth: State<AuthState>, state: State<DbState>, req: ExportRequest) -> Result<String, String> {
+    require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut output = String::new();
 
@@ -107,7 +109,8 @@ pub fn export_markdown(state: State<DbState>, req: ExportRequest) -> Result<Stri
 }
 
 #[tauri::command]
-pub fn export_json(state: State<DbState>, req: ExportRequest) -> Result<String, String> {
+pub fn export_json(auth: State<AuthState>, state: State<DbState>, req: ExportRequest) -> Result<String, String> {
+    require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let workspace: serde_json::Value = conn
         .query_row(
@@ -132,9 +135,11 @@ pub fn export_json(state: State<DbState>, req: ExportRequest) -> Result<String, 
 
 #[tauri::command]
 pub fn export_obsidian_vault(
+    auth: State<AuthState>,
     state: State<DbState>,
     req: ExportRequest,
 ) -> Result<Vec<serde_json::Value>, String> {
+    require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut files: Vec<serde_json::Value> = Vec::new();
 

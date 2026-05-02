@@ -1,4 +1,5 @@
 use crate::commands::quick_search::QuickSearchRuntimeState;
+use crate::commands::security::{require_auth, AuthState};
 use crate::db::DbState;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -340,10 +341,12 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
 #[tauri::command]
 pub fn update_settings(
     app: AppHandle,
+    auth: State<AuthState>,
     state: State<DbState>,
     quick_search_state: State<QuickSearchRuntimeState>,
     settings: Settings,
 ) -> Result<(), String> {
+    require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let pin_configured = get_setting(&conn, "pin_passcode_hash")
         .map(|v| !v.trim().is_empty())

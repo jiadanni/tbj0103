@@ -1,5 +1,6 @@
 //! Tauri commands for file-based chat storage and optional encryption.
 
+use crate::commands::security::{require_auth, AuthState};
 use crate::db::DbState;
 use crate::models::chat::ChatSession;
 use crate::services::chat_file_store;
@@ -15,6 +16,44 @@ pub struct ChatCryptoState(pub std::sync::Mutex<Option<String>>);
 
 /// Immutable path to the chats directory (app_data/chats/).
 pub struct ChatsDirState(pub std::path::PathBuf);
+
+/// Validates and canonicalizes a user-provided file path.
+/// Resolves symlinks and `..` components to prevent path traversal attacks.
+/// For read operations: the file must exist.
+/// For write operations: the parent directory must exist (or be creatable).
+fn validate_user_path(raw: &str, must_exist: bool) -> Result<std::path::PathBuf, String> {
+    let path = std::path::Path::new(raw);
+
+    // Reject obviously suspicious patterns before canonicalization
+    let normalized = raw.replace('\\', "/");
+    if normalized.contains("/../") || normalized.ends_with("/..") || normalized.starts_with("../") {
+        return Err("Path traversal is not allowed.".to_string());
+    }
+
+    if must_exist {
+        // Canonicalize resolves symlinks and `..`
+        std::fs::canonicalize(path).map_err(|e| format!("Invalid path '{}': {}", raw, e))
+    } else {
+        // For write targets: canonicalize the parent, then append the filename
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Cannot create directory for '{}': {}", raw, e))?;
+                let canon_parent = std::fs::canonicalize(parent)
+                    .map_err(|e| format!("Invalid parent path '{}': {}", raw, e))?;
+                if let Some(filename) = path.file_name() {
+                    Ok(canon_parent.join(filename))
+                } else {
+                    Err("Path has no filename component.".to_string())
+                }
+            } else {
+                Ok(path.to_path_buf())
+            }
+        } else {
+            Ok(path.to_path_buf())
+        }
+    }
+}
 
 #[derive(Serialize)]
 struct LmStudioConversationPreview {
@@ -212,11 +251,13 @@ pub fn reveal_chat_file(
 /// Stores the passphrase in the system keychain.
 #[tauri::command]
 pub fn setup_chat_encryption(
+    auth: State<AuthState>,
     passphrase: String,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
 ) -> Result<usize, String> {
+    require_auth(&auth, &db_state)?;
     if passphrase.is_empty() {
         return Err("Passphrase must not be empty".to_string());
     }
@@ -253,10 +294,12 @@ pub fn setup_chat_encryption(
 /// Disable encryption — decrypt all files and clear the keychain entry.
 #[tauri::command]
 pub fn disable_chat_encryption(
+    auth: State<AuthState>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
 ) -> Result<usize, String> {
+    require_auth(&auth, &db_state)?;
     let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
     let count = chat_file_store::reencrypt_all_files(&chats_dir_state.0, pass.as_deref(), None)?;
 
@@ -276,23 +319,22 @@ pub fn disable_chat_encryption(
 /// Export a single chat session to a specific file path (always plaintext).
 #[tauri::command]
 pub fn export_chat_as_json(
+    auth: State<AuthState>,
     session_id: String,
     dest_path: String,
     db_state: State<DbState>,
 ) -> Result<(), String> {
+    require_auth(&auth, &db_state)?;
+    let dest = validate_user_path(&dest_path, false)?;
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
-    let dest = std::path::Path::new(&dest_path);
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    chat_file_store::write_session_file(&conn, dest.parent().unwrap_or(dest), &session_id, None)?;
+    chat_file_store::write_session_file(&conn, dest.parent().unwrap_or(&dest), &session_id, None)?;
     // The above writes to parent/<session_id>.json — rename to dest_path
     let auto_path = dest
         .parent()
         .unwrap_or(std::path::Path::new("."))
         .join(format!("{}.json", session_id));
     if auto_path != dest {
-        std::fs::rename(&auto_path, dest).map_err(|e| e.to_string())?;
+        std::fs::rename(&auto_path, &dest).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -301,6 +343,7 @@ pub fn export_chat_as_json(
 /// Returns the imported chat session.
 #[tauri::command]
 pub fn import_chat_from_json(
+    auth: State<AuthState>,
     path: String,
     workspace_id: String,
     project_id: Option<String>,
@@ -309,10 +352,12 @@ pub fn import_chat_from_json(
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
 ) -> Result<ChatSession, String> {
+    require_auth(&auth, &db_state)?;
+    let validated_path = validate_user_path(&path, true)?;
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
     let session_id = chat_file_store::import_session_from_file(
         &conn,
-        std::path::Path::new(&path),
+        &validated_path,
         &workspace_id,
         project_id.as_deref().unwrap_or(""),
         passphrase.as_deref(),
@@ -362,12 +407,12 @@ pub fn import_chat_from_json(
 /// Returns the workspace ID and count of imported sessions.
 #[tauri::command]
 pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value, String> {
-    let folder = std::path::Path::new(&folder_path);
+    let folder = validate_user_path(&folder_path, true)?;
     if !folder.is_dir() {
         return Err(format!("{} is not a directory", folder_path));
     }
 
-    let conversations = chat_file_store::discover_lmstudio_conversations(folder)?;
+    let conversations = chat_file_store::discover_lmstudio_conversations(&folder)?;
     if conversations.is_empty() {
         return Err("No .conversation.json files found in the selected folder.".to_string());
     }
@@ -378,7 +423,7 @@ pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value,
     let mut errors = Vec::new();
 
     for conv in &conversations {
-        let preview_id = lmstudio_preview_id(folder, &conv.path);
+        let preview_id = lmstudio_preview_id(&folder, &conv.path);
         match std::fs::read(&conv.path) {
             Ok(bytes) => match chat_file_store::parse_lmstudio_conversation(&bytes) {
                 Ok(data) => {
@@ -467,7 +512,7 @@ pub fn import_lmstudio_folder(
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
-    let folder = std::path::Path::new(&folder_path);
+    let folder = validate_user_path(&folder_path, true)?;
     if !folder.is_dir() {
         return Err(format!("{} is not a directory", folder_path));
     }
@@ -482,7 +527,7 @@ pub fn import_lmstudio_folder(
     });
 
     // Discover all conversation files with their subfolder names
-    let conversations = chat_file_store::discover_lmstudio_conversations(folder)?;
+    let conversations = chat_file_store::discover_lmstudio_conversations(&folder)?;
     if conversations.is_empty() {
         return Err("No .conversation.json files found in the selected folder.".to_string());
     }
@@ -517,7 +562,7 @@ pub fn import_lmstudio_folder(
     let mut matched_selection = 0usize;
 
     for conv in &conversations {
-        let preview_id = lmstudio_preview_id(folder, &conv.path);
+        let preview_id = lmstudio_preview_id(&folder, &conv.path);
         if !lmstudio_selection_matches(
             &preview_id,
             &conv.subfolder,
@@ -669,7 +714,18 @@ pub fn import_multiple_folders(
     let mut total_errors = 0;
 
     for folder_path in folder_paths {
-        let folder = std::path::Path::new(&folder_path);
+        let folder = match validate_user_path(&folder_path, true) {
+            Ok(p) => p,
+            Err(e) => {
+                results.push(serde_json::json!({
+                    "folder_path": folder_path,
+                    "status": "error",
+                    "message": e,
+                }));
+                total_errors += 1;
+                continue;
+            }
+        };
         if !folder.is_dir() {
             results.push(serde_json::json!({
                 "folder_path": folder_path,
@@ -687,7 +743,7 @@ pub fn import_multiple_folders(
             .to_string();
 
         // Try to discover .conversation.json files
-        match chat_file_store::discover_lmstudio_conversations(folder) {
+        match chat_file_store::discover_lmstudio_conversations(&folder) {
             Ok(conversations) => {
                 if conversations.is_empty() {
                     results.push(serde_json::json!({
@@ -845,12 +901,12 @@ pub fn import_gemini_takeout(
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
-    let html_file = std::path::Path::new(&file_path);
+    let html_file = validate_user_path(&file_path, true)?;
     if !html_file.is_file() {
         return Err(format!("{} is not a file", file_path));
     }
 
-    let html_bytes = std::fs::read(html_file).map_err(|e| format!("Failed to read file: {}", e))?;
+    let html_bytes = std::fs::read(&html_file).map_err(|e| format!("Failed to read file: {}", e))?;
     let html = String::from_utf8_lossy(&html_bytes).to_string();
 
     let sessions = chat_file_store::parse_gemini_takeout(&html)?;
@@ -955,13 +1011,13 @@ pub fn import_gemini_takeout(
 pub fn preview_claude_desktop(
     file_path: String,
 ) -> Result<serde_json::Value, String> {
-    let conv_file = std::path::Path::new(&file_path);
+    let conv_file = validate_user_path(&file_path, true)?;
     if !conv_file.is_file() {
         return Err(format!("{} is not a file", file_path));
     }
 
     let conv_bytes =
-        std::fs::read(conv_file).map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+        std::fs::read(&conv_file).map_err(|e| format!("Failed to read conversations.json: {e}"))?;
     let previews = chat_file_store::preview_claude_conversations(&conv_bytes)?;
 
     let parent = conv_file.parent().unwrap_or(std::path::Path::new(""));
@@ -1020,13 +1076,13 @@ pub fn import_claude_desktop(
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
-    let conv_file = std::path::Path::new(&file_path);
+    let conv_file = validate_user_path(&file_path, true)?;
     if !conv_file.is_file() {
         return Err(format!("{} is not a file", file_path));
     }
 
     let conv_bytes =
-        std::fs::read(conv_file).map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+        std::fs::read(&conv_file).map_err(|e| format!("Failed to read conversations.json: {e}"))?;
     let chat_data_list = chat_file_store::parse_claude_conversations_filtered(
         &conv_bytes,
         selected_ids.as_deref().unwrap_or(&[]),
@@ -1246,7 +1302,7 @@ fn sync_all_to_files_internal(
 pub fn preview_claude_projects_file(
     file_path: String,
 ) -> Result<serde_json::Value, String> {
-    let proj_file = std::path::Path::new(&file_path);
+    let proj_file = validate_user_path(&file_path, true)?;
     if !proj_file.is_file() {
         return Err(format!("{} is not a file", file_path));
     }
@@ -1296,7 +1352,7 @@ pub fn import_claude_projects(
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
-    let proj_file = std::path::Path::new(&file_path);
+    let proj_file = validate_user_path(&file_path, true)?;
     if !proj_file.is_file() {
         return Err(format!("{} is not a file", file_path));
     }

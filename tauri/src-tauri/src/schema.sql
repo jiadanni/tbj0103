@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS workspaces (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     parent_workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
     order_index INTEGER NOT NULL DEFAULT 0,
-    last_message_at TEXT
+    last_message_at TEXT,
+    survey_data TEXT
 );
 
 CREATE TABLE IF NOT EXISTS projects (

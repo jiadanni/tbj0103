@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use pbkdf2::pbkdf2_hmac;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -7,6 +9,47 @@ use crate::db::DbState;
 
 const PIN_HASH_KEY: &str = "pin_passcode_hash";
 const PIN_ITERATIONS: u32 = 100_000;
+const PIN_FAILED_ATTEMPTS_KEY: &str = "pin_failed_attempts";
+const PIN_LOCKOUT_UNTIL_KEY: &str = "pin_lockout_until";
+const MAX_PIN_ATTEMPTS: u32 = 5;
+
+/// Backend authentication state — tracks whether the app has been unlocked.
+/// Prevents IPC bypass of the lock screen (e.g. via DevTools or injected JS).
+pub struct AuthState(pub AtomicBool);
+
+impl Default for AuthState {
+    fn default() -> Self {
+        // Start locked; the frontend must call unlock_app after successful auth
+        Self(AtomicBool::new(false))
+    }
+}
+
+/// Returns an error if the app is locked and auth is required.
+/// Commands that handle sensitive data should call this at the top.
+pub fn require_auth(auth: &State<AuthState>, db: &State<DbState>) -> Result<(), String> {
+    // If no lock is configured, auth is not required
+    let conn = db.0.get().map_err(|e| e.to_string())?;
+    let pin_enabled = get_setting(&conn, PIN_HASH_KEY)
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let pin_lock_enabled = get_setting(&conn, "pin_lock_enabled")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(false)
+        && pin_enabled;
+    let touch_id_enabled = get_setting(&conn, "touch_id_enabled")
+        .map(|v| v == "true")
+        .unwrap_or(false)
+        && pin_lock_enabled;
+
+    if !pin_lock_enabled && !touch_id_enabled {
+        return Ok(());
+    }
+
+    if !auth.0.load(Ordering::Acquire) {
+        return Err("App is locked. Please authenticate first.".to_string());
+    }
+    Ok(())
+}
 
 fn biometric_available() -> bool {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -195,13 +238,58 @@ pub fn verify_pin_passcode(state: State<DbState>, pin: String) -> Result<bool, S
     validate_pin(&pin)?;
 
     let conn = state.0.get().map_err(|e| e.to_string())?;
+
+    // Check lockout
+    if let Some(lockout_until) = get_setting(&conn, PIN_LOCKOUT_UNTIL_KEY) {
+        if let Ok(until) = lockout_until.parse::<i64>() {
+            let now = chrono::Utc::now().timestamp();
+            if now < until {
+                let remaining = until - now;
+                return Err(format!(
+                    "Too many failed attempts. Try again in {} seconds.",
+                    remaining
+                ));
+            }
+            // Lockout expired — clear it
+            set_setting(&conn, PIN_FAILED_ATTEMPTS_KEY, "0")?;
+            set_setting(&conn, PIN_LOCKOUT_UNTIL_KEY, "")?;
+        }
+    }
+
     let stored_hash = get_setting(&conn, PIN_HASH_KEY).unwrap_or_default();
 
     if stored_hash.trim().is_empty() {
         return Err("No PIN passcode is configured.".to_string());
     }
 
-    verify_pin_hash(&pin, &stored_hash)
+    let result = verify_pin_hash(&pin, &stored_hash)?;
+
+    if result {
+        // Success — reset failed attempts
+        set_setting(&conn, PIN_FAILED_ATTEMPTS_KEY, "0")?;
+        set_setting(&conn, PIN_LOCKOUT_UNTIL_KEY, "")?;
+    } else {
+        // Failure — increment attempts and apply exponential backoff
+        let attempts: u32 = get_setting(&conn, PIN_FAILED_ATTEMPTS_KEY)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
+            + 1;
+        set_setting(&conn, PIN_FAILED_ATTEMPTS_KEY, &attempts.to_string())?;
+
+        if attempts >= MAX_PIN_ATTEMPTS {
+            // Exponential backoff: 30s, 60s, 120s, 240s, ... capped at 900s (15 min)
+            let rounds_over = attempts - MAX_PIN_ATTEMPTS;
+            let lockout_secs: i64 = std::cmp::min(30 * (1i64 << rounds_over), 900);
+            let until = chrono::Utc::now().timestamp() + lockout_secs;
+            set_setting(&conn, PIN_LOCKOUT_UNTIL_KEY, &until.to_string())?;
+            return Err(format!(
+                "Too many failed attempts. Try again in {} seconds.",
+                lockout_secs
+            ));
+        }
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -268,4 +356,17 @@ pub async fn authenticate_biometric() -> Result<bool, String> {
 #[tauri::command]
 pub async fn authenticate_biometric() -> Result<bool, String> {
     Ok(false)
+}
+
+/// Called by the frontend after successful PIN or biometric authentication.
+/// Sets the backend auth state to unlocked so that protected commands work.
+#[tauri::command]
+pub fn unlock_app(auth: State<AuthState>) {
+    auth.0.store(true, Ordering::Release);
+}
+
+/// Called by the frontend when the user locks the app or on session timeout.
+#[tauri::command]
+pub fn lock_app(auth: State<AuthState>) {
+    auth.0.store(false, Ordering::Release);
 }

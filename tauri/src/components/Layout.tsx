@@ -4,7 +4,7 @@ import { message } from "@tauri-apps/plugin-dialog";
 import {
   
 } from "react-resizable-panels";
-import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon, Pin, ArrowUpDown } from "lucide-react";
+import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon, Pin, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
@@ -13,7 +13,6 @@ import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
-import { useUIStore } from "../stores/uiStore";
 import AppHeaderMenu from "./AppHeaderMenu";
 import ArtifactPanel from "./ArtifactPanel";
 import ConfirmDialog from "./ConfirmDialog";
@@ -27,6 +26,7 @@ import { useArtifactStore } from "../stores/artifactStore";
 import { useChatStore } from "../stores/chatStore";
 import CompactMenuSelect from "./CompactMenuSelect";
 import StatusBar from "./StatusBar";
+import { useNavigationHistory } from "../hooks/useNavigationHistory";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
@@ -620,6 +620,34 @@ function mergeRecentSessions(sessions: ChatSession[]) {
   ).values()).slice(0, 8);
 }
 
+/** Back/Forward navigation buttons in the titlebar */
+function BackForwardNavigation() {
+  const { goBack, goForward, canGoBack, canGoForward } = useNavigationHistory();
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={goBack}
+        disabled={!canGoBack}
+        aria-label="Go back"
+        title="Go back (Alt+Left / Cmd+Left)"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <ChevronLeft size={15} />
+      </button>
+      <button
+        onClick={goForward}
+        disabled={!canGoForward}
+        aria-label="Go forward"
+        title="Go forward (Alt+Right / Cmd+Right)"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <ChevronRight size={15} />
+      </button>
+    </div>
+  );
+}
+
 function TitlebarHistoryMenu() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -914,7 +942,6 @@ function WorkspaceTabBar({
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const switchWorkspaceSection = useSettingsStore((state) => state.switchWorkspaceSection);
-  const titlebarTokenCount = useUIStore((state) => state.titlebarTokenCount);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -1104,14 +1131,7 @@ function WorkspaceTabBar({
           title="Drag window"
         />
         <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
-          {titlebarTokenCount > 0 && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)]" title="Session token count">
-              <span className="opacity-60">Tokens</span>
-              <span className="font-mono tabular-nums">
-                {titlebarTokenCount >= 1000 ? `${(titlebarTokenCount / 1000).toFixed(1)}k` : titlebarTokenCount}
-              </span>
-            </div>
-          )}
+          <BackForwardNavigation />
           <TitlebarSortMenu />
           <TitlebarHistoryMenu />
           {!showSplitTitlebarWorkspaceNavigation && (

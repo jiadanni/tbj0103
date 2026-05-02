@@ -3,25 +3,128 @@
  * Mirrors LearningPathView.swift.
  */
 import { useEffect, useState } from "react";
-import { Plus, Check, Trash2, Target } from "lucide-react";
+import { Plus, Check, Trash2, Target, Sparkles, Loader2 } from "lucide-react";
 import { api, type LearningGoal } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useSettingsStore } from "../stores/settingsStore";
+import WorkspaceSurveyModal, {
+  type WorkspaceSurvey,
+  formatSurveyForPrompt,
+} from "../components/WorkspaceSurveyModal";
+
+type GenerateStep = "analyze" | "suggest" | "save" | null;
 
 export default function LearningPathView() {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const { activeWorkspaceId, workspaces } = useWorkspaceStore();
+  const { preferredModel, ollamaUrl } = useSettingsStore();
   const [goals, setGoals] = useState<LearningGoal[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newDue, setNewDue] = useState("");
 
+  // Survey state
+  const [showSurvey, setShowSurvey] = useState(false);
+  const [generateStep, setGenerateStep] = useState<GenerateStep>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const [lastGeneratedCount, setLastGeneratedCount] = useState<number | null>(null);
+
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
+  const existingSurvey: WorkspaceSurvey | null = (() => {
+    if (!activeWorkspace?.survey_data) { return null; }
+    try { return JSON.parse(activeWorkspace.survey_data) as WorkspaceSurvey; }
+    catch { return null; }
+  })();
+
   useEffect(() => {
-    if (!activeWorkspaceId) {return;}
+    if (!activeWorkspaceId) { return; }
     api.learningGoal.list(activeWorkspaceId).then(setGoals).catch(() => {});
   }, [activeWorkspaceId]);
 
+  async function handleSurveySubmit(survey: WorkspaceSurvey) {
+    if (!activeWorkspaceId || !activeWorkspace) { return; }
+    setShowSurvey(false);
+    setGenerateError(null);
+    setLastGeneratedCount(null);
+
+    const surveyJson = JSON.stringify(survey);
+    const surveyText = formatSurveyForPrompt(survey);
+    const model = preferredModel;
+
+    // Merge survey context into prompt_instructions, replacing any prior survey block.
+    const SURVEY_START = "<!-- survey-context -->";
+    const SURVEY_END = "<!-- /survey-context -->";
+    const surveyBlock = `${SURVEY_START}\n${surveyText}\n${SURVEY_END}`;
+    const existing = activeWorkspace.prompt_instructions ?? "";
+    const stripped = existing
+      .replace(new RegExp(`${SURVEY_START}[\\s\\S]*?${SURVEY_END}\\n?`, "g"), "")
+      .trimEnd();
+    const mergedInstructions = stripped ? `${stripped}\n\n${surveyBlock}` : surveyBlock;
+
+    try {
+      // 1. Persist survey + update prompt_instructions
+      setGenerateStep("save");
+      await api.workspace.update(
+        activeWorkspaceId,
+        activeWorkspace.name,
+        activeWorkspace.description,
+        mergedInstructions,
+        surveyJson,
+      );
+
+      // 2. Analyze workspace (seeds concept graph; works even on empty workspaces)
+      setGenerateStep("analyze");
+      try {
+        await api.knowledge.analyzeWorkspace(activeWorkspaceId, model, {
+          ollamaUrl: ollamaUrl || undefined,
+          surveyContext: surveyText,
+        });
+      } catch {
+        // analyze may fail on truly empty workspaces without survey content for JSON — not fatal
+      }
+
+      // 3. Suggest learning goals
+      setGenerateStep("suggest");
+      const suggested = await api.knowledge.suggestGoals(
+        activeWorkspaceId,
+        model,
+        ollamaUrl || undefined,
+        surveyText,
+      );
+
+      // 4. Bulk-create goals that don't already exist
+      const existingTitles = new Set(goals.map((g) => g.title.trim().toLowerCase()));
+      let created = 0;
+      const newGoals: LearningGoal[] = [];
+      for (const s of suggested) {
+        if (!existingTitles.has(s.title.trim().toLowerCase())) {
+          const g = await api.learningGoal.create(activeWorkspaceId, s.title.trim());
+          // Patch description if provided
+          if (s.description) {
+            try {
+              await api.learningGoal.update(g.id, { goal_description: s.description });
+              newGoals.push({ ...g, goal_description: s.description });
+            } catch {
+              newGoals.push(g);
+            }
+          } else {
+            newGoals.push(g);
+          }
+          created++;
+        }
+      }
+
+      setGoals((prev) => [...newGoals, ...prev]);
+      setLastGeneratedCount(created);
+    } catch (err) {
+      setGenerateError(String(err));
+    } finally {
+      setGenerateStep(null);
+    }
+  }
+
   async function createGoal() {
-    if (!newTitle.trim() || !activeWorkspaceId) {return;}
+    if (!newTitle.trim() || !activeWorkspaceId) { return; }
     const goal = await api.learningGoal.create(activeWorkspaceId, newTitle.trim());
     setGoals((prev) => [goal, ...prev]);
     setNewTitle("");
@@ -55,17 +158,71 @@ export default function LearningPathView() {
   const incomplete = goals.filter((g) => !g.is_completed);
   const complete = goals.filter((g) => g.is_completed);
 
+  const isGenerating = generateStep !== null;
+
+  const generateStatusLabel: Record<NonNullable<GenerateStep>, string> = {
+    save: "Saving workspace context…",
+    analyze: "Analyzing workspace…",
+    suggest: "Generating learning goals…",
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-color)]">
         <h1 className="text-sm font-semibold text-[var(--text-primary)]">Learning Goals</h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
-        >
-          <Plus size={12} /> New Goal
-        </button>
+        <div className="flex items-center gap-2">
+          {activeWorkspaceId && (
+            <button
+              onClick={() => { setShowSurvey(true); }}
+              disabled={isGenerating}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+            >
+              <Sparkles size={12} />
+              {existingSurvey ? "Edit Roadmap Setup" : "Setup Roadmap"}
+            </button>
+          )}
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
+          >
+            <Plus size={12} /> New Goal
+          </button>
+        </div>
       </div>
+
+      {/* Generation status bar */}
+      {isGenerating && generateStep && (
+        <div className="flex items-center gap-2 px-5 py-2 bg-[var(--accent-color)]/10 border-b border-[var(--border-color)]">
+          <Loader2 size={12} className="animate-spin text-[var(--accent-color)]" />
+          <span className="text-xs text-[var(--accent-color)]">
+            {generateStatusLabel[generateStep]}
+          </span>
+        </div>
+      )}
+
+      {/* Error bar */}
+      {generateError && (
+        <div className="flex items-center justify-between px-5 py-2 bg-red-500/10 border-b border-[var(--border-color)]">
+          <span className="text-xs text-red-400 truncate">{generateError}</span>
+          <button onClick={() => setGenerateError(null)} className="text-xs text-red-400 hover:opacity-80 ml-2 flex-shrink-0">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Success toast */}
+      {lastGeneratedCount !== null && !isGenerating && (
+        <div className="flex items-center justify-between px-5 py-2 bg-green-500/10 border-b border-[var(--border-color)]">
+          <span className="text-xs text-green-400">
+            {lastGeneratedCount === 0
+              ? "No new goals to add — all suggestions already exist."
+              : `Added ${lastGeneratedCount} new learning goal${lastGeneratedCount !== 1 ? "s" : ""}.`}
+          </span>
+          <button onClick={() => setLastGeneratedCount(null)} className="text-xs text-green-400 hover:opacity-80 ml-2 flex-shrink-0">
+            ×
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
         {!activeWorkspaceId && (
@@ -112,19 +269,36 @@ export default function LearningPathView() {
           </section>
         )}
 
-        {goals.length === 0 && activeWorkspaceId && (
+        {goals.length === 0 && activeWorkspaceId && !isGenerating && (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <Target size={32} className="text-[var(--text-muted)]" />
             <p className="text-sm text-[var(--text-muted)]">No learning goals yet.</p>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90"
-            >
-              Create your first goal
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowSurvey(true)}
+                className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90 flex items-center gap-1.5"
+              >
+                <Sparkles size={13} /> Generate with AI
+              </button>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="px-4 py-2 border border-[var(--border-color)] text-[var(--text-secondary)] rounded-lg text-sm hover:bg-[var(--bg-hover)]"
+              >
+                Add manually
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Survey modal */}
+      {showSurvey && (
+        <WorkspaceSurveyModal
+          initialData={existingSurvey}
+          onSubmit={handleSurveySubmit}
+          onClose={() => setShowSurvey(false)}
+        />
+      )}
 
       {/* Create modal */}
       {showCreate && (
@@ -141,7 +315,7 @@ export default function LearningPathView() {
               autoFocus
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") {createGoal();} if (e.key === "Escape") {setShowCreate(false);} }}
+              onKeyDown={(e) => { if (e.key === "Enter") { createGoal(); } if (e.key === "Escape") { setShowCreate(false); } }}
               placeholder="Goal title"
               className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />

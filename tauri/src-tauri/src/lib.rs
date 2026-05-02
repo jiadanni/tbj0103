@@ -151,6 +151,7 @@ pub fn run() {
 
             // Initialize persistent logging with the DB pool
             crate::logging::init_pool(pool.clone());
+            crate::logging::start_flush_timer();
 
             app.manage(db::DbState(pool));
             app.manage(commands::chat_file::ChatsDirState(chats_dir));
@@ -163,6 +164,7 @@ pub fn run() {
             let (bg_cancel_tx, _) = tokio::sync::watch::channel(0u64);
             app.manage(commands::ollama::BackgroundInferenceCancel(bg_cancel_tx));
             app.manage(commands::quick_search::QuickSearchRuntimeState::default());
+            app.manage(commands::security::AuthState::default());
 
             #[cfg(feature = "llamacpp")]
             {
@@ -480,6 +482,8 @@ pub fn run() {
             commands::security::verify_pin_passcode,
             commands::security::remove_pin_passcode,
             commands::security::authenticate_biometric,
+            commands::security::unlock_app,
+            commands::security::lock_app,
             // Graph algorithm commands
             commands::graph::compute_pagerank,
             commands::graph::find_shortest_path,
@@ -593,6 +597,7 @@ pub fn run() {
             commands::log::get_log_sources,
             commands::log::clear_logs,
             commands::log::log_frontend_event,
+            commands::log::log_frontend_events_batch,
         ])
         .run(tauri::generate_context!());
 
