@@ -382,6 +382,10 @@ export interface AppSettings {
   memory_enabled: boolean;
   memory_extraction_threshold: number;
   memory_extraction_idle_minutes: number;
+  topic_analysis_interval_minutes: number;
+  summarization_min_messages: number;
+  summarization_max_sessions: number;
+  git_sync_interval_minutes: number;
   menubar_icon_style: "monochrome" | "white" | "black";
 }
 
@@ -1399,6 +1403,9 @@ export const api = {
       invoke<void>("log_frontend_event", { req: { level, source, message, metadata } }),
     logFrontendEventsBatch: (events: Array<{ level: string; source: string; message: string; metadata?: string }>) =>
       invoke<void>("log_frontend_events_batch", { req: { events } }),
+    setLogLevel: (level: "debug" | "info" | "warn" | "error") =>
+      invoke<void>("set_log_level", { level }),
+    getLogLevel: () => invoke<string>("get_log_level"),
   },
 };
 
