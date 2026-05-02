@@ -23,3 +23,40 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
         dot / (mag_a * mag_b)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cosine_similarity() {
+        let a = vec![1.0, 0.0, 0.0];
+        let b = vec![1.0, 0.0, 0.0];
+        assert_eq!(cosine_similarity(&a, &b), 1.0);
+
+        let a = vec![1.0, 0.0, 0.0];
+        let b = vec![0.0, 1.0, 0.0];
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
+
+        let a = vec![1.0, 0.0, 0.0];
+        let b = vec![-1.0, 0.0, 0.0];
+        assert_eq!(cosine_similarity(&a, &b), -1.0);
+
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![1.0, 2.0, 3.0];
+        // Float comparison needs an epsilon
+        assert!((cosine_similarity(&a, &b) - 1.0).abs() < 1e-6);
+        
+        let a = vec![];
+        let b = vec![];
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
+
+        let a = vec![1.0];
+        let b = vec![1.0, 2.0];
+        assert_eq!(cosine_similarity(&a, &b), 0.0); // Different lengths
+
+        let a = vec![0.0, 0.0];
+        let b = vec![1.0, 1.0];
+        assert_eq!(cosine_similarity(&a, &b), 0.0); // Zero magnitude
+    }
+}

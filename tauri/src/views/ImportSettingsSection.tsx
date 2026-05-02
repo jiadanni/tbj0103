@@ -553,10 +553,10 @@ export default function ImportSettingsSection() {
               <div>
                 <div className="flex items-center gap-2">
                   <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import from LM Studio</h2>
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import LM Studio Conversations Folder</h2>
                 </div>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Pick a folder containing LM Studio <code>.conversation.json</code> files. Conversations are listed for review before import, and subfolders can be imported as projects selectively.
+                  Choose a folder that contains LM Studio <code>.conversation.json</code> files. We will scan the folder, show the conversations for review, and let you choose which subfolders to import as projects.
                 </p>
               </div>
 
@@ -566,7 +566,7 @@ export default function ImportSettingsSection() {
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
               >
                 {lmStudioScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {lmStudioScanning ? "Scanning..." : "Scan Folder"}
+                {lmStudioScanning ? "Scanning..." : "Scan LM Studio Folder"}
               </button>
             </div>
 
@@ -727,10 +727,10 @@ export default function ImportSettingsSection() {
               <div>
                 <div className="flex items-center gap-2">
                   <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Multiple Folders</h2>
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Multiple LM Studio Conversation Folders</h2>
                 </div>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Select multiple folders at once. Each folder containing <code>.conversation.json</code> files will be imported as a separate workspace.
+                  Choose several folders at once. Each folder that contains LM Studio <code>.conversation.json</code> files will be imported into its own workspace.
                 </p>
               </div>
 
@@ -740,7 +740,7 @@ export default function ImportSettingsSection() {
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
               >
                 {importingMultipleFolders ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {importingMultipleFolders ? "Importing..." : "Import Folders"}
+                {importingMultipleFolders ? "Importing..." : "Import LM Studio Folders"}
               </button>
             </div>
           </section>
@@ -750,10 +750,10 @@ export default function ImportSettingsSection() {
               <div>
                 <div className="flex items-center gap-2">
                   <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Browser Activity Export</h2>
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Google Takeout Browser Activity File</h2>
                 </div>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Pick an exported browser activity HTML file. Supported today: Google Takeout activity exports. It scans for <code>My Activity.html</code> content and imports conversations into a new workspace.
+                  Choose a Google Takeout browser activity export file named <code>My Activity.html</code>. We will scan it for supported conversation history and import the results into a new workspace.
                 </p>
               </div>
 
@@ -763,7 +763,7 @@ export default function ImportSettingsSection() {
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
               >
                 {importingGemini ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {importingGemini ? "Importing..." : "Import Activity"}
+                {importingGemini ? "Importing..." : "Import My Activity.html"}
               </button>
             </div>
           </section>
@@ -773,10 +773,10 @@ export default function ImportSettingsSection() {
               <div>
                 <div className="flex items-center gap-2">
                   <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Project Export</h2>
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Claude Project Export File</h2>
                 </div>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Pick a <code>projects.json</code> export file. Supported today: Claude Desktop project exports. Each imported project becomes its own workspace with descriptions and instructions.
+                  Choose a Claude Desktop <code>projects.json</code> export file. We will preview the projects first, then import each selected project as its own workspace with its description and instructions.
                 </p>
               </div>
 
@@ -786,7 +786,7 @@ export default function ImportSettingsSection() {
                 className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
               >
                 {projectsScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {projectsScanning ? "Scanning..." : "Scan Export"}
+                {projectsScanning ? "Scanning..." : "Scan projects.json"}
               </button>
             </div>
 
@@ -926,10 +926,10 @@ export default function ImportSettingsSection() {
               <div>
                 <div className="flex items-center gap-2">
                   <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Conversation Export</h2>
+                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Claude Conversation Export File</h2>
                 </div>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Pick a <code>conversations.json</code> export file. Supported today: Claude Desktop conversation exports. Conversations are listed for selection before import.
+                  Choose a Claude Desktop <code>conversations.json</code> export file. We will scan the file and list the conversations so you can review and select what to import.
                 </p>
               </div>
 
@@ -939,7 +939,7 @@ export default function ImportSettingsSection() {
                 className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
               >
                 {claudeScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {claudeScanning ? "Scanning..." : "Scan Export"}
+                {claudeScanning ? "Scanning..." : "Scan conversations.json"}
               </button>
             </div>
 

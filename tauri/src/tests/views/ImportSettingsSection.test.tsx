@@ -170,7 +170,16 @@ describe("ImportSettingsSection", () => {
 
     renderImportSettings();
 
-    fireEvent.click(screen.getByText("Scan Folder"));
+    expect(screen.getByText("Import LM Studio Conversations Folder")).toBeInTheDocument();
+    expect(screen.getByText(/Choose a folder that contains LM Studio/i)).toBeInTheDocument();
+    expect(screen.getByText("Import Claude Conversation Export File")).toBeInTheDocument();
+    expect(screen.getByText((content, element) => (
+      element?.tagName.toLowerCase() === "p"
+      && content.includes("Choose a Claude Desktop")
+      && content.includes("export file. We will scan the file")
+    ))).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Scan LM Studio Folder"));
 
     expect(await screen.findByText("Root Chat")).toBeInTheDocument();
     expect(screen.getByText("Project A Chat")).toBeInTheDocument();

@@ -4,11 +4,11 @@ use crate::models::workspace::{
     CreateChildWorkspaceRequest, CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace,
 };
 use crate::services::workspace_service;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 #[tauri::command]
-pub fn create_workspace(
-    app: AppHandle,
+pub fn create_workspace<R: Runtime>(
+    app: AppHandle<R>,
     state: State<DbState>,
     req: CreateWorkspaceRequest,
 ) -> Result<Workspace, String> {
@@ -19,8 +19,8 @@ pub fn create_workspace(
 }
 
 #[tauri::command]
-pub fn create_child_workspace(
-    app: AppHandle,
+pub fn create_child_workspace<R: Runtime>(
+    app: AppHandle<R>,
     state: State<DbState>,
     req: CreateChildWorkspaceRequest,
 ) -> Result<Workspace, String> {
@@ -61,7 +61,7 @@ pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspa
 }
 
 #[tauri::command]
-pub fn hide_workspace(app: AppHandle, state: State<DbState>, id: String) -> Result<(), String> {
+pub fn hide_workspace<R: Runtime>(app: AppHandle<R>, state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     workspace_service::hide(&conn, &id)?;
     let _ = app.emit("workspaces-changed", ());
@@ -69,7 +69,7 @@ pub fn hide_workspace(app: AppHandle, state: State<DbState>, id: String) -> Resu
 }
 
 #[tauri::command]
-pub fn unhide_workspace(app: AppHandle, state: State<DbState>, id: String) -> Result<(), String> {
+pub fn unhide_workspace<R: Runtime>(app: AppHandle<R>, state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     workspace_service::unhide(&conn, &id)?;
     let _ = app.emit("workspaces-changed", ());
@@ -77,8 +77,8 @@ pub fn unhide_workspace(app: AppHandle, state: State<DbState>, id: String) -> Re
 }
 
 #[tauri::command]
-pub fn update_workspace(
-    app: AppHandle,
+pub fn update_workspace<R: Runtime>(
+    app: AppHandle<R>,
     state: State<DbState>,
     req: UpdateWorkspaceRequest,
     chats_dir_state: State<ChatsDirState>,
@@ -92,7 +92,7 @@ pub fn update_workspace(
 }
 
 #[tauri::command]
-pub fn delete_workspace(app: AppHandle, state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_workspace<R: Runtime>(app: AppHandle<R>, state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     workspace_service::delete(&conn, &id)?;
     let _ = app.emit("workspaces-changed", ());
@@ -100,8 +100,8 @@ pub fn delete_workspace(app: AppHandle, state: State<DbState>, id: String) -> Re
 }
 
 #[tauri::command]
-pub fn set_workspace_parent(
-    app: AppHandle,
+pub fn set_workspace_parent<R: Runtime>(
+    app: AppHandle<R>,
     state: State<DbState>,
     id: String,
     parent_id: Option<String>,
@@ -113,8 +113,8 @@ pub fn set_workspace_parent(
 }
 
 #[tauri::command]
-pub fn update_workspace_icon(
-    app: AppHandle,
+pub fn update_workspace_icon<R: Runtime>(
+    app: AppHandle<R>,
     state: State<DbState>,
     id: String,
     icon: String,
@@ -126,8 +126,8 @@ pub fn update_workspace_icon(
 }
 
 #[tauri::command]
-pub fn reorder_workspaces(
-    app: AppHandle,
+pub fn reorder_workspaces<R: Runtime>(
+    app: AppHandle<R>,
     state: State<DbState>,
     ids: Vec<String>,
 ) -> Result<(), String> {
@@ -246,20 +246,8 @@ fn fallback_icon_recommendation(workspace_name: &str, workspace_description: &st
 mod tests {
     use super::*;
     use crate::db::test_utils::tests::setup_test_db;
-    use std::sync::Mutex;
-    use tauri::test::{mock_builder, mock_context};
+    use tauri::test::mock_builder;
     use tauri::Manager;
-
-    fn get_mock_state(
-        db: r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
-    ) -> tauri::State<'static, DbState> {
-        let app = mock_builder().build(tauri::generate_context!()).unwrap();
-        app.manage(DbState(db));
-        // This is safe for a test environment as long as app stays alive
-        // Wait, app is dropped at the end of the function, so state will be invalidated.
-        // Let's just return the app handle and get state from it in each test.
-        unreachable!()
-    }
 
     #[test]
     fn test_create_and_list_workspace() {

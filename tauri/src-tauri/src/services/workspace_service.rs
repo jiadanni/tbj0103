@@ -288,3 +288,95 @@ pub fn reorder(conn: &Connection, ids: Vec<String>) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_utils::tests::setup_test_db;
+
+    #[test]
+    fn test_create_and_get_workspace() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        
+        let req = CreateWorkspaceRequest {
+            name: "Test Workspace".to_string(),
+            description: Some("Test Description".to_string()),
+        };
+        
+        let created = create(&conn, req).unwrap();
+        assert_eq!(created.name, "Test Workspace");
+        assert_eq!(created.description, "Test Description");
+        
+        let fetched = get(&conn, &created.id).unwrap().unwrap();
+        assert_eq!(fetched.id, created.id);
+        assert_eq!(fetched.name, "Test Workspace");
+    }
+
+    #[test]
+    fn test_list_workspaces() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        
+        create(&conn, CreateWorkspaceRequest {
+            name: "W1".to_string(),
+            description: None,
+        }).unwrap();
+        
+        create(&conn, CreateWorkspaceRequest {
+            name: "W2".to_string(),
+            description: None,
+        }).unwrap();
+        
+        let all = list_all(&conn).unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn test_hide_unhide_workspace() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        
+        let w = create(&conn, CreateWorkspaceRequest {
+            name: "Hide Me".to_string(),
+            description: None,
+        }).unwrap();
+        
+        hide(&conn, &w.id).unwrap();
+        let all = list_all(&conn).unwrap();
+        assert!(all.iter().all(|ws| ws.id != w.id));
+        
+        let hidden = list_hidden(&conn).unwrap();
+        assert!(hidden.iter().any(|ws| ws.id == w.id));
+        
+        unhide(&conn, &w.id).unwrap();
+        let all_again = list_all(&conn).unwrap();
+        assert!(all_again.iter().any(|ws| ws.id == w.id));
+    }
+
+    #[test]
+    fn test_set_parent_and_circular_check() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        
+        let w1 = create(&conn, CreateWorkspaceRequest {
+            name: "Parent".to_string(),
+            description: None,
+        }).unwrap();
+        
+        let w2 = create(&conn, CreateWorkspaceRequest {
+            name: "Child".to_string(),
+            description: None,
+        }).unwrap();
+        
+        set_parent(&conn, &w2.id, Some(w1.id.clone())).unwrap();
+        
+        let fetched_w2 = get(&conn, &w2.id).unwrap().unwrap();
+        assert_eq!(fetched_w2.parent_workspace_id, Some(w1.id.clone()));
+        
+        // Circular check
+        let result = set_parent(&conn, &w1.id, Some(w2.id.clone()));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Cannot create a circular parent-child relationship.");
+    }
+}

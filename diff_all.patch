@@ -1,0 +1,1524 @@
+diff --git a/tauri/src-tauri/src/commands/project.rs b/tauri/src-tauri/src/commands/project.rs
+index 67196ee..fd2453c 100644
+--- a/tauri/src-tauri/src/commands/project.rs
++++ b/tauri/src-tauri/src/commands/project.rs
+@@ -91,6 +91,7 @@ mod tests {
+         let crypto_state = app.state::<ChatCryptoState>();
+ 
+         let workspace = create_workspace(
++            app.handle().clone(),
+             db_state.clone(),
+             CreateWorkspaceRequest {
+                 name: "Workspace Alpha".to_string(),
+diff --git a/tauri/src-tauri/src/commands/workspace.rs b/tauri/src-tauri/src/commands/workspace.rs
+index 73903b2..4aeb0ab 100644
+--- a/tauri/src-tauri/src/commands/workspace.rs
++++ b/tauri/src-tauri/src/commands/workspace.rs
+@@ -4,11 +4,11 @@ use crate::models::workspace::{
+     CreateChildWorkspaceRequest, CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace,
+ };
+ use crate::services::workspace_service;
+-use tauri::{AppHandle, Emitter, State};
++use tauri::{AppHandle, Emitter, Runtime, State};
+ 
+ #[tauri::command]
+-pub fn create_workspace(
+-    app: AppHandle,
++pub fn create_workspace<R: Runtime>(
++    app: AppHandle<R>,
+     state: State<DbState>,
+     req: CreateWorkspaceRequest,
+ ) -> Result<Workspace, String> {
+@@ -19,8 +19,8 @@ pub fn create_workspace(
+ }
+ 
+ #[tauri::command]
+-pub fn create_child_workspace(
+-    app: AppHandle,
++pub fn create_child_workspace<R: Runtime>(
++    app: AppHandle<R>,
+     state: State<DbState>,
+     req: CreateChildWorkspaceRequest,
+ ) -> Result<Workspace, String> {
+@@ -61,7 +61,7 @@ pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspa
+ }
+ 
+ #[tauri::command]
+-pub fn hide_workspace(app: AppHandle, state: State<DbState>, id: String) -> Result<(), String> {
++pub fn hide_workspace<R: Runtime>(app: AppHandle<R>, state: State<DbState>, id: String) -> Result<(), String> {
+     let conn = state.0.get().map_err(|e| e.to_string())?;
+     workspace_service::hide(&conn, &id)?;
+     let _ = app.emit("workspaces-changed", ());
+@@ -69,7 +69,7 @@ pub fn hide_workspace(app: AppHandle, state: State<DbState>, id: String) -> Resu
+ }
+ 
+ #[tauri::command]
+-pub fn unhide_workspace(app: AppHandle, state: State<DbState>, id: String) -> Result<(), String> {
++pub fn unhide_workspace<R: Runtime>(app: AppHandle<R>, state: State<DbState>, id: String) -> Result<(), String> {
+     let conn = state.0.get().map_err(|e| e.to_string())?;
+     workspace_service::unhide(&conn, &id)?;
+     let _ = app.emit("workspaces-changed", ());
+@@ -77,8 +77,8 @@ pub fn unhide_workspace(app: AppHandle, state: State<DbState>, id: String) -> Re
+ }
+ 
+ #[tauri::command]
+-pub fn update_workspace(
+-    app: AppHandle,
++pub fn update_workspace<R: Runtime>(
++    app: AppHandle<R>,
+     state: State<DbState>,
+     req: UpdateWorkspaceRequest,
+     chats_dir_state: State<ChatsDirState>,
+@@ -92,7 +92,7 @@ pub fn update_workspace(
+ }
+ 
+ #[tauri::command]
+-pub fn delete_workspace(app: AppHandle, state: State<DbState>, id: String) -> Result<(), String> {
++pub fn delete_workspace<R: Runtime>(app: AppHandle<R>, state: State<DbState>, id: String) -> Result<(), String> {
+     let conn = state.0.get().map_err(|e| e.to_string())?;
+     workspace_service::delete(&conn, &id)?;
+     let _ = app.emit("workspaces-changed", ());
+@@ -100,8 +100,8 @@ pub fn delete_workspace(app: AppHandle, state: State<DbState>, id: String) -> Re
+ }
+ 
+ #[tauri::command]
+-pub fn set_workspace_parent(
+-    app: AppHandle,
++pub fn set_workspace_parent<R: Runtime>(
++    app: AppHandle<R>,
+     state: State<DbState>,
+     id: String,
+     parent_id: Option<String>,
+@@ -113,8 +113,8 @@ pub fn set_workspace_parent(
+ }
+ 
+ #[tauri::command]
+-pub fn update_workspace_icon(
+-    app: AppHandle,
++pub fn update_workspace_icon<R: Runtime>(
++    app: AppHandle<R>,
+     state: State<DbState>,
+     id: String,
+     icon: String,
+@@ -126,8 +126,8 @@ pub fn update_workspace_icon(
+ }
+ 
+ #[tauri::command]
+-pub fn reorder_workspaces(
+-    app: AppHandle,
++pub fn reorder_workspaces<R: Runtime>(
++    app: AppHandle<R>,
+     state: State<DbState>,
+     ids: Vec<String>,
+ ) -> Result<(), String> {
+@@ -246,21 +246,9 @@ fn fallback_icon_recommendation(workspace_name: &str, workspace_description: &st
+ mod tests {
+     use super::*;
+     use crate::db::test_utils::tests::setup_test_db;
+-    use std::sync::Mutex;
+-    use tauri::test::{mock_builder, mock_context};
++    use tauri::test::mock_builder;
+     use tauri::Manager;
+ 
+-    fn get_mock_state(
+-        db: r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
+-    ) -> tauri::State<'static, DbState> {
+-        let app = mock_builder().build(tauri::generate_context!()).unwrap();
+-        app.manage(DbState(db));
+-        // This is safe for a test environment as long as app stays alive
+-        // Wait, app is dropped at the end of the function, so state will be invalidated.
+-        // Let's just return the app handle and get state from it in each test.
+-        unreachable!()
+-    }
+-
+     #[test]
+     fn test_create_and_list_workspace() {
+         let db = setup_test_db();
+diff --git a/tauri/src-tauri/src/services/chat_service.rs b/tauri/src-tauri/src/services/chat_service.rs
+index d81bfb0..e1e33da 100644
+--- a/tauri/src-tauri/src/services/chat_service.rs
++++ b/tauri/src-tauri/src/services/chat_service.rs
+@@ -783,3 +783,156 @@ pub fn get_message_variants(conn: &Connection, message_id: &str) -> Result<Vec<M
+         Ok(vec![message])
+     }
+ }
++
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::db::test_utils::tests::setup_test_db;
++    use crate::services::workspace_service;
++    use crate::models::workspace::CreateWorkspaceRequest;
++
++    fn setup_workspace(conn: &Connection) -> String {
++        let ws = workspace_service::create(conn, CreateWorkspaceRequest {
++            name: "Test Workspace".to_string(),
++            description: None,
++        }).unwrap();
++        ws.id
++    }
++
++    #[test]
++    fn test_create_and_get_session() {
++        let pool = setup_test_db();
++        let conn = pool.get().unwrap();
++        let ws_id = setup_workspace(&conn);
++        
++        let req = CreateChatSessionRequest {
++            workspace_id: ws_id.clone(),
++            project_id: "".to_string(),
++            title: Some("Test Chat".to_string()),
++            model_name: Some("gpt-4".to_string()),
++            system_prompt: None,
++            is_incognito: None,
++            exclude_from_analytics: None,
++            parent_session_id: None,
++            branch_message_id: None,
++        };
++        
++        let created = create_session(&conn, req).unwrap();
++        assert_eq!(created.title, "Test Chat");
++        
++        let fetched = get_session(&conn, &created.id).unwrap().unwrap();
++        assert_eq!(fetched.id, created.id);
++        assert_eq!(fetched.workspace_id, ws_id);
++    }
++
++    #[test]
++    fn test_list_and_search_sessions() {
++        let pool = setup_test_db();
++        let conn = pool.get().unwrap();
++        let ws_id = setup_workspace(&conn);
++        
++        create_session(&conn, CreateChatSessionRequest {
++            workspace_id: ws_id.clone(),
++            project_id: "".to_string(),
++            title: Some("Apple".to_string()),
++            model_name: None,
++            system_prompt: None,
++            is_incognito: None,
++            exclude_from_analytics: None,
++            parent_session_id: None,
++            branch_message_id: None,
++        }).unwrap();
++        
++        create_session(&conn, CreateChatSessionRequest {
++            workspace_id: ws_id.clone(),
++            project_id: "".to_string(),
++            title: Some("Banana".to_string()),
++            model_name: None,
++            system_prompt: None,
++            is_incognito: None,
++            exclude_from_analytics: None,
++            parent_session_id: None,
++            branch_message_id: None,
++        }).unwrap();
++        
++        let all = list_sessions(&conn, &ws_id, "", None, None).unwrap();
++        assert_eq!(all.len(), 2);
++        
++        let search = search_sessions(&conn, &ws_id, None, "App").unwrap();
++        assert_eq!(search.len(), 1);
++        assert_eq!(search[0].title, "Apple");
++    }
++
++    #[test]
++    fn test_soft_delete_and_restore() {
++        let pool = setup_test_db();
++        let conn = pool.get().unwrap();
++        let ws_id = setup_workspace(&conn);
++        
++        let s = create_session(&conn, CreateChatSessionRequest {
++            workspace_id: ws_id.clone(),
++            project_id: "".to_string(),
++            title: Some("To be deleted".to_string()),
++            model_name: None,
++            system_prompt: None,
++            is_incognito: None,
++            exclude_from_analytics: None,
++            parent_session_id: None,
++            branch_message_id: None,
++        }).unwrap();
++        
++        soft_delete(&conn, &s.id).unwrap();
++        assert_eq!(list_sessions(&conn, &ws_id, "", None, None).unwrap().len(), 0);
++        assert_eq!(list_deleted(&conn, &ws_id).unwrap().len(), 1);
++        
++        restore(&conn, &ws_id, &s.id).unwrap();
++        assert_eq!(list_sessions(&conn, &ws_id, "", None, None).unwrap().len(), 1);
++    }
++
++    #[test]
++    fn test_add_and_get_messages() {
++        let pool = setup_test_db();
++        let conn = pool.get().unwrap();
++        let ws_id = setup_workspace(&conn);
++        
++        let s = create_session(&conn, CreateChatSessionRequest {
++            workspace_id: ws_id.clone(),
++            project_id: "".to_string(),
++            title: None,
++            model_name: None,
++            system_prompt: None,
++            is_incognito: None,
++            exclude_from_analytics: None,
++            parent_session_id: None,
++            branch_message_id: None,
++        }).unwrap();
++        
++        add_message(&conn, AddMessageRequest {
++            workspace_id: ws_id.clone(),
++            session_id: s.id.clone(),
++            role: MessageRole::User,
++            content: "Hello".to_string(),
++            model_name: None,
++            tokens_used: None,
++            duration_ms: None,
++        }).unwrap();
++        
++        add_message(&conn, AddMessageRequest {
++            workspace_id: ws_id.clone(),
++            session_id: s.id.clone(),
++            role: MessageRole::Assistant,
++            content: "Hi there!".to_string(),
++            model_name: Some("gpt-4".to_string()),
++            tokens_used: Some(10),
++            duration_ms: Some(500),
++        }).unwrap();
++        
++        let messages = get_messages(&conn, &s.id, None, None).unwrap();
++        assert_eq!(messages.len(), 2);
++        assert_eq!(messages[0].role, MessageRole::User);
++        assert_eq!(messages[1].role, MessageRole::Assistant);
++        assert_eq!(messages[1].content, "Hi there!");
++        assert_eq!(messages[1].tokens_used, Some(10));
++    }
++}
+diff --git a/tauri/src-tauri/src/services/project_service.rs b/tauri/src-tauri/src/services/project_service.rs
+index 7046147..8746539 100644
+--- a/tauri/src-tauri/src/services/project_service.rs
++++ b/tauri/src-tauri/src/services/project_service.rs
+@@ -234,3 +234,106 @@ pub fn move_to_workspace(
+         updated_at: new_project.updated_at,
+     })
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::db::test_utils::tests::setup_test_db;
++    use crate::services::workspace_service;
++    use crate::models::workspace::CreateWorkspaceRequest;
++
++    fn setup_workspace(conn: &Connection, name: &str) -> String {
++        let ws = workspace_service::create(conn, CreateWorkspaceRequest {
++            name: name.to_string(),
++            description: None,
++        }).unwrap();
++        ws.id
++    }
++
++    #[test]
++    fn test_create_and_get_project() {
++        let pool = setup_test_db();
++        let conn = pool.get().unwrap();
++        let ws_id = setup_workspace(&conn, "Test Workspace");
++        
++        let req = CreateProjectRequest {
++            workspace_id: ws_id.clone(),
++            name: "Test Project".to_string(),
++            project_description: Some("Desc".to_string()),
++            custom_instructions: None,
++            color: None,
++            icon: None,
++        };
++        
++        let created = create(&conn, req).unwrap();
++        assert_eq!(created.name, "Test Project");
++        assert_eq!(created.project_description, "Desc");
++        
++        let fetched = get(&conn, &created.id).unwrap().unwrap();
++        assert_eq!(fetched.id, created.id);
++        assert_eq!(fetched.workspace_id, ws_id);
++    }
++
++    #[test]
++    fn test_list_and_delete_projects() {
++        let pool = setup_test_db();
++        let conn = pool.get().unwrap();
++        let ws_id = setup_workspace(&conn, "Test Workspace");
++        
++        create(&conn, CreateProjectRequest {
++            workspace_id: ws_id.clone(),
++            name: "Project A".to_string(),
++            project_description: None,
++            custom_instructions: None,
++            color: None,
++            icon: None,
++        }).unwrap();
++        
++        let p_b = create(&conn, CreateProjectRequest {
++            workspace_id: ws_id.clone(),
++            name: "Project B".to_string(),
++            project_description: None,
++            custom_instructions: None,
++            color: None,
++            icon: None,
++        }).unwrap();
++        
++        let all = list(&conn, &ws_id).unwrap();
++        assert_eq!(all.len(), 2);
++        
++        delete(&conn, &p_b.id).unwrap();
++        let after_delete = list(&conn, &ws_id).unwrap();
++        assert_eq!(after_delete.len(), 1);
++        assert_eq!(after_delete[0].name, "Project A");
++    }
++
++    #[test]
++    fn test_move_to_workspace() {
++        let pool = setup_test_db();
++        let mut conn = pool.get().unwrap();
++        let ws1_id = setup_workspace(&conn, "WS 1");
++        let ws2_id = setup_workspace(&conn, "WS 2");
++        
++        let p = create(&conn, CreateProjectRequest {
++            workspace_id: ws1_id.clone(),
++            name: "Moving Project".to_string(),
++            project_description: None,
++            custom_instructions: None,
++            color: None,
++            icon: None,
++        }).unwrap();
++
++        let temp_dir = tempfile::tempdir().unwrap();
++        
++        let moved = move_to_workspace(&mut conn, &p.id, &ws2_id, temp_dir.path(), None).unwrap();
++        
++        assert_eq!(moved.workspace_id, ws2_id);
++        assert_eq!(moved.name, "Moving Project");
++        
++        let ws1_projects = list(&conn, &ws1_id).unwrap();
++        assert_eq!(ws1_projects.len(), 0);
++        
++        let ws2_projects = list(&conn, &ws2_id).unwrap();
++        assert_eq!(ws2_projects.len(), 1);
++    }
++}
+diff --git a/tauri/src-tauri/src/services/retrieval_engine.rs b/tauri/src-tauri/src/services/retrieval_engine.rs
+index a1563b9..fa89382 100644
+--- a/tauri/src-tauri/src/services/retrieval_engine.rs
++++ b/tauri/src-tauri/src/services/retrieval_engine.rs
+@@ -135,3 +135,44 @@ pub fn build_grounded_prompt(user_message: &str, chunks: &[RetrievedChunk]) -> S
+          Answer based on the provided context. Cite source numbers like [1], [2] when referencing specific content."
+     )
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn test_build_grounded_prompt() {
++        let chunks = vec![
++            RetrievedChunk {
++                chunk_id: "c1".to_string(),
++                document_id: "d1".to_string(),
++                filename: "doc1.txt".to_string(),
++                content: "This is some test content about rust.".to_string(),
++                score: 0.9,
++                chunk_index: 0,
++            },
++            RetrievedChunk {
++                chunk_id: "c2".to_string(),
++                document_id: "d2".to_string(),
++                filename: "doc2.md".to_string(),
++                content: "Tauri is great for desktop apps.".to_string(),
++                score: 0.8,
++                chunk_index: 1,
++            }
++        ];
++
++        let prompt = build_grounded_prompt("What is Tauri?", &chunks);
++        
++        assert!(prompt.contains("doc1.txt"));
++        assert!(prompt.contains("doc2.md"));
++        assert!(prompt.contains("Tauri is great for desktop apps."));
++        assert!(prompt.contains("What is Tauri?"));
++        assert!(prompt.starts_with("You are a helpful assistant"));
++    }
++
++    #[test]
++    fn test_build_grounded_prompt_empty() {
++        let prompt = build_grounded_prompt("Just a question", &[]);
++        assert_eq!(prompt, "Just a question");
++    }
++}
+diff --git a/tauri/src-tauri/src/services/semantic_search.rs b/tauri/src-tauri/src/services/semantic_search.rs
+index 3a5bd99..1b4f8f6 100644
+--- a/tauri/src-tauri/src/services/semantic_search.rs
++++ b/tauri/src-tauri/src/services/semantic_search.rs
+@@ -23,3 +23,40 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+         dot / (mag_a * mag_b)
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn test_cosine_similarity() {
++        let a = vec![1.0, 0.0, 0.0];
++        let b = vec![1.0, 0.0, 0.0];
++        assert_eq!(cosine_similarity(&a, &b), 1.0);
++
++        let a = vec![1.0, 0.0, 0.0];
++        let b = vec![0.0, 1.0, 0.0];
++        assert_eq!(cosine_similarity(&a, &b), 0.0);
++
++        let a = vec![1.0, 0.0, 0.0];
++        let b = vec![-1.0, 0.0, 0.0];
++        assert_eq!(cosine_similarity(&a, &b), -1.0);
++
++        let a = vec![1.0, 2.0, 3.0];
++        let b = vec![1.0, 2.0, 3.0];
++        // Float comparison needs an epsilon
++        assert!((cosine_similarity(&a, &b) - 1.0).abs() < 1e-6);
++        
++        let a = vec![];
++        let b = vec![];
++        assert_eq!(cosine_similarity(&a, &b), 0.0);
++
++        let a = vec![1.0];
++        let b = vec![1.0, 2.0];
++        assert_eq!(cosine_similarity(&a, &b), 0.0); // Different lengths
++
++        let a = vec![0.0, 0.0];
++        let b = vec![1.0, 1.0];
++        assert_eq!(cosine_similarity(&a, &b), 0.0); // Zero magnitude
++    }
++}
+diff --git a/tauri/src-tauri/src/services/vector_index.rs b/tauri/src-tauri/src/services/vector_index.rs
+index 3b57413..3da97be 100644
+--- a/tauri/src-tauri/src/services/vector_index.rs
++++ b/tauri/src-tauri/src/services/vector_index.rs
+@@ -21,3 +21,36 @@ pub fn bytes_to_f32_vec(bytes: &[u8]) -> Vec<f32> {
+ pub fn f32_vec_to_bytes(vec: &[f32]) -> Vec<u8> {
+     vec.iter().flat_map(|&f| f.to_le_bytes()).collect()
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn test_cosine_similarity() {
++        let v1 = vec![1.0, 0.0, 0.0];
++        let v2 = vec![1.0, 0.0, 0.0];
++        assert_eq!(cosine_similarity(&v1, &v2), 1.0);
++
++        let v1 = vec![1.0, 0.0, 0.0];
++        let v2 = vec![0.0, 1.0, 0.0];
++        assert_eq!(cosine_similarity(&v1, &v2), 0.0);
++
++        let v1 = vec![1.0];
++        let v2 = vec![1.0, 2.0];
++        assert_eq!(cosine_similarity(&v1, &v2), 0.0); // Different lengths
++
++        let v1 = vec![0.0, 0.0];
++        let v2 = vec![1.0, 1.0];
++        assert_eq!(cosine_similarity(&v1, &v2), 0.0); // Zero norm
++    }
++
++    #[test]
++    fn test_bytes_conversion() {
++        let orig_vec = vec![1.0f32, 2.0, -3.5, 0.0, 42.42];
++        let bytes = f32_vec_to_bytes(&orig_vec);
++        let decoded = bytes_to_f32_vec(&bytes);
++        
++        assert_eq!(orig_vec, decoded);
++    }
++}
+diff --git a/tauri/src-tauri/src/services/workspace_service.rs b/tauri/src-tauri/src/services/workspace_service.rs
+index 11b8681..969d174 100644
+--- a/tauri/src-tauri/src/services/workspace_service.rs
++++ b/tauri/src-tauri/src/services/workspace_service.rs
+@@ -288,3 +288,95 @@ pub fn reorder(conn: &Connection, ids: Vec<String>) -> Result<(), String> {
+     }
+     Ok(())
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::db::test_utils::tests::setup_test_db;
++
++    #[test]
++    fn test_create_and_get_workspace() {
++        let pool = setup_test_db();
++        let conn = pool.get().unwrap();
++        
++        let req = CreateWorkspaceRequest {
++            name: "Test Workspace".to_string(),
++            description: Some("Test Description".to_string()),
++        };
++        
++        let created = create(&conn, req).unwrap();
++        assert_eq!(created.name, "Test Workspace");
++        assert_eq!(created.description, "Test Description");
++        
++        let fetched = get(&conn, &created.id).unwrap().unwrap();
++        assert_eq!(fetched.id, created.id);
++        assert_eq!(fetched.name, "Test Workspace");
++    }
++
++    #[test]
++    fn test_list_workspaces() {
++        let pool = setup_test_db();
++        let conn = pool.get().unwrap();
++        
++        create(&conn, CreateWorkspaceRequest {
++            name: "W1".to_string(),
++            description: None,
++        }).unwrap();
++        
++        create(&conn, CreateWorkspaceRequest {
++            name: "W2".to_string(),
++            description: None,
++        }).unwrap();
++        
++        let all = list_all(&conn).unwrap();
++        assert_eq!(all.len(), 2);
++    }
++
++    #[test]
++    fn test_hide_unhide_workspace() {
++        let pool = setup_test_db();
++        let conn = pool.get().unwrap();
++        
++        let w = create(&conn, CreateWorkspaceRequest {
++            name: "Hide Me".to_string(),
++            description: None,
++        }).unwrap();
++        
++        hide(&conn, &w.id).unwrap();
++        let all = list_all(&conn).unwrap();
++        assert!(all.iter().all(|ws| ws.id != w.id));
++        
++        let hidden = list_hidden(&conn).unwrap();
++        assert!(hidden.iter().any(|ws| ws.id == w.id));
++        
++        unhide(&conn, &w.id).unwrap();
++        let all_again = list_all(&conn).unwrap();
++        assert!(all_again.iter().any(|ws| ws.id == w.id));
++    }
++
++    #[test]
++    fn test_set_parent_and_circular_check() {
++        let pool = setup_test_db();
++        let conn = pool.get().unwrap();
++        
++        let w1 = create(&conn, CreateWorkspaceRequest {
++            name: "Parent".to_string(),
++            description: None,
++        }).unwrap();
++        
++        let w2 = create(&conn, CreateWorkspaceRequest {
++            name: "Child".to_string(),
++            description: None,
++        }).unwrap();
++        
++        set_parent(&conn, &w2.id, Some(w1.id.clone())).unwrap();
++        
++        let fetched_w2 = get(&conn, &w2.id).unwrap().unwrap();
++        assert_eq!(fetched_w2.parent_workspace_id, Some(w1.id.clone()));
++        
++        // Circular check
++        let result = set_parent(&conn, &w1.id, Some(w2.id.clone()));
++        assert!(result.is_err());
++        assert_eq!(result.unwrap_err(), "Cannot create a circular parent-child relationship.");
++    }
++}
+diff --git a/tauri/src/components/ChatMinimap.tsx b/tauri/src/components/ChatMinimap.tsx
+index 279c3fe..aa4e47b 100644
+--- a/tauri/src/components/ChatMinimap.tsx
++++ b/tauri/src/components/ChatMinimap.tsx
+@@ -9,20 +9,38 @@ interface ChatMinimapProps {
+   isStreaming: boolean;
+ }
+ 
+-/** Maximum characters shown per line in the minimap preview. */
+-const PREVIEW_MAX_CHARS = 60;
+-/** Height of each minimap block in px. */
+-const BLOCK_H = 28;
+-/** Visible viewport indicator height — approximation refreshed on scroll. */
+-const MIN_THUMB_H = 20;
+-
+-/**
+- * A Sublime-Text–style minimap for the chat message list.
+- *
+- * Shows a condensed column of user / assistant blocks on the right edge.
+- * Clicking or dragging jumps the Virtuoso list to the corresponding message.
+- * Hovering a block shows a tooltip with the first line of the message.
+- */
++/** px height of each simulated line in the minimap */
++const LINE_H = 2;
++/** px gap between lines within a block */
++const LINE_GAP = 1;
++/** px gap between message blocks */
++const BLOCK_GAP = 6;
++/** approximate chars per minimap "line" */
++const CHARS_PER_LINE = 30;
++/** max lines rendered per message */
++const MAX_LINES = 60;
++
++interface MinimapBlock {
++  msgIdx: number;
++  role: "user" | "assistant" | "system";
++  lineCount: number;
++  preview: string;
++  id: string;
++}
++
++function estimateLineCount(text: string): number {
++  const lines = text.split("\n");
++  let total = 0;
++  for (const line of lines) {
++    total += Math.max(1, Math.ceil(line.length / CHARS_PER_LINE));
++  }
++  return Math.min(Math.max(total, 1), MAX_LINES);
++}
++
++function blockH(lineCount: number): number {
++  return lineCount * (LINE_H + LINE_GAP) - LINE_GAP;
++}
++
+ const ChatMinimap: React.FC<ChatMinimapProps> = ({
+   messages,
+   virtuosoRef,
+@@ -33,33 +51,55 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
+   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+   const [tooltipY, setTooltipY] = useState(0);
+   const [viewportRatio, setViewportRatio] = useState({ top: 0, height: 1 });
++  const [trackClientH, setTrackClientH] = useState(0);
+   const dragging = useRef(false);
+ 
+-  // Build block data from messages + optional streaming block
+-  const blocks = useMemo(() => {
+-    const result: { role: "user" | "assistant" | "system"; preview: string; id: string }[] = [];
+-    for (const m of messages) {
+-      const first = m.content.split("\n").find((l) => l.trim().length > 0) ?? "";
++  const blocks = useMemo<MinimapBlock[]>(() => {
++    const result: MinimapBlock[] = [];
++    for (let i = 0; i < messages.length; i++) {
++      const m = messages[i];
++      const firstLine = m.content.split("\n").find((l) => l.trim().length > 0) ?? "";
+       result.push({
++        msgIdx: i,
+         role: m.role,
+-        preview: first.length > PREVIEW_MAX_CHARS ? first.slice(0, PREVIEW_MAX_CHARS) + "…" : first,
++        lineCount: estimateLineCount(m.content),
++        preview: firstLine.length > 60 ? firstLine.slice(0, 60) + "…" : firstLine,
+         id: m.id,
+       });
+     }
+     if (isStreaming && streamingContent) {
+-      const first = streamingContent.split("\n").find((l) => l.trim().length > 0) ?? "";
++      const firstLine = streamingContent.split("\n").find((l) => l.trim().length > 0) ?? "";
+       result.push({
++        msgIdx: messages.length,
+         role: "assistant",
+-        preview: first.length > PREVIEW_MAX_CHARS ? first.slice(0, PREVIEW_MAX_CHARS) + "…" : first,
++        lineCount: estimateLineCount(streamingContent),
++        preview: firstLine.length > 60 ? firstLine.slice(0, 60) + "…" : firstLine,
+         id: "__streaming__",
+       });
+     }
+     return result;
+   }, [messages, isStreaming, streamingContent]);
+ 
+-  // Track Virtuoso scroll position via a polling interval (Virtuoso doesn't expose onScroll directly to parents easily)
++  const naturalH = useMemo(
++    () => blocks.reduce((sum, b) => sum + blockH(b.lineCount) + BLOCK_GAP, 0),
++    [blocks],
++  );
++
++  const scale = trackClientH > 0 && naturalH > 0 ? Math.min(trackClientH / naturalH, 1) : 1;
++
++  useEffect(() => {
++    const el = trackRef.current;
++    if (!el) return;
++    const ro = new ResizeObserver(() => setTrackClientH(el.clientHeight));
++    ro.observe(el);
++    setTrackClientH(el.clientHeight);
++    return () => ro.disconnect();
++  }, []);
++
+   useEffect(() => {
+-    const scroller = trackRef.current?.closest("[data-testid='chat-messages-area']")?.querySelector("[data-virtuoso-scroller]") as HTMLElement | null;
++    const scroller = trackRef.current
++      ?.closest("[data-testid='chat-messages-area']")
++      ?.querySelector("[data-virtuoso-scroller]") as HTMLElement | null;
+     if (!scroller) return;
+ 
+     const update = () => {
+@@ -83,54 +123,61 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
+     [virtuosoRef],
+   );
+ 
++  const blockIdxAtY = useCallback(
++    (relY: number): number => {
++      const naturalY = (relY / (trackClientH || 1)) * naturalH;
++      let y = 0;
++      for (let i = 0; i < blocks.length; i++) {
++        y += blockH(blocks[i].lineCount) + BLOCK_GAP;
++        if (naturalY < y) return i;
++      }
++      return blocks.length - 1;
++    },
++    [blocks, naturalH, trackClientH],
++  );
++
+   const handlePointerDown = useCallback(
+     (e: React.PointerEvent) => {
+       dragging.current = true;
+       (e.target as HTMLElement).setPointerCapture(e.pointerId);
+       const rect = trackRef.current?.getBoundingClientRect();
+       if (!rect) return;
+-      const y = e.clientY - rect.top;
+-      const idx = Math.min(Math.max(Math.floor((y / rect.height) * blocks.length), 0), blocks.length - 1);
+-      jumpTo(idx);
++      jumpTo(blockIdxAtY(e.clientY - rect.top));
+     },
+-    [blocks.length, jumpTo],
++    [blockIdxAtY, jumpTo],
+   );
+ 
+   const handlePointerMove = useCallback(
+     (e: React.PointerEvent) => {
+       const rect = trackRef.current?.getBoundingClientRect();
+       if (!rect) return;
+-      const y = e.clientY - rect.top;
+-      const idx = Math.min(Math.max(Math.floor((y / rect.height) * blocks.length), 0), blocks.length - 1);
++      const relY = e.clientY - rect.top;
++      const idx = blockIdxAtY(relY);
+       setHoveredIdx(idx);
+-      setTooltipY(e.clientY - rect.top);
+-      if (dragging.current) {
+-        jumpTo(idx);
+-      }
++      setTooltipY(relY);
++      if (dragging.current) jumpTo(idx);
+     },
+-    [blocks.length, jumpTo],
++    [blockIdxAtY, jumpTo],
+   );
+ 
+   const handlePointerUp = useCallback(() => {
+     dragging.current = false;
+   }, []);
+ 
+-  if (blocks.length < 4) return null; // Don't show minimap for very short conversations
+-
+-  const trackH = blocks.length * BLOCK_H;
+-  const thumbTop = viewportRatio.top * trackH;
+-  const thumbH = Math.max(viewportRatio.height * trackH, MIN_THUMB_H);
++  if (blocks.length < 4) return null;
+ 
+   return (
+     <div
+-      className="absolute right-0 top-0 bottom-0 z-10 flex flex-col items-end pointer-events-none"
+-      style={{ width: 56 }}
++      className="absolute right-2 top-2 bottom-2 z-10 flex flex-col items-end pointer-events-none"
++      style={{ width: 40 }}
+     >
+-      {/* Track */}
+       <div
+         ref={trackRef}
+-        className="relative w-10 my-4 mr-1 pointer-events-auto cursor-pointer select-none"
+-        style={{ height: trackH, maxHeight: "100%" }}
++        className="relative w-7 overflow-hidden rounded pointer-events-auto cursor-pointer select-none"
++        style={{
++          height: "100%",
++          backgroundColor: "color-mix(in srgb, var(--bg-primary, #1e1e2e) 80%, transparent)",
++        }}
+         onPointerDown={handlePointerDown}
+         onPointerMove={handlePointerMove}
+         onPointerUp={handlePointerUp}
+@@ -139,40 +186,71 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
+           dragging.current = false;
+         }}
+       >
+-        {/* Blocks */}
+-        {blocks.map((b, i) => (
+-          <div
+-            key={b.id}
+-            className={`w-full rounded-sm mb-px transition-opacity duration-100 ${
+-              b.role === "user"
+-                ? "bg-[var(--accent-color)]/50"
+-                : b.role === "system"
+-                  ? "bg-yellow-500/30"
+-                  : "bg-[var(--text-secondary)]/20"
+-            } ${hoveredIdx === i ? "!opacity-100 ring-1 ring-[var(--accent-color)]" : "opacity-70"}`}
+-            style={{ height: BLOCK_H - 1 }}
+-          />
+-        ))}
++        {/* Scaled content wrapper */}
++        <div
++          className="px-[3px] pt-1"
++          style={{ transform: `scaleY(${scale})`, transformOrigin: "top" }}
++        >
++          {blocks.map((b, i) => (
++            <div
++              key={b.id}
++              className={`w-full transition-opacity duration-75 ${hoveredIdx === i ? "opacity-100" : "opacity-70"}`}
++              style={{ height: blockH(b.lineCount), marginBottom: BLOCK_GAP }}
++            >
++              {Array.from({ length: b.lineCount }, (_, li) => (
++                <div
++                  key={li}
++                  style={{
++                    height: LINE_H,
++                    marginBottom: li < b.lineCount - 1 ? LINE_GAP : 0,
++                    width: "100%",
++                    borderRadius: 1,
++                    backgroundColor:
++                      b.role === "user"
++                        ? `color-mix(in srgb, var(--accent-color, #6366f1) ${li === 0 ? "90%" : "55%"}, transparent)`
++                        : b.role === "system"
++                          ? "color-mix(in srgb, #eab308 45%, transparent)"
++                          : `color-mix(in srgb, var(--text-secondary, #94a3b8) ${li === 0 ? "60%" : "30%"}, transparent)`,
++                  }}
++                />
++              ))}
++            </div>
++          ))}
++        </div>
+ 
+         {/* Viewport thumb */}
+         <div
+-          className="absolute left-0 w-full rounded border border-[var(--accent-color)]/40 bg-[var(--accent-color)]/10 pointer-events-none transition-[top] duration-75"
+-          style={{ top: thumbTop, height: thumbH }}
++          className="absolute left-0 w-full pointer-events-none rounded transition-[top,height] duration-75"
++          style={{
++            top: `${viewportRatio.top * 100}%`,
++            height: `${Math.max(viewportRatio.height * 100, 8)}%`,
++            border: "1px solid color-mix(in srgb, var(--accent-color, #6366f1) 60%, transparent)",
++            backgroundColor: "color-mix(in srgb, var(--accent-color, #6366f1) 15%, transparent)",
++          }}
+         />
+-
+-        {/* Tooltip */}
+-        {hoveredIdx !== null && blocks[hoveredIdx] && (
+-          <div
+-            className="absolute right-12 rounded-lg px-3 py-1.5 text-xs leading-tight max-w-[240px] truncate shadow-lg border border-white/10 bg-[var(--bg-elevated)] text-[var(--text-primary)] pointer-events-none whitespace-nowrap"
+-            style={{ top: Math.max(0, tooltipY - 14) }}
+-          >
+-            <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${
+-              blocks[hoveredIdx].role === "user" ? "bg-[var(--accent-color)]" : "bg-[var(--text-secondary)]/60"
+-            }`} />
+-            {blocks[hoveredIdx].preview || (blocks[hoveredIdx].role === "user" ? "User prompt" : "Assistant reply")}
+-          </div>
+-        )}
+       </div>
++
++      {/* Tooltip — rendered outside the overflow:hidden track so it isn't clipped */}
++      {hoveredIdx !== null && blocks[hoveredIdx] && (
++        <div
++          className="absolute right-full mr-2 rounded-lg px-3 py-1.5 text-xs leading-tight max-w-[240px] truncate shadow-lg border border-white/10 bg-[var(--bg-elevated)] text-[var(--text-primary)] pointer-events-none whitespace-nowrap"
++          style={{ top: Math.max(8, tooltipY) }}
++        >
++          <span
++            style={{
++              display: "inline-block",
++              width: 6,
++              height: 6,
++              borderRadius: "50%",
++              marginRight: 6,
++              backgroundColor: blocks[hoveredIdx].role === "user"
++                ? "var(--accent-color, #6366f1)"
++                : "var(--text-secondary, #94a3b8)",
++            }}
++          />
++          {blocks[hoveredIdx].preview || (blocks[hoveredIdx].role === "user" ? "User prompt" : "Assistant reply")}
++        </div>
++      )}
+     </div>
+   );
+ };
+diff --git a/tauri/src/tests/hooks/useSystemSpecs.test.tsx b/tauri/src/tests/hooks/useSystemSpecs.test.tsx
+new file mode 100644
+index 0000000..b99ac47
+--- /dev/null
++++ b/tauri/src/tests/hooks/useSystemSpecs.test.tsx
+@@ -0,0 +1,61 @@
++import { describe, it, expect, vi, beforeEach } from "vitest";
++import { renderHook, waitFor } from "@testing-library/react";
++import { api } from "../../lib/api";
++
++vi.mock("../../lib/api", () => ({
++  api: {
++    system: {
++      getSpecs: vi.fn(),
++    },
++  },
++}));
++
++describe("useSystemSpecs", () => {
++  const mockSpecs = {
++    os_name: "linux",
++    os_version: "1.0",
++    cpu_architecture: "x86_64",
++    total_memory_bytes: 16000000000,
++    available_memory_bytes: 8000000000,
++    has_metal: false,
++    has_cuda: false,
++    has_rocm: true,
++  };
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++    vi.resetModules();
++  });
++
++  it("fetches and caches system specs", async () => {
++    (api.system.getSpecs as any).mockResolvedValue(mockSpecs);
++    
++    const { fetchSystemSpecs, getCachedSystemSpecs } = await import("../../hooks/useSystemSpecs");
++    
++    expect(getCachedSystemSpecs()).toBeNull();
++    
++    const promise1 = fetchSystemSpecs();
++    const promise2 = fetchSystemSpecs();
++    
++    const specs1 = await promise1;
++    const specs2 = await promise2;
++    
++    expect(api.system.getSpecs).toHaveBeenCalledTimes(1);
++    expect(specs1).toEqual(mockSpecs);
++    expect(specs2).toEqual(mockSpecs);
++    expect(getCachedSystemSpecs()).toEqual(mockSpecs);
++  });
++
++  it("hook returns specs", async () => {
++    (api.system.getSpecs as any).mockResolvedValue(mockSpecs);
++    const { useSystemSpecs } = await import("../../hooks/useSystemSpecs");
++    
++    const { result } = renderHook(() => useSystemSpecs());
++    
++    expect(result.current).toBeNull();
++    
++    await waitFor(() => {
++      expect(result.current).toEqual(mockSpecs);
++    });
++  });
++});
+diff --git a/tauri/src/tests/stores/artifactStore.test.ts b/tauri/src/tests/stores/artifactStore.test.ts
+new file mode 100644
+index 0000000..755ff23
+--- /dev/null
++++ b/tauri/src/tests/stores/artifactStore.test.ts
+@@ -0,0 +1,83 @@
++import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
++import { useArtifactStore } from "../../stores/artifactStore";
++import { api } from "../../lib/api";
++
++vi.mock("../../lib/api", () => ({
++  api: {
++    artifact: {
++      list: vi.fn(),
++      get: vi.fn(),
++      create: vi.fn(),
++      delete: vi.fn(),
++      update: vi.fn(),
++    },
++  },
++}));
++
++const INITIAL = {
++  artifacts: [],
++  activeArtifact: null,
++  isPanelOpen: false,
++  isLoading: false,
++};
++
++describe("artifactStore", () => {
++  beforeEach(() => {
++    useArtifactStore.setState(INITIAL);
++    vi.clearAllMocks();
++  });
++
++  it("loads artifacts", async () => {
++    const mockSummaries = [
++      { id: "a-1", title: "Artifact 1", artifact_type: "code" }
++    ];
++    (api.artifact.list as any).mockResolvedValue(mockSummaries);
++
++    await useArtifactStore.getState().loadArtifacts("ws-1");
++
++    expect(useArtifactStore.getState().artifacts).toEqual(mockSummaries);
++    expect(useArtifactStore.getState().isLoading).toBe(false);
++  });
++
++  it("creates an artifact", async () => {
++    const mockArtifact = {
++      id: "a-2",
++      title: "New Art",
++      artifact_type: "code",
++      language: "ts",
++      description: "desc",
++      tags: "[\"tag1\"]",
++      is_pinned: false,
++      version: 1,
++      updated_at: new Date().toISOString(),
++    };
++    (api.artifact.create as any).mockResolvedValue(mockArtifact);
++
++    await useArtifactStore.getState().createArtifact({
++      workspace_id: "ws-1",
++      title: "New Art",
++      artifact_type: "code",
++      language: "ts", description: "desc", content: "const x = 1;",
++    });
++
++    const state = useArtifactStore.getState();
++    expect(state.artifacts.length).toBe(1);
++    expect(state.artifacts[0].id).toBe("a-2");
++    expect(state.artifacts[0].tags).toEqual(["tag1"]);
++    expect(state.activeArtifact).toEqual(mockArtifact);
++    expect(state.isPanelOpen).toBe(true);
++  });
++
++  it("deletes an artifact", async () => {
++    useArtifactStore.setState({
++      artifacts: [{ id: "a-1", title: "A1", artifact_type: "code" }] as any,
++      activeArtifact: { id: "a-1" } as any,
++    });
++
++    await useArtifactStore.getState().deleteArtifact("a-1");
++
++    expect(api.artifact.delete).toHaveBeenCalledWith("a-1");
++    expect(useArtifactStore.getState().artifacts).toEqual([]);
++    expect(useArtifactStore.getState().activeArtifact).toBeNull();
++  });
++});
+diff --git a/tauri/src/tests/stores/uiStore.test.ts b/tauri/src/tests/stores/uiStore.test.ts
+new file mode 100644
+index 0000000..9080ead
+--- /dev/null
++++ b/tauri/src/tests/stores/uiStore.test.ts
+@@ -0,0 +1,17 @@
++import { describe, it, expect, beforeEach } from "vitest";
++import { useUIStore } from "../../stores/uiStore";
++
++describe("uiStore", () => {
++  beforeEach(() => {
++    useUIStore.setState({ titlebarTokenCount: 0 });
++  });
++
++  it("initializes with 0 tokens", () => {
++    expect(useUIStore.getState().titlebarTokenCount).toBe(0);
++  });
++
++  it("updates titlebar token count", () => {
++    useUIStore.getState().setTitlebarTokenCount(42);
++    expect(useUIStore.getState().titlebarTokenCount).toBe(42);
++  });
++});
+diff --git a/tauri/src/tests/views/DocumentBrowserView.test.tsx b/tauri/src/tests/views/DocumentBrowserView.test.tsx
+new file mode 100644
+index 0000000..93e423a
+--- /dev/null
++++ b/tauri/src/tests/views/DocumentBrowserView.test.tsx
+@@ -0,0 +1,111 @@
++import React from "react";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { render, screen, waitFor, fireEvent } from "@testing-library/react";
++import DocumentBrowserView from "../../views/DocumentBrowserView";
++import { api } from "../../lib/api";
++import { open as openDialog } from "@tauri-apps/plugin-dialog";
++import { readTextFile } from "@tauri-apps/plugin-fs";
++
++// Mock lucide-react
++vi.mock("lucide-react", () => ({
++  Upload: () => <div data-testid="icon-upload" />,
++  File: () => <div data-testid="icon-file" />,
++  Trash2: () => <div data-testid="icon-trash" />,
++  Cpu: () => <div data-testid="icon-cpu" />,
++  X: () => <div data-testid="icon-x" />,
++}));
++
++// Mock tauri plugins
++vi.mock("@tauri-apps/plugin-dialog", () => ({
++  open: vi.fn(),
++}));
++vi.mock("@tauri-apps/plugin-fs", () => ({
++  readTextFile: vi.fn(),
++}));
++
++// Mock workspace hook
++vi.mock("../../lib/workspacePane", () => ({
++  useScopedWorkspace: () => ({ activeWorkspaceId: "ws-1" }),
++}));
++
++// Mock API
++vi.mock("../../lib/api", () => ({
++  api: {
++    document: {
++      list: vi.fn(),
++      upload: vi.fn(),
++      delete: vi.fn(),
++      process: vi.fn(),
++    },
++  },
++}));
++
++describe("DocumentBrowserView", () => {
++  const mockDocs = [
++    {
++      id: "doc-1",
++      workspace_id: "ws-1",
++      filename: "test.md",
++      file_type: "md",
++      file_size: 100,
++      content: "Hello",
++      is_processed: false,
++      created_at: new Date().toISOString(),
++      updated_at: new Date().toISOString(),
++    },
++  ];
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++    (api.document.list as any).mockResolvedValue(mockDocs);
++  });
++
++  it("lists documents on load", async () => {
++    render(<DocumentBrowserView />);
++    await waitFor(() => {
++      expect(screen.getByText("test.md")).toBeDefined();
++    });
++  });
++
++  it("handles file upload", async () => {
++    (openDialog as any).mockResolvedValue(["/path/to/new.txt"]);
++    (readTextFile as any).mockResolvedValue("new content");
++    (api.document.upload as any).mockResolvedValue({
++      id: "doc-2",
++      workspace_id: "ws-1",
++      filename: "new.txt",
++      file_type: "txt",
++      file_size: 11,
++      content: "new content",
++      is_processed: false,
++      created_at: new Date().toISOString(),
++      updated_at: new Date().toISOString(),
++    });
++
++    render(<DocumentBrowserView />);
++    
++    const uploadBtn = await screen.findByText("Upload");
++    fireEvent.click(uploadBtn);
++
++    await waitFor(() => {
++      expect(api.document.upload).toHaveBeenCalledWith(
++        "ws-1", "new.txt", "txt", 11, "new content"
++      );
++      expect(screen.getByText("new.txt")).toBeDefined();
++    });
++  });
++
++  it("deletes a document", async () => {
++    render(<DocumentBrowserView />);
++    
++    await waitFor(() => screen.getByText("test.md"));
++    
++    const deleteBtn = screen.getByTestId("icon-trash");
++    fireEvent.click(deleteBtn);
++
++    await waitFor(() => {
++      expect(api.document.delete).toHaveBeenCalledWith("doc-1");
++      expect(screen.queryByText("test.md")).toBeNull();
++    });
++  });
++});
+diff --git a/tauri/src/tests/views/ImportSettingsSection.test.tsx b/tauri/src/tests/views/ImportSettingsSection.test.tsx
+index 8a38af0..ec38dc5 100644
+--- a/tauri/src/tests/views/ImportSettingsSection.test.tsx
++++ b/tauri/src/tests/views/ImportSettingsSection.test.tsx
+@@ -170,7 +170,16 @@ describe("ImportSettingsSection", () => {
+ 
+     renderImportSettings();
+ 
+-    fireEvent.click(screen.getByText("Scan Folder"));
++    expect(screen.getByText("Import LM Studio Conversations Folder")).toBeInTheDocument();
++    expect(screen.getByText(/Choose a folder that contains LM Studio/i)).toBeInTheDocument();
++    expect(screen.getByText("Import Claude Conversation Export File")).toBeInTheDocument();
++    expect(screen.getByText((content, element) => (
++      element?.tagName.toLowerCase() === "p"
++      && content.includes("Choose a Claude Desktop")
++      && content.includes("export file. We will scan the file")
++    ))).toBeInTheDocument();
++
++    fireEvent.click(screen.getByText("Scan LM Studio Folder"));
+ 
+     expect(await screen.findByText("Root Chat")).toBeInTheDocument();
+     expect(screen.getByText("Project A Chat")).toBeInTheDocument();
+diff --git a/tauri/src/tests/views/NoteEditorView.test.tsx b/tauri/src/tests/views/NoteEditorView.test.tsx
+new file mode 100644
+index 0000000..291c3a7
+--- /dev/null
++++ b/tauri/src/tests/views/NoteEditorView.test.tsx
+@@ -0,0 +1,123 @@
++import React from "react";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { render, screen, waitFor, fireEvent } from "@testing-library/react";
++import { MemoryRouter } from "react-router-dom";
++import NoteEditorView from "../../views/NoteEditorView";
++import { api } from "../../lib/api";
++
++// Mock lucide-react
++vi.mock("lucide-react", () => ({
++  Plus: () => <div data-testid="icon-plus" />,
++  Trash2: () => <div data-testid="icon-trash" />,
++  Tag: () => <div data-testid="icon-tag" />,
++  Search: () => <div data-testid="icon-search" />,
++  FileText: () => <div data-testid="icon-file-text" />,
++  Save: () => <div data-testid="icon-save" />,
++  Calendar: () => <div data-testid="icon-calendar" />,
++  Sparkles: () => <div data-testid="icon-sparkles" />,
++  Loader: () => <div data-testid="icon-loader" />,
++  X: () => <div data-testid="icon-x" />,
++}));
++
++// Mock tauri plugins
++vi.mock("@tauri-apps/plugin-dialog", () => ({
++  confirm: vi.fn(() => Promise.resolve(true)),
++  message: vi.fn(),
++}));
++
++// Mock workspace hook
++vi.mock("../../lib/workspacePane", () => ({
++  useScopedWorkspace: () => ({ activeWorkspaceId: "ws-1" }),
++}));
++
++// Mock SmartTextEditor
++vi.mock("../../components/SmartTextEditor", () => ({
++  default: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
++    <textarea 
++      data-testid="smart-editor" 
++      value={value} 
++      onChange={(e) => onChange(e.target.value)} 
++    />
++  ),
++}));
++
++// Mock API
++vi.mock("../../lib/api", () => ({
++  api: {
++    note: {
++      list: vi.fn(),
++      create: vi.fn(),
++      update: vi.fn(),
++      delete: vi.fn(),
++    },
++    dailyNote: {
++      get: vi.fn(() => Promise.resolve(null)),
++    }
++  },
++}));
++
++describe("NoteEditorView", () => {
++  const mockNotes = [
++    {
++      id: "note-1",
++      workspace_id: "ws-1",
++      title: "First Note",
++      content: "Content 1",
++      note_type: "general",
++      tags: ["tag1"],
++      created_at: new Date().toISOString(),
++      updated_at: new Date().toISOString(),
++    },
++  ];
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++    (api.note.list as any).mockResolvedValue(mockNotes);
++  });
++
++  it("lists notes and allows selection", async () => {
++    render(
++      <MemoryRouter>
++        <NoteEditorView />
++      </MemoryRouter>
++    );
++    
++    await waitFor(() => {
++      expect(screen.getByText("First Note")).toBeDefined();
++    });
++
++    fireEvent.click(screen.getByText("First Note"));
++    
++    await waitFor(() => {
++      expect((screen.getByTestId("smart-editor") as HTMLTextAreaElement).value).toBe("Content 1");
++    });
++  });
++
++  it("creates a new note", async () => {
++    const newNote = {
++      id: "note-2",
++      workspace_id: "ws-1",
++      title: "Untitled Note",
++      content: "",
++      note_type: "general",
++      tags: [],
++      created_at: new Date().toISOString(),
++      updated_at: new Date().toISOString(),
++    };
++    (api.note.create as any).mockResolvedValue(newNote);
++
++    render(
++      <MemoryRouter>
++        <NoteEditorView />
++      </MemoryRouter>
++    );
++
++    const createBtn = screen.getByTestId("icon-plus");
++    fireEvent.click(createBtn);
++
++    await waitFor(() => {
++      expect(api.note.create).toHaveBeenCalledWith("ws-1", "Untitled Note");
++      expect(screen.getByText("Untitled Note")).toBeDefined();
++    });
++  });
++});
+diff --git a/tauri/src/views/ChatView.tsx b/tauri/src/views/ChatView.tsx
+index 17a1ef6..15e8670 100644
+--- a/tauri/src/views/ChatView.tsx
++++ b/tauri/src/views/ChatView.tsx
+@@ -4464,7 +4464,7 @@ export default function ChatView() {
+                         initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
+                         followOutput={isCurrentlyStreaming ? "auto" : false}
+                         alignToBottom={true}
+-                        className="w-full min-w-0 overflow-x-hidden py-4"
++                        className="w-full min-w-0 overflow-x-hidden py-4 pr-[44px]"
+                         computeItemKey={(_, msg) => msg.id}
+                         itemContent={(i, msg) => (
+                           <div className="pb-4 px-4">
+diff --git a/tauri/src/views/ImportSettingsSection.tsx b/tauri/src/views/ImportSettingsSection.tsx
+index 3750085..19edf61 100644
+--- a/tauri/src/views/ImportSettingsSection.tsx
++++ b/tauri/src/views/ImportSettingsSection.tsx
+@@ -553,10 +553,10 @@ export default function ImportSettingsSection() {
+               <div>
+                 <div className="flex items-center gap-2">
+                   <FolderInput size={16} className="text-[var(--accent-color)]" />
+-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import from LM Studio</h2>
++                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import LM Studio Conversations Folder</h2>
+                 </div>
+                 <p className="mt-2 text-xs text-[var(--text-muted)]">
+-                  Pick a folder containing LM Studio <code>.conversation.json</code> files. Conversations are listed for review before import, and subfolders can be imported as projects selectively.
++                  Choose a folder that contains LM Studio <code>.conversation.json</code> files. We will scan the folder, show the conversations for review, and let you choose which subfolders to import as projects.
+                 </p>
+               </div>
+ 
+@@ -566,7 +566,7 @@ export default function ImportSettingsSection() {
+                 className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+               >
+                 {lmStudioScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+-                {lmStudioScanning ? "Scanning..." : "Scan Folder"}
++                {lmStudioScanning ? "Scanning..." : "Scan LM Studio Folder"}
+               </button>
+             </div>
+ 
+@@ -727,10 +727,10 @@ export default function ImportSettingsSection() {
+               <div>
+                 <div className="flex items-center gap-2">
+                   <FolderInput size={16} className="text-[var(--accent-color)]" />
+-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Multiple Folders</h2>
++                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Multiple LM Studio Conversation Folders</h2>
+                 </div>
+                 <p className="mt-2 text-xs text-[var(--text-muted)]">
+-                  Select multiple folders at once. Each folder containing <code>.conversation.json</code> files will be imported as a separate workspace.
++                  Choose several folders at once. Each folder that contains LM Studio <code>.conversation.json</code> files will be imported into its own workspace.
+                 </p>
+               </div>
+ 
+@@ -740,7 +740,7 @@ export default function ImportSettingsSection() {
+                 className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+               >
+                 {importingMultipleFolders ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+-                {importingMultipleFolders ? "Importing..." : "Import Folders"}
++                {importingMultipleFolders ? "Importing..." : "Import LM Studio Folders"}
+               </button>
+             </div>
+           </section>
+@@ -750,10 +750,10 @@ export default function ImportSettingsSection() {
+               <div>
+                 <div className="flex items-center gap-2">
+                   <FolderInput size={16} className="text-[var(--accent-color)]" />
+-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Browser Activity Export</h2>
++                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Google Takeout Browser Activity File</h2>
+                 </div>
+                 <p className="mt-2 text-xs text-[var(--text-muted)]">
+-                  Pick an exported browser activity HTML file. Supported today: Google Takeout activity exports. It scans for <code>My Activity.html</code> content and imports conversations into a new workspace.
++                  Choose a Google Takeout browser activity export file named <code>My Activity.html</code>. We will scan it for supported conversation history and import the results into a new workspace.
+                 </p>
+               </div>
+ 
+@@ -763,7 +763,7 @@ export default function ImportSettingsSection() {
+                 className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+               >
+                 {importingGemini ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+-                {importingGemini ? "Importing..." : "Import Activity"}
++                {importingGemini ? "Importing..." : "Import My Activity.html"}
+               </button>
+             </div>
+           </section>
+@@ -773,10 +773,10 @@ export default function ImportSettingsSection() {
+               <div>
+                 <div className="flex items-center gap-2">
+                   <FolderInput size={16} className="text-[var(--accent-color)]" />
+-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Project Export</h2>
++                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Claude Project Export File</h2>
+                 </div>
+                 <p className="mt-2 text-xs text-[var(--text-muted)]">
+-                  Pick a <code>projects.json</code> export file. Supported today: Claude Desktop project exports. Each imported project becomes its own workspace with descriptions and instructions.
++                  Choose a Claude Desktop <code>projects.json</code> export file. We will preview the projects first, then import each selected project as its own workspace with its description and instructions.
+                 </p>
+               </div>
+ 
+@@ -786,7 +786,7 @@ export default function ImportSettingsSection() {
+                 className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+               >
+                 {projectsScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+-                {projectsScanning ? "Scanning..." : "Scan Export"}
++                {projectsScanning ? "Scanning..." : "Scan projects.json"}
+               </button>
+             </div>
+ 
+@@ -926,10 +926,10 @@ export default function ImportSettingsSection() {
+               <div>
+                 <div className="flex items-center gap-2">
+                   <FolderInput size={16} className="text-[var(--accent-color)]" />
+-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Conversation Export</h2>
++                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Import Claude Conversation Export File</h2>
+                 </div>
+                 <p className="mt-2 text-xs text-[var(--text-muted)]">
+-                  Pick a <code>conversations.json</code> export file. Supported today: Claude Desktop conversation exports. Conversations are listed for selection before import.
++                  Choose a Claude Desktop <code>conversations.json</code> export file. We will scan the file and list the conversations so you can review and select what to import.
+                 </p>
+               </div>
+ 
+@@ -939,7 +939,7 @@ export default function ImportSettingsSection() {
+                 className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+               >
+                 {claudeScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+-                {claudeScanning ? "Scanning..." : "Scan Export"}
++                {claudeScanning ? "Scanning..." : "Scan conversations.json"}
+               </button>
+             </div>
+ 

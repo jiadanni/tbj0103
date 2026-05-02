@@ -91,6 +91,7 @@ mod tests {
         let crypto_state = app.state::<ChatCryptoState>();
 
         let workspace = create_workspace(
+            app.handle().clone(),
             db_state.clone(),
             CreateWorkspaceRequest {
                 name: "Workspace Alpha".to_string(),

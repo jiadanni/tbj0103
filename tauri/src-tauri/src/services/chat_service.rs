@@ -783,3 +783,156 @@ pub fn get_message_variants(conn: &Connection, message_id: &str) -> Result<Vec<M
         Ok(vec![message])
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_utils::tests::setup_test_db;
+    use crate::services::workspace_service;
+    use crate::models::workspace::CreateWorkspaceRequest;
+
+    fn setup_workspace(conn: &Connection) -> String {
+        let ws = workspace_service::create(conn, CreateWorkspaceRequest {
+            name: "Test Workspace".to_string(),
+            description: None,
+        }).unwrap();
+        ws.id
+    }
+
+    #[test]
+    fn test_create_and_get_session() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn);
+        
+        let req = CreateChatSessionRequest {
+            workspace_id: ws_id.clone(),
+            project_id: "".to_string(),
+            title: Some("Test Chat".to_string()),
+            model_name: Some("gpt-4".to_string()),
+            system_prompt: None,
+            is_incognito: None,
+            exclude_from_analytics: None,
+            parent_session_id: None,
+            branch_message_id: None,
+        };
+        
+        let created = create_session(&conn, req).unwrap();
+        assert_eq!(created.title, "Test Chat");
+        
+        let fetched = get_session(&conn, &created.id).unwrap().unwrap();
+        assert_eq!(fetched.id, created.id);
+        assert_eq!(fetched.workspace_id, ws_id);
+    }
+
+    #[test]
+    fn test_list_and_search_sessions() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn);
+        
+        create_session(&conn, CreateChatSessionRequest {
+            workspace_id: ws_id.clone(),
+            project_id: "".to_string(),
+            title: Some("Apple".to_string()),
+            model_name: None,
+            system_prompt: None,
+            is_incognito: None,
+            exclude_from_analytics: None,
+            parent_session_id: None,
+            branch_message_id: None,
+        }).unwrap();
+        
+        create_session(&conn, CreateChatSessionRequest {
+            workspace_id: ws_id.clone(),
+            project_id: "".to_string(),
+            title: Some("Banana".to_string()),
+            model_name: None,
+            system_prompt: None,
+            is_incognito: None,
+            exclude_from_analytics: None,
+            parent_session_id: None,
+            branch_message_id: None,
+        }).unwrap();
+        
+        let all = list_sessions(&conn, &ws_id, "", None, None).unwrap();
+        assert_eq!(all.len(), 2);
+        
+        let search = search_sessions(&conn, &ws_id, None, "App").unwrap();
+        assert_eq!(search.len(), 1);
+        assert_eq!(search[0].title, "Apple");
+    }
+
+    #[test]
+    fn test_soft_delete_and_restore() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn);
+        
+        let s = create_session(&conn, CreateChatSessionRequest {
+            workspace_id: ws_id.clone(),
+            project_id: "".to_string(),
+            title: Some("To be deleted".to_string()),
+            model_name: None,
+            system_prompt: None,
+            is_incognito: None,
+            exclude_from_analytics: None,
+            parent_session_id: None,
+            branch_message_id: None,
+        }).unwrap();
+        
+        soft_delete(&conn, &s.id).unwrap();
+        assert_eq!(list_sessions(&conn, &ws_id, "", None, None).unwrap().len(), 0);
+        assert_eq!(list_deleted(&conn, &ws_id).unwrap().len(), 1);
+        
+        restore(&conn, &ws_id, &s.id).unwrap();
+        assert_eq!(list_sessions(&conn, &ws_id, "", None, None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_add_and_get_messages() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn);
+        
+        let s = create_session(&conn, CreateChatSessionRequest {
+            workspace_id: ws_id.clone(),
+            project_id: "".to_string(),
+            title: None,
+            model_name: None,
+            system_prompt: None,
+            is_incognito: None,
+            exclude_from_analytics: None,
+            parent_session_id: None,
+            branch_message_id: None,
+        }).unwrap();
+        
+        add_message(&conn, AddMessageRequest {
+            workspace_id: ws_id.clone(),
+            session_id: s.id.clone(),
+            role: MessageRole::User,
+            content: "Hello".to_string(),
+            model_name: None,
+            tokens_used: None,
+            duration_ms: None,
+        }).unwrap();
+        
+        add_message(&conn, AddMessageRequest {
+            workspace_id: ws_id.clone(),
+            session_id: s.id.clone(),
+            role: MessageRole::Assistant,
+            content: "Hi there!".to_string(),
+            model_name: Some("gpt-4".to_string()),
+            tokens_used: Some(10),
+            duration_ms: Some(500),
+        }).unwrap();
+        
+        let messages = get_messages(&conn, &s.id, None, None).unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].role, MessageRole::User);
+        assert_eq!(messages[1].role, MessageRole::Assistant);
+        assert_eq!(messages[1].content, "Hi there!");
+        assert_eq!(messages[1].tokens_used, Some(10));
+    }
+}
