@@ -7,6 +7,7 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 ---
 
 ## 🔄 Core UX & Navigation
+- [x] **Topic Management**: Full topic editing in WorkspaceSettingsView—view auto-detected topics, add custom topics, remove/blacklist topics to prevent regeneration.
 - [ ] **Project Scratchpad**: A persistent per-project markdown canvas/note for manual dumping of context that remains visible or easily accessible during chat.
 - [/] **Unified 'Source' model**: Migrated Documents and Web Captures to a single `sources` table. (Backend complete; specialized views still being phased out).
 - [ ] **Onboarding tooltips**: First-run tour highlighting the sidebar, model selection, and workspace switcher.

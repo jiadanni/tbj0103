@@ -218,13 +218,6 @@ export interface QuickSearchContext {
 
 export interface OllamaModelDetails { parameter_size?: string; }
 export interface OllamaModel { name: string; size?: number; modified_at?: string; details?: OllamaModelDetails; capabilities?: string[]; }
-export interface LoadedModel {
-  name: string;
-  size?: number | null;
-  size_vram?: number | null;
-  expires_at?: string | null;
-  digest?: string | null;
-}
 export interface OllamaRuntimeStatus {
   available: boolean;
   launched: boolean;
@@ -470,7 +463,6 @@ export interface AiModel {
   role_tags: string[];
   priority: number; is_paid: boolean; enabled: boolean; is_hidden: boolean;
   tokens_used_total: number; created_at: string;
-  /** Per-model `num_ctx` override. `null`/missing means use the global default. */
   context_size?: number | null;
 }
 
@@ -631,7 +623,7 @@ export const api = {
     listChildren: (parentId: string) => invoke<Workspace[]>("list_child_workspaces", { parentId }),
     listHidden: () => invoke<Workspace[]>("list_hidden_workspaces"),
     get: (id: string) => invoke<Workspace | null>("get_workspace", { id }),
-    update: (id: string, name: string, description?: string, promptInstructions?: string) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions } }),
+    update: (id: string, name: string, description?: string, promptInstructions?: string, surveyData?: string) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions, survey_data: surveyData } }),
     setParent: (id: string, parentId: string | null) => invoke<void>("set_workspace_parent", { id, parentId }),
     delete: (id: string) => invoke<void>("delete_workspace", { id }),
     updateIcon: (id: string, icon: string) => invoke<void>("update_workspace_icon", { id, icon }),
@@ -812,6 +804,8 @@ export const api = {
     verifyPin: (pin: string) => invoke<boolean>("verify_pin_passcode", { pin }),
     removePin: (currentPin: string) => invoke<void>("remove_pin_passcode", { currentPin }),
     authenticateBiometric: () => invoke<boolean>("authenticate_biometric"),
+    unlockApp: () => invoke<void>("unlock_app"),
+    lockApp: () => invoke<void>("lock_app"),
   },
 
   graph: {
@@ -1159,10 +1153,6 @@ export const api = {
       );
     },
     stopStream: (sessionId: string) => invoke<void>("stop_stream", { sessionId }),
-    unloadModel: (model: string, ollamaUrl?: string) =>
-      invoke<void>("unload_model", { model, ollamaUrl }),
-    listLoadedModels: (ollamaUrl?: string) =>
-      invoke<LoadedModel[]>("list_loaded_models", { ollamaUrl }),
   },
 
   mlx: {
@@ -1268,18 +1258,19 @@ export const api = {
   },
 
   knowledge: {
-    analyzeWorkspace: (workspaceId: string, model: string, opts?: { ollamaUrl?: string; focusTopic?: string }) =>
+    analyzeWorkspace: (workspaceId: string, model: string, opts?: { ollamaUrl?: string; focusTopic?: string; surveyContext?: string }) =>
       invoke<AnalysisResult>("analyze_workspace", {
         req: {
           workspace_id: workspaceId,
           model,
           ollama_url: opts?.ollamaUrl,
           focus_topic: opts?.focusTopic,
+          survey_context: opts?.surveyContext,
         },
       }),
-    suggestGoals: (workspaceId: string, model: string, ollamaUrl?: string) =>
+    suggestGoals: (workspaceId: string, model: string, ollamaUrl?: string, surveyContext?: string) =>
       invoke<SuggestedGoal[]>("suggest_learning_goals", {
-        req: { workspace_id: workspaceId, model, ollama_url: ollamaUrl },
+        req: { workspace_id: workspaceId, model, ollama_url: ollamaUrl, survey_context: surveyContext },
       }),
   },
 
@@ -1376,6 +1367,8 @@ export const api = {
     clear: (before?: string) => invoke<number>("clear_logs", { before }),
     logFrontendEvent: (level: string, source: string, message: string, metadata?: string) =>
       invoke<void>("log_frontend_event", { req: { level, source, message, metadata } }),
+    logFrontendEventsBatch: (events: Array<{ level: string; source: string; message: string; metadata?: string }>) =>
+      invoke<void>("log_frontend_events_batch", { req: { events } }),
   },
 };
 

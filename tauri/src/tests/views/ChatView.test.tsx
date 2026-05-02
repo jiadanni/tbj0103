@@ -242,7 +242,7 @@ describe("ChatView", () => {
           },
           signature_updated_at: null,
           parent_workspace_id: null,
-          icon: "", order_index: 0, last_message_at: null,
+          icon: "", order_index: 0, last_message_at: null, survey_data: null,
         },
       ],
       activeWorkspaceId: "ws-1",

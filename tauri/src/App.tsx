@@ -9,6 +9,22 @@ import { getPrefsWindowSingleInstance } from "./lib/prefsWindowMode";
 import Layout from "./components/Layout";
 import ZoomIndicator from "./components/ZoomIndicator";
 import AuthenticationView from "./views/AuthenticationView";
+import { useNavigationHistory } from "./hooks/useNavigationHistory";
+import { useNavigationHotkeys } from "./hooks/useNavigationHotkeys";
+
+/** Manages browser-like navigation with back/forward support via keyboard and gestures. */
+function NavigationManager() {
+  const { goBack, goForward, canGoBack, canGoForward } = useNavigationHistory();
+
+  useNavigationHotkeys({
+    onBack: goBack,
+    onForward: goForward,
+    canGoBack,
+    canGoForward,
+  });
+
+  return null;
+}
 
 /** Listens for native menu-bar events and translates them into navigation/actions. */
 function MenuEventHandler() {
@@ -226,9 +242,13 @@ export default function App() {
         }
 
         // Auto-authenticate if neither lock method is active
-        if (!settings.touch_id_enabled && !settings.pin_lock_enabled) {setIsAuthenticated(true);}
+        if (!settings.touch_id_enabled && !settings.pin_lock_enabled) {
+          await api.security.unlockApp();
+          setIsAuthenticated(true);
+        }
       } catch {
         // First run or Ollama not available — still OK
+        await api.security.unlockApp().catch(() => {});
         setIsAuthenticated(true);
       } finally {
         if (!cancelled) {
@@ -350,6 +370,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <NavigationManager />
       <MenuEventHandler />
       <ZoomIndicator fontSize={fontSize} visible={zoomVisible} />
       <Routes>

@@ -15,7 +15,7 @@ pub async fn send_mlx_message(app: AppHandle, req: SendMlxRequest) -> Result<Str
     if std::env::consts::OS != "macos" {
         return Err("MLX is only supported on macOS".to_string());
     }
-    let client = MlxClient::new(req.mlx_url);
+    let client = MlxClient::new(req.mlx_url)?;
     client
         .stream_message(&app, &req.session_id, &req.model, req.messages)
         .await
@@ -26,6 +26,6 @@ pub async fn list_mlx_models(mlx_url: Option<String>) -> Result<Vec<MlxModelInfo
     if std::env::consts::OS != "macos" {
         return Ok(vec![]);
     }
-    let client = MlxClient::new(mlx_url);
+    let client = MlxClient::new(mlx_url)?;
     client.list_models().await
 }

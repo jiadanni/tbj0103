@@ -326,11 +326,13 @@ impl OllamaClient {
     ) {
         let severity = Self::severity(path, duration, false, false, ctx);
         let fields = Self::summary_fields(ctx, method, path, Some(duration), Some(status), extras);
-        crate::logging::log_info("ollama", format!(
+        let message = format!(
             "[AETHERIUM -> OLLAMA][{}] {}",
             severity,
             fields.join(" ")
-        ));
+        );
+        // Route non-critical successes through the buffered logger.
+        crate::logging::log_buffered("info", "ollama", &message, "{}");
     }
 
     #[cfg(debug_assertions)]
@@ -346,17 +348,22 @@ impl OllamaClient {
         let mut extra_parts = extras.to_vec();
         extra_parts.push(("error", error.to_string()));
         let fields = Self::summary_fields(ctx, method, path, Some(duration), None, &extra_parts);
-        crate::logging::log_error("ollama", format!("[AETHERIUM -> OLLAMA][ERR] {}", fields.join(" ")));
+        // Errors persist immediately (log_buffered short-circuits for "error" level).
+        crate::logging::log_buffered("error", "ollama", &format!("[AETHERIUM -> OLLAMA][ERR] {}", fields.join(" ")), "{}");
     }
 
     #[cfg(debug_assertions)]
     fn log_cache_event(&self, path: &str, ctx: &RequestContext, cache_status: &str) {
         let extras = [("cache", cache_status.to_string())];
         let fields = Self::summary_fields(ctx, "GET", path, None, None, &extras);
-        crate::logging::log_debug("ollama", format!(
-            "[AETHERIUM -> OLLAMA][CACHE] {}",
-            fields.join(" ")
-        ));
+        // Cache hits are the noisiest — aggregate them so repeated identical
+        // messages collapse into a single DB row with a count.
+        crate::logging::log_buffered_aggregated(
+            "debug",
+            "ollama",
+            &format!("[AETHERIUM -> OLLAMA][CACHE] {}", fields.join(" ")),
+            "{}",
+        );
     }
 
     #[cfg(not(debug_assertions))]
@@ -1296,12 +1303,61 @@ impl OllamaClient {
         // This replaces the previous join_all() which created a thundering herd of
         // parallel requests when multiple concurrent calls (resolve_model, ensure_ollama_running,
         // list_models_fresh) raced to fetch the model list at app startup.
+        let total = models.len();
+        let mut success_count: usize = 0;
+        let mut cache_count: usize = 0;
+        let started_at = Instant::now();
+
         let mut enriched = Vec::new();
         for model in models {
+            // Check capability cache to distinguish cache hits from network fetches.
+            let was_cached = {
+                if let Ok(guard) = capability_cache().lock() {
+                    guard.entries.get(&(self.base_url.clone(), model.name.clone()))
+                        .map(|(_, fetched_at)| fetched_at.elapsed() < CAPABILITY_CACHE_TTL)
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            };
+
             let mut enriched_model = model;
-            enriched_model.capabilities = self.fetch_model_capabilities_observed(&enriched_model.name, ctx).await;
+            let caps = self.fetch_model_capabilities_observed(&enriched_model.name, ctx).await;
+            enriched_model.capabilities = caps;
+
+            if was_cached {
+                cache_count += 1;
+            } else {
+                // fetch_model_capabilities_observed stores in cache on success
+                // so if it's in cache now, it succeeded
+                success_count += 1;
+            }
+
             enriched.push(enriched_model);
         }
+
+        let fail_count = total.saturating_sub(success_count + cache_count);
+
+        // Emit a single summary instead of per-model logs.
+        let elapsed = started_at.elapsed();
+        crate::logging::log_buffered(
+            "info",
+            "ollama",
+            &format!(
+                "[AETHERIUM -> OLLAMA][CAPABILITY_REFRESH] models_checked={} success={} cached={} failed={} duration={}",
+                total,
+                success_count,
+                cache_count,
+                fail_count,
+                if elapsed.as_secs() >= 1 {
+                    format!("{:.3}s", elapsed.as_secs_f64())
+                } else {
+                    format!("{:.3}ms", elapsed.as_secs_f64() * 1000.0)
+                },
+            ),
+            "{}",
+        );
+
         enriched
     }
 

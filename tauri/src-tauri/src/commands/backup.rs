@@ -8,6 +8,7 @@ use rusqlite::{
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::commands::security::{require_auth, AuthState};
 use crate::db::DbState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -228,7 +229,8 @@ const RESTORE_TABLE_ORDER: [&str; 23] = [
 ];
 
 #[tauri::command]
-pub fn create_backup(state: State<DbState>, workspace_id: String) -> Result<String, String> {
+pub fn create_backup(auth: State<AuthState>, state: State<DbState>, workspace_id: String) -> Result<String, String> {
+    require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
 
     let workspace = query_optional_json_row(
@@ -282,7 +284,8 @@ pub fn list_backups(_state: State<DbState>) -> Result<Vec<BackupInfo>, String> {
 }
 
 #[tauri::command]
-pub fn restore_backup(state: State<DbState>, backup_json: String) -> Result<String, String> {
+pub fn restore_backup(auth: State<AuthState>, state: State<DbState>, backup_json: String) -> Result<String, String> {
+    require_auth(&auth, &state)?;
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let backup: serde_json::Value =
         serde_json::from_str(&backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
@@ -526,7 +529,8 @@ fn json_to_sql_value(value: &serde_json::Value) -> Result<Value, String> {
 
 /// Create a global backup containing all workspaces
 #[tauri::command]
-pub fn create_global_backup(state: State<DbState>) -> Result<String, String> {
+pub fn create_global_backup(auth: State<AuthState>, state: State<DbState>) -> Result<String, String> {
+    require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
 
     // Get all workspaces
@@ -633,7 +637,8 @@ pub fn create_global_backup(state: State<DbState>) -> Result<String, String> {
 
 /// Restore from a global backup (all workspaces)
 #[tauri::command]
-pub fn restore_global_backup(state: State<DbState>, backup_json: String) -> Result<Vec<String>, String> {
+pub fn restore_global_backup(auth: State<AuthState>, state: State<DbState>, backup_json: String) -> Result<Vec<String>, String> {
+    require_auth(&auth, &state)?;
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let backup: serde_json::Value =
         serde_json::from_str(&backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
