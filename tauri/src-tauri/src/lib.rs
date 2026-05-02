@@ -151,6 +151,7 @@ pub fn run() {
 
             // Initialize persistent logging with the DB pool
             crate::logging::init_pool(pool.clone());
+            crate::logging::start_flush_timer();
 
             app.manage(db::DbState(pool));
             app.manage(commands::chat_file::ChatsDirState(chats_dir));
@@ -596,6 +597,7 @@ pub fn run() {
             commands::log::get_log_sources,
             commands::log::clear_logs,
             commands::log::log_frontend_event,
+            commands::log::log_frontend_events_batch,
         ])
         .run(tauri::generate_context!());
 
