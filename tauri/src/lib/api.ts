@@ -370,6 +370,8 @@ export interface AppSettings {
   show_gen_info_model: boolean;
   demo_dismissed: boolean;
   memory_enabled: boolean;
+  memory_extraction_threshold: number;
+  memory_extraction_idle_minutes: number;
   menubar_icon_style: "monochrome" | "white" | "black";
 }
 

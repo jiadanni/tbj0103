@@ -416,7 +416,9 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('hide_native_menu', 'false'),
     ('switch_workspace_section', ''),
     ('demo_dismissed', 'false'),
-    ('memory_enabled', 'true');
+    ('memory_enabled', 'true'),
+    ('memory_extraction_threshold', '5'),
+    ('memory_extraction_idle_minutes', '5');
 
 -- Conversation summaries
 CREATE TABLE IF NOT EXISTS conversation_summaries (

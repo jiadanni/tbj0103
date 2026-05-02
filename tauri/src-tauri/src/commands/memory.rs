@@ -250,7 +250,15 @@ pub async fn extract_memories(
     };
 
     let prompt = format!(
-        r#"Analyze this conversation and extract important facts, preferences, or context about the user that would be useful to remember for future conversations.
+        r#"You are a memory extraction system. Read the conversation and output ONLY a JSON array of concise facts about the user.
+
+RULES:
+- Each "content" must be a single short sentence (under 20 words) about the user.
+- Write facts ABOUT THE USER (what they know, want, prefer, are working on).
+- Do NOT copy or paraphrase assistant responses or explanations.
+- Do NOT include greetings, filler, or conversational text.
+- Good: "User is studying Python function call semantics"
+- Bad: "In Python, keyword arguments are evaluated before positional arguments."
 
 Existing memories (do NOT duplicate these):
 {existing_list}
@@ -258,7 +266,7 @@ Existing memories (do NOT duplicate these):
 Conversation:
 {conversation}
 
-Respond with ONLY a JSON array of new memories to add. Each item should have "content" (string) and "memory_type" (one of: "fact", "preference", "context"). If there are no new memories to extract, respond with an empty array [].
+Respond with ONLY a JSON array. Each item has "content" (string) and "memory_type" (one of: "fact", "preference", "context"). Return [] if nothing new.
 
 Example: [{{"content": "User is studying machine learning", "memory_type": "fact"}}, {{"content": "User prefers concise explanations", "memory_type": "preference"}}]"#
     );

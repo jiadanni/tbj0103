@@ -245,6 +245,8 @@ describe("PreferencesView", () => {
       show_gen_info_model: true,
       demo_dismissed: false,
       memory_enabled: true,
+      memory_extraction_threshold: 5,
+      memory_extraction_idle_minutes: 5,
     });
 
     apiMocks.aiModelList.mockResolvedValue([
