@@ -204,7 +204,7 @@ type WorkspaceProjectFlyoutState = {
 type SessionSidebarRow =
   | { type: "session"; key: string; session: ChatSession; depth: number; showProjectBorder: boolean }
   | { type: "project"; key: string; project: Project; isOpen: boolean }
-  | { type: "workspace"; key: string; workspace: Workspace };
+  | { type: "workspace"; key: string; workspace: Workspace; isOpen: boolean };
 
 function SessionItem({
   session, activeChatId, selectMode, isSelected, renamingId, renameTitle,
@@ -333,7 +333,7 @@ function SessionSidebar({
 }: SessionSidebarProps) {
   const isSplitPane = useWorkspacePane() !== null;
   const includeDescendants = useBubbleUpFlag();
-  const { activeWorkspaceId: scopedWsId, setActiveWorkspaceId: setScopedWsId } = useScopedWorkspace();
+  const { activeWorkspaceId: scopedWsId } = useScopedWorkspace();
   const childWorkspaces = useMemo(
     () => includeDescendants && scopedWsId
       ? workspaces.filter((ws) => ws.parent_workspace_id === scopedWsId)
@@ -400,6 +400,39 @@ function SessionSidebar({
       ungrouped.push(session);
     }
   });
+
+  // Group sessions by child workspace when in overview mode
+  const byWorkspace: Record<string, ChatSession[]> = {};
+  if (childWorkspaces.length > 0) {
+    const childWsIds = new Set(childWorkspaces.map((ws) => ws.id));
+    // Re-partition ungrouped into parent-owned vs child-owned
+    const parentUngrouped: ChatSession[] = [];
+    for (const session of ungrouped) {
+      if (childWsIds.has(session.workspace_id)) {
+        (byWorkspace[session.workspace_id] ??= []).push(session);
+      } else {
+        parentUngrouped.push(session);
+      }
+    }
+    ungrouped.length = 0;
+    ungrouped.push(...parentUngrouped);
+    // Also partition project-grouped sessions by workspace
+    for (const [projectId, sessions] of Object.entries(byProject)) {
+      const parentSessions: ChatSession[] = [];
+      for (const session of sessions) {
+        if (childWsIds.has(session.workspace_id)) {
+          (byWorkspace[session.workspace_id] ??= []).push(session);
+        } else {
+          parentSessions.push(session);
+        }
+      }
+      if (parentSessions.length > 0) {
+        byProject[projectId] = parentSessions;
+      } else {
+        delete byProject[projectId];
+      }
+    }
+  }
 
   // Flat ordered list mirroring display order: ungrouped then per-project sessions
   const flatOrderedSessionIds: string[] = [
@@ -530,11 +563,26 @@ function SessionSidebar({
   }
 
   const sessionSidebarRows: SessionSidebarRow[] = [
-    ...childWorkspaces.map((ws) => ({
-      type: "workspace" as const,
-      key: `ws-${ws.id}`,
-      workspace: ws,
-    })),
+    ...childWorkspaces.flatMap((ws) => {
+      const wsRows: SessionSidebarRow[] = [{
+        type: "workspace" as const,
+        key: `ws-${ws.id}`,
+        workspace: ws,
+        isOpen: expanded[`ws-${ws.id}`] ?? false,
+      }];
+      if (expanded[`ws-${ws.id}`] ?? false) {
+        wsRows.push(
+          ...(byWorkspace[ws.id] ?? []).map((session) => ({
+            type: "session" as const,
+            key: session.id,
+            session,
+            depth: 1,
+            showProjectBorder: true,
+          })),
+        );
+      }
+      return wsRows;
+    }),
     ...ungrouped.map((session) => ({
       type: "session" as const,
       key: session.id,
@@ -1350,13 +1398,21 @@ function SessionSidebar({
                 }
 
                 if (row.type === "workspace") {
+                  const { workspace: wsItem, isOpen: wsOpen } = row;
+                  const wsSessionCount = byWorkspace[wsItem.id]?.length ?? 0;
                   return (
                     <button
-                      onClick={() => setScopedWsId(row.workspace.id)}
-                      className="w-full flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] text-[var(--text-secondary)] mb-0.5"
+                      onClick={() => setExpanded((prev) => ({ ...prev, [`ws-${wsItem.id}`]: !wsOpen }))}
+                      className={`w-full flex items-center gap-1.5 rounded-xl border px-3 py-2 text-left transition-colors ${
+                        "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                      }`}
                     >
                       <FolderOpen size={isSplitPane ? 14 : 13} className="text-[var(--accent-color)] shrink-0" />
-                      <span className={`truncate font-medium ${isSplitPane ? "text-xs" : "text-[11px]"}`}>{row.workspace.name}</span>
+                      <span className={`truncate font-medium flex-1 min-w-0 ${isSplitPane ? "text-xs" : "text-[11px]"}`}>{wsItem.name}</span>
+                      {wsSessionCount > 0 && (
+                        <span className={`shrink-0 text-[var(--text-muted)] ${isSplitPane ? "text-[10px]" : "text-[9px]"}`}>{wsSessionCount}</span>
+                      )}
+                      {wsOpen ? <ChevronDown size={isSplitPane ? 13 : 12} className="shrink-0 text-[var(--text-muted)]" /> : <ChevronRight size={isSplitPane ? 13 : 12} className="shrink-0 text-[var(--text-muted)]" />}
                     </button>
                   );
                 }
