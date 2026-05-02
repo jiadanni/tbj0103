@@ -1,5 +1,6 @@
 use crate::db::DbState;
 use crate::models::alarm::{CalendarAlarm, CreateAlarmRequest};
+use crate::services::workspace_hierarchy::workspace_filter_sql;
 use tauri::State;
 
 #[tauri::command]
@@ -30,17 +31,27 @@ pub fn create_alarm(
 pub fn list_alarms(
     state: State<DbState>,
     workspace_id: Option<String>,
+    include_descendants: Option<bool>,
 ) -> Result<Vec<CalendarAlarm>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let query = if workspace_id.is_some() {
-        "SELECT id, workspace_id, title, fire_date, duration_seconds, input_prompt, is_dismissed, created_at
-         FROM calendar_alarms WHERE workspace_id = ?1 AND is_dismissed = 0 ORDER BY fire_date ASC"
+    let incl = include_descendants.unwrap_or(false);
+    let (query, ws_id) = if let Some(ref ws) = workspace_id {
+        let (cte, ws_cond) = workspace_filter_sql(incl);
+        (
+            format!(
+                "{cte}SELECT id, workspace_id, title, fire_date, duration_seconds, input_prompt, is_dismissed, created_at
+                 FROM calendar_alarms WHERE workspace_id {ws_cond} AND is_dismissed = 0 ORDER BY fire_date ASC"
+            ),
+            ws.clone(),
+        )
     } else {
-        "SELECT id, workspace_id, title, fire_date, duration_seconds, input_prompt, is_dismissed, created_at
-         FROM calendar_alarms WHERE is_dismissed = 0 ORDER BY fire_date ASC"
+        (
+            "SELECT id, workspace_id, title, fire_date, duration_seconds, input_prompt, is_dismissed, created_at
+             FROM calendar_alarms WHERE is_dismissed = 0 ORDER BY fire_date ASC".to_string(),
+            String::new(),
+        )
     };
-    let ws_id = workspace_id.unwrap_or_default();
-    let mut stmt = conn.prepare(query).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
     let items = stmt
         .query_map(rusqlite::params![ws_id], |row| {
             Ok(CalendarAlarm {

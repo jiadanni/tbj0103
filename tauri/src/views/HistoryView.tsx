@@ -65,8 +65,8 @@ export default function HistoryView() {
     setLoading(true);
     try {
       const results = query.trim()
-        ? await api.chat.searchSessions(activeWorkspaceId, query)
-        : await api.chat.listSessions(activeWorkspaceId);
+        ? await api.chat.searchSessions(activeWorkspaceId, query, null, { includeDescendants: true })
+        : await api.chat.listSessions(activeWorkspaceId, null, { includeDescendants: true });
       setSessions(results.filter((s) => !s.is_deleted));
     } finally {
       setLoading(false);

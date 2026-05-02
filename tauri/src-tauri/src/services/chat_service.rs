@@ -3,6 +3,7 @@ use crate::models::chat::{
 };
 use crate::models::project::Project;
 use crate::services::chat_file_store;
+use crate::services::workspace_hierarchy::workspace_filter_sql;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -127,32 +128,38 @@ pub fn list_sessions(
     project_id: &str,
     limit: Option<i64>,
     offset: Option<i64>,
+    include_descendants: bool,
 ) -> Result<Vec<ChatSession>, String> {
     let limit = limit.unwrap_or(200).clamp(1, 1000);
     let offset = offset.unwrap_or(0).max(0);
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants);
     let sql = if project_id.is_empty() {
-        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+        format!(
+            "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
-         WHERE workspace_id = ?1 AND is_deleted = 0
+         WHERE workspace_id {ws_cond} AND is_deleted = 0
          ORDER BY is_pinned DESC, updated_at DESC
          LIMIT ?2 OFFSET ?3"
+        )
     } else {
-        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+        format!(
+            "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
-         WHERE workspace_id = ?1 AND project_id = ?2 AND is_deleted = 0
+         WHERE workspace_id {ws_cond} AND project_id = ?2 AND is_deleted = 0
          ORDER BY is_pinned DESC, updated_at DESC
          LIMIT ?3 OFFSET ?4"
+        )
     };
 
-    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = if project_id.is_empty() {
         stmt.query_map(rusqlite::params![workspace_id, limit, offset], row_to_session)
     } else {
@@ -172,31 +179,37 @@ pub fn search_sessions(
     workspace_id: &str,
     project_id: Option<&str>,
     query: &str,
+    include_descendants: bool,
 ) -> Result<Vec<ChatSession>, String> {
     let pattern = format!("%{}%", query.trim());
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants);
     let sql = if project_id.unwrap_or_default().is_empty() {
-        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+        format!(
+            "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
-         WHERE workspace_id = ?1 AND is_deleted = 0
+         WHERE workspace_id {ws_cond} AND is_deleted = 0
            AND (title LIKE ?2 OR model_name LIKE ?2)
          ORDER BY is_pinned DESC, updated_at DESC"
+        )
     } else {
-        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+        format!(
+            "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
-         WHERE workspace_id = ?1 AND project_id = ?2 AND is_deleted = 0
+         WHERE workspace_id {ws_cond} AND project_id = ?2 AND is_deleted = 0
            AND (title LIKE ?3 OR model_name LIKE ?3)
          ORDER BY is_pinned DESC, updated_at DESC"
+        )
     };
 
-    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = if let Some(project_id) = project_id.filter(|id| !id.is_empty()) {
         stmt.query_map(
             rusqlite::params![workspace_id, project_id, pattern],
@@ -251,19 +264,23 @@ pub fn hard_delete(conn: &Connection, workspace_id: &str, id: &str) -> Result<()
     Ok(())
 }
 
-pub fn list_deleted(conn: &Connection, workspace_id: &str) -> Result<Vec<ChatSession>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
-                    is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-                    last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-                    created_at, updated_at,
-                    (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
-             FROM chat_sessions
-             WHERE workspace_id = ?1 AND is_deleted = 1
-             ORDER BY deleted_at DESC, updated_at DESC",
-        )
-        .map_err(|e| e.to_string())?;
+pub fn list_deleted(
+    conn: &Connection,
+    workspace_id: &str,
+    include_descendants: bool,
+) -> Result<Vec<ChatSession>, String> {
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants);
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+                is_incognito, exclude_from_analytics, is_deleted, deleted_at,
+                last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
+                created_at, updated_at,
+                (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
+         FROM chat_sessions
+         WHERE workspace_id {ws_cond} AND is_deleted = 1
+         ORDER BY deleted_at DESC, updated_at DESC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![workspace_id], row_to_session)
         .map_err(|e| e.to_string())?;
@@ -662,21 +679,22 @@ pub fn get_recent(
     conn: &Connection,
     workspace_id: &str,
     limit: Option<i64>,
+    include_descendants: bool,
 ) -> Result<Vec<ChatSession>, String> {
     let limit = limit.unwrap_or(10).clamp(1, 100);
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
-                    is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-                    last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-                    created_at, updated_at,
-                    (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
-             FROM chat_sessions
-             WHERE workspace_id = ?1 AND is_deleted = 0
-             ORDER BY last_accessed_at DESC
-             LIMIT ?2",
-        )
-        .map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants);
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+                is_incognito, exclude_from_analytics, is_deleted, deleted_at,
+                last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
+                created_at, updated_at,
+                (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
+         FROM chat_sessions
+         WHERE workspace_id {ws_cond} AND is_deleted = 0
+         ORDER BY last_accessed_at DESC
+         LIMIT ?2"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![workspace_id, limit], row_to_session)
         .map_err(|e| e.to_string())?;
@@ -856,10 +874,10 @@ mod tests {
             branch_message_id: None,
         }).unwrap();
         
-        let all = list_sessions(&conn, &ws_id, "", None, None).unwrap();
+        let all = list_sessions(&conn, &ws_id, "", None, None, false).unwrap();
         assert_eq!(all.len(), 2);
         
-        let search = search_sessions(&conn, &ws_id, None, "App").unwrap();
+        let search = search_sessions(&conn, &ws_id, None, "App", false).unwrap();
         assert_eq!(search.len(), 1);
         assert_eq!(search[0].title, "Apple");
     }
@@ -883,11 +901,11 @@ mod tests {
         }).unwrap();
         
         soft_delete(&conn, &s.id).unwrap();
-        assert_eq!(list_sessions(&conn, &ws_id, "", None, None).unwrap().len(), 0);
-        assert_eq!(list_deleted(&conn, &ws_id).unwrap().len(), 1);
+        assert_eq!(list_sessions(&conn, &ws_id, "", None, None, false).unwrap().len(), 0);
+        assert_eq!(list_deleted(&conn, &ws_id, false).unwrap().len(), 1);
         
         restore(&conn, &ws_id, &s.id).unwrap();
-        assert_eq!(list_sessions(&conn, &ws_id, "", None, None).unwrap().len(), 1);
+        assert_eq!(list_sessions(&conn, &ws_id, "", None, None, false).unwrap().len(), 1);
     }
 
     #[test]

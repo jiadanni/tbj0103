@@ -304,8 +304,8 @@ export default function KnowledgeGraphView() {
     }
 
     const [nextNodes, nextLinks, nextPath] = await Promise.all([
-      api.graph.listConcepts(activeWorkspaceId),
-      api.graph.listLinks(activeWorkspaceId),
+      api.graph.listConcepts(activeWorkspaceId, undefined, undefined, { includeDescendants: true }),
+      api.graph.listLinks(activeWorkspaceId, undefined, undefined, { includeDescendants: true }),
       api.graph.getLearningPath(activeWorkspaceId).catch(() => [] as LearningPathItem[]),
     ]);
     setNodes(nextNodes);

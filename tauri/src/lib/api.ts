@@ -636,7 +636,7 @@ export const api = {
   project: {
     create: (workspaceId: string, name: string, opts?: Partial<{ project_description: string; custom_instructions: string; color: string; icon: string }>) =>
       invoke<Project>("create_project", { req: { workspace_id: workspaceId, name, ...opts } }),
-    list: (workspaceId: string) => invoke<Project[]>("list_projects", { workspaceId }),
+    list: (workspaceId: string, opts?: { includeDescendants?: boolean }) => invoke<Project[]>("list_projects", { workspaceId, includeDescendants: opts?.includeDescendants }),
     get: (id: string) => invoke<Project | null>("get_project", { id }),
     update: (id: string, fields: Partial<Project>) => invoke<void>("update_project", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_project", { id }),
@@ -651,12 +651,12 @@ export const api = {
   chat: {
     createSession: (workspaceId: string, projectId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string; is_incognito?: boolean; exclude_from_analytics?: boolean }) =>
       invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, project_id: projectId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt, is_incognito: opts?.is_incognito, exclude_from_analytics: opts?.exclude_from_analytics } }),
-    listSessions: (workspaceId: string, projectId?: string | null, opts?: { limit?: number; offset?: number }) =>
-      invoke<ChatSession[]>("list_chat_sessions", { workspaceId, projectId: projectId ?? '', limit: opts?.limit, offset: opts?.offset }),
+    listSessions: (workspaceId: string, projectId?: string | null, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
+      invoke<ChatSession[]>("list_chat_sessions", { workspaceId, projectId: projectId ?? '', limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),
     getRelatedChats: (workspaceId: string, tags: string[], sessionId?: string, limit?: number) =>
       invoke<QuickSearchResult[]>("get_related_chats", { req: { workspace_id: workspaceId, tags, session_id: sessionId, limit } }),
-    searchSessions: (workspaceId: string, query: string, projectId?: string | null) =>
-      invoke<ChatSession[]>("search_chat_sessions", { req: { workspace_id: workspaceId, query, project_id: projectId ?? null } }),
+    searchSessions: (workspaceId: string, query: string, projectId?: string | null, opts?: { includeDescendants?: boolean }) =>
+      invoke<ChatSession[]>("search_chat_sessions", { req: { workspace_id: workspaceId, query, project_id: projectId ?? null, include_descendants: opts?.includeDescendants } }),
     getSession: (workspaceId: string, id: string) => invoke<ChatSession | null>("get_chat_session", { workspaceId, id }),
     deleteSession: (workspaceId: string, id: string) => invoke<void>("delete_chat_session", { workspaceId, id }),
     updateSession: (workspaceId: string, id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string; model_name?: string; exclude_from_analytics?: boolean }) =>
@@ -668,7 +668,7 @@ export const api = {
         "batch_move_sessions",
         { req: { session_ids: sessionIds, target_workspace_id: targetWorkspaceId, preserve_folder_structure: preserveFolderStructure } }
       ),
-    listDeletedSessions: (workspaceId: string) => invoke<ChatSession[]>("list_deleted_chat_sessions", { workspaceId }),
+    listDeletedSessions: (workspaceId: string, opts?: { includeDescendants?: boolean }) => invoke<ChatSession[]>("list_deleted_chat_sessions", { workspaceId, includeDescendants: opts?.includeDescendants }),
     restoreSession: (workspaceId: string, id: string) => invoke<void>("restore_chat_session", { workspaceId, id }),
     hardDeleteSession: (workspaceId: string, id: string) => invoke<void>("hard_delete_chat_session", { workspaceId, id }),
     emptyRecycleBin: (workspaceId: string) => invoke<void>("empty_recycle_bin", { workspaceId }),
@@ -683,8 +683,8 @@ export const api = {
       invoke<{ day: string; total_tokens: number }[]>("get_token_usage_by_date", { workspaceId, days }),
     touchSessionAccessed: (sessionId: string) =>
       invoke<void>("touch_session_accessed", { sessionId }),
-    getRecentSessions: (workspaceId: string, limit?: number) =>
-      invoke<ChatSession[]>("get_recent_sessions", { workspaceId, limit }),
+    getRecentSessions: (workspaceId: string, limit?: number, opts?: { includeDescendants?: boolean }) =>
+      invoke<ChatSession[]>("get_recent_sessions", { workspaceId, limit, includeDescendants: opts?.includeDescendants }),
     convertToNote: (sessionId: string, ollamaUrl?: string) =>
       invoke<ProjectNote>("convert_chat_to_note", { req: { session_id: sessionId, ollama_url: ollamaUrl } }),
     convertToDocument: (sessionId: string, ollamaUrl?: string) =>
@@ -811,13 +811,13 @@ export const api = {
   graph: {
     createConcept: (workspaceId: string, name: string, opts?: Partial<ConceptNode>) =>
       invoke<ConceptNode>("create_concept", { req: { workspace_id: workspaceId, name, ...opts } }),
-    listConcepts: (workspaceId: string, limit?: number, offset?: number) => invoke<ConceptNode[]>("list_concepts", { workspaceId, limit, offset }),
+    listConcepts: (workspaceId: string, limit?: number, offset?: number, opts?: { includeDescendants?: boolean }) => invoke<ConceptNode[]>("list_concepts", { workspaceId, limit, offset, includeDescendants: opts?.includeDescendants }),
     getConcept: (id: string) => invoke<ConceptNode | null>("get_concept", { id }),
     updateConcept: (id: string, fields: Partial<ConceptNode>) => invoke<void>("update_concept", { id, ...fields }),
     deleteConcept: (id: string) => invoke<void>("delete_concept", { id }),
     createLink: (sourceId: string, targetId: string, linkType?: string, strength?: number) =>
       invoke<ConceptLink>("create_concept_link", { req: { source_id: sourceId, target_id: targetId, link_type: linkType, strength } }),
-    listLinks: (workspaceId: string, limit?: number, offset?: number) => invoke<ConceptLink[]>("list_concept_links", { workspaceId, limit, offset }),
+    listLinks: (workspaceId: string, limit?: number, offset?: number, opts?: { includeDescendants?: boolean }) => invoke<ConceptLink[]>("list_concept_links", { workspaceId, limit, offset, includeDescendants: opts?.includeDescendants }),
     deleteLink: (id: string) => invoke<void>("delete_concept_link", { id }),
     getStats: (workspaceId: string) => invoke<GraphStatistics>("get_graph_stats", { workspaceId }),
     getLearningPath: (workspaceId: string) => invoke<LearningPathItem[]>("get_learning_path", { workspaceId }),
@@ -831,7 +831,7 @@ export const api = {
   learningGoal: {
     create: (workspaceId: string, title: string) =>
       invoke<LearningGoal>("create_learning_goal", { req: { workspace_id: workspaceId, title } }),
-    list: (workspaceId: string) => invoke<LearningGoal[]>("list_learning_goals", { workspaceId }),
+    list: (workspaceId: string, opts?: { includeDescendants?: boolean }) => invoke<LearningGoal[]>("list_learning_goals", { workspaceId, includeDescendants: opts?.includeDescendants }),
     update: (id: string, fields: Partial<LearningGoal>) =>
       invoke<void>("update_learning_goal", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_learning_goal", { id }),
@@ -840,8 +840,8 @@ export const api = {
   flashcard: {
     create: (workspaceId: string, front: string, back: string) =>
       invoke<LearningCard>("create_flashcard", { req: { workspace_id: workspaceId, front, back } }),
-    listDue: (workspaceId: string, opts?: { limit?: number; offset?: number }) =>
-      invoke<LearningCard[]>("list_flashcards_due", { workspaceId, limit: opts?.limit, offset: opts?.offset }),
+    listDue: (workspaceId: string, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
+      invoke<LearningCard[]>("list_flashcards_due", { workspaceId, limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),
     review: (cardId: string, quality: number) =>
       invoke<LearningCard>("review_flashcard", { req: { card_id: cardId, quality } }),
     getStats: (workspaceId: string) => invoke<ReviewStats>("get_review_stats", { workspaceId }),
@@ -860,8 +860,8 @@ export const api = {
   note: {
     create: (workspaceId: string, title: string, content?: string) =>
       invoke<ProjectNote>("create_note", { req: { workspace_id: workspaceId, title, content } }),
-    list: (workspaceId: string, opts?: { limit?: number; offset?: number }) =>
-      invoke<ProjectNote[]>("list_notes", { workspaceId, limit: opts?.limit, offset: opts?.offset }),
+    list: (workspaceId: string, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
+      invoke<ProjectNote[]>("list_notes", { workspaceId, limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),
     get: (id: string) => invoke<ProjectNote | null>("get_note", { id }),
     update: (id: string, fields: Partial<ProjectNote>) => invoke<void>("update_note", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_note", { id }),
@@ -869,9 +869,9 @@ export const api = {
       invoke<DailyNote>("get_or_create_daily_note", { req: { workspace_id: workspaceId, date } }),
     updateDailyNote: (id: string, content?: string, mood?: number, productivity?: number) =>
       invoke<void>("update_daily_note", { id, content, mood: mood !== undefined ? mood : null, productivity: productivity !== undefined ? productivity : null }),
-    listDailyNotesInRange: (workspaceId: string, startDate: string, endDate: string) =>
-      invoke<DailyNote[]>("list_daily_notes_in_range", { workspaceId, startDate, endDate }),
-    listTemplates: (workspaceId: string) => invoke<NoteTemplate[]>("list_templates", { workspaceId }),
+    listDailyNotesInRange: (workspaceId: string, startDate: string, endDate: string, opts?: { includeDescendants?: boolean }) =>
+      invoke<DailyNote[]>("list_daily_notes_in_range", { workspaceId, startDate, endDate, includeDescendants: opts?.includeDescendants }),
+    listTemplates: (workspaceId: string, opts?: { includeDescendants?: boolean }) => invoke<NoteTemplate[]>("list_templates", { workspaceId, includeDescendants: opts?.includeDescendants }),
     createTemplate: (workspaceId: string, name: string, content: string) =>
       invoke<NoteTemplate>("create_template", { workspaceId, name, content }),
     deleteTemplate: (id: string) => invoke<void>("delete_template", { id }),
@@ -897,8 +897,8 @@ export const api = {
   source: {
     create: (req: { workspace_id: string; source_type: string; title: string; filename?: string; file_type?: string; file_size?: number; url?: string; content: string; summary?: string; folder?: string }) =>
       invoke<Source>("create_source", { req }),
-    list: (workspaceId: string, sourceType?: string) =>
-      invoke<Source[]>("list_sources", { workspaceId, sourceType }),
+    list: (workspaceId: string, sourceType?: string, opts?: { includeDescendants?: boolean }) =>
+      invoke<Source[]>("list_sources", { workspaceId, sourceType, includeDescendants: opts?.includeDescendants }),
     get: (id: string) => invoke<Source | null>("get_source", { id }),
     update: (id: string, fields: { title?: string; summary?: string; is_processed?: boolean; folder?: string }) =>
       invoke<void>("update_source", { id, ...fields }),
@@ -950,7 +950,7 @@ export const api = {
 
   artifact: {
     create: (req: CreateArtifactRequest) => invoke<Artifact>("create_artifact", { req }),
-    list: (workspace_id: string, limit?: number, offset?: number) => invoke<ArtifactSummary[]>("list_artifacts", { workspaceId: workspace_id, limit, offset }),
+    list: (workspace_id: string, limit?: number, offset?: number, opts?: { includeDescendants?: boolean }) => invoke<ArtifactSummary[]>("list_artifacts", { workspaceId: workspace_id, limit, offset, includeDescendants: opts?.includeDescendants }),
     get: (id: string) => invoke<Artifact>("get_artifact", { id }),
     update: (id: string, updates: Partial<CreateArtifactRequest & { is_pinned: boolean }>) => invoke<void>("update_artifact", { id, updates }),
     delete: (id: string) => invoke<void>("delete_artifact", { id }),
@@ -1214,7 +1214,7 @@ export const api = {
   alarm: {
     create: (title: string, fireDate: string, workspaceId?: string) =>
       invoke<CalendarAlarm>("create_alarm", { req: { title, fire_date: fireDate, workspace_id: workspaceId } }),
-    list: (workspaceId?: string) => invoke<CalendarAlarm[]>("list_alarms", { workspaceId }),
+    list: (workspaceId?: string, opts?: { includeDescendants?: boolean }) => invoke<CalendarAlarm[]>("list_alarms", { workspaceId, includeDescendants: opts?.includeDescendants }),
     delete: (id: string) => invoke<void>("delete_alarm", { id }),
   },
 
@@ -1223,9 +1223,9 @@ export const api = {
       invoke<{ id: string; workspace_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string }>(
         "create_web_capture", { workspaceId, url, title, content, summary }
       ),
-    list: (workspaceId: string, opts?: { limit?: number; offset?: number }) =>
+    list: (workspaceId: string, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
       invoke<{ id: string; workspace_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string }[]>(
-        "list_web_captures", { workspaceId, limit: opts?.limit, offset: opts?.offset }
+        "list_web_captures", { workspaceId, limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }
       ),
     get: (id: string) =>
       invoke<{ id: string; workspace_id: string; url: string; title: string; content: string; summary?: string; is_processed: boolean; created_at: string } | null>(

@@ -30,7 +30,7 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
   loadArtifacts: async (workspaceId) => {
     set({ isLoading: true });
     try {
-      const artifacts = await api.artifact.list(workspaceId);
+      const artifacts = await api.artifact.list(workspaceId, undefined, undefined, { includeDescendants: true });
       set({ artifacts });
     } catch (e) {
       console.error('Failed to load artifacts:', e);

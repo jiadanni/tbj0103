@@ -285,7 +285,7 @@ export default function SourceBrowserView() {
 
   useEffect(() => {
     if (!activeWorkspaceId) { return; }
-    api.source.list(activeWorkspaceId).then((items) => {
+    api.source.list(activeWorkspaceId, undefined, { includeDescendants: true }).then((items) => {
       setSources(items);
       // Auto-expand all folders
       const folders = new Set<string>();

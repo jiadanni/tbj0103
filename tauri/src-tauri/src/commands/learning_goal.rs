@@ -2,6 +2,7 @@ use crate::db::DbState;
 use crate::models::learning_goal::{
     CreateLearningGoalRequest, LearningGoal, UpdateLearningGoalRequest,
 };
+use crate::services::workspace_hierarchy::workspace_filter_sql;
 use tauri::State;
 
 #[tauri::command]
@@ -34,12 +35,15 @@ pub fn create_learning_goal(
 pub fn list_learning_goals(
     state: State<DbState>,
     workspace_id: String,
+    include_descendants: Option<bool>,
 ) -> Result<Vec<LearningGoal>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, title, goal_description, progress, is_completed, due_date, prerequisite_ids, related_chat_ids, created_at, updated_at
-         FROM learning_goals WHERE workspace_id = ?1 ORDER BY created_at DESC"
-    ).map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, title, goal_description, progress, is_completed, due_date, prerequisite_ids, related_chat_ids, created_at, updated_at
+         FROM learning_goals WHERE workspace_id {ws_cond} ORDER BY created_at DESC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
         .query_map(rusqlite::params![workspace_id], |row| {
             let prereq_json: String = row.get(7)?;

@@ -38,7 +38,7 @@ export default function LearningPathView() {
 
   useEffect(() => {
     if (!activeWorkspaceId) { return; }
-    api.learningGoal.list(activeWorkspaceId).then(setGoals).catch(() => {});
+    api.learningGoal.list(activeWorkspaceId, { includeDescendants: true }).then(setGoals).catch(() => {});
   }, [activeWorkspaceId]);
 
   async function handleSurveySubmit(survey: WorkspaceSurvey) {

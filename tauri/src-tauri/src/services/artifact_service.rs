@@ -1,6 +1,7 @@
 use crate::models::artifact::{Artifact, ArtifactSummary, CreateArtifactRequest};
 use crate::services::context_assembler::estimate_tokens;
 use crate::services::vector_index::{bytes_to_f32_vec, cosine_similarity, f32_vec_to_bytes};
+use crate::services::workspace_hierarchy::workspace_filter_sql;
 use rusqlite::Connection;
 
 pub fn store_artifact_embedding(
@@ -119,14 +120,17 @@ pub fn list_artifacts(
     workspace_id: &str,
     limit: Option<i64>,
     offset: Option<i64>,
+    include_descendants: bool,
 ) -> Result<Vec<ArtifactSummary>, String> {
     let limit = limit.unwrap_or(200).clamp(1, 1000);
     let offset = offset.unwrap_or(0).max(0);
-    let mut stmt = conn.prepare(
-        "SELECT id, title, artifact_type, language, description, tags, is_pinned, version, updated_at
-         FROM artifacts WHERE workspace_id = ?1 ORDER BY is_pinned DESC, updated_at DESC
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants);
+    let sql = format!(
+        "{cte}SELECT id, title, artifact_type, language, description, tags, is_pinned, version, updated_at
+         FROM artifacts WHERE workspace_id {ws_cond} ORDER BY is_pinned DESC, updated_at DESC
          LIMIT ?2 OFFSET ?3"
-    ).map_err(|e| e.to_string())?;
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
     let iter = stmt
         .query_map(rusqlite::params![workspace_id, limit, offset], |row| {

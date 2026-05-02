@@ -1,5 +1,6 @@
 use crate::models::project::{CreateProjectRequest, Project, UpdateProjectRequest};
 use crate::services::chat_file_store;
+use crate::services::workspace_hierarchy::workspace_filter_sql;
 use rusqlite::Connection;
 use std::path::Path;
 
@@ -52,13 +53,13 @@ pub fn create(conn: &Connection, req: CreateProjectRequest) -> Result<Project, S
     Ok(project)
 }
 
-pub fn list(conn: &Connection, workspace_id: &str) -> Result<Vec<Project>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
-             FROM projects WHERE workspace_id = ?1 ORDER BY created_at DESC",
-        )
-        .map_err(|e| e.to_string())?;
+pub fn list(conn: &Connection, workspace_id: &str, include_descendants: bool) -> Result<Vec<Project>, String> {
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants);
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
+         FROM projects WHERE workspace_id {ws_cond} ORDER BY created_at DESC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![workspace_id], row_to_project)
         .map_err(|e| e.to_string())?;
@@ -298,11 +299,11 @@ mod tests {
             icon: None,
         }).unwrap();
         
-        let all = list(&conn, &ws_id).unwrap();
+        let all = list(&conn, &ws_id, false).unwrap();
         assert_eq!(all.len(), 2);
         
         delete(&conn, &p_b.id).unwrap();
-        let after_delete = list(&conn, &ws_id).unwrap();
+        let after_delete = list(&conn, &ws_id, false).unwrap();
         assert_eq!(after_delete.len(), 1);
         assert_eq!(after_delete[0].name, "Project A");
     }
@@ -330,10 +331,10 @@ mod tests {
         assert_eq!(moved.workspace_id, ws2_id);
         assert_eq!(moved.name, "Moving Project");
         
-        let ws1_projects = list(&conn, &ws1_id).unwrap();
+        let ws1_projects = list(&conn, &ws1_id, false).unwrap();
         assert_eq!(ws1_projects.len(), 0);
         
-        let ws2_projects = list(&conn, &ws2_id).unwrap();
+        let ws2_projects = list(&conn, &ws2_id, false).unwrap();
         assert_eq!(ws2_projects.len(), 1);
     }
 }

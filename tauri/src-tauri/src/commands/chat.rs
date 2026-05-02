@@ -12,6 +12,7 @@ pub struct SearchChatSessionsRequest {
     pub workspace_id: String,
     pub query: String,
     pub project_id: Option<String>,
+    pub include_descendants: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -44,9 +45,10 @@ pub fn list_chat_sessions(
     project_id: String,
     limit: Option<i64>,
     offset: Option<i64>,
+    include_descendants: Option<bool>,
 ) -> Result<Vec<ChatSession>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::list_sessions(&conn, &workspace_id, &project_id, limit, offset)
+    chat_service::list_sessions(&conn, &workspace_id, &project_id, limit, offset, include_descendants.unwrap_or(false))
 }
 
 #[tauri::command]
@@ -60,6 +62,7 @@ pub fn search_chat_sessions(
         &req.workspace_id,
         req.project_id.as_deref(),
         &req.query,
+        req.include_descendants.unwrap_or(false),
     )
 }
 
@@ -127,9 +130,10 @@ pub fn hard_delete_chat_session(
 pub fn list_deleted_chat_sessions(
     state: State<DbState>,
     workspace_id: String,
+    include_descendants: Option<bool>,
 ) -> Result<Vec<ChatSession>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::list_deleted(&conn, &workspace_id)
+    chat_service::list_deleted(&conn, &workspace_id, include_descendants.unwrap_or(false))
 }
 
 #[tauri::command]
@@ -279,9 +283,10 @@ pub fn get_recent_sessions(
     state: State<DbState>,
     workspace_id: String,
     limit: Option<i64>,
+    include_descendants: Option<bool>,
 ) -> Result<Vec<ChatSession>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::get_recent(&conn, &workspace_id, limit)
+    chat_service::get_recent(&conn, &workspace_id, limit, include_descendants.unwrap_or(false))
 }
 
 #[tauri::command]
