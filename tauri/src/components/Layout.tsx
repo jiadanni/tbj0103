@@ -45,10 +45,6 @@ type WorkspaceDialogState =
   | { kind: "last-workspace" }
   | { kind: "delete"; workspace: Workspace };
 
-function getWorkspaceChildren(workspaces: Workspace[], parentWorkspaceId: string) {
-  return workspaces.filter((workspace) => workspace.parent_workspace_id === parentWorkspaceId);
-}
-
 function getWorkspaceOptionLabel(workspace: Workspace, workspaces: Workspace[]) {
   if (!workspace.parent_workspace_id) {
     return workspace.name;
@@ -72,14 +68,6 @@ function resolveWorkspaceSelection(workspaces: Workspace[], workspaceId: string 
     return {
       workspaceId: workspace.id,
       parentWorkspaceId: workspace.parent_workspace_id,
-    };
-  }
-
-  const children = getWorkspaceChildren(workspaces, workspace.id);
-  if (children.length > 0) {
-    return {
-      workspaceId: children[0].id,
-      parentWorkspaceId: workspace.id,
     };
   }
 
@@ -440,10 +428,17 @@ function SubWorkspaceTabBar({
             </button>
             {dotMenuOpen && (
               <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl backdrop-blur-xl">
-                <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                <button
+                  onClick={() => { onSelect(parent.id); setDotMenuOpen(false); }}
+                  className={`flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider transition-colors ${
+                    activeWorkspaceId === parent.id
+                      ? "text-[var(--accent-color)]"
+                      : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
                   <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
                   {parent.name}
-                </div>
+                </button>
                 {children.map((workspace) => (
                   <button
                     key={workspace.id}

@@ -222,14 +222,6 @@ function normalizeWorkspaceSelection(
     };
   }
 
-  const childWorkspace = workspaces.find((item) => item.parent_workspace_id === workspace.id);
-  if (childWorkspace) {
-    return {
-      workspaceId: childWorkspace.id,
-      parentWorkspaceId: workspace.id,
-    };
-  }
-
   return {
     workspaceId: workspace.id,
     parentWorkspaceId: workspace.id,
