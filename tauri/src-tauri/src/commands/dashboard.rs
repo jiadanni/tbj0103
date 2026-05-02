@@ -5,6 +5,7 @@ use crate::models::dashboard::{
     DashboardSuggestion, DashboardSummary,
 };
 use crate::models::workspace::TopicSignature;
+use crate::services::workspace_hierarchy::workspace_filter_sql;
 use rusqlite::params;
 use tauri::State;
 
@@ -19,8 +20,10 @@ fn route(path: impl Into<String>, state: Option<serde_json::Value>) -> Dashboard
 pub fn get_dashboard_summary(
     state: State<DbState>,
     workspace_id: String,
+    include_descendants: Option<bool>,
 ) -> Result<DashboardSummary, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
 
     let (workspace_name, topic_signature_json): (String, String) = conn
         .query_row(
@@ -41,58 +44,58 @@ pub fn get_dashboard_summary(
 
     let chat_sessions: i64 = conn
         .query_row(
-            "SELECT COUNT(*)
+            &format!("{cte}SELECT COUNT(*)
              FROM chat_sessions
-             WHERE workspace_id = ?1
+             WHERE workspace_id {ws_cond}
                AND is_deleted = 0
                AND is_incognito = 0
-               AND exclude_from_analytics = 0",
+               AND exclude_from_analytics = 0"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let notes: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM project_notes WHERE workspace_id = ?1",
+            &format!("{cte}SELECT COUNT(*) FROM project_notes WHERE workspace_id {ws_cond}"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let sources: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM sources WHERE workspace_id = ?1",
+            &format!("{cte}SELECT COUNT(*) FROM sources WHERE workspace_id {ws_cond}"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let concepts: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = ?1",
+            &format!("{cte}SELECT COUNT(*) FROM concept_nodes WHERE workspace_id {ws_cond}"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let flashcards: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1",
+            &format!("{cte}SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond}"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let active_goals: i64 = conn
         .query_row(
-            "SELECT COUNT(*)
+            &format!("{cte}SELECT COUNT(*)
              FROM learning_goals
-             WHERE workspace_id = ?1 AND is_completed = 0",
+             WHERE workspace_id {ws_cond} AND is_completed = 0"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let completed_goals: i64 = conn
         .query_row(
-            "SELECT COUNT(*)
+            &format!("{cte}SELECT COUNT(*)
              FROM learning_goals
-             WHERE workspace_id = ?1 AND is_completed = 1",
+             WHERE workspace_id {ws_cond} AND is_completed = 1"),
             params![&workspace_id],
             |row| row.get(0),
         )
@@ -100,45 +103,45 @@ pub fn get_dashboard_summary(
 
     let total_cards: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = ?1",
+            &format!("{cte}SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond}"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let due_today: i64 = conn
         .query_row(
-            "SELECT COUNT(*)
+            &format!("{cte}SELECT COUNT(*)
              FROM learning_cards
-             WHERE workspace_id = ?1
-               AND next_review_date <= date('now')",
+             WHERE workspace_id {ws_cond}
+               AND next_review_date <= date('now')"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let learned: i64 = conn
         .query_row(
-            "SELECT COUNT(*)
+            &format!("{cte}SELECT COUNT(*)
              FROM learning_cards
-             WHERE workspace_id = ?1 AND repetitions > 0",
+             WHERE workspace_id {ws_cond} AND repetitions > 0"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let avg_ease: f64 = conn
         .query_row(
-            "SELECT COALESCE(AVG(ease_factor), 2.5)
+            &format!("{cte}SELECT COALESCE(AVG(ease_factor), 2.5)
              FROM learning_cards
-             WHERE workspace_id = ?1",
+             WHERE workspace_id {ws_cond}"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let under_reviewed_concepts: i64 = conn
         .query_row(
-            "SELECT COUNT(*)
+            &format!("{cte}SELECT COUNT(*)
              FROM concept_nodes
-             WHERE workspace_id = ?1
-               AND review_count <= 1",
+             WHERE workspace_id {ws_cond}
+               AND review_count <= 1"),
             params![&workspace_id],
             |row| row.get(0),
         )
@@ -146,12 +149,12 @@ pub fn get_dashboard_summary(
 
     let mut weak_concepts_stmt = conn
         .prepare(
-            "SELECT id, name, review_count
+            &format!("{cte}SELECT id, name, review_count
              FROM concept_nodes
-             WHERE workspace_id = ?1
+             WHERE workspace_id {ws_cond}
                AND review_count <= 1
              ORDER BY review_count ASC, updated_at DESC
-             LIMIT 4",
+             LIMIT 4"),
         )
         .map_err(|e| e.to_string())?;
     let weak_concepts = weak_concepts_stmt
@@ -179,19 +182,19 @@ pub fn get_dashboard_summary(
 
     let continue_learning = conn
         .query_row(
-            "SELECT s.id,
+            &format!("{cte}SELECT s.id,
                     s.title,
                     NULLIF(s.project_id, ''),
                     p.name,
                     COALESCE(s.last_accessed_at, s.updated_at) AS last_seen
              FROM chat_sessions s
              LEFT JOIN projects p ON p.id = s.project_id
-             WHERE s.workspace_id = ?1
+             WHERE s.workspace_id {ws_cond}
                AND s.is_deleted = 0
                AND s.is_incognito = 0
                AND s.exclude_from_analytics = 0
              ORDER BY last_seen DESC
-             LIMIT 1",
+             LIMIT 1"),
             params![&workspace_id],
             |row| {
                 let session_id = row.get::<_, String>(0)?;
@@ -209,11 +212,11 @@ pub fn get_dashboard_summary(
 
     let mut goals_stmt = conn
         .prepare(
-            "SELECT id, title, progress, is_completed, due_date, updated_at
+            &format!("{cte}SELECT id, title, progress, is_completed, due_date, updated_at
              FROM learning_goals
-             WHERE workspace_id = ?1
+             WHERE workspace_id {ws_cond}
              ORDER BY is_completed ASC, progress ASC, updated_at DESC
-             LIMIT 4",
+             LIMIT 4"),
         )
         .map_err(|e| e.to_string())?;
     let goals = goals_stmt
@@ -234,35 +237,35 @@ pub fn get_dashboard_summary(
 
     let stalled_goals: i64 = conn
         .query_row(
-            "SELECT COUNT(*)
+            &format!("{cte}SELECT COUNT(*)
              FROM learning_goals
-             WHERE workspace_id = ?1
+             WHERE workspace_id {ws_cond}
                AND is_completed = 0
-               AND substr(updated_at, 1, 10) <= date('now', '-14 days')",
+               AND substr(updated_at, 1, 10) <= date('now', '-14 days')"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let unprocessed_sources: i64 = conn
         .query_row(
-            "SELECT COUNT(*)
+            &format!("{cte}SELECT COUNT(*)
              FROM sources
-             WHERE workspace_id = ?1
-               AND is_processed = 0",
+             WHERE workspace_id {ws_cond}
+               AND is_processed = 0"),
             params![&workspace_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let isolated_concepts: i64 = conn
         .query_row(
-            "SELECT COUNT(*)
+            &format!("{cte}SELECT COUNT(*)
              FROM concept_nodes c
-             WHERE c.workspace_id = ?1
+             WHERE c.workspace_id {ws_cond}
                AND NOT EXISTS (
                    SELECT 1
                    FROM concept_links l
                    WHERE l.source_id = c.id OR l.target_id = c.id
-               )",
+               )"),
             params![&workspace_id],
             |row| row.get(0),
         )
@@ -270,7 +273,7 @@ pub fn get_dashboard_summary(
 
     let mut activity_stmt = conn
         .prepare(
-            "SELECT *
+            &format!("{cte}SELECT *
              FROM (
                 SELECT n.id AS id,
                        n.title AS title,
@@ -278,7 +281,7 @@ pub fn get_dashboard_summary(
                        COALESCE(n.note_type, '') AS subtitle,
                        n.updated_at AS timestamp
                 FROM project_notes n
-                WHERE n.workspace_id = ?1
+                WHERE n.workspace_id {ws_cond}
 
                 UNION ALL
 
@@ -288,7 +291,7 @@ pub fn get_dashboard_summary(
                        COALESCE(c.concept_type, '') AS subtitle,
                        c.updated_at AS timestamp
                 FROM concept_nodes c
-                WHERE c.workspace_id = ?1
+                WHERE c.workspace_id {ws_cond}
 
                 UNION ALL
 
@@ -299,7 +302,7 @@ pub fn get_dashboard_summary(
                        s.updated_at AS timestamp
                 FROM chat_sessions s
                 LEFT JOIN projects p ON p.id = s.project_id
-                WHERE s.workspace_id = ?1
+                WHERE s.workspace_id {ws_cond}
                   AND s.is_deleted = 0
                   AND s.is_incognito = 0
                   AND s.exclude_from_analytics = 0
@@ -312,10 +315,10 @@ pub fn get_dashboard_summary(
                        COALESCE(src.source_type, '') AS subtitle,
                        src.updated_at AS timestamp
                 FROM sources src
-                WHERE src.workspace_id = ?1
+                WHERE src.workspace_id {ws_cond}
              )
              ORDER BY timestamp DESC
-             LIMIT 6",
+             LIMIT 6"),
         )
         .map_err(|e| e.to_string())?;
     let recent_activity = activity_stmt

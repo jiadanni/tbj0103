@@ -15,7 +15,7 @@ import {
   type DashboardRoute,
   type DashboardSummary,
 } from "../lib/api";
-import { useScopedWorkspace } from "../lib/workspacePane";
+import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
 function timeAgo(iso: string) {
@@ -90,6 +90,7 @@ function normalizeKnowledgeRoute(route: DashboardRoute): DashboardRoute {
 export default function ProjectDashboardView() {
   const navigate = useNavigate();
   const { activeWorkspaceId } = useScopedWorkspace();
+  const includeDescendants = useBubbleUpFlag();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -115,7 +116,7 @@ export default function ProjectDashboardView() {
       setError(null);
 
       try {
-        const nextSummary = await api.dashboard.getSummary(workspaceId);
+        const nextSummary = await api.dashboard.getSummary(workspaceId, { includeDescendants });
         if (!cancelled) {
           setSummary(nextSummary);
         }
@@ -136,7 +137,7 @@ export default function ProjectDashboardView() {
     return () => {
       cancelled = true;
     };
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, includeDescendants]);
 
   function openRoute(route: DashboardRoute) {
     const normalized = normalizeKnowledgeRoute(route);

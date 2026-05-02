@@ -645,7 +645,8 @@ export const api = {
   },
 
   dashboard: {
-    getSummary: (workspaceId: string) => invoke<DashboardSummary>("get_dashboard_summary", { workspaceId }),
+    getSummary: (workspaceId: string, options?: { includeDescendants?: boolean }) =>
+      invoke<DashboardSummary>("get_dashboard_summary", { workspaceId, includeDescendants: options?.includeDescendants }),
   },
 
   chat: {
