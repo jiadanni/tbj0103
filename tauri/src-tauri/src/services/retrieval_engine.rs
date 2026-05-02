@@ -135,3 +135,44 @@ pub fn build_grounded_prompt(user_message: &str, chunks: &[RetrievedChunk]) -> S
          Answer based on the provided context. Cite source numbers like [1], [2] when referencing specific content."
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_grounded_prompt() {
+        let chunks = vec![
+            RetrievedChunk {
+                chunk_id: "c1".to_string(),
+                document_id: "d1".to_string(),
+                filename: "doc1.txt".to_string(),
+                content: "This is some test content about rust.".to_string(),
+                score: 0.9,
+                chunk_index: 0,
+            },
+            RetrievedChunk {
+                chunk_id: "c2".to_string(),
+                document_id: "d2".to_string(),
+                filename: "doc2.md".to_string(),
+                content: "Tauri is great for desktop apps.".to_string(),
+                score: 0.8,
+                chunk_index: 1,
+            }
+        ];
+
+        let prompt = build_grounded_prompt("What is Tauri?", &chunks);
+        
+        assert!(prompt.contains("doc1.txt"));
+        assert!(prompt.contains("doc2.md"));
+        assert!(prompt.contains("Tauri is great for desktop apps."));
+        assert!(prompt.contains("What is Tauri?"));
+        assert!(prompt.starts_with("You are a helpful assistant"));
+    }
+
+    #[test]
+    fn test_build_grounded_prompt_empty() {
+        let prompt = build_grounded_prompt("Just a question", &[]);
+        assert_eq!(prompt, "Just a question");
+    }
+}

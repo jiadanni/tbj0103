@@ -234,3 +234,106 @@ pub fn move_to_workspace(
         updated_at: new_project.updated_at,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_utils::tests::setup_test_db;
+    use crate::services::workspace_service;
+    use crate::models::workspace::CreateWorkspaceRequest;
+
+    fn setup_workspace(conn: &Connection, name: &str) -> String {
+        let ws = workspace_service::create(conn, CreateWorkspaceRequest {
+            name: name.to_string(),
+            description: None,
+        }).unwrap();
+        ws.id
+    }
+
+    #[test]
+    fn test_create_and_get_project() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn, "Test Workspace");
+        
+        let req = CreateProjectRequest {
+            workspace_id: ws_id.clone(),
+            name: "Test Project".to_string(),
+            project_description: Some("Desc".to_string()),
+            custom_instructions: None,
+            color: None,
+            icon: None,
+        };
+        
+        let created = create(&conn, req).unwrap();
+        assert_eq!(created.name, "Test Project");
+        assert_eq!(created.project_description, "Desc");
+        
+        let fetched = get(&conn, &created.id).unwrap().unwrap();
+        assert_eq!(fetched.id, created.id);
+        assert_eq!(fetched.workspace_id, ws_id);
+    }
+
+    #[test]
+    fn test_list_and_delete_projects() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn, "Test Workspace");
+        
+        create(&conn, CreateProjectRequest {
+            workspace_id: ws_id.clone(),
+            name: "Project A".to_string(),
+            project_description: None,
+            custom_instructions: None,
+            color: None,
+            icon: None,
+        }).unwrap();
+        
+        let p_b = create(&conn, CreateProjectRequest {
+            workspace_id: ws_id.clone(),
+            name: "Project B".to_string(),
+            project_description: None,
+            custom_instructions: None,
+            color: None,
+            icon: None,
+        }).unwrap();
+        
+        let all = list(&conn, &ws_id).unwrap();
+        assert_eq!(all.len(), 2);
+        
+        delete(&conn, &p_b.id).unwrap();
+        let after_delete = list(&conn, &ws_id).unwrap();
+        assert_eq!(after_delete.len(), 1);
+        assert_eq!(after_delete[0].name, "Project A");
+    }
+
+    #[test]
+    fn test_move_to_workspace() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        let ws1_id = setup_workspace(&conn, "WS 1");
+        let ws2_id = setup_workspace(&conn, "WS 2");
+        
+        let p = create(&conn, CreateProjectRequest {
+            workspace_id: ws1_id.clone(),
+            name: "Moving Project".to_string(),
+            project_description: None,
+            custom_instructions: None,
+            color: None,
+            icon: None,
+        }).unwrap();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        
+        let moved = move_to_workspace(&mut conn, &p.id, &ws2_id, temp_dir.path(), None).unwrap();
+        
+        assert_eq!(moved.workspace_id, ws2_id);
+        assert_eq!(moved.name, "Moving Project");
+        
+        let ws1_projects = list(&conn, &ws1_id).unwrap();
+        assert_eq!(ws1_projects.len(), 0);
+        
+        let ws2_projects = list(&conn, &ws2_id).unwrap();
+        assert_eq!(ws2_projects.len(), 1);
+    }
+}
