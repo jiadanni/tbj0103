@@ -1,5 +1,6 @@
 use crate::db::DbState;
 use crate::models::source::{CreateSourceRequest, Source};
+use crate::services::workspace_hierarchy::workspace_filter_sql;
 use tauri::State;
 
 const MAX_UPLOAD_FILE_SIZE_BYTES: i64 = 50 * 1024 * 1024;
@@ -82,22 +83,28 @@ pub fn list_sources(
     state: State<DbState>,
     workspace_id: String,
     source_type: Option<String>,
+    include_descendants: Option<bool>,
 ) -> Result<Vec<Source>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
     let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(ref st) =
         source_type
     {
         (
-            "SELECT s.id, s.workspace_id, s.source_type, s.title, s.filename, s.file_type, s.file_size, s.url, s.content, s.summary, s.favicon_data, s.is_processed, s.folder, s.token_count,
+            format!(
+                "{cte}SELECT s.id, s.workspace_id, s.source_type, s.title, s.filename, s.file_type, s.file_size, s.url, s.content, s.summary, s.favicon_data, s.is_processed, s.folder, s.token_count,
                     (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
-             FROM sources s WHERE s.workspace_id = ?1 AND s.source_type = ?2 ORDER BY s.created_at DESC".to_string(),
+             FROM sources s WHERE s.workspace_id {ws_cond} AND s.source_type = ?2 ORDER BY s.created_at DESC"
+            ),
             vec![Box::new(workspace_id) as Box<dyn rusqlite::types::ToSql>, Box::new(st.clone())],
         )
     } else {
         (
-            "SELECT s.id, s.workspace_id, s.source_type, s.title, s.filename, s.file_type, s.file_size, s.url, s.content, s.summary, s.favicon_data, s.is_processed, s.folder, s.token_count,
+            format!(
+                "{cte}SELECT s.id, s.workspace_id, s.source_type, s.title, s.filename, s.file_type, s.file_size, s.url, s.content, s.summary, s.favicon_data, s.is_processed, s.folder, s.token_count,
                     (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
-             FROM sources s WHERE s.workspace_id = ?1 ORDER BY s.created_at DESC".to_string(),
+             FROM sources s WHERE s.workspace_id {ws_cond} ORDER BY s.created_at DESC"
+            ),
             vec![Box::new(workspace_id) as Box<dyn rusqlite::types::ToSql>],
         )
     };

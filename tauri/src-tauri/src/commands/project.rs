@@ -12,9 +12,13 @@ pub fn create_project(state: State<DbState>, req: CreateProjectRequest) -> Resul
 }
 
 #[tauri::command]
-pub fn list_projects(state: State<DbState>, workspace_id: String) -> Result<Vec<Project>, String> {
+pub fn list_projects(
+    state: State<DbState>,
+    workspace_id: String,
+    include_descendants: Option<bool>,
+) -> Result<Vec<Project>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    project_service::list(&conn, &workspace_id)
+    project_service::list(&conn, &workspace_id, include_descendants.unwrap_or(false))
 }
 
 #[tauri::command]

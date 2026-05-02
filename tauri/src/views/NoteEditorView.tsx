@@ -50,7 +50,7 @@ export default function NoteEditorView() {
 
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
-    api.note.list(activeWorkspaceId, { limit: 200, offset: 0 }).then(setNotes).catch(() => {});
+    api.note.list(activeWorkspaceId, { limit: 200, offset: 0, includeDescendants: true }).then(setNotes).catch(() => {});
   }, [activeWorkspaceId]);
 
   useEffect(() => {

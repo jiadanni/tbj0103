@@ -1,5 +1,6 @@
 use crate::db::DbState;
 use crate::models::source::WebCapture;
+use crate::services::workspace_hierarchy::workspace_filter_sql;
 use tauri::State;
 
 #[tauri::command]
@@ -48,14 +49,17 @@ pub fn list_web_captures(
     workspace_id: String,
     limit: Option<i64>,
     offset: Option<i64>,
+    include_descendants: Option<bool>,
 ) -> Result<Vec<WebCapture>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(200).clamp(1, 1000);
     let offset = offset.unwrap_or(0).max(0);
-    let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, url, title, content, summary, favicon_data, is_processed, created_at
-         FROM sources WHERE workspace_id = ?1 AND source_type = 'web_capture' ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
-    ).map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, url, title, content, summary, favicon_data, is_processed, created_at
+         FROM sources WHERE workspace_id {ws_cond} AND source_type = 'web_capture' ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
         .query_map(rusqlite::params![workspace_id, limit, offset], |row| {
             Ok(WebCapture {

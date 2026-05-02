@@ -24,7 +24,7 @@ export default function RecycleBinView() {
       if (!activeWorkspaceId) {return;}
       setLoading(true);
       try {
-        const sessions = await api.chat.listDeletedSessions(activeWorkspaceId);
+        const sessions = await api.chat.listDeletedSessions(activeWorkspaceId, { includeDescendants: true });
         setDeletedSessions(sessions);
       } catch (e) {
         console.error(e);
@@ -41,7 +41,7 @@ export default function RecycleBinView() {
       await api.chat.restoreSession(activeWorkspaceId, id);
       setDeletedSessions(prev => prev.filter(s => s.id !== id));
       // Refresh the main sessions list in the store
-      const refreshed = await api.chat.listSessions(activeWorkspaceId, null, { limit: 200, offset: 0 });
+      const refreshed = await api.chat.listSessions(activeWorkspaceId, null, { limit: 200, offset: 0, includeDescendants: true });
       setSessions(refreshed);
     } catch (e) {
       console.error(e);

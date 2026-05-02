@@ -66,7 +66,7 @@ export default function CommandPalette({ workspaceId, onClose }: Props) {
 
   useEffect(() => {
     if (!workspaceId) { return; }
-    api.chat.getRecentSessions(workspaceId, 8)
+    api.chat.getRecentSessions(workspaceId, 8, { includeDescendants: true })
       .then(setRecentSessions)
       .catch(console.error);
   }, [workspaceId]);
@@ -74,9 +74,11 @@ export default function CommandPalette({ workspaceId, onClose }: Props) {
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed) {
-      setSearchResults([]);
-      setIsLoading(false);
-      return;
+      const t = setTimeout(() => {
+        setSearchResults([]);
+        setIsLoading(false);
+      }, 0);
+      return () => clearTimeout(t);
     }
 
     const timer = setTimeout(() => {

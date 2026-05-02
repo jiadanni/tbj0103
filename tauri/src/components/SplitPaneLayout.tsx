@@ -78,28 +78,45 @@ function usePaneSubWorkspaces(paneId: PaneId) {
   const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
 
   return useMemo(() => {
-    if (!paneWorkspaceId) return { parentId: null, children: [] as Workspace[] };
+    if (!paneWorkspaceId) { return { parent: null as Workspace | null, children: [] as Workspace[] }; }
     const current = allWorkspaces.find((ws) => ws.id === paneWorkspaceId);
-    if (!current) return { parentId: null, children: [] as Workspace[] };
+    if (!current) { return { parent: null as Workspace | null, children: [] as Workspace[] }; }
 
     const parentId = current.parent_workspace_id ?? current.id;
+    const parent = allWorkspaces.find((ws) => ws.id === parentId) ?? null;
     const children = allWorkspaces.filter((ws) => ws.parent_workspace_id === parentId);
-    return { parentId, children };
+    return { parent, children };
   }, [allWorkspaces, paneWorkspaceId]);
 }
 
 function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
-  const { parentId, children } = usePaneSubWorkspaces(paneId);
+  const { parent, children } = usePaneSubWorkspaces(paneId);
   const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
   const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
 
-  if (!parentId || children.length === 0) {
+  if (!parent) {
     return <div className="h-8 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 shrink-0" />;
   }
 
   return (
     <div className="flex items-center h-8 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-2 shrink-0 select-none">
       <div className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
+        {/* Pinned parent tab */}
+        <button
+          data-testid={`pane-pinned-tab-${paneId}`}
+          onClick={() => setPaneWorkspace(paneId, parent.id)}
+          className={`relative mt-0.5 flex h-[26px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-3 text-xs font-medium whitespace-nowrap transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
+            paneWorkspaceId === parent.id
+              ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
+              : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+          }`}
+        >
+          {paneWorkspaceId === parent.id && (
+            <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+          )}
+          <svg data-testid="pinned-dot" width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+          {parent.name}
+        </button>
         {children.map((workspace) => (
           <button
             key={workspace.id}

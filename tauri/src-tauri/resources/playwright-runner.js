@@ -114,7 +114,7 @@ async function main() {
   try {
     context = await chromium.launchPersistentContext(profileDir, {
       headless: false,
-      args: ["--no-sandbox"],
+      args: [],
     });
   } catch (err) {
     emit({ type: "error", message: `Failed to launch browser: ${err.message}` });

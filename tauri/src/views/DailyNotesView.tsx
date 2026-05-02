@@ -99,7 +99,7 @@ export default function DailyNotesView() {
     if (!activeWorkspaceId) {return;}
     const start = format(startOfMonth(currentMonth), "yyyy-MM-dd");
     const end = format(endOfMonth(currentMonth), "yyyy-MM-dd");
-    api.note.listDailyNotesInRange(activeWorkspaceId, start, end)
+    api.note.listDailyNotesInRange(activeWorkspaceId, start, end, { includeDescendants: true })
       .then(setMonthNotes)
       .catch(() => {});
   }, [activeWorkspaceId, currentMonth]);
@@ -121,7 +121,7 @@ export default function DailyNotesView() {
   // --- Load templates ---
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
-    api.note.listTemplates(activeWorkspaceId).then(setTemplates).catch(() => {});
+    api.note.listTemplates(activeWorkspaceId, { includeDescendants: true }).then(setTemplates).catch(() => {});
   }, [activeWorkspaceId]);
 
   // --- ESC to close template picker ---
@@ -144,7 +144,7 @@ export default function DailyNotesView() {
       if (activeWorkspaceId) {
         const start = format(startOfMonth(currentMonth), "yyyy-MM-dd");
         const end = format(endOfMonth(currentMonth), "yyyy-MM-dd");
-        api.note.listDailyNotesInRange(activeWorkspaceId, start, end)
+        api.note.listDailyNotesInRange(activeWorkspaceId, start, end, { includeDescendants: true })
           .then(setMonthNotes)
           .catch(() => {});
       }

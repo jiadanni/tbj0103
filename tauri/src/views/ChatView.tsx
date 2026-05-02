@@ -733,7 +733,7 @@ function SessionSidebar({
       setFolderMoveNewName("");
       try {
         const newProject = await api.project.create(workspaceId, name);
-        const refreshedProjects = await api.project.list(workspaceId);
+        const refreshedProjects = await api.project.list(workspaceId, { includeDescendants: true });
         useWorkspaceStore.getState().setProjectsForWorkspace(workspaceId, refreshedProjects);
         onSelect(newProject.id);
       } catch (error) {
@@ -2208,7 +2208,7 @@ export default function ChatView() {
     setCreatingFolderPending(true);
     try {
       await api.project.create(effectiveWorkspaceId, folderName);
-      const refreshedProjects = await api.project.list(effectiveWorkspaceId);
+      const refreshedProjects = await api.project.list(effectiveWorkspaceId, { includeDescendants: true });
       setProjectsForWorkspace(effectiveWorkspaceId, refreshedProjects);
       setScopedProjectId(previousProjectId);
     } catch (e) {
@@ -2758,7 +2758,7 @@ export default function ChatView() {
     if (trimmedQuery) {
       // Allow searching to trigger queries for the current workspace
       const timeoutId = window.setTimeout(() => {
-        api.chat.searchSessions(effectiveWorkspaceId, trimmedQuery, null)
+        api.chat.searchSessions(effectiveWorkspaceId, trimmedQuery, null, { includeDescendants: true })
           .then(setSidebarSessions).catch(() => { });
       }, 150);
       return () => window.clearTimeout(timeoutId);
@@ -2766,20 +2766,20 @@ export default function ChatView() {
       // When not searching, only fetch on initial mount or workspace change.
       // Other updates (move, create, delete, rename) should handle UI updates via optimistic
       // changes or explicit refresh events.
-      api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0 })
+      api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0, includeDescendants: true })
         .then(setSidebarSessions).catch(() => { });
     }
   }, [effectiveWorkspaceId, sessionQuery]);
 
   async function refreshProjectTree(workspaceId: string) {
-    const refreshedProjects = await api.project.list(workspaceId);
-    const refreshedSidebarSessions = await api.chat.listSessions(workspaceId, null, { limit: 200, offset: 0 });
+    const refreshedProjects = await api.project.list(workspaceId, { includeDescendants: true });
+    const refreshedSidebarSessions = await api.chat.listSessions(workspaceId, null, { limit: 200, offset: 0, includeDescendants: true });
     setProjectsForWorkspace(workspaceId, refreshedProjects);
     setSidebarSessions(refreshedSidebarSessions);
   }
 
   async function refreshScopedSessions(workspaceId: string, projectId: string | null) {
-    const refreshedSessions = await api.chat.listSessions(workspaceId, projectId, { limit: 200, offset: 0 });
+    const refreshedSessions = await api.chat.listSessions(workspaceId, projectId, { limit: 200, offset: 0, includeDescendants: true });
     replaceSessions(refreshedSessions);
   }
 
@@ -2849,7 +2849,7 @@ export default function ChatView() {
     replaceSessions([]);
     setLoadedSessionScopeKey(null);
 
-    api.chat.listSessions(effectiveWorkspaceId, effectiveProjectId, { limit: 200, offset: 0 })
+    api.chat.listSessions(effectiveWorkspaceId, effectiveProjectId, { limit: 200, offset: 0, includeDescendants: true })
       .then((nextSessions) => {
         if (cancelled) { return; }
         replaceSessions(nextSessions);
@@ -3812,7 +3812,7 @@ export default function ChatView() {
 
       // Light refresh for project counts (sessions already updated optimistically)
       if (effectiveWorkspaceId) {
-        const refreshedProjects = await api.project.list(effectiveWorkspaceId);
+        const refreshedProjects = await api.project.list(effectiveWorkspaceId, { includeDescendants: true });
         setProjectsForWorkspace(effectiveWorkspaceId, refreshedProjects);
       }
     }

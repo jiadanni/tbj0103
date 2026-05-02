@@ -606,7 +606,7 @@ async function getRecentSessionsForWorkspace(workspaceId: string, limit: number)
   });
 
   return Promise.race([
-    api.chat.getRecentSessions(workspaceId, limit).catch(() => [] as ChatSession[]),
+    api.chat.getRecentSessions(workspaceId, limit, { includeDescendants: true }).catch(() => [] as ChatSession[]),
     timeoutPromise,
   ]);
 }

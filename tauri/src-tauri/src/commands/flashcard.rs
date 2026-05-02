@@ -5,6 +5,7 @@ use crate::models::learning_card::{
 };
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::spaced_repetition;
+use crate::services::workspace_hierarchy::workspace_filter_sql;
 use tauri::State;
 
 fn row_to_card(row: &rusqlite::Row) -> rusqlite::Result<LearningCard> {
@@ -51,15 +52,18 @@ pub fn list_flashcards_due(
     workspace_id: String,
     limit: Option<i64>,
     offset: Option<i64>,
+    include_descendants: Option<bool>,
 ) -> Result<Vec<LearningCard>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(200).clamp(1, 1000);
     let offset = offset.unwrap_or(0).max(0);
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
-         FROM learning_cards WHERE workspace_id = ?1 AND next_review_date <= ?2 ORDER BY next_review_date ASC LIMIT ?3 OFFSET ?4"
-    ).map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+         FROM learning_cards WHERE workspace_id {ws_cond} AND next_review_date <= ?2 ORDER BY next_review_date ASC LIMIT ?3 OFFSET ?4"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
         .query_map(
             rusqlite::params![workspace_id, today, limit, offset],

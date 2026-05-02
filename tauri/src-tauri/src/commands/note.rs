@@ -3,6 +3,7 @@ use crate::models::note::{
     CreateNoteRequest, DailyNote, GetOrCreateDailyNoteRequest, NoteTemplate, ProjectNote,
     UpdateNoteRequest,
 };
+use crate::services::workspace_hierarchy::workspace_filter_sql;
 use crate::services::{linking_engine, note_template_engine};
 use std::collections::HashMap;
 use tauri::State;
@@ -47,16 +48,17 @@ pub fn list_notes(
     workspace_id: String,
     limit: Option<i64>,
     offset: Option<i64>,
+    include_descendants: Option<bool>,
 ) -> Result<Vec<ProjectNote>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(200).clamp(1, 1000);
     let offset = offset.unwrap_or(0).max(0);
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, workspace_id, title, content, note_type, tags, created_at, updated_at
-         FROM project_notes WHERE workspace_id = ?1 ORDER BY updated_at DESC LIMIT ?2 OFFSET ?3",
-        )
-        .map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, title, content, note_type, tags, created_at, updated_at
+         FROM project_notes WHERE workspace_id {ws_cond} ORDER BY updated_at DESC LIMIT ?2 OFFSET ?3"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
         .query_map(rusqlite::params![workspace_id, limit, offset], |row| {
             let tags_json: String = row.get(5)?;
@@ -189,14 +191,17 @@ pub fn list_daily_notes_in_range(
     workspace_id: String,
     start_date: String,
     end_date: String,
+    include_descendants: Option<bool>,
 ) -> Result<Vec<DailyNote>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, date, content, mood, productivity, template_id, created_at, updated_at
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, date, content, mood, productivity, template_id, created_at, updated_at
          FROM daily_notes
-         WHERE workspace_id = ?1 AND date BETWEEN ?2 AND ?3
+         WHERE workspace_id {ws_cond} AND date BETWEEN ?2 AND ?3
          ORDER BY date ASC"
-    ).map_err(|e| e.to_string())?;
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
         .query_map(
             rusqlite::params![workspace_id, start_date, end_date],
@@ -224,12 +229,15 @@ pub fn list_daily_notes_in_range(
 pub fn list_templates(
     state: State<DbState>,
     workspace_id: String,
+    include_descendants: Option<bool>,
 ) -> Result<Vec<NoteTemplate>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, name, template_description, content, icon, is_built_in, variables, created_at, updated_at
-         FROM note_templates WHERE workspace_id = ?1 ORDER BY is_built_in DESC, name ASC"
-    ).map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, name, template_description, content, icon, is_built_in, variables, created_at, updated_at
+         FROM note_templates WHERE workspace_id {ws_cond} ORDER BY is_built_in DESC, name ASC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
         .query_map(rusqlite::params![workspace_id], |row| {
             let vars_json: String = row.get(7)?;
