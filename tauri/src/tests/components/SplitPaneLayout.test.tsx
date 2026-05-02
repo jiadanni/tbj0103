@@ -98,41 +98,18 @@ describe("SplitPaneLayout — PaneSubWorkspaceTabs", () => {
     expect(dots.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("clicking the pinned dot opens a dropdown listing all children", () => {
+  it("clicking the pinned dot switches to the parent (overview) workspace", () => {
+    // Start with a child workspace active in the primary pane
+    useWorkspaceStore.setState({
+      ...INITIAL_STORE,
+      panes: {
+        ...INITIAL_STORE.panes,
+        primary: { ...INITIAL_STORE.panes.primary, workspaceId: "ws-child" },
+      },
+    });
     render(<SplitPaneLayout />);
     const pinnedTab = screen.getByTestId("pane-pinned-tab-primary");
     fireEvent.click(pinnedTab);
-    // The dropdown should list Parent Workspace, Child Workspace, and Child Workspace 2
-    // Use getAllByText since names also appear in the tab bar
-    expect(screen.getAllByText("Parent Workspace").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Child Workspace").length).toBeGreaterThanOrEqual(2); // tab + dropdown
-    expect(screen.getAllByText("Child Workspace 2").length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("selecting a child in the dropdown switches the pane workspace", () => {
-    render(<SplitPaneLayout />);
-    const pinnedTab = screen.getByTestId("pane-pinned-tab-primary");
-    fireEvent.click(pinnedTab);
-    // Click "Child Workspace 2" in the dropdown
-    const child2Button = screen.getAllByText("Child Workspace 2").find(
-      (el) => el.tagName === "BUTTON" && el.closest("[class*='absolute']")
-    );
-    expect(child2Button).toBeTruthy();
-    if (child2Button) { fireEvent.click(child2Button); }
-    const state = useWorkspaceStore.getState();
-    expect(state.panes.primary.workspaceId).toBe("ws-child2");
-  });
-
-  it("selecting the parent in the dropdown switches pane to the parent workspace", () => {
-    render(<SplitPaneLayout />);
-    const pinnedTab = screen.getByTestId("pane-pinned-tab-primary");
-    fireEvent.click(pinnedTab);
-    // Click "Parent Workspace" in the dropdown
-    const parentButton = screen.getAllByText("Parent Workspace").find(
-      (el) => el.tagName === "BUTTON" && el.closest("[class*='absolute']")
-    );
-    expect(parentButton).toBeTruthy();
-    if (parentButton) { fireEvent.click(parentButton); }
     const state = useWorkspaceStore.getState();
     expect(state.panes.primary.workspaceId).toBe("ws-parent");
   });
