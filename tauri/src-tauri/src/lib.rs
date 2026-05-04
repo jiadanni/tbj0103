@@ -25,6 +25,8 @@ use tauri_plugin_global_shortcut::ShortcutState;
 
 #[cfg(target_os = "linux")]
 const MAIN_WINDOW_STATE_KEY: &str = "linux_main_window_state";
+#[cfg(target_os = "linux")]
+const LINUX_TOP_PANEL_SAFE_INSET: i32 = 48;
 
 #[cfg(target_os = "linux")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -76,15 +78,42 @@ fn apply_saved_main_window_state(
     state: &SavedWindowState,
     window: &tauri::WebviewWindow,
 ) -> Result<(), String> {
-    window
-        .set_size(PhysicalSize::new(state.width, state.height))
-        .map_err(|e| e.to_string())?;
-    window
-        .set_position(PhysicalPosition::new(state.x, state.y))
-        .map_err(|e| e.to_string())?;
-    if state.maximized {
-        window.maximize().map_err(|e| e.to_string())?;
+    let mut next_state = state.clone();
+
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let monitor_position = monitor.position();
+        let monitor_size = monitor.size();
+        let safe_top = monitor_position.y + LINUX_TOP_PANEL_SAFE_INSET;
+        let safe_height = monitor_size
+            .height
+            .saturating_sub(LINUX_TOP_PANEL_SAFE_INSET as u32)
+            .max(1);
+
+        if next_state.maximized {
+            next_state.x = monitor_position.x;
+            next_state.y = safe_top;
+            next_state.width = monitor_size.width;
+            next_state.height = safe_height;
+        } else {
+            next_state.width = next_state.width.min(monitor_size.width);
+            next_state.height = next_state.height.min(safe_height);
+
+            let max_x = monitor_position.x + monitor_size.width as i32 - next_state.width as i32;
+            let max_y = monitor_position.y + monitor_size.height as i32 - next_state.height as i32;
+
+            next_state.x = next_state.x.clamp(monitor_position.x, max_x.max(monitor_position.x));
+            next_state.y = next_state.y.clamp(safe_top, max_y.max(safe_top));
+        }
+    } else {
+        next_state.y = next_state.y.max(LINUX_TOP_PANEL_SAFE_INSET);
     }
+
+    window
+        .set_size(PhysicalSize::new(next_state.width, next_state.height))
+        .map_err(|e| e.to_string())?;
+    window
+        .set_position(PhysicalPosition::new(next_state.x, next_state.y))
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -793,7 +822,7 @@ fn create_monochrome_tray_icon(style: &str) -> Result<tauri::image::Image<'stati
     let (r, g, b) = match style {
         "white" => (255u8, 255u8, 255u8),
         "black" => (0u8, 0u8, 0u8),
-        "monochrome" | _ => (0u8, 0u8, 0u8), // Default to black (will invert on dark menubar)
+        _ => (0u8, 0u8, 0u8), // Default to black (will invert on dark menubar)
     };
 
     // Draw a simple circle in the center

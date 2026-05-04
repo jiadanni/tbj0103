@@ -4,7 +4,7 @@ import { message } from "@tauri-apps/plugin-dialog";
 import {
   
 } from "react-resizable-panels";
-import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon, Pin, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
@@ -18,7 +18,6 @@ import ArtifactPanel from "./ArtifactPanel";
 import ConfirmDialog from "./ConfirmDialog";
 import PromptDialog from "./PromptDialog";
 import { api } from "../lib/api";
-import { usePrefsWindowMode } from "../lib/prefsWindowMode";
 import { isMac, isLinux, isWindows } from "../lib/platform";
 import SplitPaneLayout from "./SplitPaneLayout";
 import ChatView from "../views/ChatView";
@@ -548,45 +547,6 @@ function SplitTitlebarWorkspaceNavigation() {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function PreferencesDockButton() {
-  const navigate = useNavigate();
-  const [singleInstance, toggleSingleInstance] = usePrefsWindowMode();
-
-  return (
-    <div className="shrink-0 flex items-center gap-1 px-3 py-1.5">
-      <button
-        onClick={() => navigate("/preferences")}
-        aria-label="Preferences"
-        title="Preferences"
-        className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 px-3 py-2 text-sm font-medium text-[var(--text-primary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)]"
-      >
-        <SettingsIcon size={16} />
-        <span>Preferences</span>
-      </button>
-      <button
-        onClick={() => api.system.openPreferencesWindow(singleInstance).catch(() => {})}
-        aria-label="Open Preferences in new window"
-        title="Open in new window"
-        className="inline-flex items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]/95 p-2 text-[var(--text-primary)] shadow-lg backdrop-blur-xl transition-colors hover:border-[var(--accent-color)]"
-      >
-        <ExternalLink size={14} />
-      </button>
-      <button
-        onClick={toggleSingleInstance}
-        aria-label={singleInstance ? "Single-instance mode (click to allow multiple)" : "Multi-instance mode (click to enforce single)"}
-        title={singleInstance ? "Single window mode — click to allow multiple" : "Multi-window mode — click to enforce single"}
-        className={`inline-flex items-center justify-center rounded-xl border p-2 shadow-lg backdrop-blur-xl transition-colors ${
-          singleInstance
-            ? "border-[var(--accent-color)] bg-[var(--bg-elevated)]/95 text-[var(--accent-color)]"
-            : "border-[var(--border-color)] bg-[var(--bg-elevated)]/95 text-[var(--text-primary)] hover:border-[var(--accent-color)]"
-        }`}
-      >
-        <Pin size={14} />
-      </button>
-    </div>
-  );
-}
 
 function formatHistoryTimestamp(value: string) {
   const date = new Date(value);
@@ -1601,11 +1561,11 @@ export default function Layout() {
       {showSinglePaneNavigation && sectionNavigation === "top-tabs" && <TopTabsNavigation />}
       {showSinglePaneNavigation && sectionNavigation === "top-dropdown" && <CompactSectionNavigation />}
 
-      <div className="flex-1 overflow-hidden min-h-0">
+      <div className="flex-1 min-h-0">
         {showSplitPaneLayout ? (
           <SplitPaneLayout />
         ) : (
-          <div className="flex h-full overflow-hidden min-h-0">
+          <div className="flex h-full min-h-0">
             {showSectionSidebar && (
               <Sidebar
                 onOpenCommandPalette={() => setCommandPaletteOpen(true)}

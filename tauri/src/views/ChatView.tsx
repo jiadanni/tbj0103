@@ -28,6 +28,7 @@ import {
 } from "../lib/composerSuggestions";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
+import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
 import { resolveChatTitle } from "../lib/chatTitles";
 import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
 import { SelectionToolbar } from "../components/SelectionToolbar";
@@ -595,7 +596,7 @@ function SessionSidebar({
         );
         // Then project folders
         for (const proj of wsProjects) {
-          if (!(wsByProject[proj.id]?.length)) continue;
+          if (!(wsByProject[proj.id]?.length)) { continue; }
           const projKey = `ws-${ws.id}-project-${proj.id}`;
           const projOpen = expanded[projKey] ?? true;
           wsRows.push({
@@ -2082,6 +2083,7 @@ export default function ChatView() {
   const modelRefreshCounter = useSettingsStore((s) => s.modelRefreshCounter);
   const composerMode = useSettingsStore((s) => s.composerMode);
   const modelFamilyLabels = useSettingsStore((s) => s.modelFamilyLabels);
+  const customModelFamilies = useSettingsStore((s) => s.customModelFamilies);
   const composerSelectClassName = "h-10 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-none outline-none transition-all hover:border-[rgba(var(--accent-color-rgb),0.26)] hover:bg-[var(--bg-hover)] focus:border-[rgba(var(--accent-color-rgb),0.32)] focus:bg-[var(--bg-hover)]";
   const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all";
   const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[rgba(var(--accent-color-rgb),0.24)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
@@ -2636,19 +2638,21 @@ export default function ChatView() {
   );
   const [isWebPickerOpen, setIsWebPickerOpen] = useState(false);
   const groupedModelPickerOptions = useMemo(() => {
-    const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
-    modelPickerOptions.forEach((modelId) => {
-      const rawPrefix = modelId.includes(":") ? modelId.split(":")[0] : modelId;
-      const label = modelFamilyLabels[rawPrefix] ?? rawPrefix;
-      const existing = groups.get(label);
-      if (existing) {
-        existing.modelIds.push(modelId);
-        return;
-      }
-      groups.set(label, { key: `family-${label}`, label, order: groups.size, modelIds: [modelId] });
-    });
-    return Array.from(groups.values());
-  }, [modelPickerOptions, modelFamilyLabels]);
+    const { groups } = groupModelsByFamily(
+      modelPickerOptions,
+      modelFamilyLabels,
+      customModelFamilies,
+      modelLabels,
+      undefined, // we'll use resolveModelDisplayName in the render loop or similar if needed, but here we just need keys
+      true
+    );
+
+    return groups.map((g, idx) => ({
+      key: `family-${idx}-${g.label}`,
+      label: g.label,
+      modelIds: g.options.map((opt) => opt.value),
+    }));
+  }, [modelPickerOptions, modelFamilyLabels, customModelFamilies, modelLabels]);
   const groupedPinnedQuickSendModels = useMemo(() => {
     const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
 
