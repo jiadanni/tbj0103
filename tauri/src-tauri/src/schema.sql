@@ -418,7 +418,10 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('demo_dismissed', 'false'),
     ('memory_enabled', 'true'),
     ('memory_extraction_threshold', '5'),
-    ('memory_extraction_idle_minutes', '5');
+    ('memory_extraction_idle_minutes', '5'),
+    ('summarization_min_messages', '10'),
+    ('summarization_max_sessions', '5'),
+    ('git_sync_interval_minutes', '5');
 
 -- Conversation summaries
 CREATE TABLE IF NOT EXISTS conversation_summaries (

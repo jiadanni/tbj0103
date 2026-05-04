@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import {
   api,
+  type AiModel,
   type AnalysisResult,
   type ConceptLink,
   type ConceptNode,
@@ -47,6 +48,8 @@ import {
   estimateOptimalRadius,
 } from "../lib/treeLayout";
 import CompactMenuSelect from "../components/CompactMenuSelect";
+import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
+import { resolveModelDisplayName } from "../lib/modelDisplayName";
 
 
 const TYPE_COLORS: Record<string, string> = {
@@ -236,6 +239,11 @@ export default function KnowledgeGraphView() {
 
   const [nodes, setNodes] = useState<ConceptNode[]>([]);
   const [links, setLinks] = useState<ConceptLink[]>([]);
+  const composerMode = useSettingsStore((s) => s.composerMode);
+  const modelFamilyLabels = useSettingsStore((s) => s.modelFamilyLabels);
+  const customModelFamilies = useSettingsStore((s) => s.customModelFamilies);
+  const modelLabels = useSettingsStore((s) => s.modelLabels);
+
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -273,9 +281,11 @@ export default function KnowledgeGraphView() {
   const [selectedRootId, setSelectedRootId] = useState<string | null>(null);
   const [treePositions, setTreePositions] = useState<Map<string, { x: number; y: number; fx: number; fy: number }>>(new Map());
 
+  const [aiModels, setAiModels] = useState<AiModel[]>([]);
   useEffect(() => {
     api.aiModel.list()
       .then((models) => {
+        setAiModels(models);
         const enabled = models.filter((model) => model.enabled).sort((a, b) => a.priority - b.priority);
         if (enabled.length > 0) {
           const ids = enabled.map((model) => model.model_id);
@@ -289,14 +299,35 @@ export default function KnowledgeGraphView() {
       })
       .then((models) => {
         if (!models) { return; }
-        const names = (models as { name: string }[]).map((model) => model.name);
-        setAvailableModels(names);
-        if (!names.includes(selectedModel)) {
-          setSelectedModel(names[0] || "");
+        if (Array.isArray(models)) {
+          const names = (models as { name: string }[]).map((model) => model.name);
+          setAvailableModels(names);
+          if (!names.includes(selectedModel)) {
+            setSelectedModel(names[0] || "");
+          }
         }
       })
       .catch(() => {});
   }, [ollamaUrl, selectedModel]);
+
+  const groupedModelOptions = useMemo(() => {
+    const rawOptions = availableModels.map((m) => ({
+      value: m,
+      label: resolveModelDisplayName(m, modelLabels, aiModels),
+    }));
+
+    if (composerMode !== "family") {
+      return { options: rawOptions, groups: [] };
+    }
+
+    return groupModelsByFamily(
+      availableModels,
+      modelFamilyLabels,
+      customModelFamilies,
+      modelLabels,
+      (id) => resolveModelDisplayName(id, modelLabels, aiModels)
+    );
+  }, [availableModels, modelLabels, aiModels, composerMode, modelFamilyLabels, customModelFamilies]);
 
   const loadGraph = useCallback(async () => {
     if (!activeWorkspaceId) {
@@ -702,8 +733,9 @@ export default function KnowledgeGraphView() {
               value={selectedModel}
               options={availableModels.length === 0
                 ? [{ value: "", label: isDemoWithoutModels ? "Demo simulation only" : "No models found" }]
-                : availableModels.map((m) => ({ value: m, label: m }))
+                : groupedModelOptions.options
               }
+              groups={groupedModelOptions.groups}
               onChange={(val) => setSelectedModel(val)}
               widthClassName="mb-2 w-full"
             />

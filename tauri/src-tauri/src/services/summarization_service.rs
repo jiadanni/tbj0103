@@ -38,7 +38,14 @@ pub async fn generate_rolling_summary(
         messages
     };
 
-    if messages.len() < 10 {
+    let min_messages: usize = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        crate::commands::settings::get_setting(&conn, "summarization_min_messages")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10)
+    };
+
+    if messages.len() < min_messages {
         return Ok(());
     }
 

@@ -53,6 +53,10 @@ pub struct Settings {
     pub memory_enabled: bool,
     pub memory_extraction_threshold: u32,
     pub memory_extraction_idle_minutes: u32,
+    pub topic_analysis_interval_minutes: u32,
+    pub summarization_min_messages: u32,
+    pub summarization_max_sessions: u32,
+    pub git_sync_interval_minutes: u32,
     pub menubar_icon_style: String,
 }
 
@@ -111,6 +115,10 @@ impl Default for Settings {
             memory_enabled: true,
             memory_extraction_threshold: 5,
             memory_extraction_idle_minutes: 5,
+            topic_analysis_interval_minutes: 30,
+            summarization_min_messages: 10,
+            summarization_max_sessions: 5,
+            git_sync_interval_minutes: 5,
             menubar_icon_style: "monochrome".to_string(),
         }
     }
@@ -343,6 +351,18 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         memory_extraction_idle_minutes: get_setting(&conn, "memory_extraction_idle_minutes")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.memory_extraction_idle_minutes),
+        topic_analysis_interval_minutes: get_setting(&conn, "topic_analysis_interval_minutes")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.topic_analysis_interval_minutes),
+        summarization_min_messages: get_setting(&conn, "summarization_min_messages")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.summarization_min_messages),
+        summarization_max_sessions: get_setting(&conn, "summarization_max_sessions")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.summarization_max_sessions),
+        git_sync_interval_minutes: get_setting(&conn, "git_sync_interval_minutes")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.git_sync_interval_minutes),
         menubar_icon_style: get_setting(&conn, "menubar_icon_style")
             .unwrap_or_else(|| def.menubar_icon_style.clone()),
     })
@@ -585,6 +605,26 @@ pub fn update_settings(
         &conn,
         "memory_extraction_idle_minutes",
         &settings.memory_extraction_idle_minutes.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "topic_analysis_interval_minutes",
+        &settings.topic_analysis_interval_minutes.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "summarization_min_messages",
+        &settings.summarization_min_messages.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "summarization_max_sessions",
+        &settings.summarization_max_sessions.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "git_sync_interval_minutes",
+        &settings.git_sync_interval_minutes.to_string(),
     )?;
     set_setting(
         &conn,

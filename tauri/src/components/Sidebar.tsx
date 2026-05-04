@@ -6,43 +6,12 @@ import {
   ChevronRight,
   ChevronUp,
   ExternalLink,
-  Pin,
   Settings as SettingsIcon,
   Zap,
 } from "lucide-react";
 import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
 import { api } from "../lib/api";
-import { usePrefsWindowMode } from "../lib/prefsWindowMode";
-
-/** Pop-out + single-instance toggle buttons shown alongside the Preferences button. */
-function PrefsPopOutButtons({ onClose }: { onClose: () => void }) {
-  const [singleInstance, toggleSingleInstance] = usePrefsWindowMode();
-  return (
-    <>
-      <button
-        onClick={() => { onClose(); api.system.openPreferencesWindow(singleInstance).catch(() => {}); }}
-        title="Open in new window"
-        aria-label="Open Preferences in new window"
-        className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm transition-colors hover:border-[var(--accent-color)]"
-      >
-        <ExternalLink size={14} strokeWidth={1.5} />
-      </button>
-      <button
-        onClick={toggleSingleInstance}
-        title={singleInstance ? "Single window mode — click to allow multiple" : "Multi-window mode — click to enforce single"}
-        aria-label={singleInstance ? "Single-instance mode (click to allow multiple)" : "Multi-instance mode (click to enforce single)"}
-        className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl border shadow-sm transition-colors ${
-          singleInstance
-            ? "border-[var(--accent-color)] bg-[var(--bg-elevated)] text-[var(--accent-color)]"
-            : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[var(--accent-color)]"
-        }`}
-      >
-        <Pin size={14} strokeWidth={1.5} />
-      </button>
-    </>
-  );
-}
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
@@ -177,7 +146,7 @@ export default function Sidebar({
   const inactiveNavClassName = "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 
   return (
-    <div className={`flex h-full flex-col bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] shrink-0 transition-[width] duration-200 overflow-hidden ${labelsVisible ? "w-44" : "w-14 items-center"}`}>
+    <div className={`flex h-full flex-col bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] shrink-0 transition-[width] duration-200 ${labelsVisible ? "w-44" : "w-14 items-center"}`}>
       {/* Scrollable nav section */}
       <div className="flex-1 overflow-y-auto py-4 w-full">
         <nav className={labelsVisible ? "px-2.5 space-y-1" : "flex flex-col items-center gap-1 px-1.5"}>
@@ -268,7 +237,6 @@ export default function Sidebar({
               <SettingsIcon size={16} strokeWidth={1.5} />
               {labelsVisible && <span className="flex-1 text-left">Preferences</span>}
             </button>
-            {labelsVisible && <PrefsPopOutButtons onClose={() => { setTooltip(null); setPopoverOpen(false); }} />}
           </div>
         )}
 
@@ -310,7 +278,7 @@ export default function Sidebar({
         {popoverOpen && (
           <div
             ref={popoverRef}
-            className="absolute bottom-full left-2 right-2 mb-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1.5 shadow-xl z-50"
+            className="absolute bottom-full left-2 right-2 mb-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1.5 shadow-xl z-[60]"
             style={!labelsVisible ? { left: 0, right: "auto", minWidth: 200 } : undefined}
           >
             {/* Font size controls */}

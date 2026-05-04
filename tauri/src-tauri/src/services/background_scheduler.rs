@@ -100,18 +100,34 @@ pub fn start_scheduler(app: AppHandle) {
                 );
 
                 // 2. Process summarization — only sessions with recent activity
+                let (summ_recency_minutes, summ_max_sessions) = {
+                    match db.0.get() {
+                        Ok(conn) => {
+                            let idle = crate::commands::settings::get_setting(&conn, "memory_extraction_idle_minutes")
+                                .and_then(|v| v.parse::<u32>().ok())
+                                .unwrap_or(5);
+                            let max = crate::commands::settings::get_setting(&conn, "summarization_max_sessions")
+                                .and_then(|v| v.parse::<u32>().ok())
+                                .unwrap_or(5);
+                            (idle, max)
+                        }
+                        _ => (5, 5),
+                    }
+                };
                 let sessions = {
                     match db.0.get() {
                         Ok(conn) => {
-                            match conn.prepare(
+                            let sql = format!(
                                 "SELECT cs.id, cs.workspace_id FROM chat_sessions cs
-                                 WHERE datetime(cs.updated_at) > datetime('now', '-5 minutes')
+                                 WHERE datetime(cs.updated_at) > datetime('now', '-{} minutes')
                                    AND cs.is_incognito = 0
                                    AND cs.exclude_from_analytics = 0
                                    AND cs.is_imported = 0
                                  ORDER BY cs.updated_at DESC
-                                 LIMIT 5",
-                            ) {
+                                 LIMIT {}",
+                                summ_recency_minutes, summ_max_sessions
+                            );
+                            match conn.prepare(&sql) {
                                 Ok(mut stmt) => stmt
                                     .query_map([], |row| {
                                         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -149,8 +165,19 @@ pub fn start_scheduler(app: AppHandle) {
                 }
             }
 
-            // 3. Git sync — every 10 ticks (5 minutes at 30s interval)
-            if git_sync_tick.is_multiple_of(10) {
+            // 3. Git sync — configurable interval (default 5 minutes = 10 ticks at 30s)
+            let git_sync_ticks = {
+                match db.0.get() {
+                    Ok(conn) => {
+                        let mins: u32 = crate::commands::settings::get_setting(&conn, "git_sync_interval_minutes")
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(5);
+                        (mins * 2).max(1) // 2 ticks per minute (30s interval)
+                    }
+                    _ => 10,
+                }
+            };
+            if git_sync_tick.is_multiple_of(git_sync_ticks) {
                 let (sync_enabled, remote_url) = {
                     match db.0.get() {
                         Ok(conn) => {

@@ -3,12 +3,15 @@
  * Primary flow: generate cards from a topic via AI.
  * Manual creation available as secondary option.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2 } from "lucide-react";
 import { api, type LearningCard, type ReviewStats } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import CompactMenuSelect from "../components/CompactMenuSelect";
+import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
+import { resolveModelDisplayName } from "../lib/modelDisplayName";
+import type { AiModel } from "../lib/api";
 
 const QUALITY_LABELS = [
   { q: 0, label: "Blackout",   color: "text-red-500",    bg: "bg-red-500/10 hover:bg-red-500/20" },
@@ -24,6 +27,11 @@ export default function FlashcardReviewView() {
   const includeDescendants = useBubbleUpFlag();
   const { preferredModel, ollamaUrl } = useSettingsStore();
 
+  const composerMode = useSettingsStore((s) => s.composerMode);
+  const modelFamilyLabels = useSettingsStore((s) => s.modelFamilyLabels);
+  const customModelFamilies = useSettingsStore((s) => s.customModelFamilies);
+  const modelLabels = useSettingsStore((s) => s.modelLabels);
+
   const [cards, setCards] = useState<LearningCard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -37,6 +45,7 @@ export default function FlashcardReviewView() {
   const [generateError, setGenerateError] = useState("");
   const [selectedModel, setSelectedModel] = useState(preferredModel || "");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [aiModels, setAiModels] = useState<AiModel[]>([]);
 
   // Manual create state
   const [showCreate, setShowCreate] = useState(false);
@@ -48,6 +57,7 @@ export default function FlashcardReviewView() {
   // Load models
   useEffect(() => {
     api.aiModel.list().then((models) => {
+      setAiModels(models);
       const enabled = models.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
       if (enabled.length > 0) {
         const ids = enabled.map((m) => m.model_id);
@@ -69,6 +79,25 @@ export default function FlashcardReviewView() {
       }).catch(() => {});
     });
   }, [ollamaUrl, selectedModel]);
+
+  const groupedModelOptions = useMemo(() => {
+    const rawOptions = availableModels.map((m) => ({
+      value: m,
+      label: resolveModelDisplayName(m, modelLabels, aiModels),
+    }));
+
+    if (composerMode !== "family") {
+      return { options: rawOptions, groups: [] };
+    }
+
+    return groupModelsByFamily(
+      availableModels,
+      modelFamilyLabels,
+      customModelFamilies,
+      modelLabels,
+      (id) => resolveModelDisplayName(id, modelLabels, aiModels)
+    );
+  }, [availableModels, modelLabels, aiModels, composerMode, modelFamilyLabels, customModelFamilies]);
 
   // Load due cards + stats
   useEffect(() => {
@@ -163,7 +192,8 @@ export default function FlashcardReviewView() {
             <CompactMenuSelect
               label="AI Model"
               value={selectedModel}
-              options={availableModels.map((m) => ({ value: m, label: m }))}
+              options={groupedModelOptions.options}
+              groups={groupedModelOptions.groups}
               onChange={(val) => setSelectedModel(val)}
               widthClassName="min-w-0 flex-1"
             />

@@ -53,6 +53,7 @@ const apiMocks = vi.hoisted(() => ({
     last_error: "",
   })),
   llamacppListModels: vi.fn(() => Promise.resolve([])),
+  workspaceList: vi.fn(() => Promise.resolve([])),
 }));
 
 const settingsStoreState = {
@@ -134,6 +135,7 @@ const workspaceStoreState = {
   setWorkspaceSortOrder: vi.fn(),
   isDemoMode: false,
   setDemo: vi.fn(),
+  setWorkspaces: vi.fn(),
 };
 
 vi.mock("@/lib/api", () => ({
@@ -174,6 +176,9 @@ vi.mock("@/lib/api", () => ({
     llamacpp: {
       listModels: apiMocks.llamacppListModels,
     },
+    workspace: {
+      list: apiMocks.workspaceList,
+    },
     mlx: {
       listModels: vi.fn(() => Promise.resolve([])),
     },
@@ -191,6 +196,10 @@ vi.mock("@/stores/settingsStore", () => ({
 
 vi.mock("@/stores/workspaceStore", () => ({
   useWorkspaceStore: <T,>(selector: (state: typeof workspaceStoreState) => T) => selector(workspaceStoreState),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
 }));
 
 vi.mock("@/views/WorkspaceSettingsView", () => ({ default: () => <div>Workspace Settings</div> }));
@@ -247,6 +256,10 @@ describe("PreferencesView", () => {
       memory_enabled: true,
       memory_extraction_threshold: 5,
       memory_extraction_idle_minutes: 5,
+      topic_analysis_interval_minutes: 30,
+      summarization_min_messages: 10,
+      summarization_max_sessions: 5,
+      git_sync_interval_minutes: 5,
     });
 
     apiMocks.aiModelList.mockResolvedValue([
@@ -289,9 +302,14 @@ describe("PreferencesView", () => {
     });
 
     expect(await screen.findByText("Ollama", { selector: "div" })).toBeInTheDocument();
-    expect(screen.getByText("Web AI", { selector: "div" })).toBeInTheDocument();
     expect(screen.getByText("Gemma 4")).toBeInTheDocument();
-    expect(screen.getByText("Browser Assistant A")).toBeInTheDocument();
+
+    // Switch to Browser Automation tab for Web AI models
+    const webAiTab = screen.getByText("Browser Automation");
+    fireEvent.click(webAiTab);
+    
+    expect(await screen.findByText("Manual Browser Targets")).toBeInTheDocument();
+    expect(await screen.findByText("Browser Assistant A")).toBeInTheDocument();
     expect(screen.getByText("browser-assistant-a")).toBeInTheDocument();
   });
 
@@ -302,8 +320,11 @@ describe("PreferencesView", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Vision")).toBeInTheDocument();
-    expect(screen.getByText("Capabilities")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Ollama", { selector: "div" })).toBeInTheDocument();
+    });
+    expect(await screen.findByText("gemma4:latest")).toBeInTheDocument();
+    
     expect(screen.queryByTitle("Toggle chat role")).not.toBeInTheDocument();
   });
 
@@ -315,6 +336,9 @@ describe("PreferencesView", () => {
     );
 
     await screen.findByText("Gemma 4");
+    
+    // Switch to Browser Automation tab for Add Model button
+    fireEvent.click(screen.getByText("Browser Automation"));
     fireEvent.click(screen.getByRole("button", { name: /add model/i }));
 
     expect(screen.queryByText("Roles")).not.toBeInTheDocument();

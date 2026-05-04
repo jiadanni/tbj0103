@@ -11,6 +11,7 @@ import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
+import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
 import { classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB, type ModelFit } from "../lib/modelSizing";
 import { ACCENT_COLORS, THEMES, THEME_DEFAULT_ACCENTS, normalizeTheme } from "../lib/theme";
 import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore";
@@ -25,6 +26,7 @@ import CompactMenuSelect from "../components/CompactMenuSelect";
 import { MOD_KEY, isLinux, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
 import { useAiModelSync } from "../hooks/useAiModelSync";
+import { usePrefsWindowMode } from "../lib/prefsWindowMode";
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
@@ -152,6 +154,209 @@ function getModelFitMeta(modelFit: ModelFit): {
   };
 }
 
+// ── Keyboard shortcut recorder widget ─────────────────────────────────────
+
+/**
+ * Parse a Tauri accelerator string (e.g. "Ctrl+Shift+K") into display tokens.
+ * Returns an array like ["Ctrl", "Shift", "K"].
+ */
+function parseAccelerator(raw: string): string[] {
+  return raw
+    .split("+")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Build a Tauri accelerator string from a live keydown event.
+ * Returns null if the key is a lone modifier (no "main" key yet).
+ */
+function buildAcceleratorFromEvent(e: KeyboardEvent): string | null {
+  const MODIFIERS = new Set(["Control", "Shift", "Alt", "Meta", "Super"]);
+  if (MODIFIERS.has(e.key)) { return null; }
+
+  const parts: string[] = [];
+  if (e.ctrlKey)  { parts.push("Ctrl"); }
+  if (e.shiftKey) { parts.push("Shift"); }
+  if (e.altKey)   { parts.push("Alt"); }
+  if (e.metaKey)  { parts.push("Super"); }
+
+  // Normalise the main key
+  let key = e.key;
+  if (key === " ") { key = "Space"; }
+  else if (key.length === 1) { key = key.toUpperCase(); }
+  // e.g. "ArrowUp" → keep as-is; "F1" → keep as-is
+  parts.push(key);
+
+  return parts.join("+");
+}
+
+function ShortcutRecorder({
+  value,
+  onChange,
+  onCommit,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onCommit: (v: string) => void;
+  placeholder: string;
+}) {
+  const [recording, setRecording] = useState(false);
+  const [recordingDraft, setRecordingDraft] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState(false);
+  const containerRef = useRef<HTMLButtonElement>(null);
+
+  const tokens = value ? parseAccelerator(value) : [];
+  const hasValue = tokens.length > 0;
+
+  function commitAndStop(next: string) {
+    setRecording(false);
+    setRecordingDraft(null);
+    setInvalid(false);
+    const trimmed = next.trim();
+    onChange(trimmed);
+    onCommit(trimmed);
+  }
+
+  function startRecording() {
+    setRecording(true);
+    setRecordingDraft(null);
+    setInvalid(false);
+    containerRef.current?.focus();
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!recording) { return; }
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.key === "Escape") {
+      // Escape cancels — restore original value
+      setRecording(false);
+      setRecordingDraft(null);
+      setInvalid(false);
+      return;
+    }
+
+    const built = buildAcceleratorFromEvent(e.nativeEvent);
+    if (built === null) {
+      // Only a modifier held so far — show partial
+      const parts: string[] = [];
+      if (e.ctrlKey)  { parts.push("Ctrl"); }
+      if (e.shiftKey) { parts.push("Shift"); }
+      if (e.altKey)   { parts.push("Alt"); }
+      if (e.metaKey)  { parts.push("Super"); }
+      setRecordingDraft(parts.join("+") || null);
+      return;
+    }
+
+    // We have a complete combo
+    if (e.key === "Enter") {
+      // Enter commits whatever we currently have
+      commitAndStop(value);
+      return;
+    }
+
+    setInvalid(false);
+    commitAndStop(built);
+  }
+
+  function handleBlur() {
+    if (recording) {
+      setRecording(false);
+      setRecordingDraft(null);
+    }
+  }
+
+  function handleClear(e: React.MouseEvent) {
+    e.stopPropagation();
+    onChange("");
+    onCommit("");
+    setRecording(false);
+    setInvalid(false);
+  }
+
+  const displayTokens: string[] = recording && recordingDraft
+    ? parseAccelerator(recordingDraft)
+    : tokens;
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* Capture zone */}
+      <button
+        ref={containerRef}
+        type="button"
+        tabIndex={0}
+        onClick={startRecording}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        className={[
+          "relative flex min-h-[44px] flex-1 items-center gap-1.5 rounded-xl border px-3 py-2 text-left transition-all outline-none",
+          recording
+            ? "border-[var(--accent-color)] ring-2 ring-[var(--accent-color)]/25 bg-[var(--accent-color)]/5"
+            : "border-[var(--border-color)] bg-[var(--bg-elevated)] hover:border-[var(--accent-color)]/60",
+        ].join(" ")}
+        aria-label={recording ? "Press a key combination" : "Click to record shortcut"}
+      >
+        {recording && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-[var(--accent-color)] animate-pulse select-none">
+            Esc to cancel
+          </span>
+        )}
+
+        {displayTokens.length > 0 ? (
+          <span className="flex flex-wrap items-center gap-1">
+            {displayTokens.map((token, i) => (
+              <span key={i} className="flex items-center gap-1">
+                <kbd className={[
+                  "inline-flex items-center rounded-md border px-2 py-0.5 font-mono text-xs font-semibold shadow-sm transition-colors select-none",
+                  recording
+                    ? "border-[var(--accent-color)]/50 bg-[var(--accent-color)]/10 text-[var(--accent-color)]"
+                    : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]",
+                ].join(" ")}>
+                  {token}
+                </kbd>
+                {i < displayTokens.length - 1 && (
+                  <span className="text-[10px] text-[var(--text-muted)]">+</span>
+                )}
+              </span>
+            ))}
+            {invalid && (
+              <span className="ml-1 rounded-md bg-red-500/15 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+                invalid
+              </span>
+            )}
+          </span>
+        ) : (
+          <span className="text-sm text-[var(--text-muted)]">
+            {recording ? "Press a key combination…" : placeholder}
+          </span>
+        )}
+      </button>
+
+      {/* Clear button — only when a shortcut is set and not recording */}
+      {hasValue && !recording && (
+        <button
+          type="button"
+          title="Clear shortcut"
+          onClick={handleClear}
+          className="shrink-0 rounded-lg border border-[var(--border-color)] p-2.5 text-[var(--text-muted)] transition-colors hover:border-red-400/50 hover:bg-red-400/10 hover:text-red-400"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14H6L5 6" />
+            <path d="M10 11v6M14 11v6" />
+            <path d="M9 6V4h6v2" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 export default function PreferencesView() {
   const settingsNavLayout = useSettingsStore((state) => state.settingsNavLayout);
   const setSettingsNavLayout = useSettingsStore((state) => state.setSettingsNavLayout);
@@ -173,6 +378,7 @@ export default function PreferencesView() {
   const setChatMessageStyle = useSettingsStore((state) => state.setChatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((state) => state.expandChatToWindowWidth);
   const setExpandChatToWindowWidth = useSettingsStore((state) => state.setExpandChatToWindowWidth);
+  const [singleWindowMode, toggleSingleWindowMode] = usePrefsWindowMode();
   const switchWorkspaceSection = useSettingsStore((state) => state.switchWorkspaceSection);
   const showComposerTopicTags = useSettingsStore((state) => state.showComposerTopicTags);
   const setShowComposerTopicTags = useSettingsStore((state) => state.setShowComposerTopicTags);
@@ -374,36 +580,29 @@ export default function PreferencesView() {
 
     // 2. Group them
     if (composerMode === "family") {
-      const familyGroups: Record<string, { key: string; label: string; order: number; models: AiModel[] }> = {};
-      allMerged.forEach((m) => {
-        const rawPrefix = m.model_id.includes(":") ? m.model_id.split(":")[0] : m.model_id;
-        const label = modelFamilyLabels[rawPrefix] ?? rawPrefix;
-        
-        if (!familyGroups[label]) {
-          familyGroups[label] = {
-            key: `family-${label.toLowerCase().replace(/\s+/g, "-")}`,
-            label: label,
-            order: 0,
-            models: []
-          };
-        }
-        familyGroups[label].models.push(m);
-      });
+      const { groups } = groupModelsByFamily(
+        allMerged,
+        modelFamilyLabels,
+        customModelFamilies,
+        modelLabels,
+        undefined,
+        true
+      );
 
-      // 3. Add any custom empty groups
-      customModelFamilies.forEach((family) => {
-        if (!familyGroups[family]) {
-          familyGroups[family] = {
-            key: `family-${family.toLowerCase().replace(/\s+/g, "-")}`,
-            label: family,
-            order: 0,
-            models: []
-          };
-        }
-      });
-
-      // Sort families by the lowest priority of their members
-      return Object.values(familyGroups).sort((a, b) => {
+      // We need to return the specific format PreferencesView expects: 
+      // Array of { key, label, order, models: AiModel[] }
+      return groups.map((g) => {
+        // Convert ModelPickerOption[] back to AiModel[] by matching IDs
+        const models = g.options
+          .map(opt => allMerged.find(m => m.model_id === opt.value))
+          .filter((m): m is AiModel => !!m);
+        return {
+          key: `family-${g.label.toLowerCase().replace(/\s+/g, "-")}`,
+          label: g.label,
+          order: 0,
+          models
+        };
+      }).sort((a, b) => {
         const minA = Math.min(...a.models.map(m => m.priority));
         const minB = Math.min(...b.models.map(m => m.priority));
         return minA - minB;
@@ -421,7 +620,7 @@ export default function PreferencesView() {
     });
 
     return Object.values(providerGroups).sort((a, b) => a.order - b.order);
-  }, [aiModels, nonEmbeddingOllamaModels, mlxModels, llamacppModels, composerMode, modelFamilyLabels, customModelFamilies]);
+  }, [aiModels, nonEmbeddingOllamaModels, mlxModels, llamacppModels, composerMode, modelFamilyLabels, customModelFamilies, modelLabels]);
 
   // Separate local models (AI tab) from web models (Browser Automation tab)
   const localGroupedAiModels = useMemo(
@@ -1470,6 +1669,22 @@ export default function PreferencesView() {
                         />
                       </div>
 
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm text-[var(--text-secondary)]">Single window mode</p>
+                            <Pin size={12} className={singleWindowMode ? "text-[var(--accent-color)]" : "text-[var(--text-muted)]"} />
+                          </div>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Prevent multiple preferences windows from opening simultaneously.
+                          </p>
+                        </div>
+                        <Toggle
+                          on={singleWindowMode}
+                          onToggle={toggleSingleWindowMode}
+                        />
+                      </div>
+
                       {isDemoMode ? (
                         <div className="flex items-center justify-between py-0.5">
                           <div>
@@ -1585,6 +1800,82 @@ export default function PreferencesView() {
                           className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                         />
                       </div>
+
+                      <div className="border-t border-[var(--border-color)] pt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">Summarization</p>
+                      </div>
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Min messages before summarizing</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Sessions need at least this many messages before a rolling summary is generated
+                          </p>
+                        </div>
+                        <input
+                          type="number"
+                          min={4}
+                          max={100}
+                          value={dbSettings.summarization_min_messages}
+                          onChange={(e) => set("summarization_min_messages", Math.max(4, Math.min(100, Number(e.target.value) || 10)))}
+                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Sessions per tick</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Max number of sessions summarized per scheduler cycle
+                          </p>
+                        </div>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={dbSettings.summarization_max_sessions}
+                          onChange={(e) => set("summarization_max_sessions", Math.max(1, Math.min(20, Number(e.target.value) || 5)))}
+                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                        />
+                      </div>
+
+                      <div className="border-t border-[var(--border-color)] pt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">Topic Analysis</p>
+                      </div>
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Recompute interval (minutes)</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            How often workspace topic signatures are refreshed in the background
+                          </p>
+                        </div>
+                        <input
+                          type="number"
+                          min={5}
+                          max={120}
+                          value={dbSettings.topic_analysis_interval_minutes}
+                          onChange={(e) => set("topic_analysis_interval_minutes", Math.max(5, Math.min(120, Number(e.target.value) || 30)))}
+                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                        />
+                      </div>
+
+                      <div className="border-t border-[var(--border-color)] pt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">Git Sync</p>
+                      </div>
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Sync interval (minutes)</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            How often the background git sync runs when enabled
+                          </p>
+                        </div>
+                        <input
+                          type="number"
+                          min={1}
+                          max={60}
+                          value={dbSettings.git_sync_interval_minutes}
+                          onChange={(e) => set("git_sync_interval_minutes", Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
+                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                        />
+                      </div>
                     </div>
 
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
@@ -1594,31 +1885,11 @@ export default function PreferencesView() {
                           Set the global accelerator used to open quick search from anywhere.
                         </p>
                       </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Quick search shortcut</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Use a Tauri accelerator like <code>{isMac ? "Cmd+Shift+K" : "Ctrl+Shift+K"}</code>. Leave blank to disable the global hotkey.
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => set("quick_search_shortcut", quickSearchShortcutDraft.trim())}
-                          className="rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
-                        >
-                          Apply
-                        </button>
-                      </div>
-                      <input
+                      <ShortcutRecorder
                         value={quickSearchShortcutDraft}
-                        onChange={(event) => setQuickSearchShortcutDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            set("quick_search_shortcut", quickSearchShortcutDraft.trim());
-                          }
-                        }}
+                        onChange={setQuickSearchShortcutDraft}
+                        onCommit={(v) => set("quick_search_shortcut", v)}
                         placeholder={isMac ? "Cmd+Shift+K" : "Ctrl+Shift+K"}
-                        className="h-11 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                       />
                     </div>
                   </>
