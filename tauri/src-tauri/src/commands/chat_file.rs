@@ -1166,12 +1166,11 @@ pub fn import_claude_desktop(
         }
     }
 
-    // Import conversations (no project link — Claude export doesn't have one)
+    // Import conversations, linking to projects via project_uuid when possible.
     let mut session_ids = Vec::new();
     let mut errors = Vec::new();
 
-    for data in &chat_data_list {
-        // Check for duplicate by Claude UUID
+    for (data, project_uuid) in &chat_data_list {
         let exists: bool = conn
             .query_row(
                 "SELECT 1 FROM chat_sessions WHERE id = ?1",
@@ -1179,12 +1178,16 @@ pub fn import_claude_desktop(
                 |_| Ok(true),
             )
             .unwrap_or(false);
-
         if exists {
             continue;
         }
 
-        match chat_file_store::import_chat_data(&conn, data, &workspace_id, "") {
+        let project_id = project_uuid
+            .as_ref()
+            .and_then(|uuid| project_map.get(uuid).cloned())
+            .unwrap_or_default();
+
+        match chat_file_store::import_chat_data(&conn, data, &workspace_id, &project_id) {
             Ok(sid) => session_ids.push(sid),
             Err(e) => errors.push(format!("{}: {e}", data.title)),
         }
