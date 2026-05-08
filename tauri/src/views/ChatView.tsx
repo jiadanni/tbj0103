@@ -4592,10 +4592,10 @@ export default function ChatView() {
                         initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
                         followOutput={isCurrentlyStreaming ? "auto" : false}
                         alignToBottom={true}
-                        className="w-full min-w-0 overflow-x-hidden py-4 pr-[44px]"
+                        className="w-full min-w-0 overflow-x-hidden py-4"
                         computeItemKey={(_, msg) => msg.id}
                         itemContent={(i, msg) => (
-                          <div className="pb-4 px-4">
+                          <div className="pb-4 pl-4 pr-[52px]">
                             <ChatMessageBubble
                               key={msg.id}
                               msg={msg}

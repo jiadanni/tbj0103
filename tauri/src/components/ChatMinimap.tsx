@@ -9,36 +9,25 @@ interface ChatMinimapProps {
   isStreaming: boolean;
 }
 
-/** px height of each simulated line in the minimap */
-const LINE_H = 2;
-/** px gap between lines within a block */
-const LINE_GAP = 1;
-/** px gap between message blocks */
-const BLOCK_GAP = 6;
-/** approximate chars per minimap "line" */
-const CHARS_PER_LINE = 30;
-/** max lines rendered per message */
-const MAX_LINES = 60;
+/** px height of each message bar in the minimap */
+const LINE_H = 3;
+/** minimum px gap after a message (very short messages still get separation) */
+const MIN_GAP = 4;
+/** px of gap per character of message length */
+const PX_PER_CHAR = 0.05;
+/** maximum px gap after any single message */
+const MAX_GAP = 80;
 
 interface MinimapBlock {
   msgIdx: number;
   role: "user" | "assistant" | "system";
-  lineCount: number;
   preview: string;
+  gap: number;
   id: string;
 }
 
-function estimateLineCount(text: string): number {
-  const lines = text.split("\n");
-  let total = 0;
-  for (const line of lines) {
-    total += Math.max(1, Math.ceil(line.length / CHARS_PER_LINE));
-  }
-  return Math.min(Math.max(total, 1), MAX_LINES);
-}
-
-function blockH(lineCount: number): number {
-  return lineCount * (LINE_H + LINE_GAP) - LINE_GAP;
+function gapForLength(len: number): number {
+  return Math.min(MAX_GAP, MIN_GAP + len * PX_PER_CHAR);
 }
 
 const ChatMinimap: React.FC<ChatMinimapProps> = ({
@@ -50,7 +39,6 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
   const trackRef = useRef<HTMLDivElement>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [tooltipY, setTooltipY] = useState(0);
-  const [viewportRatio, setViewportRatio] = useState({ top: 0, height: 1 });
   const [trackClientH, setTrackClientH] = useState(0);
   const dragging = useRef(false);
 
@@ -62,8 +50,8 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
       result.push({
         msgIdx: i,
         role: m.role,
-        lineCount: estimateLineCount(m.content),
         preview: firstLine.length > 60 ? firstLine.slice(0, 60) + "…" : firstLine,
+        gap: gapForLength(m.content.length),
         id: m.id,
       });
     }
@@ -72,8 +60,8 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
       result.push({
         msgIdx: messages.length,
         role: "assistant",
-        lineCount: estimateLineCount(streamingContent),
         preview: firstLine.length > 60 ? firstLine.slice(0, 60) + "…" : firstLine,
+        gap: gapForLength(streamingContent.length),
         id: "__streaming__",
       });
     }
@@ -81,11 +69,11 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
   }, [messages, isStreaming, streamingContent]);
 
   const naturalH = useMemo(
-    () => blocks.reduce((sum, b) => sum + blockH(b.lineCount) + BLOCK_GAP, 0),
+    () => blocks.reduce((sum, b) => sum + LINE_H + b.gap, 0),
     [blocks],
   );
 
-  const scale = trackClientH > 0 && naturalH > 0 ? Math.min(trackClientH / naturalH, 1) : 1;
+  const scale = trackClientH > 0 && naturalH > 0 ? trackClientH / naturalH : 1;
 
   useEffect(() => {
     const el = trackRef.current;
@@ -96,29 +84,9 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  useEffect(() => {
-    const scroller = trackRef.current
-      ?.closest("[data-testid='chat-messages-area']")
-      ?.querySelector("[data-virtuoso-scroller]") as HTMLElement | null;
-    if (!scroller) {return;}
-
-    const update = () => {
-      const { scrollTop, scrollHeight, clientHeight } = scroller;
-      if (scrollHeight <= 0) {return;}
-      setViewportRatio({
-        top: scrollTop / scrollHeight,
-        height: Math.max(clientHeight / scrollHeight, 0.05),
-      });
-    };
-
-    scroller.addEventListener("scroll", update, { passive: true });
-    update();
-    return () => scroller.removeEventListener("scroll", update);
-  }, [blocks.length]);
-
   const jumpTo = useCallback(
     (idx: number) => {
-      virtuosoRef.current?.scrollToIndex({ index: idx, behavior: "smooth", align: "center" });
+      virtuosoRef.current?.scrollToIndex({ index: idx, behavior: "smooth", align: "start" });
     },
     [virtuosoRef],
   );
@@ -128,7 +96,7 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
       const naturalY = (relY / (trackClientH || 1)) * naturalH;
       let y = 0;
       for (let i = 0; i < blocks.length; i++) {
-        y += blockH(blocks[i].lineCount) + BLOCK_GAP;
+        y += LINE_H + blocks[i].gap;
         if (naturalY < y) {return i;}
       }
       return blocks.length - 1;
@@ -164,12 +132,12 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
     dragging.current = false;
   }, []);
 
-  if (blocks.length < 4) {return null;}
+  if (blocks.length < 2) {return null;}
 
   return (
     <div
       className="absolute right-2 top-2 bottom-2 z-10 flex flex-col items-end pointer-events-none"
-      style={{ width: 40 }}
+      style={{ width: "40px" }}
     >
       <div
         ref={trackRef}
@@ -188,46 +156,29 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
       >
         {/* Scaled content wrapper */}
         <div
-          className="px-[3px] pt-1"
+          className="flex flex-col items-center pt-1"
           style={{ transform: `scaleY(${scale})`, transformOrigin: "top" }}
         >
           {blocks.map((b, i) => (
             <div
               key={b.id}
-              className={`w-full transition-opacity duration-75 ${hoveredIdx === i ? "opacity-100" : "opacity-70"}`}
-              style={{ height: blockH(b.lineCount), marginBottom: BLOCK_GAP }}
-            >
-              {Array.from({ length: b.lineCount }, (_, li) => (
-                <div
-                  key={li}
-                  style={{
-                    height: LINE_H,
-                    marginBottom: li < b.lineCount - 1 ? LINE_GAP : 0,
-                    width: "100%",
-                    borderRadius: 1,
-                    backgroundColor:
-                      b.role === "user"
-                        ? `color-mix(in srgb, var(--accent-color, #6366f1) ${li === 0 ? "90%" : "55%"}, transparent)`
-                        : b.role === "system"
-                          ? "color-mix(in srgb, #eab308 45%, transparent)"
-                          : `color-mix(in srgb, var(--text-secondary, #94a3b8) ${li === 0 ? "60%" : "30%"}, transparent)`,
-                  }}
-                />
-              ))}
-            </div>
+              className={`transition-opacity duration-75 ${hoveredIdx === i ? "opacity-100" : "opacity-70"}`}
+              style={{
+                width: "60%",
+                height: LINE_H,
+                marginBottom: b.gap,
+                borderRadius: 1,
+                backgroundColor:
+                  b.role === "user"
+                    ? "var(--accent-color, #6366f1)"
+                    : b.role === "system"
+                      ? "color-mix(in srgb, #eab308 70%, transparent)"
+                      : "var(--text-secondary, #94a3b8)",
+              }}
+            />
           ))}
         </div>
 
-        {/* Viewport thumb */}
-        <div
-          className="absolute left-0 w-full pointer-events-none rounded transition-[top,height] duration-75"
-          style={{
-            top: `${viewportRatio.top * 100}%`,
-            height: `${Math.max(viewportRatio.height * 100, 8)}%`,
-            border: "1px solid color-mix(in srgb, var(--accent-color, #6366f1) 60%, transparent)",
-            backgroundColor: "color-mix(in srgb, var(--accent-color, #6366f1) 15%, transparent)",
-          }}
-        />
       </div>
 
       {/* Tooltip — rendered outside the overflow:hidden track so it isn't clipped */}
