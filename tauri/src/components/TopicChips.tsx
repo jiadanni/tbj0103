@@ -18,8 +18,7 @@ export const TopicChips: React.FC<TopicChipsProps> = ({ tags, onChipClick }) => 
         <button
           key={t.tag}
           onClick={() => onChipClick(t.tag)}
-          className="inline-flex items-center rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3.5 py-1 text-[11px] font-semibold whitespace-nowrap tracking-[0.01em] text-[var(--text-secondary)] transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          title={`Weight: ${t.weight} (${t.source})`}
+          className="inline-flex items-center justify-center rounded-full bg-[var(--bg-secondary)] px-3.5 py-1 text-[11px] font-semibold whitespace-nowrap tracking-[0.01em] text-[var(--text-secondary)] transition-all duration-300 ease-out hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] hover:-translate-y-px hover:shadow-md"
         >
           {t.tag}
         </button>

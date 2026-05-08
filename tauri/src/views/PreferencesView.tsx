@@ -1174,7 +1174,13 @@ export default function PreferencesView() {
                   e.preventDefault();
                   setDraggedFamilyId(group.key);
                 }}
-                className={`px-4 py-1.5 transition-colors select-none ${dragOverFamilyId === group.key ? "bg-[var(--accent-color)]/20" : "bg-[var(--bg-hover)]/10"} text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)] ${composerMode === "family" ? "cursor-grab active:cursor-grabbing" : ""}`}
+                className={`relative px-4 py-1.5 transition-colors select-none ${draggedFamilyId === group.key ? "opacity-50" : ""} ${
+                  dragOverFamilyId === group.key && !dragOverModelId
+                    ? (draggedFamilyId
+                        ? "bg-[var(--accent-color)]/5 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[var(--accent-color)] before:z-10"
+                        : "bg-[var(--accent-color)]/20")
+                    : "bg-[var(--bg-hover)]/10"
+                } text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)] ${composerMode === "family" ? "cursor-grab active:cursor-grabbing" : ""}`}
               >
                 {group.label}
               </div>
@@ -1201,12 +1207,25 @@ export default function PreferencesView() {
                 const displayName = resolveModelDisplayName(m.model_id, modelLabels, aiModels);
                 const secondaryDisplayName = resolveModelSecondaryDisplayName(m.model_id, m.provider);
 
+                const isDragOver = dragOverModelId === m.id;
+                let dropIndicatorClass = "";
+                if (isDragOver && draggedModelId) {
+                  const draggedModel = aiModels.find(x => x.id === draggedModelId);
+                  if (draggedModel) {
+                    if (draggedModel.priority < m.priority) {
+                      dropIndicatorClass = "before:absolute before:inset-x-0 before:bottom-0 before:h-0.5 before:bg-[var(--accent-color)] before:z-10";
+                    } else {
+                      dropIndicatorClass = "before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[var(--accent-color)] before:z-10";
+                    }
+                  }
+                }
+
                 return (
                   <div
                     key={m.id}
                     data-model-id={m.id}
                     data-family-key={group.key}
-                    className={`transition-colors select-none ${draggedModelId === m.id ? "opacity-50" : ""} ${dragOverModelId === m.id ? "bg-[var(--accent-color)]/10" : "hover:bg-[var(--bg-hover)]/5"} px-4 py-3`}
+                    className={`relative transition-colors select-none ${draggedModelId === m.id || draggedFamilyId === group.key ? "opacity-50" : ""} ${isDragOver ? `bg-[var(--accent-color)]/5 ${dropIndicatorClass}` : "hover:bg-[var(--bg-hover)]/5"} px-4 py-3`}
                   >
                     <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_100px_40px_120px_60px_60px_20px] md:items-start md:gap-3">
                       <div className="flex min-w-0 items-start gap-2">
