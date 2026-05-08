@@ -33,11 +33,11 @@ export default function ComposerSuggestionRows({
         type="button"
         disabled={isDisabled}
         onClick={() => onSuggestionClick(suggestion)}
-        className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-left text-[12px] font-semibold leading-none tracking-[0.01em] transition-all duration-150 ${
+        className={`inline-flex items-center rounded-full px-3.5 py-1.5 text-left text-[12px] font-semibold leading-none tracking-[0.01em] transition-all duration-200 hover:-translate-y-px hover:shadow-md ${
           isImmediate
-            ? "border-[rgba(var(--accent-color-rgb),0.15)] bg-[rgba(var(--accent-color-rgb),0.05)] text-[var(--accent-color)] hover:border-[rgba(var(--accent-color-rgb),0.3)] hover:bg-[rgba(var(--accent-color-rgb),0.1)]"
-            : "border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-        } disabled:cursor-not-allowed disabled:opacity-45`}
+            ? "bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--accent-color)] hover:bg-[rgba(var(--accent-color-rgb),0.15)] ring-1 ring-[rgba(var(--accent-color-rgb),0.3)]"
+            : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+        } disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:shadow-none`}
         title={isImmediate ? "Send immediately" : "Add to composer"}
       >
         {suggestion.label}

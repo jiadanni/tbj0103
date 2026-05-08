@@ -2084,11 +2084,12 @@ export default function ChatView() {
   const composerMode = useSettingsStore((s) => s.composerMode);
   const modelFamilyLabels = useSettingsStore((s) => s.modelFamilyLabels);
   const customModelFamilies = useSettingsStore((s) => s.customModelFamilies);
-  const composerSelectClassName = "h-10 w-full appearance-none rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-none outline-none transition-all hover:border-[rgba(var(--accent-color-rgb),0.26)] hover:bg-[var(--bg-hover)] focus:border-[rgba(var(--accent-color-rgb),0.32)] focus:bg-[var(--bg-hover)]";
-  const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all";
-  const composerToggleInactiveClass = "border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[rgba(var(--accent-color-rgb),0.24)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
-  const composerToggleActiveClass = "border-[rgba(var(--accent-color-rgb),0.24)] bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--text-primary)]";
-  const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:border-[rgba(var(--accent-color-rgb),0.22)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40";
+  const composerSelectClassName = "h-10 w-full appearance-none rounded-full bg-black/20 shadow-inner pl-4 pr-10 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] outline-none transition-all duration-300 hover:bg-[var(--bg-secondary)]/50 focus:bg-[var(--bg-secondary)]/60 focus:ring-1 focus:ring-[var(--accent-color)]";
+  const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all duration-200 hover:-translate-y-px hover:shadow-md active:scale-95";
+  const composerToggleInactiveClass = "bg-white/[0.03] ring-1 ring-white/5 text-[var(--text-secondary)] hover:bg-white/[0.08] hover:text-[var(--text-primary)]";
+  const composerToggleActiveClass = "bg-[var(--bg-hover)] text-[var(--text-primary)] shadow-sm ring-1 ring-[var(--accent-color)]/30";
+  const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-[var(--text-muted)] transition-all duration-200 hover:bg-white/[0.08] hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40";
+
 
   const [input, setInput] = useState("");
   const [isPolishingPrompt, setIsPolishingPrompt] = useState(false);
@@ -4660,7 +4661,7 @@ export default function ChatView() {
                   <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-10" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-6"}`}>
                     <div
                       data-testid="composer-shell"
-                      className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[30px] border border-white/10 bg-[var(--bg-elevated)]/95 ${showComposerHeader ? "p-3" : "p-2"} shadow-[0_16px_40px_-36px_rgba(0,0,0,0.7)]`}
+                      className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[32px] bg-[var(--bg-elevated)]/70 backdrop-blur-3xl ring-1 ring-white/[0.08] ${showComposerHeader ? "p-3" : "p-2"} shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5),_0_0_0_1px_rgba(255,255,255,0.02)_inset] transition-all duration-300`}
                     >
                       <div className="flex flex-col gap-2 min-w-0">
                         {showComposerHeader && showComposerTopicTags && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
@@ -4706,7 +4707,7 @@ export default function ChatView() {
                                       type="button"
                                       onClick={() => setIsFamilyPickerOpen((open) => !open)}
                                       disabled={isStreaming}
-                                      className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-sm transition-all hover:border-[rgba(var(--accent-color-rgb),0.4)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] disabled:cursor-not-allowed disabled:opacity-40"
+                                      className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl bg-white/[0.03] ring-1 ring-white/5 px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-secondary)] transition-all duration-200 hover:bg-white/[0.08] hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                                       aria-haspopup="menu"
                                       aria-expanded={isFamilyPickerOpen}
                                     >
@@ -4755,7 +4756,7 @@ export default function ChatView() {
                                     setIsModelPickerOpen((open) => !open);
                                   }}
                                   disabled={modelPickerOptions.length === 0 || isStreaming}
-                                  className={`inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.08)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-primary)] shadow-sm transition-all hover:border-[rgba(var(--accent-color-rgb),0.4)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] disabled:cursor-not-allowed disabled:opacity-40`}
+                                  className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl bg-white/[0.03] ring-1 ring-white/5 px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-secondary)] transition-all duration-200 hover:bg-white/[0.08] hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                                   title={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
                                   aria-label={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
                                   aria-haspopup="menu"
@@ -4949,7 +4950,7 @@ export default function ChatView() {
                             </div>
 
                         {/* Textarea */}
-                        <div className="flex items-end gap-2.5 rounded-[24px] border border-white/10 bg-[var(--bg-secondary)]/80 px-2 py-1.5">
+                        <div className="flex items-end gap-2.5 rounded-[24px] bg-black/20 shadow-inner px-2 py-1.5 transition-all duration-300 focus-within:bg-[var(--bg-secondary)]/40 focus-within:ring-1 focus-within:ring-[var(--accent-color)] focus-within:shadow-[0_0_15px_rgba(var(--accent-color-rgb),0.15)]">
                                 <textarea
                                   ref={inputRef}
                                   value={input}
@@ -5026,10 +5027,10 @@ export default function ChatView() {
                                             }
                                           }}
                                           disabled={!input.trim() || isStreaming}
-                                          className={`flex h-10 items-center justify-center rounded-2xl border px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${
+                                          className={`flex h-10 items-center justify-center rounded-2xl px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all duration-200 hover:-translate-y-px hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none ${
                                             isActive
-                                              ? "border-[rgba(var(--accent-color-rgb),0.4)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                                              : "border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.06)] text-[var(--text-secondary)] hover:border-[rgba(var(--accent-color-rgb),0.4)] hover:bg-[rgba(var(--accent-color-rgb),0.12)] hover:text-[var(--text-primary)]"
+                                              ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)] shadow-sm ring-1 ring-[var(--accent-color)]/30"
+                                              : "bg-white/[0.03] ring-1 ring-white/5 text-[var(--text-secondary)] hover:bg-white/[0.08] hover:text-[var(--text-primary)]"
                                           }`}
                                           title={`Send with ${modelPickerLabel(m.model_id)} · Ctrl+click to queue`}
                                         >
@@ -5046,7 +5047,7 @@ export default function ChatView() {
                                           await sendMessage();
                                         }}
                                         disabled={!input.trim() || !selectedModel}
-                                        className={`flex h-10 items-center justify-center border border-[rgba(var(--accent-color-rgb),0.2)] bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--text-primary)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.3)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
+                                        className={`flex h-10 items-center justify-center bg-[var(--accent-color)] text-white shadow-[0_4px_14px_0_rgba(var(--accent-color-rgb),0.39)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_6px_20px_rgba(var(--accent-color-rgb),0.43)] hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none disabled:hover:brightness-100 ${pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
                                           }`}
                                         title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
                                       >
@@ -5061,7 +5062,7 @@ export default function ChatView() {
                                               setIsModelSendMenuOpen((open) => !open);
                                             }}
                                             disabled={!input.trim() || isStreaming}
-                                            className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border border-[rgba(var(--accent-color-rgb),0.2)] border-l-[var(--border-color)]/20 bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--text-primary)] transition-all hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.3)] hover:bg-[rgba(var(--accent-color-rgb),0.14)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+                                            className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border-l border-black/10 bg-[var(--accent-color)] text-white shadow-[0_4px_14px_0_rgba(var(--accent-color-rgb),0.39)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_6px_20px_rgba(var(--accent-color-rgb),0.43)] hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none disabled:hover:brightness-100"
                                             title="Send with another pinned model"
                                             aria-label="Send with another pinned model"
                                             aria-haspopup="menu"
