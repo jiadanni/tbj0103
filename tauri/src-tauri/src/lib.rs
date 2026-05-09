@@ -57,9 +57,24 @@ fn save_main_window_state(
     let position = window.outer_position().map_err(|e| e.to_string())?;
     let size = window.outer_size().map_err(|e| e.to_string())?;
     let maximized = window.is_maximized().map_err(|e| e.to_string())?;
+
+    // When maximized, outer_position() often returns (0, 0) on Linux WMs.
+    // Save the monitor's safe origin instead so that if the user un-maximizes
+    // on next launch the window appears below the panel, not under it.
+    let (save_x, save_y) = if maximized {
+        if let Ok(Some(monitor)) = window.current_monitor() {
+            let mp = monitor.position();
+            (mp.x, mp.y + LINUX_TOP_PANEL_SAFE_INSET)
+        } else {
+            (position.x, position.y.max(LINUX_TOP_PANEL_SAFE_INSET))
+        }
+    } else {
+        (position.x, position.y)
+    };
+
     let state = SavedWindowState {
-        x: position.x,
-        y: position.y,
+        x: save_x,
+        y: save_y,
         width: size.width,
         height: size.height,
         maximized,
