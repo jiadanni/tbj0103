@@ -393,7 +393,6 @@ function SubWorkspaceTabBar({
       className={`relative flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
     >
       <div
-        data-no-drag
         className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none"
         onWheel={handleHorizontalWheel}
       >
@@ -1047,7 +1046,6 @@ function WorkspaceTabBar({
         {showSplitTitlebarWorkspaceNavigation && <SplitTitlebarWorkspaceNavigation />}
         {!isMac && <div className="relative z-10"><AppHeaderMenu /></div>}
         <div
-          data-no-drag
           onWheel={handleHorizontalWheel}
           className={
             showSplitTitlebarWorkspaceNavigation

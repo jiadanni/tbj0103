@@ -80,7 +80,26 @@ fn apply_saved_main_window_state(
 ) -> Result<(), String> {
     let mut next_state = state.clone();
 
-    if let Ok(Some(monitor)) = window.current_monitor() {
+    // Find the monitor that contains the saved top-left corner so that the window
+    // is restored to the same monitor it was on when last closed, not just the
+    // primary monitor (which is what current_monitor() would return at startup
+    // before the position is applied).
+    let target_monitor = window
+        .available_monitors()
+        .ok()
+        .and_then(|monitors| {
+            monitors.into_iter().find(|m| {
+                let mp = m.position();
+                let ms = m.size();
+                next_state.x >= mp.x
+                    && next_state.x < mp.x + ms.width as i32
+                    && next_state.y >= mp.y
+                    && next_state.y < mp.y + ms.height as i32
+            })
+        })
+        .or_else(|| window.current_monitor().ok().flatten());
+
+    if let Some(monitor) = target_monitor {
         let monitor_position = monitor.position();
         let monitor_size = monitor.size();
         let safe_top = monitor_position.y + LINUX_TOP_PANEL_SAFE_INSET;
@@ -636,10 +655,8 @@ pub fn run() {
             commands::chat_file::import_lmstudio_folder,
             commands::chat_file::import_multiple_folders,
             commands::chat_file::import_gemini_takeout,
-            commands::chat_file::import_claude_desktop,
-            commands::chat_file::import_claude_projects,
-            commands::chat_file::preview_claude_desktop,
-            commands::chat_file::preview_claude_projects_file,
+            commands::chat_file::import_claude_files,
+            commands::chat_file::preview_claude_files,
             // Web AI (Playwright bridge)
             commands::web_ai::send_web_message,
             // Topic signatures
