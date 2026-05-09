@@ -3657,10 +3657,10 @@ export default function ChatView() {
     if (isOneOffWebProvider && oneOffWebProviderKey) {
       try {
         clearStreamListener();
-        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
+        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs, loadDurationMs) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
-            finalizeStream(sid!, modelId, tokensUsed, durationMs);
+            finalizeStream(sid!, modelId, tokensUsed, durationMs, loadDurationMs);
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
@@ -3686,10 +3686,10 @@ export default function ChatView() {
     } else if (isLlamacppProvider) {
       try {
         clearStreamListener();
-        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
+        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs, loadDurationMs) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
-            finalizeStream(sid!, modelId, tokensUsed, durationMs);
+            finalizeStream(sid!, modelId, tokensUsed, durationMs, loadDurationMs);
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
@@ -3715,10 +3715,10 @@ export default function ChatView() {
     } else if (isMlxProvider) {
       try {
         clearStreamListener();
-        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
+        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs, loadDurationMs) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
-            finalizeStream(sid!, modelId, tokensUsed, durationMs);
+            finalizeStream(sid!, modelId, tokensUsed, durationMs, loadDurationMs);
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
@@ -3744,10 +3744,10 @@ export default function ChatView() {
     } else {
       try {
         clearStreamListener();
-        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
+        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs, loadDurationMs) => {
           if (done) {
             const assembled = useChatStore.getState().streamingContent;
-            finalizeStream(sid!, modelId, tokensUsed, durationMs);
+            finalizeStream(sid!, modelId, tokensUsed, durationMs, loadDurationMs);
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
@@ -4117,10 +4117,10 @@ export default function ChatView() {
     try {
       const sid = activeChatId;
       clearStreamListener();
-      const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
+      const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs, loadDurationMs) => {
         if (done) {
           const assembled = useChatStore.getState().streamingContent;
-          finalizeStream(sid, selectedModel, tokensUsed, durationMs);
+          finalizeStream(sid, selectedModel, tokensUsed, durationMs, loadDurationMs);
           setIsStreaming(false);
           clearStreamListener();
           api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
@@ -4188,10 +4188,10 @@ export default function ChatView() {
     try {
       const sid = activeChatId;
       clearStreamListener();
-      const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs) => {
+      const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs, loadDurationMs) => {
         if (done) {
           const assembled = useChatStore.getState().streamingContent;
-          finalizeStream(sid, modelId, tokensUsed, durationMs);
+          finalizeStream(sid, modelId, tokensUsed, durationMs, loadDurationMs);
           setIsStreaming(false);
           clearStreamListener();
           api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, modelId, tokensUsed, durationMs)

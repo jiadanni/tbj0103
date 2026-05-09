@@ -406,6 +406,13 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                 {(displayMsg.tokens_used / (displayMsg.duration_ms / 1000)).toFixed(1)} tok/s
               </span>
             ) : null}
+            {showGenInfo && showGenInfoSpeed && !isWebModel && msg.role === "assistant" && displayMsg.load_duration_ms && displayMsg.load_duration_ms > 500 ? (
+              <span className="text-[var(--text-muted)]">
+                · loaded {displayMsg.load_duration_ms >= 1000
+                  ? `${(displayMsg.load_duration_ms / 1000).toFixed(1)}s`
+                  : `${displayMsg.load_duration_ms}ms`}
+              </span>
+            ) : null}
           </div>
           {/* Grounded sources for this message */}
           {hasSources && (

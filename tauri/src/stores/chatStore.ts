@@ -8,6 +8,7 @@ export interface Message {
   model_name?: string;
   tokens_used?: number;
   duration_ms?: number;
+  load_duration_ms?: number;
   variant_group_id?: string | null;
   created_at: string;
 }
@@ -57,7 +58,7 @@ interface ChatStore {
   updateMessage: (sessionId: string, message: Message) => void;
   setStreamingSession: (id: string | null) => void;
   appendStreamChunk: (sessionId: string, chunk: string) => void;
-  finalizeStream: (sessionId: string, modelName?: string, tokensUsed?: number, durationMs?: number) => void;
+  finalizeStream: (sessionId: string, modelName?: string, tokensUsed?: number, durationMs?: number, loadDurationMs?: number) => void;
   setPendingPromptText: (text: string | null) => void;
   // Message variants
   setMessageVariants: (messageId: string, variants: Message[]) => void;
@@ -107,7 +108,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ streamingSessionId, streamingContent: "" }),
   appendStreamChunk: (sessionId, chunk) =>
     set((s) => ({ streamingSessionId: sessionId, streamingContent: s.streamingContent + chunk })),
-  finalizeStream: (sessionId, modelName, tokensUsed, durationMs) => {
+  finalizeStream: (sessionId, modelName, tokensUsed, durationMs, loadDurationMs) => {
     const { streamingContent } = get();
     const assistantMsg: Message = {
       id: window.crypto.randomUUID(),
@@ -117,6 +118,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       model_name: modelName,
       tokens_used: tokensUsed,
       duration_ms: durationMs,
+      load_duration_ms: loadDurationMs,
       created_at: new Date().toISOString(),
     };
     set((s) => ({

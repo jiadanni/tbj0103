@@ -233,6 +233,7 @@ impl MlxClient {
                                             done: false,
                                             tokens_used: None,
                                             duration_ms: None,
+                                            load_duration_ms: None,
                                         },
                                     );
                                 }
@@ -260,6 +261,7 @@ impl MlxClient {
                 done: true,
                 tokens_used: None,
                 duration_ms: None,
+                load_duration_ms: None,
             },
         );
 

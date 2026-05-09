@@ -428,7 +428,7 @@ export interface CalendarAlarm {
   created_at: string;
 }
 
-export interface StreamEvent { session_id: string; chunk: string; done: boolean; tokens_used?: number; duration_ms?: number; }
+export interface StreamEvent { session_id: string; chunk: string; done: boolean; tokens_used?: number; duration_ms?: number; load_duration_ms?: number; }
 
 export interface ThoughtItem {
   id: string; workspace_id: string; content: string;
@@ -1358,15 +1358,15 @@ export const api = {
   },
 
   // Streaming: listen to Ollama stream events for a session
-  listenStream: (sessionId: string, onChunk: (chunk: string, done: boolean, tokensUsed?: number, durationMs?: number) => void): Promise<UnlistenFn> =>
+  listenStream: (sessionId: string, onChunk: (chunk: string, done: boolean, tokensUsed?: number, durationMs?: number, loadDurationMs?: number) => void): Promise<UnlistenFn> =>
     listen<StreamEvent>(`ollama-stream-${sessionId}`, (event) => {
-      onChunk(event.payload.chunk, event.payload.done, event.payload.tokens_used, event.payload.duration_ms);
+      onChunk(event.payload.chunk, event.payload.done, event.payload.tokens_used, event.payload.duration_ms, event.payload.load_duration_ms);
     }),
 
   // Streaming: listen to the refine (large model) events for a dual-model session
-  listenRefineStream: (sessionId: string, onChunk: (chunk: string, done: boolean, tokensUsed?: number, durationMs?: number) => void): Promise<UnlistenFn> =>
+  listenRefineStream: (sessionId: string, onChunk: (chunk: string, done: boolean, tokensUsed?: number, durationMs?: number, loadDurationMs?: number) => void): Promise<UnlistenFn> =>
     listen<StreamEvent>(`ollama-refine-${sessionId}`, (event) => {
-      onChunk(event.payload.chunk, event.payload.done, event.payload.tokens_used, event.payload.duration_ms);
+      onChunk(event.payload.chunk, event.payload.done, event.payload.tokens_used, event.payload.duration_ms, event.payload.load_duration_ms);
     }),
 
   listenBackgroundTask: (onEvent: (event: BackgroundTaskEvent) => void): Promise<UnlistenFn> =>
