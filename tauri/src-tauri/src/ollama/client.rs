@@ -119,6 +119,8 @@ pub struct StreamChunk {
     pub eval_count: Option<i64>,
     pub eval_duration: Option<i64>,
     pub total_duration: Option<i64>,
+    pub load_duration: Option<i64>,
+    pub prompt_eval_duration: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -189,6 +191,7 @@ pub struct StreamEvent {
     pub done: bool,
     pub tokens_used: Option<i64>,
     pub duration_ms: Option<i64>,
+    pub load_duration_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -744,6 +747,7 @@ impl OllamaClient {
                             done: false,
                             tokens_used: None,
                             duration_ms: None,
+                            load_duration_ms: None,
                         });
                         last_emit = std::time::Instant::now();
                     }
@@ -809,7 +813,10 @@ impl OllamaClient {
                         // Flush any pending text together with the final chunk
                         pending_chunk.push_str(&content);
                         let duration_ms = parsed
-                            .eval_duration
+                            .total_duration
+                            .map(|ns| ns / 1_000_000);
+                        let load_duration_ms = parsed
+                            .load_duration
                             .map(|ns| ns / 1_000_000);
                         let _ = app.emit(
                             &event_name,
@@ -819,6 +826,7 @@ impl OllamaClient {
                                 done: true,
                                 tokens_used: parsed.eval_count,
                                 duration_ms,
+                                load_duration_ms,
                             },
                         );
                         stream_done = true;
@@ -835,6 +843,7 @@ impl OllamaClient {
                                     done: false,
                                     tokens_used: None,
                                     duration_ms: None,
+                                    load_duration_ms: None,
                                 },
                             );
                             last_emit = std::time::Instant::now();
@@ -856,6 +865,7 @@ impl OllamaClient {
                     done: true,
                     tokens_used: None,
                     duration_ms: None,
+                    load_duration_ms: None,
                 },
             );
         }
