@@ -781,7 +781,29 @@ export const api = {
         workspace_id: string;
         workspace_name: string;
       }>("import_gemini_takeout", { filePath, workspaceName: workspaceName ?? null }),
-    importClaudeDesktop: (filePath: string, workspaceName?: string, selectedIds?: string[], selectedProjectIds?: string[], importMemories?: boolean) =>
+    previewClaudeFiles: (paths: { conversationsPath?: string | null; projectsPath?: string | null; memoriesPath?: string | null }) =>
+      invoke<{
+        conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null }[];
+        total: number;
+        projects: { uuid: string; name: string; description: string; has_prompt: boolean; doc_count: number }[];
+        memories: {
+          conversations_memory: string;
+          project_memories: { project_uuid: string; project_name: string; memory: string }[];
+        } | null;
+      }>("preview_claude_files", {
+        conversationsPath: paths.conversationsPath ?? null,
+        projectsPath: paths.projectsPath ?? null,
+        memoriesPath: paths.memoriesPath ?? null,
+      }),
+    importClaudeFiles: (args: {
+      workspaceName?: string;
+      conversationsPath?: string | null;
+      projectsPath?: string | null;
+      memoriesPath?: string | null;
+      selectedIds?: string[];
+      selectedProjectIds?: string[];
+      importMemories?: boolean;
+    }) =>
       invoke<{
         imported: number;
         skipped: number;
@@ -791,28 +813,15 @@ export const api = {
         memories_imported: number;
         errors: number;
         error_messages: string[];
-      }>("import_claude_desktop", { filePath, workspaceName: workspaceName ?? null, selectedIds: selectedIds ?? null, selectedProjectIds: selectedProjectIds ?? null, importMemories: importMemories ?? false }),
-    previewClaudeDesktop: (filePath: string) =>
-      invoke<{
-        conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string }[];
-        total: number;
-        projects: { uuid: string; name: string; description: string; has_prompt: boolean; doc_count: number }[];
-        memories: {
-          conversations_memory: string;
-          project_memories: { project_uuid: string; project_name: string; memory: string }[];
-        } | null;
-      }>("preview_claude_desktop", { filePath }),
-    importClaudeProjects: (filePath: string, selectedIds?: string[]) =>
-      invoke<{
-        created: number;
-        skipped: number;
-        total: number;
-      }>("import_claude_projects", { filePath, selectedIds: selectedIds ?? null }),
-    previewClaudeProjects: (filePath: string) =>
-      invoke<{
-        projects: { uuid: string; name: string; description: string; has_prompt: boolean; prompt_preview: string | null }[];
-        total: number;
-      }>("preview_claude_projects_file", { filePath }),
+      }>("import_claude_files", {
+        workspaceName: args.workspaceName ?? null,
+        conversationsPath: args.conversationsPath ?? null,
+        projectsPath: args.projectsPath ?? null,
+        memoriesPath: args.memoriesPath ?? null,
+        selectedIds: args.selectedIds ?? null,
+        selectedProjectIds: args.selectedProjectIds ?? null,
+        importMemories: args.importMemories ?? false,
+      }),
   },
 
   security: {
