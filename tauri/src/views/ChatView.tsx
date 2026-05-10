@@ -2298,6 +2298,7 @@ export default function ChatView() {
   const creatingFolderRequestRef = useRef(false);
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
+  const [messagesScrollerElement, setMessagesScrollerElement] = useState<HTMLDivElement | null>(null);
 
   const openConfirmDialog = useCallback((options: ConfirmDialogState) => {
     setConfirmDialog(options);
@@ -4085,7 +4086,8 @@ export default function ChatView() {
     const idx = activeMessages.findIndex((m) => m.id === msgId);
     if (idx < 0) { return; }
 
-    if (idx < activeMessages.length - 1) {
+    const hasSubsequentUserMessages = activeMessages.slice(idx + 1).some((m) => m.role === "user");
+    if (hasSubsequentUserMessages) {
       if (!await openConfirmDialog({
         title: "Edit Message?",
         description: "Editing this message will delete all subsequent messages in this conversation. This cannot be undone.",
@@ -4152,14 +4154,17 @@ export default function ChatView() {
     const idx = activeMessages.findIndex((m) => m.id === msgId);
     if (idx < 0) { return; }
 
+    const hasSubsequentUserMessages = activeMessages.slice(idx + 1).some((m) => m.role === "user");
     if (idx < activeMessages.length - 1) {
-      if (!await openConfirmDialog({
-        title: "Regenerate Message?",
-        description: "Redoing this message will delete all subsequent messages in this conversation. This cannot be undone.",
-        confirmLabel: "Regenerate",
-        tone: "danger",
-      })) {
-        return;
+      if (hasSubsequentUserMessages) {
+        if (!await openConfirmDialog({
+          title: "Regenerate Message?",
+          description: "Redoing this message will delete all subsequent messages in this conversation. This cannot be undone.",
+          confirmLabel: "Regenerate",
+          tone: "danger",
+        })) {
+          return;
+        }
       }
       // Clear variation state for deleted messages and the redo'd message since history changes
       const deletedIds = activeMessages.slice(idx + 1).map((m) => m.id);
@@ -4596,6 +4601,9 @@ export default function ChatView() {
                     <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
                       <Virtuoso
                         ref={virtuosoRef}
+                        scrollerRef={(element) => {
+                          setMessagesScrollerElement(element instanceof HTMLDivElement ? element : null);
+                        }}
                         data={activeMessages}
                         initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
                         followOutput={isCurrentlyStreaming ? "auto" : false}
@@ -4649,6 +4657,7 @@ export default function ChatView() {
                     <ChatMinimap
                       messages={activeMessages}
                       virtuosoRef={virtuosoRef}
+                      scrollContainer={messagesScrollerElement}
                       streamingContent={streamingContentForMinimap}
                       isStreaming={isCurrentlyStreaming}
                     />

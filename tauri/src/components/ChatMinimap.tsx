@@ -5,6 +5,7 @@ import type { VirtuosoHandle } from "react-virtuoso";
 interface ChatMinimapProps {
   messages: Message[];
   virtuosoRef: React.RefObject<VirtuosoHandle | null>;
+  scrollContainer: HTMLDivElement | null;
   streamingContent: string;
   isStreaming: boolean;
 }
@@ -17,6 +18,8 @@ const MIN_GAP = 4;
 const PX_PER_CHAR = 0.05;
 /** maximum px gap after any single message */
 const MAX_GAP = 80;
+const FALLBACK_RIGHT_OFFSET = 8;
+const MIN_SCROLLBAR_RIGHT_OFFSET = 2;
 
 interface MinimapBlock {
   msgIdx: number;
@@ -30,9 +33,19 @@ function gapForLength(len: number): number {
   return Math.min(MAX_GAP, MIN_GAP + len * PX_PER_CHAR);
 }
 
+function getMinimapRightOffset(scrollContainer: HTMLDivElement | null): number {
+  if (!scrollContainer) {return FALLBACK_RIGHT_OFFSET;}
+
+  const scrollbarGutter = Math.max(0, scrollContainer.offsetWidth - scrollContainer.clientWidth);
+  if (scrollbarGutter <= 0) {return FALLBACK_RIGHT_OFFSET;}
+
+  return Math.max(MIN_SCROLLBAR_RIGHT_OFFSET, Math.round(scrollbarGutter / 3));
+}
+
 const ChatMinimap: React.FC<ChatMinimapProps> = ({
   messages,
   virtuosoRef,
+  scrollContainer,
   streamingContent,
   isStreaming,
 }) => {
@@ -72,6 +85,7 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
     () => blocks.reduce((sum, b) => sum + LINE_H + b.gap, 0),
     [blocks],
   );
+  const rightOffset = useMemo(() => getMinimapRightOffset(scrollContainer), [scrollContainer]);
 
   const scale = trackClientH > 0 && naturalH > 0 ? trackClientH / naturalH : 1;
 
@@ -136,8 +150,9 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
 
   return (
     <div
+      data-testid="chat-minimap"
       className="absolute right-2 top-2 bottom-2 z-10 flex flex-col items-end pointer-events-none"
-      style={{ width: "40px" }}
+      style={{ width: "40px", right: `${rightOffset}px` }}
     >
       <div
         ref={trackRef}
