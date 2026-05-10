@@ -3475,7 +3475,10 @@ export default function ChatView() {
   }
 
   async function sendMessage() {
-    await sendMessageWithModel(selectedModel);
+    const modelForSend = composerMode === "family"
+      ? (activeFamilyDefaultModelId ?? selectedModel)
+      : selectedModel;
+    await sendMessageWithModel(modelForSend);
   }
 
   async function handleAttachFiles() {
@@ -4327,6 +4330,7 @@ export default function ChatView() {
     () => modelFamilies.find((f) => f.prefix === selectedFamily)?.models ?? [],
     [modelFamilies, selectedFamily]
   );
+  const activeFamilyDefaultModelId = activeFamilyModels[0]?.model_id ?? null;
 
   const composerSuggestionRows = useMemo(() => {
     const suggestionContext = {
@@ -4364,6 +4368,9 @@ export default function ChatView() {
   const modelPickerLabel = (modelId: string) => {
     return modelDisplayName(modelId);
   };
+  const activeFamilyDefaultModelLabel = activeFamilyDefaultModelId
+    ? modelPickerLabel(activeFamilyDefaultModelId)
+    : null;
 
   const persistedUserMessageWithFallback = (optimistic: Message, persisted: Message): Message => ({
     ...optimistic,
@@ -4713,7 +4720,7 @@ export default function ChatView() {
                                     >
                                       <span className="min-w-0 truncate">
                                         {selectedFamily
-                                          ? `${modelFamilyLabels[selectedFamily] ?? selectedFamily}${showFamilyVariant && selectedModel && selectedModel.startsWith(selectedFamily) ? ` · ${modelPickerLabel(selectedModel)}` : ""}`
+                                          ? `${modelFamilyLabels[selectedFamily] ?? selectedFamily}${showFamilyVariant && selectedModel && selectedModel.startsWith(selectedFamily) ? ` · ${modelPickerLabel(selectedModel)}` : activeFamilyDefaultModelLabel ? ` · Default ${activeFamilyDefaultModelLabel}` : ""}`
                                           : "Select family"}
                                       </span>
                                       <ChevronDown size={14} strokeWidth={2.2} />
@@ -4727,8 +4734,14 @@ export default function ChatView() {
                                               <button
                                                 key={family.prefix}
                                                 type="button"
-                                                onClick={() => {
+                                                onClick={async () => {
                                                   setSelectedFamily(family.prefix);
+                                                  const defaultModelId = family.models[0]?.model_id ?? "";
+                                                  if (defaultModelId) {
+                                                    setSelectedModel(defaultModelId);
+                                                    await persistModelChoice(defaultModelId);
+                                                  }
+                                                  setShowFamilyVariant(false);
                                                   setIsFamilyPickerOpen(false);
                                                 }}
                                                 className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
@@ -4970,7 +4983,7 @@ export default function ChatView() {
                                           ? "Ollama is unavailable — start it or enable auto-start in Preferences > AI"
                                           : "No models available — install one via ollama pull"
                                         : activeMessages.length > 0
-                                          ? "Message this thread…"
+                                          ? "Continue this thread…"
                                           : "Start a new thread…"
                                   }
                                   rows={1}
@@ -5013,6 +5026,7 @@ export default function ChatView() {
                                     {composerMode === "family" && activeFamilyModels.map((m) => {
                                       const tag = m.model_id.includes(":") ? m.model_id.split(":")[1] : m.model_id;
                                       const isActive = m.model_id === selectedModel;
+                                      const isDefault = m.model_id === activeFamilyDefaultModelId;
                                       return (
                                         <button
                                           key={m.model_id}
@@ -5030,10 +5044,13 @@ export default function ChatView() {
                                           className={`flex h-10 items-center justify-center rounded-2xl px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all duration-200 hover:-translate-y-px hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none ${
                                             isActive
                                               ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)] shadow-sm ring-1 ring-[var(--accent-color)]/30"
-                                              : "bg-white/[0.03] ring-1 ring-white/5 text-[var(--text-secondary)] hover:bg-white/[0.08] hover:text-[var(--text-primary)]"
+                                              : isDefault
+                                                ? "bg-white/[0.03] ring-1 ring-[var(--accent-color)]/25 text-[var(--text-primary)] hover:bg-white/[0.08]"
+                                                : "bg-white/[0.03] ring-1 ring-white/5 text-[var(--text-secondary)] hover:bg-white/[0.08] hover:text-[var(--text-primary)]"
                                           }`}
-                                          title={`Send with ${modelPickerLabel(m.model_id)} · Ctrl+click to queue`}
+                                          title={`${isDefault ? "Default for Enter in this family" : `Send with ${modelPickerLabel(m.model_id)}`} · Ctrl+click to queue`}
                                         >
+                                          {isDefault && <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-[var(--accent-color)]" aria-hidden="true" />}
                                           {tag}
                                         </button>
                                       );

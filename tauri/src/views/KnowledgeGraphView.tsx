@@ -1010,12 +1010,12 @@ export default function KnowledgeGraphView() {
           </header>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-            <MetricCard label="Concepts" value={overview?.concepts ?? nodes.length} accentClassName="bg-sky-400" />
-            <MetricCard label="Links" value={links.length} accentClassName="bg-indigo-400" />
-            <MetricCard label="Due Review" value={review?.due_today ?? 0} accentClassName="bg-emerald-400" />
+            <MetricCard label="Concepts" value={overview?.concepts ?? nodes.length} accentClassName="bg-[var(--accent-color)]" />
+            <MetricCard label="Links" value={links.length} accentClassName="bg-[var(--accent-color)]" />
+            <MetricCard label="Due Review" value={review?.due_today ?? 0} accentClassName="bg-[var(--accent-color)]" />
             <MetricCard label="Active Goals" value={overview?.active_goals ?? 0} accentClassName="bg-[var(--accent-color)]" />
-            <MetricCard label="Isolated Concepts" value={summary?.knowledge_health.isolated_concepts ?? 0} accentClassName="bg-amber-400" />
-            <MetricCard label="Unprocessed Sources" value={summary?.knowledge_health.unprocessed_sources ?? 0} accentClassName="bg-rose-400" />
+            <MetricCard label="Isolated Concepts" value={summary?.knowledge_health.isolated_concepts ?? 0} accentClassName="bg-[var(--accent-color)]" />
+            <MetricCard label="Unprocessed Sources" value={summary?.knowledge_health.unprocessed_sources ?? 0} accentClassName="bg-[var(--accent-color)]" />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]">
