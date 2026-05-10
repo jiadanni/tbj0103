@@ -245,10 +245,10 @@ export default function ProjectDashboardView() {
         </header>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Due Review" value={effectiveSummary.review.due_today} accent="bg-amber-400" />
-          <MetricCard label="Active Goals" value={effectiveSummary.overview.active_goals} accent="bg-emerald-400" />
-          <MetricCard label="Concepts Tracked" value={effectiveSummary.overview.concepts} accent="bg-sky-400" />
-          <MetricCard label="Sources Captured" value={effectiveSummary.overview.sources} accent="bg-fuchsia-400" />
+          <MetricCard label="Due Review" value={effectiveSummary.review.due_today} accent="bg-[var(--accent-color)]" />
+          <MetricCard label="Active Goals" value={effectiveSummary.overview.active_goals} accent="bg-[var(--accent-color)]" />
+          <MetricCard label="Concepts Tracked" value={effectiveSummary.overview.concepts} accent="bg-[var(--accent-color)]" />
+          <MetricCard label="Sources Captured" value={effectiveSummary.overview.sources} accent="bg-[var(--accent-color)]" />
         </div>
 
         <Section title="Continue Learning" eyebrow="Low Friction">

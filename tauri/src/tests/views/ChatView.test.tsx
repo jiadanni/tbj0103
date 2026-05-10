@@ -49,6 +49,7 @@ vi.mock("lucide-react", () => ({
   MoveRight: () => <div data-testid="icon-move-right" />,
   ExternalLink: () => <div data-testid="icon-external-link" />,
   Copy: () => <div data-testid="icon-copy" />,
+  BarChart2: () => <div data-testid="icon-bar-chart-2" />,
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -190,6 +191,7 @@ vi.mock("@/lib/workspacePane", () => ({
     setActiveProjectId,
     workspace: null,
   }),
+  useBubbleUpFlag: () => true,
   useWorkspacePane: () => mockWorkspacePane,
 }));
 
@@ -537,8 +539,8 @@ describe("ChatView", () => {
     renderChatView();
 
     const composerShell = screen.getByTestId("composer-shell");
-    expect(composerShell.className).toContain("border-white/10");
-    expect(composerShell.className).toContain("bg-[var(--bg-elevated)]/95");
+    expect(composerShell.className).toContain("ring-white/[0.08]");
+    expect(composerShell.className).toContain("bg-[var(--bg-elevated)]/70");
   });
 
   it("shows the full Ollama model id when the stored label is only the base model name", () => {
