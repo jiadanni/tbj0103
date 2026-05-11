@@ -357,6 +357,57 @@ function ShortcutRecorder({
   );
 }
 
+function ContextSizeInput({ modelName, savedValue, onSave, onClear }: {
+  modelName: string;
+  savedValue: number | null;
+  onSave: (value: number | null) => Promise<void>;
+  onClear: () => Promise<void>;
+}) {
+  const [draft, setDraft] = React.useState<string>(savedValue !== null ? String(savedValue) : "");
+
+  React.useEffect(() => {
+    setDraft(savedValue !== null ? String(savedValue) : "");
+  }, [savedValue]);
+
+  async function commit() {
+    const raw = draft.trim();
+    const parsed = raw === "" ? null : Number.parseInt(raw, 10);
+    const next = parsed === null ? null : Number.isFinite(parsed) && parsed > 0 ? Math.max(512, parsed) : null;
+    if ((savedValue ?? null) !== next) {
+      await onSave(next);
+    }
+    setDraft(next !== null ? String(next) : "");
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <input
+        type="number"
+        min={512}
+        step={512}
+        value={draft}
+        placeholder="default"
+        className="w-[72px] rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-center text-[10px] tabular-nums text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        aria-label={`Context window for ${modelName}`}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+      />
+      <span className="text-[9px] text-[var(--text-muted)] shrink-0">tok</span>
+      {savedValue !== null && (
+        <Tooltip content="Clear override — revert to Ollama's default context size for this model">
+          <button
+            onClick={async () => { await onClear(); setDraft(""); }}
+            className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors shrink-0"
+          >
+            <RefreshCw size={10} />
+          </button>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 
 export default function PreferencesView() {
@@ -1389,39 +1440,12 @@ export default function PreferencesView() {
 
                       <div className="flex justify-center pt-0.5 md:w-[120px]">
                         {!isWebModel && !m.id.startsWith("transient-") && (
-                          <div className="flex items-center gap-1.5">
-                              <input
-                                type="number"
-                                min={512}
-                                step={512}
-                                value={m.context_size ?? ""}
-                                placeholder="default"
-                                className="w-[72px] rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-center text-[10px] tabular-nums text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                aria-label={`Context window for ${m.name}`}
-                                onChange={async (e) => {
-                                  const raw = e.target.value.trim();
-                                  const parsed = raw === "" ? null : Number.parseInt(raw, 10);
-                                  const next = parsed === null ? null : Number.isFinite(parsed) && parsed > 0 ? Math.max(512, parsed) : null;
-                                  if ((m.context_size ?? null) === next) {return;}
-                                  await api.aiModel.update(m.id, { context_size: next });
-                                  loadAiModels();
-                                }}
-                              />
-                            <span className="text-[9px] text-[var(--text-muted)] shrink-0">tok</span>
-                            {m.context_size !== null && (
-                              <Tooltip content="Clear override — revert to Ollama's default context size for this model">
-                                <button
-                                  onClick={async () => {
-                                    await api.aiModel.update(m.id, { context_size: null });
-                                    loadAiModels();
-                                  }}
-                                  className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors shrink-0"
-                                >
-                                  <RefreshCw size={10} />
-                                </button>
-                              </Tooltip>
-                            )}
-                          </div>
+                          <ContextSizeInput
+                            modelName={m.name}
+                            savedValue={m.context_size ?? null}
+                            onSave={async (next) => { await api.aiModel.update(m.id, { context_size: next }); loadAiModels(); }}
+                            onClear={async () => { await api.aiModel.update(m.id, { context_size: null }); loadAiModels(); }}
+                          />
                         )}
                       </div>
 
