@@ -2020,7 +2020,6 @@ function StreamingBubble({
         <div className="prose prose-sm dark:prose-invert max-w-none">
           <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
-        <span className="streaming-cursor" />
       </div>
     </div>
   );
