@@ -236,7 +236,13 @@ fn merge_topic_tags(primary: Vec<TopicTag>, secondary: Vec<TopicTag>, max: usize
         let Some(normalized) = normalize_topic_label(&tag.tag) else {
             continue;
         };
-        if seen.insert(normalized.clone()) {
+
+        // Check for semantic duplicates via synonym table
+        let is_duplicate = seen.iter().any(|existing: &String| {
+            tags_match_fuzzy(existing, &normalized)
+        });
+
+        if !is_duplicate && seen.insert(normalized.clone()) {
             merged.push(TopicTag {
                 tag: normalized,
                 weight: tag.weight,
@@ -253,8 +259,30 @@ fn merge_topic_tags(primary: Vec<TopicTag>, secondary: Vec<TopicTag>, max: usize
 
 fn extract_json_object(s: &str) -> Option<String> {
     let start = s.find('{')?;
-    let end = s.rfind('}')?;
-    (end > start).then(|| s[start..=end].to_string())
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut escape_next = false;
+
+    for (i, ch) in s[start..].char_indices() {
+        if escape_next {
+            escape_next = false;
+            continue;
+        }
+        match ch {
+            '\\' if in_string => escape_next = true,
+            '"' => in_string = !in_string,
+            '{' if !in_string => depth += 1,
+            '}' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(s[start..start + i + 1].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 
 pub fn collect_workspace_text(
@@ -413,6 +441,63 @@ fixing anaconda path issue on linux for java tooling\n";
         assert!(!tags.iter().any(|tag| tag == "module"));
         assert!(!tags.iter().any(|tag| tag == "command"));
     }
+
+    #[test]
+    fn fuzzy_matches_synonyms() {
+        use super::tags_match_fuzzy;
+
+        assert!(tags_match_fuzzy("kubernetes", "k8s"));
+        assert!(tags_match_fuzzy("k8s", "kubernetes"));
+        assert!(tags_match_fuzzy("javascript", "js"));
+        assert!(tags_match_fuzzy("machine learning", "ml"));
+        assert!(!tags_match_fuzzy("rust", "python"));
+    }
+
+    #[test]
+    fn fuzzy_matches_substring() {
+        use super::tags_match_fuzzy;
+
+        assert!(tags_match_fuzzy("react", "react native"));
+        assert!(tags_match_fuzzy("react native", "react"));
+        assert!(!tags_match_fuzzy("go", "golang")); // too short for substring match
+    }
+
+    #[test]
+    fn extract_json_with_nested_objects() {
+        use super::extract_json_object;
+
+        let input = r#"Here is the result: {"topics":["rust","python"],"nested":{"key":"val"}} extra text"#;
+        let result = extract_json_object(input).unwrap();
+        assert_eq!(result, r#"{"topics":["rust","python"],"nested":{"key":"val"}}"#);
+    }
+
+    #[test]
+    fn extract_json_with_strings_containing_braces() {
+        use super::extract_json_object;
+
+        let input = r#"{"topics":["test {thing}"]}"#;
+        let result = extract_json_object(input).unwrap();
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn dedup_merges_synonyms() {
+        use super::{merge_topic_tags, TopicTag};
+
+        let primary = vec![TopicTag {
+            tag: "kubernetes".to_string(),
+            weight: 30,
+            source: "ollama".to_string(),
+        }];
+        let secondary = vec![TopicTag {
+            tag: "k8s".to_string(),
+            weight: 20,
+            source: "heuristic".to_string(),
+        }];
+        let merged = merge_topic_tags(primary, secondary, 12);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].tag, "kubernetes");
+    }
 }
 
 pub async fn enrich_with_ollama(
@@ -562,6 +647,13 @@ pub async fn recompute_workspace_signature_with_ai(
         return Ok(existing);
     }
 
+    // Skip recompute if no new messages since last generation
+    if let Some(prev_count) = existing.message_count_at_gen {
+        if count == prev_count && existing.ollama_enriched {
+            return Ok(existing);
+        }
+    }
+
     let mut sig = generate_heuristic(&text);
     sig.message_count_at_gen = Some(count);
 
@@ -571,6 +663,7 @@ pub async fn recompute_workspace_signature_with_ai(
 
     sig.manual_tags = existing.manual_tags;
     sig.ignored_tags = existing.ignored_tags;
+    sig.suggested_prompts = existing.suggested_prompts;
     sig.domain_tags
         .retain(|t| !sig.ignored_tags.contains(&t.tag));
 
@@ -588,6 +681,52 @@ pub async fn recompute_workspace_signature_with_ai(
     Ok(sig)
 }
 
+/// Common abbreviation/synonym pairs for fuzzy topic matching.
+const TOPIC_SYNONYMS: &[&[&str]] = &[
+    &["kubernetes", "k8s"],
+    &["javascript", "js"],
+    &["typescript", "ts"],
+    &["python", "py"],
+    &["machine learning", "ml"],
+    &["artificial intelligence", "ai"],
+    &["database", "db"],
+    &["postgresql", "postgres"],
+    &["continuous integration", "ci"],
+    &["continuous deployment", "cd"],
+    &["react native", "rn"],
+    &["operating system", "os"],
+    &["natural language processing", "nlp"],
+    &["application programming interface", "api"],
+    &["graphql", "gql"],
+    &["elasticsearch", "elastic"],
+    &["mongodb", "mongo"],
+    &["configuration", "config"],
+    &["authentication", "auth"],
+    &["authorization", "authz"],
+];
+
+fn tags_match_fuzzy(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+
+    // Check synonym table (bidirectional)
+    for group in TOPIC_SYNONYMS {
+        if group.contains(&a) && group.contains(&b) {
+            return true;
+        }
+    }
+
+    // Check if one tag contains the other (e.g. "react" matches "react native")
+    if a.len() >= 4 && b.len() >= 4 {
+        if a.contains(b) || b.contains(a) {
+            return true;
+        }
+    }
+
+    false
+}
+
 pub fn compute_match_score(message: &str, signature: &TopicSignature) -> f64 {
     let msg_tags = generate_tags(message, 10);
     if msg_tags.is_empty() {
@@ -601,10 +740,17 @@ pub fn compute_match_score(message: &str, signature: &TopicSignature) -> f64 {
             continue;
         }
 
-        // Check heuristic or manual tags
-        if signature.domain_tags.iter().any(|t| &t.tag == tag)
-            || signature.manual_tags.contains(tag)
-        {
+        // Check domain or manual tags with fuzzy matching
+        let matched = signature
+            .domain_tags
+            .iter()
+            .any(|t| tags_match_fuzzy(&t.tag, tag))
+            || signature
+                .manual_tags
+                .iter()
+                .any(|t| tags_match_fuzzy(t, tag));
+
+        if matched {
             match_count += 1;
         }
     }
