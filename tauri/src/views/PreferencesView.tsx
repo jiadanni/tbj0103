@@ -1143,25 +1143,45 @@ export default function PreferencesView() {
         <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
       ) : (
       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] overflow-hidden">
-        <div className="grid grid-cols-[minmax(0,1fr)_100px_120px_120px_60px_60px_20px] items-center gap-3 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-          <span>Model</span>
-          <span className="text-center">Background</span>
-          <span className="text-right">Speed</span>
+        <div className="grid grid-cols-[minmax(0,1fr)_100px_120px_120px_60px_60px] items-center gap-3 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+          <span>Ollama Models</span>
+          <Tooltip content="Background model: used for automatic AI tasks that run without your direct input, such as topic signatures, note summarization, and knowledge graph linking. Only one model can be the background model at a time." position="top">
+            <span className="text-center inline-flex items-center justify-center gap-1">
+              Background
+              <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
+            </span>
+          </Tooltip>
+          <Tooltip content="Speed: measured in tokens per second during the last generation. Higher is faster. This is benchmarked live as you use the model and updates over time." position="top">
+            <span className="text-right inline-flex items-center justify-end gap-1">
+              Speed
+              <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
+            </span>
+          </Tooltip>
           <Tooltip content="Context window (tokens): the maximum number of tokens the model holds in memory at once. A larger value lets the model remember more conversation history but uses more VRAM. Leave blank to use Ollama's default for this model." position="top">
             <span className="text-center inline-flex items-center justify-center gap-1">
               Context
               <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
             </span>
           </Tooltip>
-          <span className="text-center">Active</span>
-          <span className="text-center">Visible</span>
-          <span />
+          <Tooltip content="Active: enables or disables this model app-wide. Inactive models are never used for chat or background tasks, even if selected elsewhere." position="top">
+            <span className="text-center inline-flex items-center justify-center gap-1">
+              Active
+              <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
+            </span>
+          </Tooltip>
+          <Tooltip content="Visible: controls whether this model appears in the chat model picker. Hide models you want active in the background but don't want cluttering the selector." position="top">
+            <span className="text-center inline-flex items-center justify-center gap-1">
+              Visible
+              <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
+            </span>
+          </Tooltip>
         </div>
 
           <div className="divide-y divide-[var(--border-color)]">
 
           {localGroupedAiModels.map((group) => (
             <React.Fragment key={group.key}>
+              {localGroupedAiModels.length > 1 && (
               <div
                 data-family-key={group.key}
                 onPointerDown={(e) => {
@@ -1181,6 +1201,7 @@ export default function PreferencesView() {
               >
                 {group.label}
               </div>
+              )}
 
               {group.models.map((m, _idx) => {
                 const ollamaMeta = ollamaModels.find((model) => model.name === m.model_id);
@@ -1224,7 +1245,7 @@ export default function PreferencesView() {
                     data-family-key={group.key}
                     className={`relative transition-colors select-none ${draggedModelId === m.id || draggedFamilyId === group.key ? "opacity-50" : ""} ${isDragOver ? `bg-[var(--accent-color)]/5 ${dropIndicatorClass}` : "hover:bg-[var(--bg-hover)]/5"} px-4 py-3`}
                   >
-                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_100px_120px_120px_60px_60px_20px] md:items-start md:gap-3">
+                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_100px_120px_120px_60px_60px] md:items-start md:gap-3">
                       <div className="flex min-w-0 items-start gap-2">
                         <div
                           className="flex items-center pt-1.5 text-[var(--text-muted)] cursor-grab hover:text-[var(--text-primary)]"
@@ -1369,7 +1390,6 @@ export default function PreferencesView() {
                       <div className="flex justify-center pt-0.5 md:w-[120px]">
                         {!isWebModel && !m.id.startsWith("transient-") && (
                           <div className="flex items-center gap-1.5">
-                            <Tooltip content="Max tokens this model holds in memory at once (context window). Affects how much conversation history the model can see. Leave blank to use Ollama's default for this model." position="top">
                               <input
                                 type="number"
                                 min={512}
@@ -1387,7 +1407,6 @@ export default function PreferencesView() {
                                   loadAiModels();
                                 }}
                               />
-                            </Tooltip>
                             <span className="text-[9px] text-[var(--text-muted)] shrink-0">tok</span>
                             {m.context_size !== null && (
                               <Tooltip content="Clear override — revert to Ollama's default context size for this model">
@@ -1441,14 +1460,6 @@ export default function PreferencesView() {
                         </Tooltip>
                       </div>
 
-                      <Tooltip content="Remove from Aetherium (does not delete the model from Ollama)" position="top">
-                        <button
-                          onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); incrementModelRefreshCounter(); }}
-                          className="p-1 text-[var(--text-muted)] transition-colors hover:text-red-400 md:w-5"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </Tooltip>
                     </div>
                   </div>
                 );
@@ -2951,11 +2962,10 @@ export default function PreferencesView() {
                     {/* Web model list */}
                     {webAiModels.length > 0 && (
                       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] overflow-hidden">
-                        <div className="grid grid-cols-[minmax(0,1fr)_60px_60px_20px] items-center gap-3 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                        <div className="grid grid-cols-[minmax(0,1fr)_60px_60px] items-center gap-3 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
                           <span>Model</span>
                           <span className="text-center">Active</span>
                           <span className="text-center">Visible</span>
-                          <span />
                         </div>
                         <div className="divide-y divide-[var(--border-color)]">
                           {webAiModels.map((m) => {
@@ -2963,7 +2973,7 @@ export default function PreferencesView() {
                             const secondaryDisplayName = resolveModelSecondaryDisplayName(m.model_id, m.provider);
                             return (
                               <div key={m.id} className="px-4 py-3 hover:bg-[var(--bg-hover)]/5 transition-colors">
-                                <div className="grid grid-cols-[minmax(0,1fr)_60px_60px_20px] items-center gap-3">
+                                <div className="grid grid-cols-[minmax(0,1fr)_60px_60px] items-center gap-3">
                                   <div className="min-w-0">
                                     <span className="text-sm font-medium text-[var(--text-primary)] truncate block">{displayName}</span>
                                     <span className="text-xs text-[var(--text-muted)] truncate block mt-0.5">{secondaryDisplayName}</span>
@@ -2992,12 +3002,6 @@ export default function PreferencesView() {
                                       </button>
                                     </Tooltip>
                                   </div>
-                                  <button
-                                    onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); incrementModelRefreshCounter(); }}
-                                    className="p-1 text-[var(--text-muted)] transition-colors hover:text-red-400"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
                                 </div>
                               </div>
                             );
