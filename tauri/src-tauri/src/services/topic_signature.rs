@@ -617,7 +617,7 @@ pub fn find_best_workspace(
     exclude_workspace_id: &str,
     threshold: f64,
 ) -> Option<(String, String, f64)> {
-    let mut stmt = conn.prepare("SELECT id, name, topic_signature FROM workspaces WHERE id != ?1 AND topic_signature != '{}'").ok()?;
+    let mut stmt = conn.prepare("SELECT id, name, topic_signature FROM workspaces WHERE id != ?1 AND topic_signature != '{}' AND is_hidden = 0").ok()?;
 
     let mut best_match = None;
     let mut highest_score = 0.0;

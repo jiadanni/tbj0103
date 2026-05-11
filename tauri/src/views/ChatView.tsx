@@ -2607,6 +2607,7 @@ export default function ChatView() {
   const pendingSentScrollId = useRef<string | null>(null);
   const pendingNewSessionRef = useRef<Promise<ChatSession | null> | null>(null);
   const incognitoSessionIdsRef = useRef<Set<string>>(new Set());
+  const migrationDismissedSessionsRef = useRef<Set<string>>(new Set());
 
   const resizeAndFocusComposer = useCallback((cursorPosition?: number) => {
     requestAnimationFrame(() => {
@@ -3619,7 +3620,18 @@ export default function ChatView() {
     setLastUserMessage(userContent);
     setFollowUps([]);
 
-    if (effectiveWorkspaceId) {
+    // Guard migration check: skip for incognito / analytics-excluded sessions,
+    // very short messages (prone to false positives), and sessions where the
+    // user already dismissed the suggestion.
+    const sessionForMigrationCheck = ensuredSession.session;
+    const skipMigrationCheck =
+      !effectiveWorkspaceId ||
+      sessionForMigrationCheck?.is_incognito ||
+      sessionForMigrationCheck?.exclude_from_analytics ||
+      userContent.length < 20 ||
+      migrationDismissedSessionsRef.current.has(sid);
+
+    if (!skipMigrationCheck) {
       api.topicSignature.checkMatch(effectiveWorkspaceId, userContent)
         .then(result => { if (!result.is_match && result.suggestion) { setMigrationSuggestion(result); } })
         .catch(() => { });
@@ -4565,6 +4577,7 @@ export default function ChatView() {
                     )}
                   </div>
                   
+                  <WorkspaceMigrationBanner onDismiss={() => { if (activeChatId) { migrationDismissedSessionsRef.current.add(activeChatId); } }} />
                   <RelatedChatPills 
                     relatedChats={relatedChats} 
                     onChatClick={onChatClick}
@@ -5160,9 +5173,6 @@ export default function ChatView() {
                           )}
 
                       </div>
-                    </div>
-                    <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 mt-3`}>
-                      <WorkspaceMigrationBanner />
                     </div>
                   </div>
                 </div>
