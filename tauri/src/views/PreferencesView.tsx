@@ -702,7 +702,6 @@ export default function PreferencesView() {
     settingsStore.setFontSize(settings.font_size);
     settingsStore.setPreferredModel(settings.preferred_model);
     settingsStore.setBackgroundModel(settings.background_model);
-    settingsStore.setQuickSearchModels(settings.quick_search_models);
     settingsStore.setQuickSearchWorkspaceScope(settings.quick_search_workspace_scope);
     settingsStore.setQuickSearchTypeFilters(settings.quick_search_type_filters);
     settingsStore.setOllamaUrl(settings.ollama_base_url);
@@ -898,15 +897,6 @@ export default function PreferencesView() {
     return () => window.removeEventListener("model-drag-drop", handleDrop);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiModels, groupedAiModels, composerMode]);
-
-  function toggleQuickSearchModel(modelId: string) {
-    if (!dbSettings) { return; }
-    const next = dbSettings.quick_search_models.includes(modelId)
-      ? dbSettings.quick_search_models.filter((value) => value !== modelId)
-      : [...dbSettings.quick_search_models, modelId];
-    set("quick_search_models", next);
-    incrementModelRefreshCounter();
-  }
 
   function loadSystemSpecs() {
     setSystemSpecsLoading(true);
@@ -1151,11 +1141,14 @@ export default function PreferencesView() {
         <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
       ) : (
       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] overflow-hidden">
-        <div className="grid grid-cols-[minmax(0,1fr)_100px_40px_120px_60px_60px_20px] items-center gap-3 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+        <div className="grid grid-cols-[minmax(0,1fr)_100px_120px_120px_60px_60px_20px] items-center gap-3 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
           <span>Model</span>
           <span className="text-center">Background</span>
-          <span className="text-center">Pin</span>
           <span className="text-right">Speed</span>
+          <span className="text-center inline-flex items-center justify-center gap-1" title="Context window (tokens): the maximum number of tokens the model holds in memory at once. A larger value lets the model remember more conversation history but uses more VRAM. Leave blank to use Ollama's default for this model.">
+            Context
+            <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
+          </span>
           <span className="text-center">Active</span>
           <span className="text-center">Visible</span>
           <span />
@@ -1174,13 +1167,13 @@ export default function PreferencesView() {
                   e.preventDefault();
                   setDraggedFamilyId(group.key);
                 }}
-                className={`relative px-4 py-1.5 transition-colors select-none ${draggedFamilyId === group.key ? "opacity-50" : ""} ${
+                className={`relative pl-4 pr-4 py-1 transition-colors select-none ${draggedFamilyId === group.key ? "opacity-50" : ""} ${
                   dragOverFamilyId === group.key && !dragOverModelId
                     ? (draggedFamilyId
                         ? "bg-[var(--accent-color)]/5 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[var(--accent-color)] before:z-10"
                         : "bg-[var(--accent-color)]/20")
-                    : "bg-[var(--bg-hover)]/10"
-                } text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)] ${composerMode === "family" ? "cursor-grab active:cursor-grabbing" : ""}`}
+                    : ""
+                } text-[9px] font-semibold tracking-[0.14em] uppercase text-[var(--text-muted)] border-t border-[var(--border-color)]/40 ${composerMode === "family" ? "cursor-grab active:cursor-grabbing" : ""}`}
               >
                 {group.label}
               </div>
@@ -1227,7 +1220,7 @@ export default function PreferencesView() {
                     data-family-key={group.key}
                     className={`relative transition-colors select-none ${draggedModelId === m.id || draggedFamilyId === group.key ? "opacity-50" : ""} ${isDragOver ? `bg-[var(--accent-color)]/5 ${dropIndicatorClass}` : "hover:bg-[var(--bg-hover)]/5"} px-4 py-3`}
                   >
-                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_100px_40px_120px_60px_60px_20px] md:items-start md:gap-3">
+                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_100px_120px_120px_60px_60px_20px] md:items-start md:gap-3">
                       <div className="flex min-w-0 items-start gap-2">
                         <div
                           className="flex items-center pt-1.5 text-[var(--text-muted)] cursor-grab hover:text-[var(--text-primary)]"
@@ -1284,7 +1277,7 @@ export default function PreferencesView() {
                                   </button>
                                 )}
                               </div>
-                              <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-[var(--text-muted)]">
+                              <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-[var(--text-secondary)]">
                                 {!isOllamaModel && (
                                   <span className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--text-secondary)]">
                                     {providerMeta.label}
@@ -1335,18 +1328,7 @@ export default function PreferencesView() {
                           <span className="sr-only">Background model</span>
                         </label>
                       )}
-                      {!isOllamaModel && <div className="hidden md:block md:w-7" />}
-
-                      <button
-                        onClick={() => toggleQuickSearchModel(m.model_id)}
-                        className={`flex items-center justify-center md:w-10 transition-colors ${dbSettings.quick_search_models.includes(m.model_id)
-                          ? "text-[var(--accent-color)]"
-                          : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                          }`}
-                        title={dbSettings.quick_search_models.includes(m.model_id) ? "Unpin from Quick Send" : "Pin to Quick Send"}
-                      >
-                        <Pin size={14} fill={dbSettings.quick_search_models.includes(m.model_id) ? "currentColor" : "none"} />
-                      </button>
+                      {!isOllamaModel && <div className="hidden md:block md:w-[100px]" />}
 
                       <div className="text-right text-[10px] leading-5 text-[var(--text-muted)] md:w-[120px]">
                         {m.is_paid && (
@@ -1378,31 +1360,41 @@ export default function PreferencesView() {
                         )}
                       </div>
 
-                      <div className="flex justify-center pt-0.5 md:w-[80px]">
+                      <div className="flex justify-center pt-0.5 md:w-[120px]">
                         {!isWebModel && !m.id.startsWith("transient-") && (
-                          <input
-                            type="number"
-                            min={512}
-                            max={1048576}
-                            step={512}
-                            defaultValue={m.context_size ?? ""}
-                            placeholder="auto"
-                            className="w-[72px] rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1 py-0.5 text-center text-[10px] tabular-nums text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                            title="Per-model num_ctx override (tokens). Leave blank for the global default."
-                            aria-label={`Context window for ${m.name}`}
-                            onBlur={async (e) => {
-                              const raw = e.currentTarget.value.trim();
-                              const parsed = raw === "" ? null : Number.parseInt(raw, 10);
-                              const next = parsed === null
-                                ? null
-                                : Number.isFinite(parsed) && parsed > 0
-                                  ? Math.min(1_048_576, Math.max(512, parsed))
-                                  : null;
-                              if ((m.context_size ?? null) === next) {return;}
-                              await api.aiModel.update(m.id, { context_size: next });
-                              loadAiModels();
-                            }}
-                          />
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min={512}
+                              step={512}
+                              value={m.context_size ?? ""}
+                              placeholder="default"
+                              className="w-[72px] rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-center text-[10px] tabular-nums text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              title="Max tokens this model holds in memory at once (context window). Affects how much conversation history the model can see. Leave blank to use Ollama's default for this model."
+                              aria-label={`Context window for ${m.name}`}
+                              onChange={async (e) => {
+                                const raw = e.target.value.trim();
+                                const parsed = raw === "" ? null : Number.parseInt(raw, 10);
+                                const next = parsed === null ? null : Number.isFinite(parsed) && parsed > 0 ? Math.max(512, parsed) : null;
+                                if ((m.context_size ?? null) === next) {return;}
+                                await api.aiModel.update(m.id, { context_size: next });
+                                loadAiModels();
+                              }}
+                            />
+                            <span className="text-[9px] text-[var(--text-muted)] shrink-0">tok</span>
+                            {m.context_size !== null && (
+                              <button
+                                onClick={async () => {
+                                  await api.aiModel.update(m.id, { context_size: null });
+                                  loadAiModels();
+                                }}
+                                className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors shrink-0"
+                                title="Clear override — revert to Ollama's default context size for this model"
+                              >
+                                <RefreshCw size={10} />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
 
@@ -1443,6 +1435,7 @@ export default function PreferencesView() {
                       <button
                         onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); incrementModelRefreshCounter(); }}
                         className="p-1 text-[var(--text-muted)] transition-colors hover:text-red-400 md:w-5"
+                        title="Remove from Aetherium (does not delete the model from Ollama)"
                       >
                         <Trash2 size={12} />
                       </button>
@@ -2271,7 +2264,7 @@ export default function PreferencesView() {
                         <div>
                           <h3 className="text-sm font-semibold text-[var(--text-primary)]">Local inference providers</h3>
                           <p className="text-xs text-[var(--text-muted)] mt-1">
-                            Kept in one place so setup feels like one workflow. The local server is the main path, with MLX and llama.cpp as optional local runtimes.
+                            Configure your local inference engines. Use the default local server for a standard experience, or enable MLX and llama.cpp for optimized hardware performance.
                           </p>
                         </div>
                       </div>

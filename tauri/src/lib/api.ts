@@ -351,7 +351,6 @@ export interface AppSettings {
   mlx_base_url: string;
   llamacpp_model_paths: string[];
   background_model: string;
-  quick_search_models: string[];
   quick_search_shortcut: string;
   quick_search_workspace_scope: string;
   quick_search_type_filters: string[];

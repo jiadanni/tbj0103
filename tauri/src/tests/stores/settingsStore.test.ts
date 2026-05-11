@@ -91,11 +91,6 @@ describe("setters", () => {
     expect(useSettingsStore.getState().backgroundModel).toBe("qwen2.5:1.5b");
   });
 
-  it("setQuickSearchModels updates quickSearchModels", () => {
-    useSettingsStore.getState().setQuickSearchModels(["claude-web", "gemini-web"]);
-    expect(useSettingsStore.getState().quickSearchModels).toEqual(["claude-web", "gemini-web"]);
-  });
-
   it("setQuickSearchWorkspaceScope updates quickSearchWorkspaceScope", () => {
     useSettingsStore.getState().setQuickSearchWorkspaceScope("ws-1");
     expect(useSettingsStore.getState().quickSearchWorkspaceScope).toBe("ws-1");

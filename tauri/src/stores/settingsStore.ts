@@ -10,7 +10,6 @@ export type ComposerMode = "normal" | "family";
 interface AppSettings {
   preferredModel: string;
   backgroundModel: string;
-  quickSearchModels: string[];
   quickSearchWorkspaceScope: string;
   quickSearchTypeFilters: string[];
   ollamaUrl: string;
@@ -58,7 +57,6 @@ interface AppSettings {
 interface SettingsStore extends AppSettings {
   setPreferredModel: (m: string) => void;
   setBackgroundModel: (m: string) => void;
-  setQuickSearchModels: (models: string[]) => void;
   setQuickSearchWorkspaceScope: (scope: string) => void;
   setQuickSearchTypeFilters: (filters: string[]) => void;
   setOllamaUrl: (url: string) => void;
@@ -110,7 +108,6 @@ export const useSettingsStore = create<SettingsStore>()(
     (set) => ({
       preferredModel: "",
       backgroundModel: "",
-      quickSearchModels: [],
       quickSearchWorkspaceScope: "__all__",
       quickSearchTypeFilters: ["conversation", "message", "artifact", "memory", "summary"],
       ollamaUrl: "http://localhost:11434",
@@ -155,7 +152,6 @@ export const useSettingsStore = create<SettingsStore>()(
       suppressedOversizedModels: [],
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
-      setQuickSearchModels: (quickSearchModels) => set({ quickSearchModels }),
       setQuickSearchWorkspaceScope: (quickSearchWorkspaceScope) => set({ quickSearchWorkspaceScope }),
       setQuickSearchTypeFilters: (quickSearchTypeFilters) => set({ quickSearchTypeFilters }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
