@@ -4,6 +4,7 @@ import { type PaneId, type PaneView, type Workspace, useWorkspaceStore } from ".
 import { WorkspacePaneProvider, useScopedWorkspace } from "../lib/workspacePane";
 import { MessageSquare, FileText, BarChart2, LucideIcon, FileEdit, Network } from "lucide-react";
 import CompactMenuSelect from "./CompactMenuSelect";
+import { Tooltip } from "./Tooltip";
 
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
 const ProjectDashboardView = React.lazy(() => import("../views/ProjectDashboardView"));
@@ -101,18 +102,19 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
     <div className="flex items-center h-8 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-2 shrink-0 select-none">
       <div className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
         {/* Pinned overview dot — navigates to the parent (overview) workspace */}
-        <button
-          data-testid={`pane-pinned-tab-${paneId}`}
-          onClick={() => setPaneWorkspace(paneId, parent.id)}
-          title={parent.name}
-          className={`relative mt-0.5 flex h-[26px] w-[26px] items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
-            paneWorkspaceId === parent.id
-              ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
-              : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <svg data-testid="pinned-dot" width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
-        </button>
+        <Tooltip content={parent.name} position="top">
+          <button
+            data-testid={`pane-pinned-tab-${paneId}`}
+            onClick={() => setPaneWorkspace(paneId, parent.id)}
+            className={`relative mt-0.5 flex h-[26px] w-[26px] items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
+              paneWorkspaceId === parent.id
+                ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
+                : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+            }`}
+          >
+            <svg data-testid="pinned-dot" width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+          </button>
+        </Tooltip>
         {children.map((workspace) => (
           <button
             key={workspace.id}

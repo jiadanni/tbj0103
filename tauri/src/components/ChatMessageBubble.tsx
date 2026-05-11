@@ -8,6 +8,7 @@ import type { AiModel, SearchResult } from "../lib/api";
 import ContextIndicator from "./ContextIndicator";
 import { useWordHover } from "../hooks/useWordHover";
 import { WordDefinitionTooltip } from "./WordDefinitionTooltip";
+import { Tooltip } from "./Tooltip";
 
 type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
 
@@ -243,26 +244,27 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                 </div>
                 {varCount > 1 && (
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border-color)]">
-                    <button
-                      onClick={() => onVariationChange?.(msg.id, varIdx - 1)}
-                      disabled={varIdx === 0 || isStreaming || !onVariationChange}
-                      className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] disabled:opacity-30 transition-colors"
-                      title="Previous variation"
-                    >
-                      <ChevronLeft size={13} strokeWidth={1.5} />
-                    </button>
+                    <Tooltip content="Previous variation">
+                      <button
+                        onClick={() => onVariationChange?.(msg.id, varIdx - 1)}
+                        disabled={varIdx === 0 || isStreaming || !onVariationChange}
+                        className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] disabled:opacity-30 transition-colors"
+                      >
+                        <ChevronLeft size={13} strokeWidth={1.5} />
+                      </button>
+                    </Tooltip>
                     <div className="flex items-center gap-2">
                       <div className="flex gap-1 items-center">
                         {Array.from({ length: varCount }).map((_, i) => (
-                          <span
-                            key={i}
-                            className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                              i === varIdx
-                                ? "bg-[var(--accent-color)]"
-                                : "bg-[var(--border-color)] opacity-40"
-                            }`}
-                            title={i === varIdx ? "Current variant" : "Other variant"}
-                          />
+                            <Tooltip key={i} content={i === varIdx ? "Current variant" : "Other variant"}>
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                                  i === varIdx
+                                    ? "bg-[var(--accent-color)]"
+                                    : "bg-[var(--border-color)] opacity-40"
+                                }`}
+                              />
+                            </Tooltip>
                         ))}
                       </div>
                       {displayMsg.model_name && (
@@ -271,14 +273,15 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                         </span>
                       )}
                     </div>
-                    <button
-                      onClick={() => onVariationChange?.(msg.id, varIdx + 1)}
-                      disabled={varIdx >= varCount - 1 || isStreaming || !onVariationChange}
-                      className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] disabled:opacity-30 transition-colors"
-                      title="Next variation"
-                    >
-                      <ChevronRight size={13} strokeWidth={1.5} />
-                    </button>
+                    <Tooltip content="Next variation">
+                      <button
+                        onClick={() => onVariationChange?.(msg.id, varIdx + 1)}
+                        disabled={varIdx >= varCount - 1 || isStreaming || !onVariationChange}
+                        className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] disabled:opacity-30 transition-colors"
+                      >
+                        <ChevronRight size={13} strokeWidth={1.5} />
+                      </button>
+                    </Tooltip>
                   </div>
                 )}
               </div>
@@ -287,39 +290,43 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
             )}
           </div>
           <div className={`flex gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
-            <button
-              onClick={() => onCopy(msg.id, displayMsg.content)}
-              className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-              title="Copy"
-            >
-              {copiedMessageId === msg.id ? <Check size={11} /> : <Copy size={11} />}
-            </button>
-            {msg.role === "user" && !isStreaming && (
+            <Tooltip content="Copy">
               <button
-                onClick={() => onStartEdit(msg.id, msg.content)}
+                onClick={() => onCopy(msg.id, displayMsg.content)}
                 className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                title="Edit"
               >
-                <Pencil size={11} />
+                {copiedMessageId === msg.id ? <Check size={11} /> : <Copy size={11} />}
               </button>
+            </Tooltip>
+            {msg.role === "user" && !isStreaming && (
+              <Tooltip content="Edit">
+                <button
+                  onClick={() => onStartEdit(msg.id, msg.content)}
+                  className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                >
+                  <Pencil size={11} />
+                </button>
+              </Tooltip>
             )}
             {msg.role === "assistant" && !isStreaming && onRedoWithModel && (
               <div className="relative flex items-center" data-redo-picker="true">
-                <button
-                  onClick={() => onRedoWithModel?.(msg.id, selectedModel ?? "")}
-                  className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                  title={`Redo with ${selectedModel ?? "default"}`}
-                >
-                  <RotateCcw size={11} strokeWidth={1.5} />
-                </button>
-                <button
-                  ref={redoToggleRef}
-                  onClick={() => onToggleRedoPicker?.(msg.id)}
-                  className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                  title="Redo with different model"
-                >
-                  <ChevronDown size={10} strokeWidth={1.5} />
-                </button>
+                <Tooltip content={`Redo with ${selectedModel ?? "default"}`}>
+                  <button
+                    onClick={() => onRedoWithModel?.(msg.id, selectedModel ?? "")}
+                    className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                  >
+                    <RotateCcw size={11} strokeWidth={1.5} />
+                  </button>
+                </Tooltip>
+                <Tooltip content="Redo with different model">
+                  <button
+                    ref={redoToggleRef}
+                    onClick={() => onToggleRedoPicker?.(msg.id)}
+                    className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                  >
+                    <ChevronDown size={10} strokeWidth={1.5} />
+                  </button>
+                </Tooltip>
                 {redoPickerOpen && availableModels && redoPickerStyle && createPortal((() => {
                   const providerOrder: Record<string, number> = { ollama: 0, mlx: 1, llamacpp: 2, openai: 3 };
                   const groups = new Map<string, { label: string; order: number; modelIds: string[] }>();
@@ -376,14 +383,15 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
               </div>
             )}
             {msg.role === "assistant" && !isStreaming && onGenerateFlashcards && (
-              <button
-                onClick={() => onGenerateFlashcards(msg.id, displayMsg.content)}
-                disabled={flashcardGeneratingId === msg.id}
-                className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors disabled:opacity-50"
-                title="Generate flashcards"
-              >
-                {flashcardGeneratingId === msg.id ? <Loader size={11} className="animate-spin" /> : <Sparkles size={11} />}
-              </button>
+              <Tooltip content="Generate flashcards">
+                <button
+                  onClick={() => onGenerateFlashcards(msg.id, displayMsg.content)}
+                  disabled={flashcardGeneratingId === msg.id}
+                  className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors disabled:opacity-50"
+                >
+                  {flashcardGeneratingId === msg.id ? <Loader size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                </button>
+              </Tooltip>
             )}
           </div>
           <div className={`flex items-center gap-2.5 text-[10px] font-medium tracking-[0.02em] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
@@ -428,21 +436,21 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                   {isSourcesExpanded ? <ChevronUp size={10} strokeWidth={1.5} /> : <ChevronDown size={10} strokeWidth={1.5} />}
                 </button>
                 {sources.map((s, idx) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    data-testid="grounded-source-chip"
-                    onClick={() => {
-                      if (!isSourcesExpanded) {
-                        onToggleSources(msg.id);
-                      }
-                    }}
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--border-color)] bg-[var(--message-assistant-bg)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[rgba(var(--accent-color-rgb),0.24)] hover:text-[var(--link-color)]"
-                    title={s.title}
-                  >
-                    <BookOpen size={11} strokeWidth={1.5} className="shrink-0 text-[var(--link-color)]" />
-                    <span className="truncate">{s.title || `Source ${idx + 1}`}</span>
-                  </button>
+                    <Tooltip key={s.id} content={s.title}>
+                      <button
+                        type="button"
+                        data-testid="grounded-source-chip"
+                        onClick={() => {
+                          if (!isSourcesExpanded) {
+                            onToggleSources(msg.id);
+                          }
+                        }}
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--border-color)] bg-[var(--message-assistant-bg)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[rgba(var(--accent-color-rgb),0.24)] hover:text-[var(--link-color)]"
+                      >
+                        <BookOpen size={11} strokeWidth={1.5} className="shrink-0 text-[var(--link-color)]" />
+                        <span className="truncate">{s.title || `Source ${idx + 1}`}</span>
+                      </button>
+                    </Tooltip>
                 ))}
               </div>
               {isSourcesExpanded && (

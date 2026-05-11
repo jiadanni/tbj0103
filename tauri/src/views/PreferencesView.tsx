@@ -23,6 +23,7 @@ import ImportSettingsSection from "./ImportSettingsSection";
 import MemoryView from "./MemoryView";
 const LogsView = React.lazy(() => import("./LogsView"));
 import CompactMenuSelect from "../components/CompactMenuSelect";
+import { Tooltip } from "../components/Tooltip";
 import { MOD_KEY, isLinux, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
 import { useAiModelSync } from "../hooks/useAiModelSync";
@@ -337,19 +338,20 @@ function ShortcutRecorder({
 
       {/* Clear button — only when a shortcut is set and not recording */}
       {hasValue && !recording && (
-        <button
-          type="button"
-          title="Clear shortcut"
-          onClick={handleClear}
-          className="shrink-0 rounded-lg border border-[var(--border-color)] p-2.5 text-[var(--text-muted)] transition-colors hover:border-red-400/50 hover:bg-red-400/10 hover:text-red-400"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6l-1 14H6L5 6" />
-            <path d="M10 11v6M14 11v6" />
-            <path d="M9 6V4h6v2" />
-          </svg>
-        </button>
+        <Tooltip content="Clear shortcut" position="top">
+          <button
+            type="button"
+            onClick={handleClear}
+            className="shrink-0 rounded-lg border border-[var(--border-color)] p-2.5 text-[var(--text-muted)] transition-colors hover:border-red-400/50 hover:bg-red-400/10 hover:text-red-400"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14H6L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4h6v2" />
+            </svg>
+          </button>
+        </Tooltip>
       )}
     </div>
   );
@@ -1085,24 +1087,24 @@ export default function PreferencesView() {
   const settingsTabButtons = (
     <div className={settingsNavLayout === "top-tabs" ? "flex gap-1.5 overflow-x-auto pb-0.5" : "flex flex-col gap-1.5"}>
       {TABS.map(({ id, label, Icon }, idx) => (
-        <button
-          key={id}
-          onClick={() => setActiveTab(id)}
-          title={`${label} (${MOD_KEY}⇧${idx + 1})`}
-          className={`flex items-center gap-2 whitespace-nowrap transition-colors ${settingsNavLayout === "top-tabs"
-            ? `px-3.5 py-2.5 text-sm rounded-t-lg border-b-2 ${activeTab === id
-              ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
-              : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-            }`
-            : `w-full rounded-xl px-2.5 py-2 text-left text-sm ${activeTab === id
-              ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-              : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
-            }`
+        <Tooltip key={id} content={`${label} (${MOD_KEY}⇧${idx + 1})`} position={settingsNavLayout === "top-tabs" ? "bottom" : "right"}>
+          <button
+            onClick={() => setActiveTab(id)}
+            className={`flex items-center gap-2 whitespace-nowrap transition-colors ${settingsNavLayout === "top-tabs"
+              ? `px-3.5 py-2.5 text-sm rounded-t-lg border-b-2 ${activeTab === id
+                ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
+                : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+              }`
+              : `w-full rounded-xl px-2.5 py-2 text-left text-sm ${activeTab === id
+                ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+              }`
             }`}
-        >
-          <Icon size={15} />
-          {label}
-        </button>
+          >
+            <Icon size={15} />
+            {label}
+          </button>
+        </Tooltip>
       ))}
     </div>
   );
@@ -1145,10 +1147,12 @@ export default function PreferencesView() {
           <span>Model</span>
           <span className="text-center">Background</span>
           <span className="text-right">Speed</span>
-          <span className="text-center inline-flex items-center justify-center gap-1" title="Context window (tokens): the maximum number of tokens the model holds in memory at once. A larger value lets the model remember more conversation history but uses more VRAM. Leave blank to use Ollama's default for this model.">
-            Context
-            <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
-          </span>
+          <Tooltip content="Context window (tokens): the maximum number of tokens the model holds in memory at once. A larger value lets the model remember more conversation history but uses more VRAM. Leave blank to use Ollama's default for this model." position="top">
+            <span className="text-center inline-flex items-center justify-center gap-1">
+              Context
+              <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
+            </span>
+          </Tooltip>
           <span className="text-center">Active</span>
           <span className="text-center">Visible</span>
           <span />
@@ -1260,21 +1264,24 @@ export default function PreferencesView() {
                           ) : (
                             <div className="group min-w-0">
                               <div className="flex min-w-0 items-center gap-2">
-                                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${fitMeta.dotClassName}`} title={fitMeta.title} />
+                                <Tooltip content={fitMeta.title}>
+                                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${fitMeta.dotClassName}`} />
+                                </Tooltip>
                                 <span className="truncate text-sm font-medium text-[var(--text-primary)]">{displayName}</span>
                                 {!m.id.startsWith("transient-") && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditingModelId(m.id);
-                                      setEditingName(m.name);
-                                    }}
-                                    className="shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[var(--text-primary)]"
-                                    title="Rename model"
-                                    aria-label={`Rename ${displayName}`}
-                                  >
-                                    <Pencil size={10} />
-                                  </button>
+                                  <Tooltip content="Rename model">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingModelId(m.id);
+                                        setEditingName(m.name);
+                                      }}
+                                      className="shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[var(--text-primary)]"
+                                      aria-label={`Rename ${displayName}`}
+                                    >
+                                      <Pencil size={10} />
+                                    </button>
+                                  </Tooltip>
                                 )}
                               </div>
                               <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-[var(--text-secondary)]">
@@ -1284,14 +1291,15 @@ export default function PreferencesView() {
                                   </span>
                                 )}
                                 <span className="truncate">{secondaryDisplayName}</span>
-                                {capabilityBadges.length > 0 && (
-                                  <div
-                                    className="ml-1 shrink-0 cursor-help text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)]"
-                                    title={`Capabilities: ${capabilityBadges.map(formatCapabilityLabel).join(", ")}`}
-                                  >
-                                    <Info size={12} />
-                                  </div>
-                                )}
+                                  {capabilityBadges.length > 0 && (
+                                    <Tooltip content={`Capabilities: ${capabilityBadges.map(formatCapabilityLabel).join(", ")}`}>
+                                      <div
+                                        className="ml-1 shrink-0 cursor-help text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)]"
+                                      >
+                                        <Info size={12} />
+                                      </div>
+                                    </Tooltip>
+                                  )}
                               </div>
                               {(metadataParts.length > 0 || fitMeta.label) && (
                                 <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-secondary)]">
@@ -1311,22 +1319,23 @@ export default function PreferencesView() {
                       </div>
 
                       {isOllamaModel && (
-                        <label
-                          className={`flex items-center justify-center md:w-[100px] ${canBeBackgroundModel ? "cursor-pointer text-[var(--text-secondary)]" : "cursor-not-allowed text-[var(--text-muted)] opacity-60"
-                            }`}
-                          title={canBeBackgroundModel ? "Use for background tasks" : "Enable this model to make it selectable for background tasks"}
-                        >
-                          <input
-                            type="radio"
-                            name="background_model"
-                            checked={isBackgroundModel}
-                            disabled={!canBeBackgroundModel}
-                            onChange={() => set("background_model", m.model_id)}
-                            className="accent-[var(--accent-color)]"
-                            aria-label={`Use ${m.name} for background tasks`}
-                          />
-                          <span className="sr-only">Background model</span>
-                        </label>
+                        <Tooltip content={canBeBackgroundModel ? "Use for background tasks" : "Enable this model to make it selectable for background tasks"}>
+                          <label
+                            className={`flex items-center justify-center md:w-[100px] ${canBeBackgroundModel ? "cursor-pointer text-[var(--text-secondary)]" : "cursor-not-allowed text-[var(--text-muted)] opacity-60"
+                              }`}
+                          >
+                            <input
+                              type="radio"
+                              name="background_model"
+                              checked={isBackgroundModel}
+                              disabled={!canBeBackgroundModel}
+                              onChange={() => set("background_model", m.model_id)}
+                              className="accent-[var(--accent-color)]"
+                              aria-label={`Use ${m.name} for background tasks`}
+                            />
+                            <span className="sr-only">Background model</span>
+                          </label>
+                        </Tooltip>
                       )}
                       {!isOllamaModel && <div className="hidden md:block md:w-[100px]" />}
 
@@ -1335,64 +1344,63 @@ export default function PreferencesView() {
                           <div className="font-medium uppercase tracking-wide text-amber-400">Paid</div>
                         )}
                         {speedLabels && !isWebModel && (
-                          <div
-                            className="tabular-nums whitespace-nowrap text-[var(--text-secondary)]"
-                            title={`Average generation speed across ${speedStat.chat_count} chats`}
-                          >
-                            {speedLabels.chatAverage} avg
-                          </div>
+                          <Tooltip content={`Average generation speed across ${speedStat.chat_count} chats`}>
+                            <div className="tabular-nums whitespace-nowrap text-[var(--text-secondary)]">
+                              {speedLabels.chatAverage} avg
+                            </div>
+                          </Tooltip>
                         )}
                         {speedLabels && !isWebModel && (
-                          <div
-                            className="tabular-nums whitespace-nowrap text-[var(--text-secondary)]"
-                            title="Weighted overall generation speed across all recorded assistant messages"
-                          >
-                            {speedLabels.weighted} weighted
-                          </div>
+                          <Tooltip content="Weighted overall generation speed across all recorded assistant messages">
+                            <div className="tabular-nums whitespace-nowrap text-[var(--text-secondary)]">
+                              {speedLabels.weighted} weighted
+                            </div>
+                          </Tooltip>
                         )}
                         {!isWebModel && (
-                          <div
-                            className="tabular-nums whitespace-nowrap"
-                            title={`${m.tokens_used_total.toLocaleString()} total tokens recorded`}
-                          >
-                            {m.tokens_used_total.toLocaleString()} tok total
-                          </div>
+                          <Tooltip content={`${m.tokens_used_total.toLocaleString()} total tokens recorded`}>
+                            <div className="tabular-nums whitespace-nowrap">
+                              {m.tokens_used_total.toLocaleString()} tok total
+                            </div>
+                          </Tooltip>
                         )}
                       </div>
 
                       <div className="flex justify-center pt-0.5 md:w-[120px]">
                         {!isWebModel && !m.id.startsWith("transient-") && (
                           <div className="flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              min={512}
-                              step={512}
-                              value={m.context_size ?? ""}
-                              placeholder="default"
-                              className="w-[72px] rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-center text-[10px] tabular-nums text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              title="Max tokens this model holds in memory at once (context window). Affects how much conversation history the model can see. Leave blank to use Ollama's default for this model."
-                              aria-label={`Context window for ${m.name}`}
-                              onChange={async (e) => {
-                                const raw = e.target.value.trim();
-                                const parsed = raw === "" ? null : Number.parseInt(raw, 10);
-                                const next = parsed === null ? null : Number.isFinite(parsed) && parsed > 0 ? Math.max(512, parsed) : null;
-                                if ((m.context_size ?? null) === next) {return;}
-                                await api.aiModel.update(m.id, { context_size: next });
-                                loadAiModels();
-                              }}
-                            />
-                            <span className="text-[9px] text-[var(--text-muted)] shrink-0">tok</span>
-                            {m.context_size !== null && (
-                              <button
-                                onClick={async () => {
-                                  await api.aiModel.update(m.id, { context_size: null });
+                            <Tooltip content="Max tokens this model holds in memory at once (context window). Affects how much conversation history the model can see. Leave blank to use Ollama's default for this model." position="top">
+                              <input
+                                type="number"
+                                min={512}
+                                step={512}
+                                value={m.context_size ?? ""}
+                                placeholder="default"
+                                className="w-[72px] rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-center text-[10px] tabular-nums text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                aria-label={`Context window for ${m.name}`}
+                                onChange={async (e) => {
+                                  const raw = e.target.value.trim();
+                                  const parsed = raw === "" ? null : Number.parseInt(raw, 10);
+                                  const next = parsed === null ? null : Number.isFinite(parsed) && parsed > 0 ? Math.max(512, parsed) : null;
+                                  if ((m.context_size ?? null) === next) {return;}
+                                  await api.aiModel.update(m.id, { context_size: next });
                                   loadAiModels();
                                 }}
-                                className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors shrink-0"
-                                title="Clear override — revert to Ollama's default context size for this model"
-                              >
-                                <RefreshCw size={10} />
-                              </button>
+                              />
+                            </Tooltip>
+                            <span className="text-[9px] text-[var(--text-muted)] shrink-0">tok</span>
+                            {m.context_size !== null && (
+                              <Tooltip content="Clear override — revert to Ollama's default context size for this model">
+                                <button
+                                  onClick={async () => {
+                                    await api.aiModel.update(m.id, { context_size: null });
+                                    loadAiModels();
+                                  }}
+                                  className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors shrink-0"
+                                >
+                                  <RefreshCw size={10} />
+                                </button>
+                              </Tooltip>
                             )}
                           </div>
                         )}
@@ -1419,26 +1427,28 @@ export default function PreferencesView() {
                       </div>
 
                       <div className="flex justify-center pt-1 md:w-[60px]">
-                        <button
-                          onClick={async () => {
-                            await api.aiModel.update(m.id, { is_hidden: !m.is_hidden });
-                            loadAiModels();
-                            incrementModelRefreshCounter();
-                          }}
-                          className={`p-1 transition-colors ${m.is_hidden ? "text-[var(--text-muted)] hover:text-[var(--text-primary)]" : "text-[var(--accent-color)] hover:opacity-80"}`}
-                          title={m.is_hidden ? "Show in Chat" : "Hide from Chat"}
-                        >
-                          {m.is_hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-                        </button>
+                        <Tooltip content={m.is_hidden ? "Show in Chat" : "Hide from Chat"}>
+                          <button
+                            onClick={async () => {
+                              await api.aiModel.update(m.id, { is_hidden: !m.is_hidden });
+                              loadAiModels();
+                              incrementModelRefreshCounter();
+                            }}
+                            className={`p-1 transition-colors ${m.is_hidden ? "text-[var(--text-muted)] hover:text-[var(--text-primary)]" : "text-[var(--accent-color)] hover:opacity-80"}`}
+                          >
+                            {m.is_hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        </Tooltip>
                       </div>
 
-                      <button
-                        onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); incrementModelRefreshCounter(); }}
-                        className="p-1 text-[var(--text-muted)] transition-colors hover:text-red-400 md:w-5"
-                        title="Remove from Aetherium (does not delete the model from Ollama)"
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                      <Tooltip content="Remove from Aetherium (does not delete the model from Ollama)" position="top">
+                        <button
+                          onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); incrementModelRefreshCounter(); }}
+                          className="p-1 text-[var(--text-muted)] transition-colors hover:text-red-400 md:w-5"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </Tooltip>
                     </div>
                   </div>
                 );
@@ -2107,17 +2117,17 @@ export default function PreferencesView() {
                       <label className="text-xs text-[var(--text-secondary)] mb-2 block">Accent Color</label>
                       <div className="flex flex-wrap gap-2">
                         {ACCENT_COLORS.map(({ label, value }) => (
-                          <button
-                            key={value}
-                            onClick={() => setAppearance("accent_color", value)}
-                            title={label}
-                            aria-label={`Use ${label} accent`}
-                            className={`relative h-8 w-8 rounded-full border-2 transition-transform ${dbSettings.accent_color === value ? "border-white scale-110 shadow-sm" : "border-transparent"
-                              }`}
-                            style={{ backgroundColor: value }}
-                          >
-                            <span className="sr-only">{label}</span>
-                          </button>
+                          <Tooltip key={value} content={label}>
+                            <button
+                              onClick={() => setAppearance("accent_color", value)}
+                              aria-label={`Use ${label} accent`}
+                              className={`relative h-8 w-8 rounded-full border-2 transition-transform ${dbSettings.accent_color === value ? "border-white scale-110 shadow-sm" : "border-transparent"
+                                }`}
+                              style={{ backgroundColor: value }}
+                            >
+                              <span className="sr-only">{label}</span>
+                            </button>
+                          </Tooltip>
                         ))}
                       </div>
                     </div>
@@ -2472,9 +2482,11 @@ export default function PreferencesView() {
                             <div key={path} className="flex items-center justify-between gap-2 p-2 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] group">
                               <div className="flex items-center gap-2 min-w-0">
                                 <FileText size={12} className="text-[var(--text-muted)] shrink-0" />
-                                <span className="text-[11px] text-[var(--text-primary)] truncate" title={path}>
-                                  {path.split("/").pop()}
-                                </span>
+                                <Tooltip content={path}>
+                                  <span className="text-[11px] text-[var(--text-primary)] truncate">
+                                    {path.split("/").pop()}
+                                  </span>
+                                </Tooltip>
                               </div>
                               <button
                                 onClick={() => {
@@ -2967,17 +2979,18 @@ export default function PreferencesView() {
                                     />
                                   </div>
                                   <div className="flex justify-center">
-                                    <button
-                                      onClick={async () => {
-                                        await api.aiModel.update(m.id, { is_hidden: !m.is_hidden });
-                                        loadAiModels();
-                                        incrementModelRefreshCounter();
-                                      }}
-                                      className={`p-1 transition-colors ${m.is_hidden ? "text-[var(--text-muted)] hover:text-[var(--text-primary)]" : "text-[var(--accent-color)] hover:opacity-80"}`}
-                                      title={m.is_hidden ? "Show in Chat" : "Hide from Chat"}
-                                    >
-                                      {m.is_hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-                                    </button>
+                                    <Tooltip content={m.is_hidden ? "Show in Chat" : "Hide from Chat"}>
+                                      <button
+                                        onClick={async () => {
+                                          await api.aiModel.update(m.id, { is_hidden: !m.is_hidden });
+                                          loadAiModels();
+                                          incrementModelRefreshCounter();
+                                        }}
+                                        className={`p-1 transition-colors ${m.is_hidden ? "text-[var(--text-muted)] hover:text-[var(--text-primary)]" : "text-[var(--accent-color)] hover:opacity-80"}`}
+                                      >
+                                        {m.is_hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                                      </button>
+                                    </Tooltip>
                                   </div>
                                   <button
                                     onClick={async () => { await api.aiModel.delete(m.id); loadAiModels(); incrementModelRefreshCounter(); }}
