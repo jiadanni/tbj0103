@@ -18,6 +18,7 @@ import { RelatedChatPills } from "../components/RelatedChatPills";
 import { WorkspaceMigrationBanner } from "../components/WorkspaceMigrationBanner";
 import ChatMessageBubble from "../components/ChatMessageBubble";
 import ChatMinimap from "../components/ChatMinimap";
+import { Tooltip } from "../components/Tooltip";
 import ConvertChatModal, { type ConvertKind } from "../components/ConvertChatModal";
 import { useScopedChat, useScopedProjects, useScopedWorkspace, useWorkspacePane, useBubbleUpFlag } from "../lib/workspacePane";
 import {
@@ -27,7 +28,6 @@ import {
   type ComposerSuggestion,
 } from "../lib/composerSuggestions";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
-import { getModelGroupMeta } from "../lib/modelGroups";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
 import { resolveChatTitle } from "../lib/chatTitles";
 import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
@@ -281,7 +281,11 @@ function SessionItem({
         />
       ) : (
         <div className="min-w-0 flex flex-1 items-center gap-1.5">
-          <span className={`min-w-0 flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`} title={session.title || "New Chat"}>{session.title || "New Chat"}</span>
+          <Tooltip content={session.title || "New Chat"} position="right">
+            <span className={`min-w-0 flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>
+              {session.title || "New Chat"}
+            </span>
+          </Tooltip>
           {session.is_incognito && <Ghost size={isSplitPane ? 12 : 11} className="text-purple-400 shrink-0" />}
           {!session.is_incognito && session.exclude_from_analytics && <Shield size={isSplitPane ? 12 : 11} className="text-sky-400 shrink-0" />}
         </div>
@@ -296,13 +300,14 @@ function SessionItem({
           </span>
         </div>
         <div className="invisible absolute inset-y-0 right-0 flex items-center justify-end opacity-0 transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
-          <button
-            onClick={(e) => { e.stopPropagation(); openContextMenu(e, session); }}
-            className={`rounded hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "p-1" : "p-0.5"}`}
-            title="More actions"
-          >
-            <MoreHorizontal size={isSplitPane ? 12 : 10} />
-          </button>
+          <Tooltip content="More actions" position="top">
+            <button
+              onClick={(e) => { e.stopPropagation(); openContextMenu(e, session); }}
+              className={`rounded hover:text-[var(--accent-color)] transition-colors ${isSplitPane ? "p-1" : "p-0.5"}`}
+            >
+              <MoreHorizontal size={isSplitPane ? 12 : 10} />
+            </button>
+          </Tooltip>
         </div>
       </div>
     </div>
@@ -2064,7 +2069,6 @@ export default function ChatView() {
   const saveCompareA = useSettingsStore((s) => s.setCompareModelA);
   const saveCompareB = useSettingsStore((s) => s.setCompareModelB);
   const modelLabels = useSettingsStore((s) => s.modelLabels);
-  const quickSearchModels = useSettingsStore((s) => s.quickSearchModels);
   const skipLinkConfirm = useSettingsStore((s) => s.skipLinkConfirm);
   const setSkipLinkConfirm = useSettingsStore((s) => s.setSkipLinkConfirm);
   const showGenInfo = useSettingsStore((s) => s.showGenInfo);
@@ -2622,12 +2626,6 @@ export default function ChatView() {
   }, []);
 
   const activeMessages = activeChatMessages;
-  const pinnedQuickSendModels = useMemo(
-    () => quickSearchModels.filter((modelId) =>
-      modelId !== selectedModel && aiModelList.some((model) => model.model_id === modelId && model.enabled)
-    ),
-    [aiModelList, quickSearchModels, selectedModel]
-  );
   const modelPickerOptions = useMemo(
     () => availableModels.filter((modelId) => {
       const meta = aiModelList.find((m) => m.model_id === modelId);
@@ -2656,22 +2654,16 @@ export default function ChatView() {
       modelIds: g.options.map((opt) => opt.value),
     }));
   }, [modelPickerOptions, modelFamilyLabels, customModelFamilies, modelLabels]);
-  const groupedPinnedQuickSendModels = useMemo(() => {
-    const groups = new Map<string, { key: string; label: string; order: number; modelIds: string[] }>();
-
-    pinnedQuickSendModels.forEach((modelId) => {
-      const provider = aiModelList.find((model) => model.model_id === modelId)?.provider;
-      const meta = getModelGroupMeta(provider);
-      const existing = groups.get(meta.key);
-      if (existing) {
-        existing.modelIds.push(modelId);
-        return;
-      }
-      groups.set(meta.key, { ...meta, modelIds: [modelId] });
-    });
-
-    return Array.from(groups.values()).sort((a, b) => a.order - b.order);
-  }, [aiModelList, pinnedQuickSendModels]);
+  const alternateSendModels = useMemo(
+    () => availableModels.filter((id) => id !== selectedModel),
+    [availableModels, selectedModel]
+  );
+  const groupedAlternateSendModels = useMemo(
+    () => groupedModelPickerOptions
+      .map((g) => ({ ...g, modelIds: g.modelIds.filter((id) => alternateSendModels.includes(id)) }))
+      .filter((g) => g.modelIds.length > 0),
+    [groupedModelPickerOptions, alternateSendModels]
+  );
   // uses granular selector from above
   const _sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
@@ -4587,25 +4579,30 @@ export default function ChatView() {
                       <span className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-sm font-medium text-[var(--text-primary)]">
                         <span className="truncate">{activeSession?.title || "New Chat"}</span>
                         {activeSession?.is_incognito && (
-                          <span title="Incognito thread"><Ghost size={14} className="text-purple-400" /></span>
+                          <Tooltip content="Incognito thread" position="bottom">
+                            <span><Ghost size={14} className="text-purple-400" /></span>
+                          </Tooltip>
                         )}
                         {!activeSession?.is_incognito && activeSession?.exclude_from_analytics && (
-                          <span title="Excluded from analytics"><Shield size={14} className="text-sky-400" /></span>
+                          <Tooltip content="Excluded from analytics" position="bottom">
+                            <span><Shield size={14} className="text-sky-400" /></span>
+                          </Tooltip>
                         )}
                       </span>
                     </div>
                     {activeSession && (
-                      <button
-                        onClick={() => { if (canRefreshActiveSessionTitle) { refreshSessionTitle(activeSession); } }}
-                        disabled={!canRefreshActiveSessionTitle}
-                        className={`p-1.5 rounded-lg text-[var(--text-muted)] transition-colors ${canRefreshActiveSessionTitle
-                          ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
-                          : "cursor-not-allowed opacity-40"
-                          }`}
-                        title={canRefreshActiveSessionTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"}
-                      >
-                        <RefreshCw size={14} />
-                      </button>
+                      <Tooltip content={canRefreshActiveSessionTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"} position="bottom">
+                        <button
+                          onClick={() => { if (canRefreshActiveSessionTitle) { refreshSessionTitle(activeSession); } }}
+                          disabled={!canRefreshActiveSessionTitle}
+                          className={`p-1.5 rounded-lg text-[var(--text-muted)] transition-colors ${canRefreshActiveSessionTitle
+                            ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
+                            : "cursor-not-allowed opacity-40"
+                            }`}
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                      </Tooltip>
                     )}
                     {availableModels.length === 0 && ollamaModelStatus === "unreachable" && (
                       <span className="text-xs text-red-400">Ollama unavailable</span>
@@ -4760,15 +4757,16 @@ export default function ChatView() {
 
                         {hasComposerHeader && !showComposerHeader && (
                           <div className="flex justify-end px-1">
-                            <button
-                              type="button"
-                              onClick={() => setIsComposerHeaderCollapsed((collapsed) => !collapsed)}
-                              className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                              aria-label="Show suggestions"
-                              title="Show suggestions"
-                            >
-                              <ChevronDown size={13} />
-                            </button>
+                            <Tooltip content="Show suggestions" position="top">
+                              <button
+                                type="button"
+                                onClick={() => setIsComposerHeaderCollapsed((collapsed) => !collapsed)}
+                                className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                aria-label="Show suggestions"
+                              >
+                                <ChevronDown size={13} />
+                              </button>
+                            </Tooltip>
                           </div>
                         )}
 
@@ -4799,29 +4797,29 @@ export default function ChatView() {
                                           {modelFamilies.map((family) => {
                                             const isSel = family.prefix === selectedFamily;
                                             return (
-                                              <button
-                                                key={family.prefix}
-                                                type="button"
-                                                onClick={async () => {
-                                                  setSelectedFamily(family.prefix);
-                                                  const defaultModelId = family.models[0]?.model_id ?? "";
-                                                  if (defaultModelId) {
-                                                    setSelectedModel(defaultModelId);
-                                                    await persistModelChoice(defaultModelId);
-                                                  }
-                                                  setShowFamilyVariant(false);
-                                                  setIsFamilyPickerOpen(false);
-                                                }}
-                                                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
-                                                  isSel
-                                                    ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                                                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                                                }`}
-                                                title={family.label}
-                                              >
-                                                <div className="min-w-0 truncate">{family.label}</div>
-                                                {isSel && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
-                                              </button>
+                                              <Tooltip content={family.label} position="right" key={family.prefix}>
+                                                <button
+                                                  type="button"
+                                                  onClick={async () => {
+                                                    setSelectedFamily(family.prefix);
+                                                    const defaultModelId = family.models[0]?.model_id ?? "";
+                                                    if (defaultModelId) {
+                                                      setSelectedModel(defaultModelId);
+                                                      await persistModelChoice(defaultModelId);
+                                                    }
+                                                    setShowFamilyVariant(false);
+                                                    setIsFamilyPickerOpen(false);
+                                                  }}
+                                                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                                                    isSel
+                                                      ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
+                                                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                                  }`}
+                                                >
+                                                  <div className="min-w-0 truncate">{family.label}</div>
+                                                  {isSel && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
+                                                </button>
+                                              </Tooltip>
                                             );
                                           })}
                                         </div>
@@ -4829,25 +4827,26 @@ export default function ChatView() {
                                     )}
                                   </>
                                 ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (modelPickerOptions.length === 0) { return; }
-                                    setIsModelSendMenuOpen(false);
-                                    setIsModelPickerOpen((open) => !open);
-                                  }}
-                                  disabled={modelPickerOptions.length === 0 || isStreaming}
-                                  className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl bg-white/[0.03] ring-1 ring-white/5 px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-secondary)] transition-all duration-200 hover:bg-white/[0.08] hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                                  title={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
-                                  aria-label={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
-                                  aria-haspopup="menu"
-                                  aria-expanded={isModelPickerOpen}
-                                >
-                                  <span className="min-w-0 truncate">
-                                    {selectedModel ? modelPickerLabel(selectedModel) : "Select model"}
-                                  </span>
-                                  <ChevronDown size={14} strokeWidth={2.2} />
-                                </button>
+                                <Tooltip content={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"} position="top">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (modelPickerOptions.length === 0) { return; }
+                                      setIsModelSendMenuOpen(false);
+                                      setIsModelPickerOpen((open) => !open);
+                                    }}
+                                    disabled={modelPickerOptions.length === 0 || isStreaming}
+                                    className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl bg-white/[0.03] ring-1 ring-white/5 px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-secondary)] transition-all duration-200 hover:bg-white/[0.08] hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                                    aria-label={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
+                                    aria-haspopup="menu"
+                                    aria-expanded={isModelPickerOpen}
+                                  >
+                                    <span className="min-w-0 truncate">
+                                      {selectedModel ? modelPickerLabel(selectedModel) : "Select model"}
+                                    </span>
+                                    <ChevronDown size={14} strokeWidth={2.2} />
+                                  </button>
+                                </Tooltip>
                                 )}
                                 {isModelPickerOpen && modelPickerOptions.length > 0 && (
                                   <div className="absolute left-0 bottom-full z-20 mb-2 w-[240px] max-w-[min(80vw,240px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
@@ -4862,23 +4861,23 @@ export default function ChatView() {
                                           {group.modelIds.map((modelId) => {
                                             const isSelected = modelId === selectedModel;
                                             return (
-                                              <button
-                                                key={modelId}
-                                                type="button"
-                                                onClick={async () => {
-                                                  setSelectedModel(modelId);
-                                                  setIsModelPickerOpen(false);
-                                                  await persistModelChoice(modelId);
-                                                }}
-                                                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${isSelected
-                                                  ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                                                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                                                  }`}
-                                                title={modelPickerLabel(modelId)}
-                                              >
-                                                <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
-                                                {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
-                                              </button>
+                                              <Tooltip content={modelPickerLabel(modelId)} position="right" key={modelId}>
+                                                <button
+                                                  type="button"
+                                                  onClick={async () => {
+                                                    setSelectedModel(modelId);
+                                                    setIsModelPickerOpen(false);
+                                                    await persistModelChoice(modelId);
+                                                  }}
+                                                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${isSelected
+                                                    ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
+                                                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                                    }`}
+                                                >
+                                                  <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
+                                                  {isSelected && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
+                                                </button>
+                                              </Tooltip>
                                             );
                                           })}
                                         </div>
@@ -4889,29 +4888,31 @@ export default function ChatView() {
                               </div>
 
                               {/* Compare button icon-only */}
-                              <button
-                                onClick={() => setActiveSubView(isComparePanelOpen ? "chat" : "compare")}
-                                title={isComparePanelOpen ? "Close model comparison" : "Compare two models side by side"}
-                                className={`${composerIconOnlyButtonClass} ${isComparePanelOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
-                              >
-                                <SplitSquareHorizontal size={13} />
-                              </button>
+                              <Tooltip content={isComparePanelOpen ? "Close model comparison" : "Compare two models side by side"} position="top">
+                                <button
+                                  onClick={() => setActiveSubView(isComparePanelOpen ? "chat" : "compare")}
+                                  className={`${composerIconOnlyButtonClass} ${isComparePanelOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
+                                >
+                                  <SplitSquareHorizontal size={13} />
+                                </button>
+                              </Tooltip>
 
                               {/* Browser Assistant picker */}
                               {enabledWebModels.length > 0 && (
                                 <div className="relative" data-web-model-menu>
-                                  <button
-                                    type="button"
-                                    onClick={() => setIsWebPickerOpen((open) => !open)}
-                                    disabled={!input.trim() || isStreaming}
-                                    title="Send with a browser assistant"
-                                    aria-label="Send with browser assistant"
-                                    aria-haspopup="menu"
-                                    aria-expanded={isWebPickerOpen}
-                                    className={`${composerIconOnlyButtonClass} ${isWebPickerOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
-                                  >
-                                    <Globe size={13} />
-                                  </button>
+                                  <Tooltip content="Send with a browser assistant" position="top">
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsWebPickerOpen((open) => !open)}
+                                      disabled={!input.trim() || isStreaming}
+                                      aria-label="Send with browser assistant"
+                                      aria-haspopup="menu"
+                                      aria-expanded={isWebPickerOpen}
+                                      className={`${composerIconOnlyButtonClass} ${isWebPickerOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
+                                    >
+                                      <Globe size={13} />
+                                    </button>
+                                  </Tooltip>
                                   {isWebPickerOpen && (
                                     <div className="absolute left-0 bottom-full z-20 mb-2 min-w-[200px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
                                       <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
@@ -4941,23 +4942,24 @@ export default function ChatView() {
 
                               {/* Attachment menu */}
                               <div className="relative" data-attachment-menu>
-                                <button
-                                  type="button"
-                                  onClick={() => setIsAttachmentMenuOpen((open) => !open)}
-                                  disabled={!effectiveWorkspaceId || isStreaming}
-                                  title={attachedSources.length > 0 ? `Attached ${attachedSources.length} file${attachedSources.length === 1 ? "" : "s"}` : "Attach to this message"}
-                                  aria-label="Open attachment menu"
-                                  aria-haspopup="menu"
-                                  aria-expanded={isAttachmentMenuOpen}
-                                  className={`relative ${composerIconOnlyButtonClass} ${attachedSources.length > 0 || isAttachmentMenuOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
-                                >
-                                  {isAttachingFiles ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />}
-                                  {attachedSources.length > 0 && (
-                                    <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
-                                      {attachedSources.length > 9 ? "9+" : attachedSources.length}
-                                    </span>
-                                  )}
-                                </button>
+                                <Tooltip content={attachedSources.length > 0 ? `Attached ${attachedSources.length} file${attachedSources.length === 1 ? "" : "s"}` : "Attach to this message"} position="top">
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsAttachmentMenuOpen((open) => !open)}
+                                    disabled={!effectiveWorkspaceId || isStreaming}
+                                    aria-label="Open attachment menu"
+                                    aria-haspopup="menu"
+                                    aria-expanded={isAttachmentMenuOpen}
+                                    className={`relative ${composerIconOnlyButtonClass} ${attachedSources.length > 0 || isAttachmentMenuOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
+                                  >
+                                    {isAttachingFiles ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />}
+                                    {attachedSources.length > 0 && (
+                                      <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                                        {attachedSources.length > 9 ? "9+" : attachedSources.length}
+                                      </span>
+                                    )}
+                                  </button>
+                                </Tooltip>
                                 {isAttachmentMenuOpen && (
                                   <div className="absolute bottom-full left-0 z-20 mb-2 min-w-[188px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
                                     <button
@@ -5096,98 +5098,97 @@ export default function ChatView() {
                                       const isActive = m.model_id === selectedModel;
                                       const isDefault = m.model_id === activeFamilyDefaultModelId;
                                       return (
-                                        <button
-                                          key={m.model_id}
-                                          onClick={async (e) => {
-                                            setSelectedModel(m.model_id);
-                                            setShowFamilyVariant(true);
-                                            await persistModelChoice(m.model_id);
-                                            if (e.metaKey || e.ctrlKey) {
-                                              await queueWithModel(m.model_id);
-                                            } else {
-                                              await sendMessageWithModel(m.model_id);
-                                            }
-                                          }}
-                                          disabled={!input.trim() || isStreaming}
-                                          className={`flex h-10 items-center justify-center rounded-2xl px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all duration-200 hover:-translate-y-px hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none ${
-                                            isActive
-                                              ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)] shadow-sm ring-1 ring-[var(--accent-color)]/30"
-                                              : isDefault
-                                                ? "bg-white/[0.03] ring-1 ring-[var(--accent-color)]/25 text-[var(--text-primary)] hover:bg-white/[0.08]"
-                                                : "bg-white/[0.03] ring-1 ring-white/5 text-[var(--text-secondary)] hover:bg-white/[0.08] hover:text-[var(--text-primary)]"
-                                          }`}
-                                          title={`${isDefault ? "Default for Enter in this family" : `Send with ${modelPickerLabel(m.model_id)}`} · Ctrl+click to queue`}
-                                        >
-                                          {isDefault && <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-[var(--accent-color)]" aria-hidden="true" />}
-                                          {tag}
-                                        </button>
+                                        <Tooltip content={`${isDefault ? "Default for Enter in this family" : `Send with ${modelPickerLabel(m.model_id)}`} · Ctrl+click to queue`} position="top" key={m.model_id}>
+                                          <button
+                                            onClick={async (e) => {
+                                              setSelectedModel(m.model_id);
+                                              setShowFamilyVariant(true);
+                                              await persistModelChoice(m.model_id);
+                                              if (e.metaKey || e.ctrlKey) {
+                                                await queueWithModel(m.model_id);
+                                              } else {
+                                                await sendMessageWithModel(m.model_id);
+                                              }
+                                            }}
+                                            disabled={!input.trim() || isStreaming}
+                                            className={`flex h-10 items-center justify-center rounded-2xl px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all duration-200 hover:-translate-y-px hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none ${
+                                              isActive
+                                                ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)] shadow-sm ring-1 ring-[var(--accent-color)]/30"
+                                                : isDefault
+                                                  ? "bg-white/[0.03] ring-1 ring-[var(--accent-color)]/25 text-[var(--text-primary)] hover:bg-white/[0.08]"
+                                                  : "bg-white/[0.03] ring-1 ring-white/5 text-[var(--text-secondary)] hover:bg-white/[0.08] hover:text-[var(--text-primary)]"
+                                            }`}
+                                          >
+                                            {isDefault && <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-[var(--accent-color)]" aria-hidden="true" />}
+                                            {tag}
+                                          </button>
+                                        </Tooltip>
                                       );
                                     })}
                                     {/* ── Normal send button (normal mode) ── */}
                                     {composerMode === "normal" && (
                                     <div className="relative flex flex-shrink-0 items-center" data-send-model-menu>
-                                      <button
-                                        onClick={async () => {
-                                          setIsModelSendMenuOpen(false);
-                                          await sendMessage();
-                                        }}
-                                        disabled={!input.trim() || !selectedModel}
-                                        className={`flex h-10 items-center justify-center bg-[var(--accent-color)] text-white shadow-[0_4px_14px_0_rgba(var(--accent-color-rgb),0.39)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_6px_20px_rgba(var(--accent-color-rgb),0.43)] hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none disabled:hover:brightness-100 ${pinnedQuickSendModels.length > 0 ? "w-10 rounded-l-2xl rounded-r-md" : "w-10 rounded-2xl"
-                                          }`}
-                                        title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
-                                      >
-                                        <ArrowUpCircle size={19} strokeWidth={2.2} />
-                                      </button>
-                                      {pinnedQuickSendModels.length > 0 && (
-                                        <>
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setIsModelPickerOpen(false);
-                                              setIsModelSendMenuOpen((open) => !open);
-                                            }}
-                                            disabled={!input.trim() || isStreaming}
-                                            className="flex h-10 w-8 items-center justify-center rounded-l-md rounded-r-2xl border-l border-black/10 bg-[var(--accent-color)] text-white shadow-[0_4px_14px_0_rgba(var(--accent-color-rgb),0.39)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_6px_20px_rgba(var(--accent-color-rgb),0.43)] hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none disabled:hover:brightness-100"
-                                            title="Send with another pinned model"
-                                            aria-label="Send with another pinned model"
-                                            aria-haspopup="menu"
-                                            aria-expanded={isModelSendMenuOpen}
-                                          >
-                                            <ChevronDown size={14} strokeWidth={2.2} />
-                                          </button>
-                                          {isModelSendMenuOpen && (
-                                            <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
-                                              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                                                Send With
-                                              </div>
-                                              {groupedPinnedQuickSendModels.map((group) => (
-                                                <div key={group.key} className="pb-1 last:pb-0">
-                                                  {groupedPinnedQuickSendModels.length > 1 && (
-                                                    <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                                                      {group.label}
-                                                    </div>
-                                                  )}
-                                                  {group.modelIds.map((modelId) => (
-                                                    <button
-                                                      key={modelId}
-                                                      type="button"
-                                                      onClick={async () => {
-                                                        setIsModelSendMenuOpen(false);
-                                                        await sendMessageWithModel(modelId);
-                                                      }}
-                                                      disabled={!input.trim() || isStreaming}
-                                                      title={`Send with ${modelPickerLabel(modelId)}`}
-                                                      className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-                                                    >
-                                                      <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
-                                                      <Globe size={14} className="shrink-0 text-[var(--text-muted)]" />
-                                                    </button>
-                                                  ))}
+                                      <div className={`flex overflow-hidden rounded-2xl shadow-[0_4px_14px_0_rgba(var(--accent-color-rgb),0.39)] transition-all duration-200 hover:shadow-[0_6px_20px_rgba(var(--accent-color-rgb),0.43)] ${(!input.trim() || !selectedModel) ? "opacity-40" : ""}`}>
+                                        <button
+                                          onClick={async () => {
+                                            setIsModelSendMenuOpen(false);
+                                            await sendMessage();
+                                          }}
+                                          disabled={!input.trim() || !selectedModel}
+                                          className="flex h-10 w-10 items-center justify-center bg-[var(--accent-color)] text-white transition-all duration-200 hover:-translate-y-px hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:brightness-100"
+                                          title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
+                                        >
+                                          <ArrowUpCircle size={19} strokeWidth={2.2} />
+                                        </button>
+                                        {alternateSendModels.length > 0 && (
+                                          <Tooltip content="Send with a different model" position="top">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setIsModelPickerOpen(false);
+                                                setIsModelSendMenuOpen((open) => !open);
+                                              }}
+                                              disabled={!input.trim() || isStreaming}
+                                              className="flex h-10 w-7 items-center justify-center border-l border-black/10 bg-[var(--accent-color)] text-white transition-all duration-200 hover:-translate-y-px hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:brightness-100"
+                                              aria-label="Send with a different model"
+                                              aria-haspopup="menu"
+                                              aria-expanded={isModelSendMenuOpen}
+                                            >
+                                              <ChevronDown size={13} strokeWidth={2.2} />
+                                            </button>
+                                          </Tooltip>
+                                        )}
+                                      </div>
+                                      {isModelSendMenuOpen && alternateSendModels.length > 0 && (
+                                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-[220px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
+                                          <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                                            Send With
+                                          </div>
+                                          {groupedAlternateSendModels.map((group) => (
+                                            <div key={group.key} className="pb-1 last:pb-0">
+                                              {groupedAlternateSendModels.length > 1 && (
+                                                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]/60">
+                                                  {group.label}
                                                 </div>
+                                              )}
+                                              {group.modelIds.map((modelId) => (
+                                                <button
+                                                  key={modelId}
+                                                  type="button"
+                                                  onClick={async () => {
+                                                    setIsModelSendMenuOpen(false);
+                                                    await sendMessageWithModel(modelId);
+                                                  }}
+                                                  disabled={!input.trim() || isStreaming}
+                                                  title={`Send with ${modelPickerLabel(modelId)}`}
+                                                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                                                >
+                                                  <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
+                                                </button>
                                               ))}
                                             </div>
-                                          )}
-                                        </>
+                                          ))}
+                                        </div>
                                       )}
                                     </div>
                                     )}

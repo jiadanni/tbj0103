@@ -288,7 +288,6 @@ export default function App() {
         store.setFontSize(settings.font_size);
         store.setPreferredModel(settings.preferred_model);
         store.setBackgroundModel(settings.background_model);
-        store.setQuickSearchModels(settings.quick_search_models);
         store.setQuickSearchWorkspaceScope(settings.quick_search_workspace_scope);
         store.setQuickSearchTypeFilters(settings.quick_search_type_filters);
         store.setOllamaUrl(settings.ollama_base_url);
