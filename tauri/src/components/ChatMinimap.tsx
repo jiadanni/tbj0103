@@ -135,7 +135,8 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
       if (!rect) {return;}
       const relY = e.clientY - rect.top;
       const idx = blockIdxAtY(relY);
-      setHoveredIdx(idx);
+      // Only update state when the hovered index actually changes
+      setHoveredIdx((prev) => (prev === idx ? prev : idx));
       setTooltipY(relY);
       if (dragging.current) {jumpTo(idx);}
     },

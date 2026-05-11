@@ -1991,16 +1991,19 @@ function StreamingBubble({
       rafRef.current = requestAnimationFrame(() => { setContent(""); });
       return;
     }
-    const unsub = useChatStore.subscribe((state) => {
-      window.cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(() => {
-        setContent(state.streamingContent);
-        if (state.streamingContent && !visibleRef.current) {
-          visibleRef.current = true;
-          setVisible(true);
-        }
-      });
-    });
+    const unsub = useChatStore.subscribe(
+      (state) => state.streamingContent,
+      (streamingContent) => {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+          setContent(streamingContent);
+          if (streamingContent && !visibleRef.current) {
+            visibleRef.current = true;
+            setVisible(true);
+          }
+        });
+      },
+    );
     return () => {
       unsub();
       window.cancelAnimationFrame(rafRef.current);

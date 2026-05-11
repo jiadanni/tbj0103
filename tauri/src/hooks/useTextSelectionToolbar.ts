@@ -20,36 +20,42 @@ export function useTextSelectionToolbar(containerRef: React.RefObject<HTMLDivEle
   }, []);
 
   useEffect(() => {
+    let rafId = 0;
+
     const handleSelectionChange = () => {
-      const selection = window.getSelection();
-      
-      if (!selection || selection.isCollapsed || !containerRef.current) {
-        setToolbarState(null);
-        return;
-      }
+      // Debounce via rAF so we don't thrash React on every scroll pixel
+      window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        const selection = window.getSelection();
 
-      const text = selection.toString().trim();
-      if (!text) {
-        setToolbarState(null);
-        return;
-      }
+        if (!selection || selection.isCollapsed || !containerRef.current) {
+          setToolbarState(null);
+          return;
+        }
 
-      const anchorNode = selection.anchorNode;
-      const range = selection.getRangeAt(0);
+        const text = selection.toString().trim();
+        if (!text) {
+          setToolbarState(null);
+          return;
+        }
 
-      // Guard: Ensure selection starts inside the container
-      if (!anchorNode || !containerRef.current.contains(anchorNode)) {
-        setToolbarState(null);
-        return;
-      }
+        const anchorNode = selection.anchorNode;
+        const range = selection.getRangeAt(0);
 
-      const rect = range.getBoundingClientRect();
-      
-      // Position the toolbar above the center of the selection
-      setToolbarState({
-        x: rect.left + rect.width / 2,
-        y: rect.top,
-        text,
+        // Guard: Ensure selection starts inside the container
+        if (!anchorNode || !containerRef.current.contains(anchorNode)) {
+          setToolbarState(null);
+          return;
+        }
+
+        const rect = range.getBoundingClientRect();
+
+        // Position the toolbar above the center of the selection
+        setToolbarState({
+          x: rect.left + rect.width / 2,
+          y: rect.top,
+          text,
+        });
       });
     };
 
@@ -74,6 +80,7 @@ export function useTextSelectionToolbar(containerRef: React.RefObject<HTMLDivEle
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      window.cancelAnimationFrame(rafId);
       document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("mousedown", handleMouseDown);
       document.removeEventListener("keydown", handleKeyDown);
