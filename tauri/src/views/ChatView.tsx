@@ -3626,6 +3626,7 @@ export default function ChatView() {
     const sessionForMigrationCheck = ensuredSession.session;
     const skipMigrationCheck =
       !effectiveWorkspaceId ||
+      workspaces.length < 2 ||
       sessionForMigrationCheck?.is_incognito ||
       sessionForMigrationCheck?.exclude_from_analytics ||
       userContent.length < 20 ||
@@ -4577,7 +4578,15 @@ export default function ChatView() {
                     )}
                   </div>
                   
-                  <WorkspaceMigrationBanner onDismiss={() => { if (activeChatId) { migrationDismissedSessionsRef.current.add(activeChatId); } }} />
+                  <WorkspaceMigrationBanner
+                    onDismiss={() => { if (activeChatId) { migrationDismissedSessionsRef.current.add(activeChatId); } }}
+                    onMove={(targetWorkspaceId) => {
+                      if (activeChatId) {
+                        moveSessionsToTarget([activeChatId], targetWorkspaceId, null);
+                        migrationDismissedSessionsRef.current.add(activeChatId);
+                      }
+                    }}
+                  />
                   <RelatedChatPills 
                     relatedChats={relatedChats} 
                     onChatClick={onChatClick}

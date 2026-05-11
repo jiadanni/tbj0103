@@ -1,15 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
-import { useScopedWorkspace } from "../lib/workspacePane";
 
 interface WorkspaceMigrationBannerProps {
   /** Called when the user explicitly dismisses the banner (not on auto-timeout). */
   onDismiss?: () => void;
+  /** Called when the user chooses to move the current chat to the suggested workspace. */
+  onMove?: (targetWorkspaceId: string) => void;
 }
 
-export const WorkspaceMigrationBanner: React.FC<WorkspaceMigrationBannerProps> = ({ onDismiss }) => {
+export const WorkspaceMigrationBanner: React.FC<WorkspaceMigrationBannerProps> = ({ onDismiss, onMove }) => {
   const { migrationSuggestion, dismissMigrationSuggestion } = useWorkspaceStore();
-  const { setActiveWorkspaceId } = useScopedWorkspace();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -27,9 +27,9 @@ export const WorkspaceMigrationBanner: React.FC<WorkspaceMigrationBannerProps> =
 
   if (!visible || !migrationSuggestion?.suggestion) {return null;}
 
-  const handleSwitch = () => {
+  const handleMove = () => {
     if (migrationSuggestion.suggestion) {
-      setActiveWorkspaceId(migrationSuggestion.suggestion.workspace_id);
+      onMove?.(migrationSuggestion.suggestion.workspace_id);
     }
     dismissMigrationSuggestion();
     setVisible(false);
@@ -50,7 +50,7 @@ export const WorkspaceMigrationBanner: React.FC<WorkspaceMigrationBannerProps> =
         <span>This chat might fit better in <span className="font-semibold">{migrationSuggestion.suggestion.workspace_name}</span></span>
       </div>
       <div className="flex items-center gap-3 border-l border-amber-500/20 pl-3">
-        <button onClick={handleSwitch} className="font-medium hover:underline focus:outline-none focus:ring-2 ring-amber-500 rounded px-1">Switch</button>
+        <button onClick={handleMove} className="font-medium hover:underline focus:outline-none focus:ring-2 ring-amber-500 rounded px-1">Move</button>
         <button onClick={handleDismiss} className="opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 ring-amber-500 rounded">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
