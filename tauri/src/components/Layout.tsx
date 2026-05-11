@@ -13,6 +13,7 @@ import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { Tooltip } from "./Tooltip";
 import AppHeaderMenu from "./AppHeaderMenu";
 import ArtifactPanel from "./ArtifactPanel";
 import ConfirmDialog from "./ConfirmDialog";
@@ -373,11 +374,13 @@ function SubWorkspaceTabBar({
   activeWorkspaceId,
   onSelect,
   onAdd,
+  onContextMenu,
 }: {
   parentWorkspaceId: string | null;
   activeWorkspaceId: string | null;
   onSelect: (workspaceId: string) => void;
   onAdd?: () => void;
+  onContextMenu?: (workspace: Workspace, x: number, y: number) => void;
 }) {
   const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
   const parent = parentWorkspaceId ? allWorkspaces.find((ws) => ws.id === parentWorkspaceId) : null;
@@ -398,22 +401,37 @@ function SubWorkspaceTabBar({
       >
         {/* Pinned overview dot — navigates to the parent (overview) workspace */}
         {parent && (
-          <button
-            onClick={() => onSelect(parent.id)}
-            title={parent.name}
-            className={`relative mt-0.5 flex h-[30px] w-[26px] items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
-              activeWorkspaceId === parent.id
-                ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
-                : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
-            }`}
-          >
-            <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
-          </button>
+          <Tooltip content={parent.name} position="bottom">
+            <button
+              onClick={() => onSelect(parent.id)}
+              onContextMenu={(event) => {
+                if (onContextMenu) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onContextMenu(parent, event.clientX, event.clientY);
+                }
+              }}
+              className={`relative mt-0.5 flex h-[30px] w-[26px] items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
+                activeWorkspaceId === parent.id
+                  ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
+                  : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+            </button>
+          </Tooltip>
         )}
         {children.map((workspace) => (
           <button
             key={workspace.id}
             onClick={() => onSelect(workspace.id)}
+            onContextMenu={(event) => {
+              if (onContextMenu) {
+                event.preventDefault();
+                event.stopPropagation();
+                onContextMenu(workspace, event.clientX, event.clientY);
+              }
+            }}
             className={`relative mt-0.5 flex h-[30px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-3 text-xs font-medium whitespace-nowrap transition-all select-none ${
               activeWorkspaceId === workspace.id
                 ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
@@ -428,14 +446,15 @@ function SubWorkspaceTabBar({
         ))}
       </div>
       {onAdd && (
-        <button
-          data-no-drag
-          onClick={onAdd}
-          title="New Sub-workspace"
-          className="ml-1 h-8 w-8 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-        >
-          <Plus size={14} />
-        </button>
+        <Tooltip content="New Sub-workspace" position="bottom">
+          <button
+            data-no-drag
+            onClick={onAdd}
+            className="ml-1 h-8 w-8 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+          >
+            <Plus size={14} />
+          </button>
+        </Tooltip>
       )}
     </div>
   );
@@ -587,24 +606,26 @@ function BackForwardNavigation() {
 
   return (
     <div className="flex items-center gap-1">
-      <button
-        onClick={goBack}
-        disabled={!canGoBack}
-        aria-label="Go back"
-        title="Go back (Alt+Left / Cmd+Left)"
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <ChevronLeft size={15} />
-      </button>
-      <button
-        onClick={goForward}
-        disabled={!canGoForward}
-        aria-label="Go forward"
-        title="Go forward (Alt+Right / Cmd+Right)"
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <ChevronRight size={15} />
-      </button>
+      <Tooltip content="Go back (Alt+Left / Cmd+Left)" position="bottom">
+        <button
+          onClick={goBack}
+          disabled={!canGoBack}
+          aria-label="Go back"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <ChevronLeft size={15} />
+        </button>
+      </Tooltip>
+      <Tooltip content="Go forward (Alt+Right / Cmd+Right)" position="bottom">
+        <button
+          onClick={goForward}
+          disabled={!canGoForward}
+          aria-label="Go forward"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <ChevronRight size={15} />
+        </button>
+      </Tooltip>
     </div>
   );
 }
@@ -730,20 +751,21 @@ function TitlebarHistoryMenu() {
 
   return (
     <div ref={rootRef} className="relative">
-      <button
-        onClick={toggleMenu}
-        aria-label="Open History"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        title="History"
-        className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
-          open || isHistoryRoute
-            ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
-            : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-        }`}
-      >
-        <HistoryIcon size={15} />
-      </button>
+      <Tooltip content="History" position="bottom">
+        <button
+          onClick={toggleMenu}
+          aria-label="Open History"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
+            open || isHistoryRoute
+              ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+              : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <HistoryIcon size={15} />
+        </button>
+      </Tooltip>
 
       {open && (
         <div
@@ -839,18 +861,19 @@ function TitlebarSortMenu() {
 
   return (
     <div ref={rootRef} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        aria-label="Sort Workspaces"
-        title="Sort Workspaces"
-        className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
-          open
-            ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
-            : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-        }`}
-      >
-        <ArrowUpDown size={15} />
-      </button>
+      <Tooltip content="Sort Workspaces" position="bottom">
+        <button
+          onClick={() => setOpen(!open)}
+          aria-label="Sort Workspaces"
+          className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
+            open
+              ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+              : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <ArrowUpDown size={15} />
+        </button>
+      </Tooltip>
 
       {open && (
         <div className="absolute right-0 top-10 z-50 w-48 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl backdrop-blur-xl py-1">
@@ -1074,50 +1097,54 @@ function WorkspaceTabBar({
                 />
               ) : null}
               {showWorkspaceTabs ? (
-                <button
-                  onClick={() => setCreating(true)}
-                  title="New Workspace"
-                  className="ml-1 w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-                >
-                  <Plus size={20} />
-                </button>
+                <Tooltip content="New Workspace" position="bottom">
+                  <button
+                    onClick={() => setCreating(true)}
+                    className="ml-1 w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+                  >
+                    <Plus size={20} />
+                  </button>
+                </Tooltip>
               ) : null}
             </div>
           )}
         </div>
-        <div
-          data-window-drag-handle
-          className="mx-2 hidden h-5 w-16 shrink-0 rounded-full border border-transparent bg-[var(--bg-hover)]/20 sm:block"
-          title="Drag window"
-        />
+        <Tooltip content="Drag window" position="bottom">
+          <div
+            data-window-drag-handle
+            className="mx-2 hidden h-5 w-16 shrink-0 rounded-full border border-transparent bg-[var(--bg-hover)]/20 sm:block"
+          />
+        </Tooltip>
         <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
           <BackForwardNavigation />
           <TitlebarSortMenu />
           <TitlebarHistoryMenu />
           {!showSplitTitlebarWorkspaceNavigation && (
-            <button
-              onClick={() => navigate("/preferences")}
-              aria-label="Preferences"
-              title="Preferences"
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-            >
-              <SettingsIcon size={15} />
-            </button>
+            <Tooltip content="Preferences" position="bottom">
+              <button
+                onClick={() => navigate("/preferences")}
+                aria-label="Preferences"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+              >
+                <SettingsIcon size={15} />
+              </button>
+            </Tooltip>
           )}
           {showSplitToggle && (
-            <button
-              onClick={onToggleSplit}
-              disabled={workspaces.length < 2}
-              aria-label="Toggle Split View"
-              title="Toggle Split View"
-              className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
-                splitMode
-                  ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
-                  : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-              } disabled:opacity-40 disabled:hover:border-[var(--border-color)] disabled:hover:text-[var(--text-secondary)]`}
-            >
-              <Columns2 size={15} />
-            </button>
+            <Tooltip content="Toggle Split View" position="bottom">
+              <button
+                onClick={onToggleSplit}
+                disabled={workspaces.length < 2}
+                aria-label="Toggle Split View"
+                className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
+                  splitMode
+                    ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
+                    : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+                } disabled:opacity-40 disabled:hover:border-[var(--border-color)] disabled:hover:text-[var(--text-secondary)]`}
+              >
+                <Columns2 size={15} />
+              </button>
+            </Tooltip>
           )}
         </div>
         {!isMac && (
@@ -1133,6 +1160,7 @@ function WorkspaceTabBar({
           activeWorkspaceId={activeWorkspaceId}
           onSelect={activateSubWorkspace}
           onAdd={createSubWorkspace}
+          onContextMenu={(ws, x, y) => setContextMenu({ workspace: ws, x, y })}
         />
       )}
 

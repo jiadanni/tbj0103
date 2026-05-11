@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowDownToLine, Bug, Download, Info, RefreshCw, Search,
 import { api, type LogEntry } from "../lib/api";
 import CompactMenuSelect from "../components/CompactMenuSelect";
 import ConfirmDialog from "../components/ConfirmDialog";
+import Tooltip from "../components/Tooltip";
 
 const LEVEL_OPTIONS = ["all", "debug", "info", "warn", "error"] as const;
 
@@ -210,29 +211,32 @@ export default function LogsView() {
         </div>
 
         <div className="flex items-center gap-1 ml-auto">
-          <button
-            onClick={fetchLogs}
-            className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]"
-            title="Refresh"
-          >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          </button>
+          <Tooltip content="Refresh" position="top">
+            <button
+              onClick={fetchLogs}
+              className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]"
+            >
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+            </button>
+          </Tooltip>
 
-          <button
-            onClick={handleExport}
-            className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]"
-            title="Export logs"
-          >
-            <Download size={14} />
-          </button>
+          <Tooltip content="Export logs" position="top">
+            <button
+              onClick={handleExport}
+              className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]"
+            >
+              <Download size={14} />
+            </button>
+          </Tooltip>
 
-          <button
-            onClick={handleClear}
-            className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-red-400"
-            title="Clear all logs"
-          >
-            <Trash2 size={14} />
-          </button>
+          <Tooltip content="Clear all logs" position="top">
+            <button
+              onClick={handleClear}
+              className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-red-400"
+            >
+              <Trash2 size={14} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -297,19 +301,20 @@ export default function LogsView() {
       </div>
       {!autoScroll && (
         <div className="flex justify-center py-2 border-t border-[var(--border-color)] bg-[var(--bg-primary)] shrink-0">
-          <button
-            onClick={() => {
-              setAutoScroll(true);
-              if (scrollRef.current) {
-                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-              }
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--accent-color)] text-white text-xs shadow hover:opacity-90 transition-opacity"
-            title="Jump to Bottom & Tail"
-          >
-            <ArrowDownToLine size={13} />
-            <span>Scroll to bottom</span>
-          </button>
+          <Tooltip content="Jump to Bottom & Tail" position="top">
+            <button
+              onClick={() => {
+                setAutoScroll(true);
+                if (scrollRef.current) {
+                  scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--accent-color)] text-white text-xs shadow hover:opacity-90 transition-opacity"
+            >
+              <ArrowDownToLine size={13} />
+              <span>Scroll to bottom</span>
+            </button>
+          </Tooltip>
         </div>
       )}
       </div>

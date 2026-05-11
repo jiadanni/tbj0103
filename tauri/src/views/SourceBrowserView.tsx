@@ -9,6 +9,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { open as openShell } from "@tauri-apps/plugin-shell";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
+import { Tooltip } from "../components/Tooltip";
 
 // ── Folder tree helpers ─────────────────────────────────────────────────
 
@@ -466,22 +467,24 @@ export default function SourceBrowserView() {
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-color)]">
           <span className="text-xs font-medium text-[var(--text-secondary)]">Sources</span>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setShowUploadDialog(true)}
-              disabled={uploading || !activeWorkspaceId}
-              className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
-              title="Upload document"
-            >
-              <Upload size={10} /> File
-            </button>
-            <button
-              onClick={() => setShowAddCapture(true)}
-              disabled={!activeWorkspaceId}
-              className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-              title="Add web capture"
-            >
-              <Globe size={10} /> URL
-            </button>
+            <Tooltip content="Upload document">
+              <button
+                onClick={() => setShowUploadDialog(true)}
+                disabled={uploading || !activeWorkspaceId}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
+              >
+                <Upload size={10} /> File
+              </button>
+            </Tooltip>
+            <Tooltip content="Add web capture">
+              <button
+                onClick={() => setShowAddCapture(true)}
+                disabled={!activeWorkspaceId}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+              >
+                <Globe size={10} /> URL
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -544,14 +547,15 @@ export default function SourceBrowserView() {
                   </span>
                 )}
                 {selected.url && (
-                  <button
-                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    onClick={() => openShell(selected.url!)}
-                    className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"
-                    title="Open URL"
-                  >
-                    <ExternalLink size={13} />
-                  </button>
+                  <Tooltip content="Open URL">
+                    <button
+                      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                      onClick={() => openShell(selected.url!)}
+                      className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"
+                    >
+                      <ExternalLink size={13} />
+                    </button>
+                  </Tooltip>
                 )}
                 <button onClick={() => setSelected(null)}>
                   <X size={14} className="text-[var(--text-muted)]" />

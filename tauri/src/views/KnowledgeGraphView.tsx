@@ -25,6 +25,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import { Tooltip } from "../components/Tooltip";
 import {
   api,
   type AiModel,
@@ -1029,28 +1030,30 @@ export default function KnowledgeGraphView() {
                     {nodes.length > 0 && (
                       <>
                         <div className="flex rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
-                          <button
-                            onClick={() => setLayoutMode("force")}
-                            className={`px-2 py-1.5 text-xs font-medium transition-colors ${
-                              layoutMode === "force"
-                                ? "bg-[var(--accent-color)] text-white"
-                                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                            }`}
-                            title="Force-directed layout"
-                          >
-                            Force
-                          </button>
-                          <button
-                            onClick={() => setLayoutMode("tree")}
-                            className={`border-l border-[var(--border-color)] px-2 py-1.5 text-xs font-medium transition-colors ${
-                              layoutMode === "tree"
-                                ? "bg-[var(--accent-color)] text-white"
-                                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                            }`}
-                            title="Radial tree layout"
-                          >
-                            Tree
-                          </button>
+                          <Tooltip content="Force-directed layout">
+                            <button
+                              onClick={() => setLayoutMode("force")}
+                              className={`px-2 py-1.5 text-xs font-medium transition-colors ${
+                                layoutMode === "force"
+                                  ? "bg-[var(--accent-color)] text-white"
+                                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                              }`}
+                            >
+                              Force
+                            </button>
+                          </Tooltip>
+                          <Tooltip content="Radial tree layout">
+                            <button
+                              onClick={() => setLayoutMode("tree")}
+                              className={`border-l border-[var(--border-color)] px-2 py-1.5 text-xs font-medium transition-colors ${
+                                layoutMode === "tree"
+                                  ? "bg-[var(--accent-color)] text-white"
+                                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                              }`}
+                            >
+                              Tree
+                            </button>
+                          </Tooltip>
                         </div>
 
                         {layoutMode === "tree" && (
@@ -1079,27 +1082,30 @@ export default function KnowledgeGraphView() {
                         className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 pl-8 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
                       />
                     </div>
-                    <button
-                      onClick={() => fitGraphToViewport()}
-                      className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                      title="Reset graph view"
-                    >
-                      Reset view
-                    </button>
-                    <button
-                      onClick={zoomIn}
-                      className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
-                      title="Zoom in"
-                    >
-                      <ZoomIn size={14} />
-                    </button>
-                    <button
-                      onClick={zoomOut}
-                      className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
-                      title="Zoom out"
-                    >
-                      <ZoomOut size={14} />
-                    </button>
+                    <Tooltip content="Reset graph view">
+                      <button
+                        onClick={() => fitGraphToViewport()}
+                        className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                      >
+                        Reset view
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Zoom in">
+                      <button
+                        onClick={zoomIn}
+                        className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                      >
+                        <ZoomIn size={14} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Zoom out">
+                      <button
+                        onClick={zoomOut}
+                        className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                      >
+                        <ZoomOut size={14} />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
 

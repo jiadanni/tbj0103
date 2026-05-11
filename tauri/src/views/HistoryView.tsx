@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import type { ChatSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useBubbleUpFlag } from "../lib/workspacePane";
+import Tooltip from "../components/Tooltip";
 
 interface DateGroup {
   label: string;
@@ -162,13 +163,14 @@ export default function HistoryView() {
                         )}
                       </div>
                     </div>
-                    <button
-                      onClick={(e) => { void handleDelete(session, e); }}
-                      className="shrink-0 opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-red-400 transition-all"
-                      title="Delete"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                    <Tooltip content="Delete" position="top">
+                      <button
+                        onClick={(e) => { void handleDelete(session, e); }}
+                        className="shrink-0 opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-red-400 transition-all"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
               );

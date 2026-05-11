@@ -12,6 +12,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import SmartTextEditor from "../components/SmartTextEditor";
+import { Tooltip } from "../components/Tooltip";
 import DailyNotesView from "./DailyNotesView";
 import type { NotesSubView } from "../components/navigationItems";
 
@@ -176,14 +177,15 @@ export default function NoteEditorView() {
               className="flex-1 text-xs bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
             />
           </div>
-          <button
-            onClick={createNote}
-            disabled={!activeWorkspaceId || creating}
-            title="New Note"
-            className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--accent-color)] disabled:opacity-40 transition-colors"
-          >
-            <Plus size={14} />
-          </button>
+          <Tooltip content="New Note">
+            <button
+              onClick={createNote}
+              disabled={!activeWorkspaceId || creating}
+              className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--accent-color)] disabled:opacity-40 transition-colors"
+            >
+              <Plus size={14} />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -246,28 +248,31 @@ export default function NoteEditorView() {
             <span className="text-[11px] text-[var(--text-muted)] shrink-0">
               {saving ? "Saving…" : "Auto-saved"}
             </span>
-            <button
-              onClick={autoSave}
-              className="p-1 hover:text-[var(--accent-color)] text-[var(--text-muted)] transition-colors"
-              title="Save now"
-            >
-              <Save size={13} />
-            </button>
-            <button
-              onClick={generateFlashcardsFromNote}
-              disabled={generatingFlashcards || !preferredModel || content.length < 50}
-              className="p-1 hover:text-[var(--accent-color)] text-[var(--text-muted)] transition-colors disabled:opacity-40"
-              title="Generate flashcards from note"
-            >
-              {generatingFlashcards ? <Loader size={13} className="animate-spin" /> : <Sparkles size={13} />}
-            </button>
-            <button
-              onClick={() => deleteNote(selected.id)}
-              className="p-1 hover:text-red-400 text-[var(--text-muted)] transition-colors"
-              title="Delete note"
-            >
-              <Trash2 size={13} />
-            </button>
+            <Tooltip content="Save now">
+              <button
+                onClick={autoSave}
+                className="p-1 hover:text-[var(--accent-color)] text-[var(--text-muted)] transition-colors"
+              >
+                <Save size={13} />
+              </button>
+            </Tooltip>
+            <Tooltip content="Generate flashcards from note">
+              <button
+                onClick={generateFlashcardsFromNote}
+                disabled={generatingFlashcards || !preferredModel || content.length < 50}
+                className="p-1 hover:text-[var(--accent-color)] text-[var(--text-muted)] transition-colors disabled:opacity-40"
+              >
+                {generatingFlashcards ? <Loader size={13} className="animate-spin" /> : <Sparkles size={13} />}
+              </button>
+            </Tooltip>
+            <Tooltip content="Delete note">
+              <button
+                onClick={() => deleteNote(selected.id)}
+                className="p-1 hover:text-red-400 text-[var(--text-muted)] transition-colors"
+              >
+                <Trash2 size={13} />
+              </button>
+            </Tooltip>
           </div>
 
           {/* Tag bar */}

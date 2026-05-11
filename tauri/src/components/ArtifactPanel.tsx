@@ -7,6 +7,7 @@ import {
   X, Pin, PinOff, Copy, Check, Trash2, 
   History, Code, FileText
 } from 'lucide-react';
+import Tooltip from './Tooltip';
 
 export default function ArtifactPanel() {
   const { 
@@ -58,27 +59,30 @@ export default function ArtifactPanel() {
         </div>
         
         <div className="flex items-center gap-1">
-          <button 
-            onClick={() => togglePin(activeArtifact.id)}
-            className={`p-2 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 ${activeArtifact.is_pinned ? 'text-blue-600' : 'text-zinc-400'}`}
-            title={activeArtifact.is_pinned ? 'Unpin' : 'Pin'}
-          >
-            {activeArtifact.is_pinned ? <Pin size={18} /> : <PinOff size={18} />}
-          </button>
-          <button 
-            onClick={() => setShowHistory(!showHistory)}
-            className={`p-2 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 ${showHistory ? 'text-blue-600' : 'text-zinc-400'}`}
-            title="Version History"
-          >
-            <History size={18} />
-          </button>
-          <button 
-            onClick={handleDelete}
-            className="p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-zinc-400 hover:text-red-600"
-            title="Delete"
-          >
-            <Trash2 size={18} />
-          </button>
+          <Tooltip content={activeArtifact.is_pinned ? 'Unpin' : 'Pin'} position="bottom">
+            <button 
+              onClick={() => togglePin(activeArtifact.id)}
+              className={`p-2 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 ${activeArtifact.is_pinned ? 'text-blue-600' : 'text-zinc-400'}`}
+            >
+              {activeArtifact.is_pinned ? <Pin size={18} /> : <PinOff size={18} />}
+            </button>
+          </Tooltip>
+          <Tooltip content="Version History" position="bottom">
+            <button 
+              onClick={() => setShowHistory(!showHistory)}
+              className={`p-2 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 ${showHistory ? 'text-blue-600' : 'text-zinc-400'}`}
+            >
+              <History size={18} />
+            </button>
+          </Tooltip>
+          <Tooltip content="Delete" position="bottom">
+            <button 
+              onClick={handleDelete}
+              className="p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-zinc-400 hover:text-red-600"
+            >
+              <Trash2 size={18} />
+            </button>
+          </Tooltip>
           <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800 mx-1" />
           <button 
             onClick={() => setPanelOpen(false)}

@@ -409,3 +409,77 @@ select optgroup {
 [data-tauri-drag-region] [role="button"] {
   -webkit-app-region: no-drag;
 }
+/* =====================================================
+   Tooltip Animations
+   ===================================================== */
+
+@keyframes tooltip-fade-in {
+  from { 
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to { 
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes tooltip-fade-in-top {
+  from { 
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px) scale(0.96);
+  }
+  to { 
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes tooltip-fade-in-bottom {
+  from { 
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px) scale(0.96);
+  }
+  to { 
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes tooltip-fade-in-left {
+  from { 
+    opacity: 0;
+    transform: translateY(-50%) translateX(4px) scale(0.96);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(-50%) translateX(0) scale(1);
+  }
+}
+
+@keyframes tooltip-fade-in-right {
+  from { 
+    opacity: 0;
+    transform: translateY(-50%) translateX(-4px) scale(0.96);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(-50%) translateX(0) scale(1);
+  }
+}
+
+.animate-tooltip-top {
+  animation: tooltip-fade-in-top 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-tooltip-bottom {
+  animation: tooltip-fade-in-bottom 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-tooltip-left {
+  animation: tooltip-fade-in-left 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-tooltip-right {
+  animation: tooltip-fade-in-right 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

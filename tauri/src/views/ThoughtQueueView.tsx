@@ -10,6 +10,7 @@ import {
 import { api, type ThoughtItem } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace } from "../lib/workspacePane";
+import { Tooltip } from "../components/Tooltip";
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -419,13 +420,14 @@ function ThoughtCard({ thought, modelLabels, expanded, onToggleExpand, onProcess
         {/* actions */}
         <div className="flex items-center gap-1 shrink-0">
           {(thought.status === "pending" || thought.status === "scheduled") && (
-            <button
-              onClick={onProcessNow}
-              title="Process now"
-              className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--bg-primary)] transition-colors"
-            >
-              <Zap size={14} />
-            </button>
+            <Tooltip content="Process now">
+              <button
+                onClick={onProcessNow}
+                className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--bg-primary)] transition-colors"
+              >
+                <Zap size={14} />
+              </button>
+            </Tooltip>
           )}
           {thought.status === "processing" && (
             <span className="p-1.5">
@@ -433,21 +435,23 @@ function ThoughtCard({ thought, modelLabels, expanded, onToggleExpand, onProcess
             </span>
           )}
           {hasResult && (
-            <button
-              onClick={onToggleExpand}
-              title={expanded ? "Collapse" : "Show result"}
-              className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-primary)] transition-colors"
-            >
-              {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </button>
+            <Tooltip content={expanded ? "Collapse" : "Show result"}>
+              <button
+                onClick={onToggleExpand}
+                className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-primary)] transition-colors"
+              >
+                {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+            </Tooltip>
           )}
-          <button
-            onClick={onDelete}
-            title="Delete"
-            className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-red-400 hover:bg-[var(--bg-primary)] transition-colors"
-          >
-            <Trash2 size={14} />
-          </button>
+          <Tooltip content="Delete">
+            <button
+              onClick={onDelete}
+              className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-red-400 hover:bg-[var(--bg-primary)] transition-colors"
+            >
+              <Trash2 size={14} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 

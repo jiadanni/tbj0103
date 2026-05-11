@@ -149,6 +149,12 @@ fn apply_saved_main_window_state(
         .set_position(PhysicalPosition::new(next_state.x, next_state.y))
         .map_err(|e| e.to_string())?;
 
+    if state.maximized {
+        window.maximize().map_err(|e| e.to_string())?;
+    } else {
+        window.unmaximize().map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }
 
@@ -316,7 +322,8 @@ pub fn run() {
                         if let Some(state) = saved_main_window_state.as_ref() {
                             let _ = apply_saved_main_window_state(state, &window);
                         } else {
-                            let _ = window.center();
+                            // Already maximized by tauri.conf.json default, but we re-apply here
+                            // as a fallback. Removed center() to avoid conflict with maximize().
                             let _ = window.maximize();
                         }
                     }

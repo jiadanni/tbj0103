@@ -8,6 +8,7 @@ import { useChatStore, type ChatSession } from "../stores/chatStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
+import Tooltip from "../components/Tooltip";
 
 export default function RecycleBinView() {
   const navigate = useNavigate();
@@ -149,20 +150,22 @@ export default function RecycleBinView() {
                 </div>
               </div>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={() => restoreSession(s.id)}
-                  className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--bg-hover)] rounded"
-                  title="Restore"
-                >
-                  <RefreshCcw size={14} />
-                </button>
-                <button
-                  onClick={() => hardDeleteSession(s.id)}
-                  className="p-1.5 text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 rounded"
-                  title="Delete permanently"
-                >
-                  <Trash size={14} />
-                </button>
+                <Tooltip content="Restore" position="top">
+                  <button
+                    onClick={() => restoreSession(s.id)}
+                    className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--bg-hover)] rounded"
+                  >
+                    <RefreshCcw size={14} />
+                  </button>
+                </Tooltip>
+                <Tooltip content="Delete permanently" position="top">
+                  <button
+                    onClick={() => hardDeleteSession(s.id)}
+                    className="p-1.5 text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 rounded"
+                  >
+                    <Trash size={14} />
+                  </button>
+                </Tooltip>
               </div>
             </div>
           ))
