@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Menu, Plus, FileText, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Tooltip } from "./Tooltip";
 
 export default function AppHeaderMenu() {
   const [isOpen, setIsOpen] = useState(false);
@@ -28,13 +29,14 @@ export default function AppHeaderMenu() {
 
   return (
     <div className="relative mr-2 flex-shrink-0" ref={menuRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors rounded hover:bg-[var(--bg-hover)]"
-        title="App Menu"
-      >
-        <Menu size={20} />
-      </button>
+      <Tooltip content="App Menu">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors rounded hover:bg-[var(--bg-hover)]"
+        >
+          <Menu size={20} />
+        </button>
+      </Tooltip>
 
       {isOpen && (
         <div className="absolute top-10 left-0 z-50 w-48 rounded-lg shadow-xl bg-[var(--bg-elevated)] border border-[var(--border-color)] overflow-hidden">

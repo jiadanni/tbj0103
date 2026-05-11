@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api, type PerformanceStats, type BackgroundTaskEvent } from "../lib/api";
+import { Tooltip } from "./Tooltip";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -63,22 +64,23 @@ function CoreBars({ cores, aggregate }: { cores: number[]; aggregate: number }) 
     <div className="flex items-center gap-1.5">
       <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">CPU:</span>
       {/* Core columns */}
-      <div
-        className="flex items-end gap-px"
-        style={{ height: "14px" }}
-        title={tooltipText}
-      >
-        {displayed.map((v, i) => (
-          <div
-            key={i}
-            className={`rounded-[1px] transition-all duration-700 ${barColor(Math.round(v))}`}
-            style={{
-              width: `${barW}px`,
-              height: `${Math.max(2, Math.round((v / 100) * 14))}px`,
-            }}
-          />
-        ))}
-      </div>
+      <Tooltip content={tooltipText} position="top">
+        <div
+          className="flex items-end gap-px"
+          style={{ height: "14px" }}
+        >
+          {displayed.map((v, i) => (
+            <div
+              key={i}
+              className={`rounded-[1px] transition-all duration-700 ${barColor(Math.round(v))}`}
+              style={{
+                width: `${barW}px`,
+                height: `${Math.max(2, Math.round((v / 100) * 14))}px`,
+              }}
+            />
+          ))}
+        </div>
+      </Tooltip>
       <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none">
         {aggregate}%
       </span>
@@ -261,12 +263,13 @@ export default function StatusBar() {
               : (
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">VRAM:</span>
-                  <span
-                    className="text-xs text-[var(--text-secondary)] leading-none tabular-nums truncate max-w-[100px]"
-                    title={stats?.gpu_name ?? undefined}
-                  >
-                    {gpuLabel}
-                  </span>
+                    <Tooltip content={stats?.gpu_name ?? ""}>
+                      <span
+                        className="text-xs text-[var(--text-secondary)] leading-none tabular-nums truncate max-w-[100px]"
+                      >
+                        {gpuLabel}
+                      </span>
+                    </Tooltip>
                 </div>
               )
             }

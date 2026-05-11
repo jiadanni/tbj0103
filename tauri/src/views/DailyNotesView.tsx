@@ -28,6 +28,7 @@ import { api, type DailyNote, type NoteTemplate } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useBubbleUpFlag } from "../lib/workspacePane";
 import SmartTextEditor from "../components/SmartTextEditor";
+import { Tooltip } from "../components/Tooltip";
 
 // Mood options matching Swift's DailyNoteMetadataView
 const MOOD_OPTIONS = [
@@ -246,18 +247,18 @@ export default function DailyNotesView() {
               <span className="text-[11px] text-[var(--text-muted)] block mb-1.5">Mood</span>
               <div className="flex justify-between">
                 {MOOD_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setMood(opt.value)}
-                    title={opt.label}
-                    className={`text-lg rounded-md p-1 transition-all ${
-                      mood === opt.value
-                        ? "bg-[var(--accent-color)]/20 scale-110"
-                        : "opacity-50 hover:opacity-80"
-                    }`}
-                  >
-                    {opt.emoji}
-                  </button>
+                  <Tooltip key={opt.value} content={opt.label}>
+                    <button
+                      onClick={() => setMood(opt.value)}
+                      className={`text-lg rounded-md p-1 transition-all ${
+                        mood === opt.value
+                          ? "bg-[var(--accent-color)]/20 scale-110"
+                          : "opacity-50 hover:opacity-80"
+                      }`}
+                    >
+                      {opt.emoji}
+                    </button>
+                  </Tooltip>
                 ))}
               </div>
             </div>

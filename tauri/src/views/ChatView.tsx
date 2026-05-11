@@ -1125,15 +1125,16 @@ function SessionSidebar({
           <div className="px-2 py-1.5 border-b border-[var(--border-color)]">
             <div className="flex flex-wrap items-center gap-1">
               <div className="relative">
-                <button
-                  onClick={() => setMoveMenuOpen((value) => !value)}
-                  disabled={selectedIds.size === 0 || bulkActionPending !== null}
-                  className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
-                  title="Move selected chats"
-                >
-                  <MoveRight size={12} />
-                  {bulkActionPending === "move" ? "Moving..." : "Move"}
-                </button>
+                <Tooltip content="Move selected chats" position="bottom">
+                  <button
+                    onClick={() => setMoveMenuOpen((value) => !value)}
+                    disabled={selectedIds.size === 0 || bulkActionPending !== null}
+                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
+                  >
+                    <MoveRight size={12} />
+                    {bulkActionPending === "move" ? "Moving..." : "Move"}
+                  </button>
+                </Tooltip>
                 {moveMenuOpen && bulkActionPending === null && (
                   <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
                     <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
@@ -1270,15 +1271,16 @@ function SessionSidebar({
                 )}
               </div>
               <div className="relative">
-                <button
-                  onClick={() => { setBulkFolderMoveOpen((v) => !v); setMoveMenuOpen(false); }}
-                  disabled={selectedIds.size === 0 || bulkActionPending !== null}
-                  className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
-                  title="Move selected chats to a folder"
-                >
-                  <Folder size={12} />
-                  To folder
-                </button>
+                <Tooltip content="Move selected chats to a folder" position="bottom">
+                  <button
+                    onClick={() => { setBulkFolderMoveOpen((v) => !v); setMoveMenuOpen(false); }}
+                    disabled={selectedIds.size === 0 || bulkActionPending !== null}
+                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
+                  >
+                    <Folder size={12} />
+                    To folder
+                  </button>
+                </Tooltip>
                 {bulkFolderMoveOpen && bulkActionPending === null && (() => {
                   const bulkWorkspaceId = sidebarSessions.find((s) => selectedIds.has(s.id))?.workspace_id;
                   return (
@@ -1324,33 +1326,35 @@ function SessionSidebar({
                   );
                 })()}
               </div>
-              <button
-                onClick={() => {
-                  setBulkActionPending("delete");
-                  void bulkDeleteSessions(Array.from(selectedIds), Array.from(selectedProjectIds)).then(() => {
+              <Tooltip content="Delete selected items" position="bottom">
+                <button
+                  onClick={() => {
+                    setBulkActionPending("delete");
+                    void bulkDeleteSessions(Array.from(selectedIds), Array.from(selectedProjectIds)).then(() => {
+                      resetSelectionState();
+                    }).finally(() => {
+                      setBulkActionPending(null);
+                    });
+                  }}
+                  disabled={selectedCount === 0 || bulkActionPending !== null}
+                  className={`flex items-center gap-1 rounded-md px-2 py-1 text-red-400 transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] disabled:opacity-30`}
+                >
+                  <Trash2 size={12} />
+                  {bulkActionPending === "delete" ? "Deleting..." : "Delete"}
+                </button>
+              </Tooltip>
+              <Tooltip content="Exit selection mode" position="bottom">
+                <button
+                  onClick={() => {
                     resetSelectionState();
-                  }).finally(() => {
-                    setBulkActionPending(null);
-                  });
-                }}
-                disabled={selectedCount === 0 || bulkActionPending !== null}
-                className={`flex items-center gap-1 rounded-md px-2 py-1 text-red-400 transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] disabled:opacity-30`}
-                title="Delete selected items"
-              >
-                <Trash2 size={12} />
-                {bulkActionPending === "delete" ? "Deleting..." : "Delete"}
-              </button>
-              <button
-                onClick={() => {
-                  resetSelectionState();
-                }}
-                disabled={bulkActionPending !== null}
-                className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
-                title="Exit selection mode"
-              >
-                <X size={12} />
-                Cancel
-              </button>
+                  }}
+                  disabled={bulkActionPending !== null}
+                  className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
+                >
+                  <X size={12} />
+                  Cancel
+                </button>
+              </Tooltip>
               <span className={`ml-auto text-[var(--text-muted)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}>
                 {selectedCount} selected
               </span>
@@ -1398,28 +1402,30 @@ function SessionSidebar({
               placeholder="Folder name…"
               className={`flex-1 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded px-1.5 py-0.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] disabled:cursor-wait disabled:opacity-70 ${isSplitPane ? "text-xs" : "text-[11px]"}`}
             />
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => void handleCreateFolder(folderInputRef.current?.value)}
-              disabled={creatingFolderPending}
-              className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors disabled:cursor-wait disabled:opacity-50"
-              title="Create folder"
-            >
-              {creatingFolderPending ? (
-                <Loader2 size={isSplitPane ? 13 : 12} className="animate-spin" />
-              ) : (
-                <Check size={isSplitPane ? 13 : 12} />
-              )}
-            </button>
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={cancelCreateFolder}
-              disabled={creatingFolderPending}
-              className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-              title="Cancel folder creation"
-            >
-              <X size={isSplitPane ? 13 : 12} />
-            </button>
+            <Tooltip content="Create folder" position="top">
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void handleCreateFolder(folderInputRef.current?.value)}
+                disabled={creatingFolderPending}
+                className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors disabled:cursor-wait disabled:opacity-50"
+              >
+                {creatingFolderPending ? (
+                  <Loader2 size={isSplitPane ? 13 : 12} className="animate-spin" />
+                ) : (
+                  <Check size={isSplitPane ? 13 : 12} />
+                )}
+              </button>
+            </Tooltip>
+            <Tooltip content="Cancel folder creation" position="top">
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={cancelCreateFolder}
+                disabled={creatingFolderPending}
+                className="p-1 rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <X size={isSplitPane ? 13 : 12} />
+              </button>
+            </Tooltip>
           </div>
         )}
 
@@ -4991,44 +4997,47 @@ export default function ChatView() {
                               </div>
 
                               {/* Queue button icon-only */}
-                              <button
-                                onClick={() => setThoughtPanelOpen((v) => !v)}
-                                title="Thought Queue — schedule follow-up questions to process in background"
-                                className={`relative ${composerIconOnlyButtonClass} ${thoughtPanelOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
-                              >
-                                <Inbox size={13} />
-                                {(() => {
-                                  const pending = thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length;
-                                  return pending > 0 ? (
-                                    <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
-                                      {pending > 9 ? "9+" : pending}
-                                    </span>
-                                  ) : null;
-                                })()}
-                              </button>
+                              <Tooltip content="Thought Queue — schedule follow-up questions to process in background" position="top">
+                                <button
+                                  onClick={() => setThoughtPanelOpen((v) => !v)}
+                                  className={`relative ${composerIconOnlyButtonClass} ${thoughtPanelOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
+                                >
+                                  <Inbox size={13} />
+                                  {(() => {
+                                    const pending = thoughts.filter((t) => t.status === "scheduled" || t.status === "processing").length;
+                                    return pending > 0 ? (
+                                      <span className="absolute -top-1 -right-1 text-[9px] bg-[var(--accent-color)] text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                                        {pending > 9 ? "9+" : pending}
+                                      </span>
+                                    ) : null;
+                                  })()}
+                                </button>
+                              </Tooltip>
 
-                              <button
-                                type="button"
-                                onClick={() => { void polishComposerPrompt(); }}
-                                disabled={!input.trim() || isStreaming || isPolishingPrompt || !(draftModel || selectedModel || preferredModel)}
-                                title={isPolishingPrompt ? "Polishing prompt…" : "Polish prompt with a smaller model"}
-                                aria-label={isPolishingPrompt ? "Polishing prompt" : "Polish prompt"}
-                                className={`${composerIconOnlyButtonClass} ${isPolishingPrompt ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
-                              >
-                                {isPolishingPrompt ? <Loader2 size={13} className="animate-spin" /> : <Pencil size={13} />}
-                              </button>
-
-                              {polishUndoInput !== null && (
+                              <Tooltip content={isPolishingPrompt ? "Polishing prompt…" : "Polish prompt with a smaller model"} position="top">
                                 <button
                                   type="button"
-                                  onClick={undoPolishedPrompt}
-                                  disabled={isStreaming || isPolishingPrompt}
-                                  title="Undo prompt polish"
-                                  aria-label="Undo prompt polish"
-                                  className={composerIconOnlyButtonClass}
+                                  onClick={() => { void polishComposerPrompt(); }}
+                                  disabled={!input.trim() || isStreaming || isPolishingPrompt || !(draftModel || selectedModel || preferredModel)}
+                                  aria-label={isPolishingPrompt ? "Polishing prompt" : "Polish prompt"}
+                                  className={`${composerIconOnlyButtonClass} ${isPolishingPrompt ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
                                 >
-                                  <ArrowLeft size={13} />
+                                  {isPolishingPrompt ? <Loader2 size={13} className="animate-spin" /> : <Pencil size={13} />}
                                 </button>
+                              </Tooltip>
+
+                              {polishUndoInput !== null && (
+                                <Tooltip content="Undo prompt polish" position="top">
+                                  <button
+                                    type="button"
+                                    onClick={undoPolishedPrompt}
+                                    disabled={isStreaming || isPolishingPrompt}
+                                    aria-label="Undo prompt polish"
+                                    className={composerIconOnlyButtonClass}
+                                  >
+                                    <ArrowLeft size={13} />
+                                  </button>
+                                </Tooltip>
                               )}
                             </div>
 
@@ -5066,30 +5075,31 @@ export default function ChatView() {
                                   }}
                                 />
                                 {isStreaming ? (
-                                  <button
-                                    onClick={() => {
-                                      if (activeChatId) {
-                                        setIsStreaming(false);
-                                        api.ollama.stopStream(activeChatId).catch(() => { });
-                                        api.llamacpp.stopStream(activeChatId).catch(() => { });
-                                        api.webAI.stopStream(activeChatId).catch(() => { });
-                                        if (lastUserMessage) {
-                                          setInput(lastUserMessage);
-                                          requestAnimationFrame(() => {
-                                            if (inputRef.current) {
-                                              inputRef.current.style.height = "auto";
-                                              inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 160) + "px";
-                                              inputRef.current.focus();
-                                            }
-                                          });
+                                  <Tooltip content="Stop generation" position="top">
+                                    <button
+                                      onClick={() => {
+                                        if (activeChatId) {
+                                          setIsStreaming(false);
+                                          api.ollama.stopStream(activeChatId).catch(() => { });
+                                          api.llamacpp.stopStream(activeChatId).catch(() => { });
+                                          api.webAI.stopStream(activeChatId).catch(() => { });
+                                          if (lastUserMessage) {
+                                            setInput(lastUserMessage);
+                                            requestAnimationFrame(() => {
+                                              if (inputRef.current) {
+                                                inputRef.current.style.height = "auto";
+                                                inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 160) + "px";
+                                                inputRef.current.focus();
+                                              }
+                                            });
+                                          }
                                         }
-                                      }
-                                    }}
-                                    className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-red-400/30 bg-red-500/90 text-white transition-opacity hover:opacity-90"
-                                    title="Stop generation"
-                                  >
-                                    <X size={16} />
-                                  </button>
+                                      }}
+                                      className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-red-400/30 bg-red-500/90 text-white transition-opacity hover:opacity-90"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </Tooltip>
                                 ) : (
                                   <div className="mb-1 mr-0.5 flex items-center gap-2">
                                     {/* ── Family send buttons (family mode) ── */}
@@ -5129,17 +5139,18 @@ export default function ChatView() {
                                     {composerMode === "normal" && (
                                     <div className="relative flex flex-shrink-0 items-center" data-send-model-menu>
                                       <div className={`flex overflow-hidden rounded-2xl shadow-[0_4px_14px_0_rgba(var(--accent-color-rgb),0.39)] transition-all duration-200 hover:shadow-[0_6px_20px_rgba(var(--accent-color-rgb),0.43)] ${(!input.trim() || !selectedModel) ? "opacity-40" : ""}`}>
-                                        <button
-                                          onClick={async () => {
-                                            setIsModelSendMenuOpen(false);
-                                            await sendMessage();
-                                          }}
-                                          disabled={!input.trim() || !selectedModel}
-                                          className="flex h-10 w-10 items-center justify-center bg-[var(--accent-color)] text-white transition-all duration-200 hover:-translate-y-px hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:brightness-100"
-                                          title={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"}
-                                        >
-                                          <ArrowUpCircle size={19} strokeWidth={2.2} />
-                                        </button>
+                                        <Tooltip content={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"} position="top">
+                                          <button
+                                            onClick={async () => {
+                                              setIsModelSendMenuOpen(false);
+                                              await sendMessage();
+                                            }}
+                                            disabled={!input.trim() || !selectedModel}
+                                            className="flex h-10 w-10 items-center justify-center bg-[var(--accent-color)] text-white transition-all duration-200 hover:-translate-y-px hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:brightness-100"
+                                          >
+                                            <ArrowUpCircle size={19} strokeWidth={2.2} />
+                                          </button>
+                                        </Tooltip>
                                         {alternateSendModels.length > 0 && (
                                           <Tooltip content="Send with a different model" position="top">
                                             <button
@@ -5172,19 +5183,20 @@ export default function ChatView() {
                                                 </div>
                                               )}
                                               {group.modelIds.map((modelId) => (
-                                                <button
-                                                  key={modelId}
-                                                  type="button"
-                                                  onClick={async () => {
-                                                    setIsModelSendMenuOpen(false);
-                                                    await sendMessageWithModel(modelId);
-                                                  }}
-                                                  disabled={!input.trim() || isStreaming}
-                                                  title={`Send with ${modelPickerLabel(modelId)}`}
-                                                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-                                                >
-                                                  <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
-                                                </button>
+                                                <Tooltip key={modelId} content={`Send with ${modelPickerLabel(modelId)}`}>
+                                                  <button
+                                                    key={modelId}
+                                                    type="button"
+                                                    onClick={async () => {
+                                                      setIsModelSendMenuOpen(false);
+                                                      await sendMessageWithModel(modelId);
+                                                    }}
+                                                    disabled={!input.trim() || isStreaming}
+                                                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                                                  >
+                                                    <div className="min-w-0 truncate">{modelDisplayName(modelId)}</div>
+                                                  </button>
+                                                </Tooltip>
                                               ))}
                                             </div>
                                           ))}
@@ -5205,15 +5217,16 @@ export default function ChatView() {
                                 >
                                   <FileText size={11} />
                                   <span className="max-w-44 truncate">{source.title}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setAttachedSources((prev) => prev.filter((item) => item.id !== source.id))}
-                                    className="rounded-full text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
-                                    title={`Remove ${source.title}`}
-                                    aria-label={`Remove ${source.title}`}
-                                  >
-                                    <X size={11} />
-                                  </button>
+                                  <Tooltip content={`Remove ${source.title}`}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setAttachedSources((prev) => prev.filter((item) => item.id !== source.id))}
+                                      className="rounded-full text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                                      aria-label={`Remove ${source.title}`}
+                                    >
+                                      <X size={11} />
+                                    </button>
+                                  </Tooltip>
                                 </span>
                               ))}
                             </div>
@@ -5295,76 +5308,80 @@ export default function ChatView() {
 
                       <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-color)] px-1 pt-0.5">
                         <div className="relative max-w-[220px]">
-                          <select
-                            value={compareModelA}
-                            onChange={(e) => {
-                              setCompareModelA(e.target.value);
-                              saveCompareA(e.target.value);
-                              persistSetting("compare_model_a", e.target.value);
-                            }}
-                            className={`${composerSelectClassName} max-w-[220px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
-                            title="Compare model A"
-                          >
-                            {compareModels.length > 0
-                              ? compareModels.map((m) => <option key={m.name} value={m.name}>A: {modelDisplayName(m.name)}</option>)
-                              : <option value={compareModelA}>{compareModelA ? `A: ${modelDisplayName(compareModelA)}` : "Model A"}</option>
-                            }
-                          </select>
+                          <Tooltip content="Compare model A" position="top">
+                            <select
+                              value={compareModelA}
+                              onChange={(e) => {
+                                setCompareModelA(e.target.value);
+                                saveCompareA(e.target.value);
+                                persistSetting("compare_model_a", e.target.value);
+                              }}
+                              className={`${composerSelectClassName} max-w-[220px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
+                            >
+                              {compareModels.length > 0
+                                ? compareModels.map((m) => <option key={m.name} value={m.name}>A: {modelDisplayName(m.name)}</option>)
+                                : <option value={compareModelA}>{compareModelA ? `A: ${modelDisplayName(compareModelA)}` : "Model A"}</option>
+                              }
+                            </select>
+                          </Tooltip>
                           <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                         </div>
 
                         <div className="relative max-w-[220px]">
-                          <select
-                            value={compareModelB}
-                            onChange={(e) => {
-                              setCompareModelB(e.target.value);
-                              saveCompareB(e.target.value);
-                              persistSetting("compare_model_b", e.target.value);
-                            }}
-                            className={`${composerSelectClassName} max-w-[220px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
-                            title="Compare model B"
-                          >
-                            {compareModels.length > 0
-                              ? compareModels.map((m) => <option key={m.name} value={m.name}>B: {modelDisplayName(m.name)}</option>)
-                              : <option value={compareModelB}>{compareModelB ? `B: ${modelDisplayName(compareModelB)}` : "Model B"}</option>
-                            }
-                          </select>
+                          <Tooltip content="Compare model B" position="top">
+                            <select
+                              value={compareModelB}
+                              onChange={(e) => {
+                                setCompareModelB(e.target.value);
+                                saveCompareB(e.target.value);
+                                persistSetting("compare_model_b", e.target.value);
+                              }}
+                              className={`${composerSelectClassName} max-w-[220px] bg-[var(--bg-primary)] text-[var(--text-primary)]`}
+                            >
+                              {compareModels.length > 0
+                                ? compareModels.map((m) => <option key={m.name} value={m.name}>B: {modelDisplayName(m.name)}</option>)
+                                : <option value={compareModelB}>{compareModelB ? `B: ${modelDisplayName(compareModelB)}` : "Model B"}</option>
+                              }
+                            </select>
+                          </Tooltip>
                           <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                         </div>
 
-                        <button
-                          onClick={() => setActiveSubView("chat")}
-                          title="Close model comparison"
-                          className={`${composerToggleBaseClass} ${composerToggleActiveClass}`}
-                        >
-                          <SplitSquareHorizontal size={13} />
-                          <span>Compare</span>
-                        </button>
+                        <Tooltip content="Close model comparison" position="top">
+                          <button
+                            onClick={() => setActiveSubView("chat")}
+                            className={`${composerToggleBaseClass} ${composerToggleActiveClass}`}
+                          >
+                            <SplitSquareHorizontal size={13} />
+                            <span>Compare</span>
+                          </button>
+                        </Tooltip>
 
-                        <button
-                          onClick={async () => {
-                            try {
-                              const [ollamaList, managedModels] = await Promise.all([
-                                api.ollama.listModelsFresh(ollamaUrl || undefined),
-                                api.aiModel.list()
-                              ]);
-                              const disabledManagedIds = managedModels.filter(m => !m.enabled).map(m => m.model_id);
+                        <Tooltip content="Refresh models" position="top">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const [ollamaList, managedModels] = await Promise.all([
+                                  api.ollama.listModelsFresh(ollamaUrl || undefined),
+                                  api.aiModel.list()
+                                ]);
+                                const disabledManagedIds = managedModels.filter(m => !m.enabled).map(m => m.model_id);
 
-                              const filtered = ollamaList
-                                .filter((m) => !m.name.toLowerCase().includes("embed"))
-                                .filter((m) => !disabledManagedIds.includes(m.name));
+                                const filtered = ollamaList
+                                  .filter((m) => !m.name.toLowerCase().includes("embed"))
+                                  .filter((m) => !disabledManagedIds.includes(m.name));
 
-                              setCompareModels(filtered);
-                            } catch (e) {
-                              console.error("Failed to refresh models in comparison view:", e);
-                            }
-                          }}
-                          title="Refresh models"
-                          className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
-                        >
-                          <RefreshCw size={13} />
-                          <span>Refresh</span>
-                        </button>
+                                setCompareModels(filtered);
+                              } catch (e) {
+                                console.error("Failed to refresh models in comparison view:", e);
+                              }
+                            }}
+                            className={`${composerToggleBaseClass} ${composerToggleInactiveClass}`}
+                          >
+                            <RefreshCw size={13} />
+                            <span>Refresh</span>
+                          </button>
+                        </Tooltip>
                       </div>
                     </div>
                   </div>
@@ -5444,18 +5461,22 @@ export default function ChatView() {
                         <p className="text-[var(--text-primary)] leading-snug line-clamp-3 whitespace-pre-wrap">{t.content}</p>
                         <div className="flex items-center gap-1 mt-1.5">
                           {(t.status === "pending" || t.status === "scheduled") && (
-                            <button onClick={() => processDueThought({ ...t, status: "scheduled" })} title="Process now" className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors">
-                              <Zap size={11} />
-                            </button>
+                            <Tooltip content="Process now">
+                              <button onClick={() => processDueThought({ ...t, status: "scheduled" })} className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors">
+                                <Zap size={11} />
+                              </button>
+                            </Tooltip>
                           )}
                           {t.result && (
                             <button onClick={() => setThoughtExpandedId(thoughtExpandedId === t.id ? null : t.id)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
                               {thoughtExpandedId === t.id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                             </button>
                           )}
-                          <button onClick={async () => { await api.thoughtQueue.delete(t.id).catch(() => { }); setThoughts((prev) => prev.filter((x) => x.id !== t.id)); }} className="ml-auto text-[var(--text-muted)] hover:text-red-400 transition-colors">
-                            <Trash2 size={11} />
-                          </button>
+                          <Tooltip content="Delete">
+                            <button onClick={async () => { await api.thoughtQueue.delete(t.id).catch(() => { }); setThoughts((prev) => prev.filter((x) => x.id !== t.id)); }} className="ml-auto text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                              <Trash2 size={11} />
+                            </button>
+                          </Tooltip>
                         </div>
                       </div>
                       {thoughtExpandedId === t.id && t.result && (
