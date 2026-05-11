@@ -1177,7 +1177,7 @@ function WorkspaceTabBar({
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
           >
-            <ExternalLink size={11} /> Open workspace
+            <ExternalLink size={11} /> Open {contextMenu.workspace.parent_workspace_id ? "sub-workspace" : "workspace"}
           </button>
           <button
             onClick={() => {
@@ -1185,7 +1185,7 @@ function WorkspaceTabBar({
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
           >
-            <Pencil size={11} /> Rename workspace
+            <Pencil size={11} /> Rename {contextMenu.workspace.parent_workspace_id ? "sub-workspace" : "workspace"}
           </button>
           <button
             onClick={() => {
@@ -1203,13 +1203,13 @@ function WorkspaceTabBar({
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
           >
-            <Trash2 size={11} /> Delete workspace
+            <Trash2 size={11} /> Delete {contextMenu.workspace.parent_workspace_id ? "sub-workspace" : "workspace"}
           </button>
         </div>
       )}
       {dialogState && (
         <ConfirmDialog
-          title={dialogState.kind === "delete" ? "Confirm Deletion" : "Cannot Delete Workspace"}
+          title={dialogState.kind === "delete" ? (dialogState.workspace.parent_workspace_id ? "Confirm Sub-workspace Deletion" : "Confirm Deletion") : "Cannot Delete Workspace"}
           description={
             dialogState.kind === "delete"
               ? `Delete "${dialogState.workspace.name}" and all its projects, notes, and data? This cannot be undone.`
@@ -1243,10 +1243,10 @@ function WorkspaceTabBar({
       )}
       {promptDialog && (
         <PromptDialog
-          title={promptDialog.kind === "create-sub" ? "New Sub-workspace" : "Rename Workspace"}
+          title={promptDialog.kind === "create-sub" ? "New Sub-workspace" : (promptDialog.workspace?.parent_workspace_id ? "Rename Sub-workspace" : "Rename Workspace")}
           description={promptDialog.kind === "create-sub" ? "Enter a name for the new sub-workspace." : undefined}
           defaultValue={promptDialog.kind === "rename" && promptDialog.workspace ? promptDialog.workspace.name : ""}
-          placeholder={promptDialog.kind === "create-sub" ? "Sub-workspace name" : "Workspace name"}
+          placeholder={promptDialog.kind === "create-sub" || promptDialog.workspace?.parent_workspace_id ? "Sub-workspace name" : "Workspace name"}
           confirmLabel={promptDialog.kind === "create-sub" ? "Create" : "Rename"}
           onCancel={() => setPromptDialog(null)}
           onConfirm={(value) => {

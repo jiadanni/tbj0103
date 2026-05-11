@@ -28,7 +28,9 @@ function barColor(percent: number): string {
   if (percent >= 85) {
     return "bg-amber-400/70";
   }
-  return "bg-[var(--accent-color)]/60";
+  // FIX: bg-[var(...)]/60 is invalid for hex/rgba variables in standard CSS.
+  // We use the RGB components provided in globals.css for reliable opacity.
+  return "bg-[rgba(var(--accent-color-rgb),0.6)]";
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -38,7 +40,10 @@ function MiniBar({ percent, label, sublabel }: { percent: number; label: string;
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">{label}:</span>
-      <div className="relative h-1.5 w-16 rounded-full overflow-hidden bg-[var(--border-color)]/60">
+      {/* Track background using color-mix for safe opacity on theme variables */}
+      <div 
+        className="relative h-1.5 w-16 rounded-full overflow-hidden bg-[color-mix(in_srgb,var(--border-color),transparent_50%)]"
+      >
         <div
           className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ${barColor(percent)}`}
           style={{ width: `${percent}%` }}
@@ -75,7 +80,8 @@ function CoreBars({ cores, aggregate }: { cores: number[]; aggregate: number }) 
               className={`rounded-[1px] transition-all duration-700 ${barColor(Math.round(v))}`}
               style={{
                 width: `${barW}px`,
-                height: `${Math.max(2, Math.round((v / 100) * 14))}px`,
+                // Increased minimum height to 3px to ensure visibility even at < 1% usage
+                height: `${Math.max(3, Math.round((v / 100) * 14))}px`,
               }}
             />
           ))}

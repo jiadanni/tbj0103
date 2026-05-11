@@ -84,7 +84,6 @@ export const Tooltip: React.FC<TooltipProps> = ({
 
   // Clone the child to inject mouse events and ref
   const clonedChild = React.cloneElement(children, {
-    // @ts-expect-error - ref is not on the base element type but injected by cloneElement
     ref: (node: HTMLElement) => {
       // @ts-expect-error - targetRef.current mutation
       targetRef.current = node;
@@ -92,9 +91,9 @@ export const Tooltip: React.FC<TooltipProps> = ({
       const { ref } = children as React.ReactElement & { ref: React.Ref<HTMLElement> };
       if (typeof ref === "function") {
         ref(node);
-      } else if (ref) {
+      } else if (ref && 'current' in ref) {
         // eslint-disable-next-line react-hooks/immutability
-        ref.current = node;
+        (ref as React.MutableRefObject<HTMLElement | null>).current = node;
       }
     },
     onMouseEnter: (e: React.MouseEvent) => {
@@ -104,10 +103,6 @@ export const Tooltip: React.FC<TooltipProps> = ({
     onMouseLeave: (e: React.MouseEvent) => {
       children.props.onMouseLeave?.(e);
       hideTooltip();
-    },
-    onMouseDown: (e: React.MouseEvent) => {
-      children.props.onMouseDown?.(e);
-      hideTooltip(); // Hide immediately on click
     },
     onFocus: (e: React.FocusEvent) => {
       children.props.onFocus?.(e);
