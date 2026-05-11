@@ -375,6 +375,7 @@ pub fn generate_heuristic(text: &str) -> TopicSignature {
         generated_at: Some(chrono::Utc::now().to_rfc3339()),
         message_count_at_gen: None,
         ollama_enriched: false,
+        suggested_prompts: Vec::new(),
     }
 }
 

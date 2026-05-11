@@ -16,6 +16,8 @@ pub struct TopicSignature {
     pub generated_at: Option<String>,
     pub message_count_at_gen: Option<u64>,
     pub ollama_enriched: bool,
+    #[serde(default)]
+    pub suggested_prompts: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

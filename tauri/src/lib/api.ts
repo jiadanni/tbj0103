@@ -115,6 +115,7 @@ export interface TopicSignature {
   generated_at: string | null;
   message_count_at_gen: number | null;
   ollama_enriched: boolean;
+  suggested_prompts?: string[];
 }
 
 export interface WorkspaceSuggestion {
@@ -644,6 +645,7 @@ export const api = {
     delete: (id: string) => invoke<void>("delete_workspace", { id }),
     updateIcon: (id: string, icon: string) => invoke<void>("update_workspace_icon", { id, icon }),
     recommendIcon: (workspaceName: string, workspaceDescription: string) => invoke<string>("recommend_workspace_icon", { workspaceName, workspaceDescription }),
+    generateWorkspacePrompts: (workspaceId: string, workspaceName: string, surveyData?: string | null) => invoke<string[]>("generate_workspace_prompts", { workspaceId, workspaceName, surveyData }),
     hide: (id: string) => invoke<void>("hide_workspace", { id }),
     unhide: (id: string) => invoke<void>("unhide_workspace", { id }),
     reorder: (ids: string[]) => invoke<void>("reorder_workspaces", { ids }),

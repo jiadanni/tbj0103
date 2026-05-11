@@ -3076,6 +3076,43 @@ export default function ChatView() {
     };
   }, [effectiveWorkspaceId, setWorkspaceTopicSignature]);
 
+  // Generate AI workspace prompts if needed
+  useEffect(() => {
+    if (!effectiveWorkspaceId) { return; }
+    if (activeChatMessages.length > 0) { return; } // Only when no messages (new chat)
+    
+    // We only want to generate prompts once per workspace
+    if (activeTopicSignature?.suggested_prompts && activeTopicSignature.suggested_prompts.length > 0) {
+      return; 
+    }
+
+    // Only run if we actually have the topic signature loaded from the backend (not just null from initial render)
+    if (activeTopicSignature === undefined) { return; }
+
+    const currentWorkspace = useWorkspaceStore.getState().workspaces.find(w => w.id === effectiveWorkspaceId);
+    if (!currentWorkspace) { return; }
+
+    let cancelled = false;
+    api.workspace.generateWorkspacePrompts(effectiveWorkspaceId, currentWorkspace.name, currentWorkspace.survey_data)
+      .then((prompts) => {
+        if (!cancelled && prompts.length > 0) {
+          // Refresh the topic signature from the backend
+          api.topicSignature.get(effectiveWorkspaceId)
+            .then(sig => {
+              if (!cancelled) { setWorkspaceTopicSignature(effectiveWorkspaceId, sig); }
+            })
+            .catch(() => {});
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to generate workspace prompts:", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveWorkspaceId, activeChatMessages.length, activeTopicSignature?.suggested_prompts?.length, setWorkspaceTopicSignature, activeTopicSignature]);
+
   // Activate session from URL
   useEffect(() => {
     if (routeSessionId) {

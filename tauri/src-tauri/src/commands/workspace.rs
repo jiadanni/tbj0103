@@ -242,6 +242,90 @@ fn fallback_icon_recommendation(workspace_name: &str, workspace_description: &st
     "folder".to_string()
 }
 
+#[tauri::command]
+pub async fn generate_workspace_prompts(
+    state: State<'_, DbState>,
+    workspace_id: String,
+    workspace_name: String,
+    survey_data: Option<String>,
+) -> Result<Vec<String>, String> {
+    use crate::ollama::client::{OllamaClient, OllamaMessage, RequestContext};
+    use crate::services::model_settings::{get_configured_background_model, get_ollama_base_url};
+    use crate::models::workspace::TopicSignature;
+    use std::time::Duration;
+
+    let (model, ollama_url) = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        (
+            get_configured_background_model(&conn).unwrap_or_else(|| "mistral".to_string()),
+            get_ollama_base_url(&conn).unwrap_or_else(|| "http://localhost:11434".to_string()),
+        )
+    };
+
+    let client = OllamaClient::new(Some(ollama_url))?;
+    
+    let mut prompt = format!(
+        "Generate 4 short, natural starting questions a user might ask an AI about the topic '{}'. ",
+        workspace_name
+    );
+    if let Some(survey) = survey_data {
+        prompt.push_str(&format!("Here is some context about the user's goals: {}. ", survey));
+    }
+    prompt.push_str("Return ONLY a JSON array of strings containing the questions. Do not include markdown formatting or explanations.");
+
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+
+    let ctx = RequestContext {
+        source: Some("workspace_prompts"),
+        timeout_override: Some(Duration::from_secs(15)),
+        ..Default::default()
+    };
+
+    let response = client.send_message_with_options_observed(&model, messages, Some("0s"), &ctx).await?;
+    
+    // Extract JSON array
+    let json_str = if let (Some(start), Some(end)) = (response.find('['), response.rfind(']')) {
+        if end > start {
+            &response[start..=end]
+        } else {
+            &response
+        }
+    } else {
+        &response
+    };
+
+    let prompts: Vec<String> = serde_json::from_str(json_str).map_err(|_| "Failed to parse AI response".to_string())?;
+    let prompts: Vec<String> = prompts.into_iter().take(4).collect();
+
+    // Save to database
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    
+    let existing_json: String = conn
+        .query_row(
+            "SELECT topic_signature FROM workspaces WHERE id = ?1",
+            rusqlite::params![workspace_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    
+    let mut sig: TopicSignature = serde_json::from_str(&existing_json).unwrap_or_default();
+    sig.suggested_prompts = prompts.clone();
+    
+    let now = chrono::Utc::now().to_rfc3339();
+    let sig_json = serde_json::to_string(&sig).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE workspaces SET topic_signature = ?1, signature_updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![sig_json, now, workspace_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(prompts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
