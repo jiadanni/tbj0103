@@ -120,9 +120,9 @@ pub fn check_workspace_match(
             [],
             |row| row.get(0),
         )
-        .unwrap_or_else(|_| "0.3".to_string());
+        .unwrap_or_else(|_| "0.5".to_string());
 
-    let threshold = threshold_str.parse::<f64>().unwrap_or(0.3);
+    let threshold = threshold_str.parse::<f64>().unwrap_or(0.5);
 
     if score >= threshold {
         Ok(WorkspaceMatchResult {

@@ -58,6 +58,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v44_ai_models_context_size",
     "v45_workspaces_survey_data",
     "v46_fix_workspace_last_message_at_trigger",
+    "v47_raise_migration_threshold",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1145,6 +1146,23 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
 
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v46_fix_workspace_last_message_at_trigger');")?;
+    }
+
+    // v47: raise migration suggestion threshold from 0.3 to 0.5
+    // The old value was too sensitive — messages on new sub-topics within the
+    // same workspace's domain would score below 0.3 and trigger false suggestions.
+    let applied_v47: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v47_raise_migration_threshold'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v47 == 0 {
+        // Only update if the user still has the original default
+        let _ = conn.execute(
+            "UPDATE settings SET value = '0.5' WHERE key = 'migration_suggestion_threshold' AND value = '0.3'",
+            [],
+        );
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v47_raise_migration_threshold');")?;
     }
 
     Ok(())
