@@ -51,6 +51,13 @@ fn capability_cache() -> &'static Mutex<CapabilityCache> {
     })
 }
 
+// Global lock to deduplicate concurrent requests for list_models when the cache expires.
+static FETCH_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
+fn fetch_lock() -> &'static tokio::sync::Mutex<()> {
+    FETCH_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
 // Shared HTTP client — reqwest::Client is internally Arc'd and manages a
 // connection pool, so reusing one instance across all OllamaClient instances
 // avoids redundant TCP/TLS handshakes.
@@ -1218,6 +1225,22 @@ impl OllamaClient {
         ctx: &RequestContext,
     ) -> Result<Vec<ModelInfo>, String> {
         // Check cache first (hold the lock only briefly).
+        {
+            let guard = model_cache()
+                .lock()
+                .map_err(|e| format!("model cache lock poisoned: {e}"))?;
+            if let Some(cached) = guard.as_ref() {
+                if cached.url == self.base_url && cached.fetched_at.elapsed() < MODEL_CACHE_TTL {
+                    self.log_cache_event("/api/tags", ctx, "hit");
+                    return Ok(cached.models.clone());
+                }
+            }
+        }
+
+        // Acquire deduplication lock to prevent concurrent fetches when the cache expires.
+        let _dedup_guard = fetch_lock().lock().await;
+
+        // Double-check cache in case another request just populated it while we were waiting.
         {
             let guard = model_cache()
                 .lock()
