@@ -116,6 +116,23 @@ export function mergeComposerInput(currentInput: string, prompt: string) {
 }
 
 export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext): ComposerSuggestionRow | null {
+  // If we have AI-generated starter prompts, use them directly
+  if (context.topicSignature?.suggested_prompts && context.topicSignature.suggested_prompts.length > 0) {
+    return {
+      id: "workspace",
+      label: "Workspace",
+      collapsible: true,
+      defaultExpanded: true,
+      suggestions: context.topicSignature.suggested_prompts.map((prompt, index) => ({
+        id: `workspace-ai-${index}`,
+        label: prompt,
+        prompt: prompt,
+        action: "append",
+      })),
+    };
+  }
+
+  // Fallback to legacy string-interpolation if no AI prompts are available yet
   const topicTerms = context.topicSignature?.domain_tags
     .slice(0, 4)
     .map((tag) => tag.tag) ?? [];
