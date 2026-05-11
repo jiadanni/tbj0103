@@ -139,16 +139,26 @@ pub fn reorder_workspaces<R: Runtime>(
 
 #[tauri::command]
 pub async fn recommend_workspace_icon(
+    state: State<'_, DbState>,
     workspace_name: String,
     workspace_description: String,
 ) -> Result<String, String> {
     use tokio::time::timeout;
     use std::time::Duration;
+    use crate::services::model_settings::{get_configured_background_model, get_ollama_base_url};
+
+    let (model, ollama_url) = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        (
+            get_configured_background_model(&conn).ok_or_else(|| "No background model configured".to_string())?,
+            get_ollama_base_url(&conn).unwrap_or_else(|| "http://localhost:11434".to_string()),
+        )
+    };
     
     // Try AI recommendation first (2 second timeout)
     let ai_result = timeout(
         Duration::from_secs(2),
-        try_ai_icon_recommendation(&workspace_name, &workspace_description)
+        try_ai_icon_recommendation(&model, &ollama_url, &workspace_name, &workspace_description)
     ).await;
     
     if let Ok(Ok(icon)) = ai_result {
@@ -159,10 +169,10 @@ pub async fn recommend_workspace_icon(
     Ok(fallback_icon_recommendation(&workspace_name, &workspace_description))
 }
 
-async fn try_ai_icon_recommendation(workspace_name: &str, workspace_description: &str) -> Result<String, String> {
+async fn try_ai_icon_recommendation(model: &str, ollama_url: &str, workspace_name: &str, workspace_description: &str) -> Result<String, String> {
     use crate::ollama::client::{OllamaClient, OllamaMessage};
     
-    let client = OllamaClient::new(None)?;
+    let client = OllamaClient::new(Some(ollama_url.to_string()))?;
     let prompt = format!(
         "Workspace: {} - {}. Recommend ONE lucide-react icon name only. Examples: code, brain, palette, book-open, terminal, briefcase. Just the icon name.",
         workspace_name, workspace_description
@@ -173,7 +183,7 @@ async fn try_ai_icon_recommendation(workspace_name: &str, workspace_description:
         content: prompt,
     }];
     
-    let response = client.send_message("workspace_icon", "mistral", messages).await?;
+    let response = client.send_message("workspace_icon", model, messages).await?;
     
     let icon_name = response
         .split_whitespace()
@@ -257,7 +267,7 @@ pub async fn generate_workspace_prompts(
     let (model, ollama_url) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         (
-            get_configured_background_model(&conn).unwrap_or_else(|| "mistral".to_string()),
+            get_configured_background_model(&conn).ok_or_else(|| "No background model configured".to_string())?,
             get_ollama_base_url(&conn).unwrap_or_else(|| "http://localhost:11434".to_string()),
         )
     };
