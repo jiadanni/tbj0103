@@ -8,6 +8,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useBubbleUpFlag } from "../lib/workspacePane";
+import Tooltip from "../components/Tooltip";
 
 interface WebCapture {
   id: string;
@@ -96,14 +97,15 @@ export default function WebCaptureView() {
               className="flex-1 text-xs bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
             />
           </div>
-          <button
-            onClick={() => setAdding(true)}
-            disabled={!activeWorkspaceId}
-            title="Add web capture"
-            className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--accent-color)] disabled:opacity-40"
-          >
-            <Plus size={14} />
-          </button>
+          <Tooltip content="Add web capture" position="top">
+            <button
+              onClick={() => setAdding(true)}
+              disabled={!activeWorkspaceId}
+              className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--accent-color)] disabled:opacity-40"
+            >
+              <Plus size={14} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Add form */}
@@ -192,13 +194,14 @@ export default function WebCaptureView() {
                 <ExternalLink size={10} />
               </a>
             </div>
-            <button
-              onClick={() => deleteCapture(selected.id)}
-              className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10 transition-colors"
-              title="Delete"
-            >
-              <Trash2 size={13} />
-            </button>
+            <Tooltip content="Delete" position="top">
+              <button
+                onClick={() => deleteCapture(selected.id)}
+                className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10 transition-colors"
+              >
+                <Trash2 size={13} />
+              </button>
+            </Tooltip>
           </div>
 
           <div className="flex-1 overflow-y-auto p-5">

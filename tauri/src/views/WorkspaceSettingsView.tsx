@@ -14,6 +14,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import CompactMenuSelect from "../components/CompactMenuSelect";
 import { TopicsSection } from "../components/TopicsSection";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { Tooltip } from "../components/Tooltip";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
 import type { DashboardSummary, TopicSignature } from "../lib/api";
@@ -48,13 +49,14 @@ function WorkspaceSortMenu() {
 
   return (
     <div ref={rootRef} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className={`flex h-8 w-8 items-center justify-center rounded-lg border text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] hover:border-[var(--accent-color)] ${open ? "border-[var(--accent-color)] bg-[var(--bg-hover)]" : "border-[var(--border-color)] bg-[var(--bg-elevated)]"}`}
-        title="Sort order"
-      >
-        <ArrowUpDown size={14} />
-      </button>
+      <Tooltip content="Sort order">
+        <button
+          onClick={() => setOpen(!open)}
+          className={`flex h-8 w-8 items-center justify-center rounded-lg border text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] hover:border-[var(--accent-color)] ${open ? "border-[var(--accent-color)] bg-[var(--bg-hover)]" : "border-[var(--border-color)] bg-[var(--bg-elevated)]"}`}
+        >
+          <ArrowUpDown size={14} />
+        </button>
+      </Tooltip>
       {open && (
         <div className="absolute right-0 top-9 z-50 w-48 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl py-1">
           {options.map((opt) => (
@@ -501,14 +503,15 @@ export default function WorkspaceSettingsView() {
 
                         <div className="flex items-start gap-1 shrink-0" onClick={e => e.stopPropagation()}>
                           {children.length > 0 && (
-                            <button
-                              onClick={() => setExpandedParents((current) => ({ ...current, [ws.id]: !isExpanded }))}
-                              className="mt-0.5 p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
-                              title={isExpanded ? "Collapse child workspaces" : "Expand child workspaces"}
-                              aria-label={`${isExpanded ? "Collapse" : "Expand"} child workspaces for ${ws.name}`}
-                            >
-                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            </button>
+                            <Tooltip content={isExpanded ? "Collapse child workspaces" : "Expand child workspaces"}>
+                              <button
+                                onClick={() => setExpandedParents((current) => ({ ...current, [ws.id]: !isExpanded }))}
+                                className="mt-0.5 p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
+                                aria-label={`${isExpanded ? "Collapse" : "Expand"} child workspaces for ${ws.name}`}
+                              >
+                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              </button>
+                            </Tooltip>
                           )}
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {!isActive && (
@@ -519,27 +522,30 @@ export default function WorkspaceSettingsView() {
                                 Switch
                               </button>
                             )}
-                            <button
-                              onClick={() => openCreateForm(ws.id)}
-                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
-                              title="New child workspace"
-                            >
-                              <Plus size={13} />
-                            </button>
-                            <button
-                              onClick={() => { setEditingId(ws.id); setEditName(ws.name); setEditDescription(ws.description ?? ""); }}
-                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
-                              title="Rename"
-                            >
-                              <Pencil size={13} />
-                            </button>
-                            <button
-                              onClick={() => deleteWorkspace(ws)}
-                              className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
-                              title="Delete workspace"
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                            <Tooltip content="New child workspace">
+                              <button
+                                onClick={() => openCreateForm(ws.id)}
+                                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
+                              >
+                                <Plus size={13} />
+                              </button>
+                            </Tooltip>
+                            <Tooltip content="Rename">
+                              <button
+                                onClick={() => { setEditingId(ws.id); setEditName(ws.name); setEditDescription(ws.description ?? ""); }}
+                                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
+                              >
+                                <Pencil size={13} />
+                              </button>
+                            </Tooltip>
+                            <Tooltip content="Delete workspace">
+                              <button
+                                onClick={() => deleteWorkspace(ws)}
+                                className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </Tooltip>
                           </div>
                         </div>
                       </div>
@@ -612,20 +618,22 @@ export default function WorkspaceSettingsView() {
                                       Switch
                                     </button>
                                   )}
-                                  <button
-                                    onClick={() => { setEditingId(child.id); setEditName(child.name); setEditDescription(child.description ?? ""); }}
-                                    className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
-                                    title="Rename"
-                                  >
-                                    <Pencil size={13} />
-                                  </button>
-                                  <button
-                                    onClick={() => deleteWorkspace(child)}
-                                    className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
-                                    title="Delete workspace"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
+                                  <Tooltip content="Rename">
+                                    <button
+                                      onClick={() => { setEditingId(child.id); setEditName(child.name); setEditDescription(child.description ?? ""); }}
+                                      className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                  </Tooltip>
+                                  <Tooltip content="Delete workspace">
+                                    <button
+                                      onClick={() => deleteWorkspace(child)}
+                                      className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </Tooltip>
                                 </div>
                               </div>
                             </div>

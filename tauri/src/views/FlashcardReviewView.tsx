@@ -9,6 +9,7 @@ import { api, type LearningCard, type ReviewStats } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import CompactMenuSelect from "../components/CompactMenuSelect";
+import { Tooltip } from "../components/Tooltip";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
 import type { AiModel } from "../lib/api";
@@ -165,13 +166,14 @@ export default function FlashcardReviewView() {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)]">
           <h2 className="text-sm font-semibold text-[var(--text-primary)]">Flashcards</h2>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            title="Add card manually"
-          >
-            <Plus size={14} />
-          </button>
+          <Tooltip content="Add card manually">
+            <button
+              onClick={() => setShowCreate(true)}
+              className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            >
+              <Plus size={14} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Generate from topic — primary action */}
@@ -311,25 +313,26 @@ export default function FlashcardReviewView() {
             </div>
 
             {/* Card */}
-            <div
-              className="w-full max-w-lg cursor-pointer"
-              onClick={() => setIsFlipped((f) => !f)}
-              title="Click to flip"
-            >
-              <div className={`relative min-h-[220px] rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-7 flex flex-col justify-center transition-all duration-300 ${isFlipped ? "shadow-lg shadow-[var(--accent-color)]/10" : ""}`}>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-3">
-                  {isFlipped ? "Answer" : "Question \u2014 click to reveal"}
-                </div>
-                <p className="text-base text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
-                  {isFlipped ? currentCard.back : currentCard.front}
-                </p>
-                {!isFlipped && (
-                  <div className="absolute bottom-4 right-4 opacity-30">
-                    <RotateCcw size={16} className="text-[var(--text-muted)]" />
+            <Tooltip content="Click to flip">
+              <div
+                className="w-full max-w-lg cursor-pointer"
+                onClick={() => setIsFlipped((f) => !f)}
+              >
+                <div className={`relative min-h-[220px] rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-7 flex flex-col justify-center transition-all duration-300 ${isFlipped ? "shadow-lg shadow-[var(--accent-color)]/10" : ""}`}>
+                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-3">
+                    {isFlipped ? "Answer" : "Question \u2014 click to reveal"}
                   </div>
-                )}
+                  <p className="text-base text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
+                    {isFlipped ? currentCard.back : currentCard.front}
+                  </p>
+                  {!isFlipped && (
+                    <div className="absolute bottom-4 right-4 opacity-30">
+                      <RotateCcw size={16} className="text-[var(--text-muted)]" />
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            </Tooltip>
 
             {/* Quality buttons (only when flipped) */}
             {isFlipped && (

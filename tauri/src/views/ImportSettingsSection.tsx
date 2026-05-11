@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import PromptDialog from "../components/PromptDialog";
+import { Tooltip } from "../components/Tooltip";
 
 /**
  * If a workspace with the given name already exists, prompt the user
@@ -805,9 +806,11 @@ export default function ImportSettingsSection() {
                         {slot.path ? "Change" : "Choose"}
                       </button>
                       {slot.path && (
-                        <span className="max-w-[260px] truncate text-[11px] text-[var(--text-muted)]" title={slot.path}>
-                          {slot.path.split("/").pop()}
-                        </span>
+                        <Tooltip content={slot.path}>
+                          <span className="max-w-[260px] truncate text-[11px] text-[var(--text-muted)]">
+                            {slot.path.split("/").pop()}
+                          </span>
+                        </Tooltip>
                       )}
                     </div>
                   )}

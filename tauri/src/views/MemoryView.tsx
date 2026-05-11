@@ -3,6 +3,7 @@ import { Brain, Globe, Layers, Pin, PinOff, Plus, Trash2, ToggleLeft, ToggleRigh
 import { api, type Memory } from "../lib/api";
 import { useScopedWorkspace } from "../lib/workspacePane";
 import CompactMenuSelect from "../components/CompactMenuSelect";
+import Tooltip from "../components/Tooltip";
 
 const MEMORY_TYPES: Memory["memory_type"][] = ["fact", "preference", "context"];
 
@@ -267,28 +268,31 @@ export default function MemoryView() {
                     </p>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      onClick={() => updateMemory(memory.id, { is_pinned: !memory.is_pinned })}
-                      className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                      title={memory.is_pinned ? "Unpin memory" : "Pin memory"}
-                    >
-                      {memory.is_pinned ? <PinOff size={14} /> : <Pin size={14} />}
-                    </button>
-                    <button
-                      onClick={() => updateMemory(memory.id, { is_active: !memory.is_active })}
-                      className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                      title={memory.is_active ? "Deactivate memory" : "Activate memory"}
-                    >
-                      {memory.is_active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-                    </button>
-                    <button
-                      onClick={() => deleteMemory(memory.id)}
-                      className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-400"
-                      title="Delete memory"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                   <div className="flex shrink-0 items-center gap-1">
+                    <Tooltip content={memory.is_pinned ? "Unpin memory" : "Pin memory"} position="top">
+                      <button
+                        onClick={() => updateMemory(memory.id, { is_pinned: !memory.is_pinned })}
+                        className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                      >
+                        {memory.is_pinned ? <PinOff size={14} /> : <Pin size={14} />}
+                      </button>
+                    </Tooltip>
+                    <Tooltip content={memory.is_active ? "Deactivate memory" : "Activate memory"} position="top">
+                      <button
+                        onClick={() => updateMemory(memory.id, { is_active: !memory.is_active })}
+                        className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                      >
+                        {memory.is_active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Delete memory" position="top">
+                      <button
+                        onClick={() => deleteMemory(memory.id)}
+                        className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-400"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
               </div>
