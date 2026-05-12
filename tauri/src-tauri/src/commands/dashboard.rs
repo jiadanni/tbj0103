@@ -42,109 +42,40 @@ pub fn get_dashboard_summary(
         .map(|tag| tag.tag.clone())
         .collect::<Vec<_>>();
 
-    let chat_sessions: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*)
-             FROM chat_sessions
-             WHERE workspace_id {ws_cond}
-               AND is_deleted = 0
-               AND is_incognito = 0
-               AND exclude_from_analytics = 0"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let notes: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*) FROM project_notes WHERE workspace_id {ws_cond}"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let sources: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*) FROM sources WHERE workspace_id {ws_cond}"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let concepts: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*) FROM concept_nodes WHERE workspace_id {ws_cond}"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let flashcards: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond}"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let active_goals: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*)
-             FROM learning_goals
-             WHERE workspace_id {ws_cond} AND is_completed = 0"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let completed_goals: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*)
-             FROM learning_goals
-             WHERE workspace_id {ws_cond} AND is_completed = 1"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
+    // ── Batch all simple COUNT / aggregate queries into one statement ──
+    let counts_sql = format!(
+        "{cte}SELECT
+           (SELECT COUNT(*) FROM chat_sessions
+            WHERE workspace_id {ws_cond} AND is_deleted = 0 AND is_incognito = 0 AND exclude_from_analytics = 0),
+           (SELECT COUNT(*) FROM project_notes WHERE workspace_id {ws_cond}),
+           (SELECT COUNT(*) FROM sources WHERE workspace_id {ws_cond}),
+           (SELECT COUNT(*) FROM concept_nodes WHERE workspace_id {ws_cond}),
+           (SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond}),
+           (SELECT COUNT(*) FROM learning_goals WHERE workspace_id {ws_cond} AND is_completed = 0),
+           (SELECT COUNT(*) FROM learning_goals WHERE workspace_id {ws_cond} AND is_completed = 1),
+           (SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond}),
+           (SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond} AND next_review_date <= date('now')),
+           (SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond} AND repetitions > 0),
+           (SELECT COALESCE(AVG(ease_factor), 2.5) FROM learning_cards WHERE workspace_id {ws_cond}),
+           (SELECT COUNT(*) FROM concept_nodes WHERE workspace_id {ws_cond} AND review_count <= 1),
+           (SELECT COUNT(*) FROM learning_goals WHERE workspace_id {ws_cond} AND is_completed = 0 AND substr(updated_at, 1, 10) <= date('now', '-14 days')),
+           (SELECT COUNT(*) FROM sources WHERE workspace_id {ws_cond} AND is_processed = 0),
+           (SELECT COUNT(*) FROM concept_nodes c WHERE c.workspace_id {ws_cond} AND NOT EXISTS (SELECT 1 FROM concept_links l WHERE l.source_id = c.id OR l.target_id = c.id))"
+    );
 
-    let total_cards: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond}"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let due_today: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*)
-             FROM learning_cards
-             WHERE workspace_id {ws_cond}
-               AND next_review_date <= date('now')"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let learned: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*)
-             FROM learning_cards
-             WHERE workspace_id {ws_cond} AND repetitions > 0"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let avg_ease: f64 = conn
-        .query_row(
-            &format!("{cte}SELECT COALESCE(AVG(ease_factor), 2.5)
-             FROM learning_cards
-             WHERE workspace_id {ws_cond}"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let under_reviewed_concepts: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*)
-             FROM concept_nodes
-             WHERE workspace_id {ws_cond}
-               AND review_count <= 1"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
+    let (
+        chat_sessions, notes, sources, concepts, flashcards,
+        active_goals, completed_goals, total_cards, due_today,
+        learned, avg_ease, under_reviewed_concepts,
+        stalled_goals, unprocessed_sources, isolated_concepts,
+    ): (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, f64, i64, i64, i64, i64) = conn
+        .query_row(&counts_sql, params![&workspace_id], |row| {
+            Ok((
+                row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?,
+                row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?,
+                row.get(10)?, row.get(11)?, row.get(12)?, row.get(13)?, row.get(14)?,
+            ))
+        })
         .map_err(|e| e.to_string())?;
 
     let mut weak_concepts_stmt = conn
@@ -233,42 +164,6 @@ pub fn get_dashboard_summary(
         })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    let stalled_goals: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*)
-             FROM learning_goals
-             WHERE workspace_id {ws_cond}
-               AND is_completed = 0
-               AND substr(updated_at, 1, 10) <= date('now', '-14 days')"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let unprocessed_sources: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*)
-             FROM sources
-             WHERE workspace_id {ws_cond}
-               AND is_processed = 0"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let isolated_concepts: i64 = conn
-        .query_row(
-            &format!("{cte}SELECT COUNT(*)
-             FROM concept_nodes c
-             WHERE c.workspace_id {ws_cond}
-               AND NOT EXISTS (
-                   SELECT 1
-                   FROM concept_links l
-                   WHERE l.source_id = c.id OR l.target_id = c.id
-               )"),
-            params![&workspace_id],
-            |row| row.get(0),
-        )
         .map_err(|e| e.to_string())?;
 
     let mut activity_stmt = conn

@@ -85,8 +85,10 @@ export default function Sidebar({
       setTooltip(null);
     }
 
+    // Use { once: true } so the listener auto-removes after the first scroll
+    // event instead of firing on every subsequent scroll pixel.
     window.addEventListener("resize", handleViewportChange);
-    window.addEventListener("scroll", handleViewportChange, true);
+    window.addEventListener("scroll", handleViewportChange, { capture: true, once: true });
 
     return () => {
       window.removeEventListener("resize", handleViewportChange);

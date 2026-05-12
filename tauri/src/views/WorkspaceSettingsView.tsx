@@ -78,15 +78,13 @@ function WorkspaceSortMenu() {
 }
 
 export default function WorkspaceSettingsView() {
-  const {
-    workspaces,
-    activeWorkspaceId,
-    activeParentWorkspaceId,
-    setActiveWorkspaceId,
-    setActiveParentWorkspaceId,
-    addWorkspace,
-    setWorkspaces,
-  } = useWorkspaceStore();
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const activeParentWorkspaceId = useWorkspaceStore((s) => s.activeParentWorkspaceId);
+  const setActiveWorkspaceId = useWorkspaceStore((s) => s.setActiveWorkspaceId);
+  const setActiveParentWorkspaceId = useWorkspaceStore((s) => s.setActiveParentWorkspaceId);
+  const addWorkspace = useWorkspaceStore((s) => s.addWorkspace);
+  const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces);
   const switchWorkspaceSection = useSettingsStore((state) => state.switchWorkspaceSection);
   const navigate = useNavigate();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -159,27 +157,31 @@ export default function WorkspaceSettingsView() {
       setEditPrompt(ws.prompt_instructions || "");
     }
 
+    let cancelled = false;
+
     async function loadStats() {
       if (!selectedId) {return;}
       setLoadingStats(true);
       try {
-        const [summary, memories, topicSig] = await Promise.all([
+        const [summary, topicSig] = await Promise.all([
           api.dashboard.getSummary(selectedId),
-          api.memory.list(selectedId),
           api.topicSignature.get(selectedId).catch(() => null)
         ]);
+        if (cancelled) {return;}
         setStats(summary);
-        setMemoryCount(memories.length);
         setTopicSignaturesByWorkspace(prev => ({ ...prev, [selectedId]: topicSig }));
       } catch (err) {
+        if (cancelled) {return;}
         console.error("Failed to load workspace stats:", err);
       } finally {
-        setLoadingStats(false);
+        if (!cancelled) {setLoadingStats(false);}
       }
     }
 
     loadStats();
-  }, [selectedId, workspaces]);
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   async function savePrompt() {
     if (!selectedId || !selectedWorkspace) {return;}
@@ -805,7 +807,8 @@ export default function WorkspaceSettingsView() {
 
               {/* Workspace Memory Panel */}
               <div className="pt-4">
-                <WorkspaceMemoryPanel workspaceId={selectedId!} />
+                {/* eslint-disable-next-line @typescript-eslint/no-non-null-assertion */}
+                <WorkspaceMemoryPanel workspaceId={selectedId!} onMemoryCountChange={setMemoryCount} />
               </div>
 
               {/* Conversation Prompt Editor */}

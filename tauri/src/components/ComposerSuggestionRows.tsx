@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronUp } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { ComposerSuggestionRow, ComposerSuggestion } from "../lib/composerSuggestions";
 import { Tooltip } from "./Tooltip";
 
@@ -66,7 +66,7 @@ export default function ComposerSuggestionRows({
               className="ml-auto flex h-7 w-7 items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               aria-label="Hide suggestions"
             >
-              <ChevronUp size={13} />
+              <ChevronDown size={13} />
             </button>
           </Tooltip>
         )}
