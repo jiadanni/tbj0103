@@ -100,11 +100,12 @@ pub fn get_related_chats(
         return Ok(vec![]);
     }
 
+    let workspace_ids = vec![req.workspace_id.clone()];
     quick_search_service::query_filtered(
         &conn,
         &fts_query,
         limit,
-        Some(&req.workspace_id),
+        Some(&workspace_ids),
         req.session_id.as_deref(),
         Some(&["conversation".to_string()]),
     )

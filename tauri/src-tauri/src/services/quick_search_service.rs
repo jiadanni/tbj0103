@@ -1,6 +1,8 @@
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
+use crate::services::workspace_hierarchy::descendant_workspace_ids;
+
 pub const QUICK_SEARCH_KIND_FILTERS: [&str; 5] = [
     "conversation",
     "message",
@@ -34,11 +36,13 @@ pub fn query(
     limit: usize,
     workspace_id: Option<&str>,
     kind_filters: Option<&[String]>,
+    include_descendants: bool,
 ) -> Result<Vec<QuickSearchResult>, String> {
     let effective_kind_filters = normalize_kind_filters(kind_filters);
+    let resolved_ids = resolve_workspace_ids(conn, workspace_id, include_descendants)?;
     let trimmed = query.trim();
     if trimmed.is_empty() {
-        return recent_results(conn, limit, workspace_id, effective_kind_filters.as_deref());
+        return recent_results(conn, limit, resolved_ids.as_deref(), effective_kind_filters.as_deref());
     }
 
     let fts_query = build_fts_query(trimmed).ok_or_else(|| "Enter a search query.".to_string())?;
@@ -46,7 +50,7 @@ pub fn query(
         conn,
         &fts_query,
         limit,
-        workspace_id,
+        resolved_ids.as_deref(),
         None,
         effective_kind_filters.as_deref(),
     )
@@ -56,16 +60,25 @@ pub fn query_filtered(
     conn: &Connection,
     fts_query: &str,
     limit: usize,
-    workspace_id: Option<&str>,
+    workspace_ids: Option<&[String]>,
     exclude_session_id: Option<&str>,
     kind_filters: Option<&[String]>,
 ) -> Result<Vec<QuickSearchResult>, String> {
     let mut where_clauses = vec!["quick_search_documents_fts MATCH ?1".to_string()];
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(fts_query.to_string())];
 
-    if let Some(ws_id) = workspace_id {
-        where_clauses.push(format!("d.workspace_id = ?{}", params.len() + 1));
-        params.push(Box::new(ws_id.to_string()));
+    if let Some(ws_ids) = workspace_ids {
+        if ws_ids.len() == 1 {
+            where_clauses.push(format!("d.workspace_id = ?{}", params.len() + 1));
+            params.push(Box::new(ws_ids[0].clone()));
+        } else if !ws_ids.is_empty() {
+            let mut placeholders = Vec::with_capacity(ws_ids.len());
+            for ws_id in ws_ids {
+                placeholders.push(format!("?{}", params.len() + 1));
+                params.push(Box::new(ws_id.clone()));
+            }
+            where_clauses.push(format!("d.workspace_id IN ({})", placeholders.join(", ")));
+        }
     }
 
     if let Some(ex_sid) = exclude_session_id {
@@ -170,10 +183,27 @@ pub fn query_filtered(
         .map_err(|e| e.to_string())
 }
 
+fn resolve_workspace_ids(
+    conn: &Connection,
+    workspace_id: Option<&str>,
+    include_descendants: bool,
+) -> Result<Option<Vec<String>>, String> {
+    let ws_id = match workspace_id {
+        Some(id) => id,
+        None => return Ok(None),
+    };
+    if include_descendants {
+        let ids = descendant_workspace_ids(conn, ws_id)?;
+        Ok(Some(ids))
+    } else {
+        Ok(Some(vec![ws_id.to_string()]))
+    }
+}
+
 fn recent_results(
     conn: &Connection,
     limit: usize,
-    workspace_id: Option<&str>,
+    workspace_ids: Option<&[String]>,
     kind_filters: Option<&[String]>,
 ) -> Result<Vec<QuickSearchResult>, String> {
     if matches!(kind_filters, Some(kinds) if !kinds.iter().any(|kind| kind == "conversation")) {
@@ -210,9 +240,18 @@ fn recent_results(
     );
 
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    if let Some(workspace_id) = workspace_id {
-        sql.push_str(" AND cs.workspace_id = ?1");
-        params.push(Box::new(workspace_id.to_string()));
+    if let Some(ws_ids) = workspace_ids {
+        if ws_ids.len() == 1 {
+            sql.push_str(" AND cs.workspace_id = ?1");
+            params.push(Box::new(ws_ids[0].clone()));
+        } else if !ws_ids.is_empty() {
+            let mut placeholders = Vec::with_capacity(ws_ids.len());
+            for ws_id in ws_ids {
+                placeholders.push(format!("?{}", params.len() + 1));
+                params.push(Box::new(ws_id.clone()));
+            }
+            sql.push_str(&format!(" AND cs.workspace_id IN ({})", placeholders.join(", ")));
+        }
     }
 
     sql.push_str(

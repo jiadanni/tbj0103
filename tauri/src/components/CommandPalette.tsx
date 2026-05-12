@@ -89,6 +89,7 @@ export default function CommandPalette({ workspaceId, onClose }: Props) {
       api.quickSearch.query(trimmed, {
         limit: 5,
         workspaceId: workspaceId || null,
+        includeDescendants,
       })
         .then((results) => {
           // Filter out recent sessions that are already shown in the 'Recent' group
