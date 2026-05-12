@@ -13,7 +13,6 @@ import { useWorkspaceStore, type Project, type Workspace } from "../stores/works
 import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession, Message } from "../stores/chatStore";
 import ComposerSuggestionRows from "../components/ComposerSuggestionRows";
-import { TopicChips } from "../components/TopicChips";
 import { RelatedChatPills } from "../components/RelatedChatPills";
 import { WorkspaceMigrationBanner } from "../components/WorkspaceMigrationBanner";
 import ChatMessageBubble from "../components/ChatMessageBubble";
@@ -233,7 +232,7 @@ function SessionItem({
     <div
       draggable={!selectMode}
       onDragStart={(e) => {
-        e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify([session.id]));
+        e.dataTransfer.setData("text/plain", session.id);
         e.dataTransfer.effectAllowed = "move";
       }}
       onContextMenu={(e) => openContextMenu(e, session)}
@@ -359,6 +358,7 @@ function SessionSidebar({
   const [projectRenamingId, setProjectRenamingId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState("");
   const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
+  const dragSessionIdsRef = useRef<string[] | null>(null);
   const [ctxMoveOpen, setCtxMoveOpen] = useState(false);
   const [ctxFolderMoveOpen, setCtxFolderMoveOpen] = useState(false);
   const [_ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
@@ -532,7 +532,11 @@ function SessionSidebar({
 
   function renderSessionRow(session: ChatSession, depth = 0, showProjectBorder = false) {
     return (
-      <div className={showProjectBorder ? "ml-3 border-l border-[var(--border-color)]/70" : undefined}>
+      <div
+        className={showProjectBorder ? "ml-3 border-l border-[var(--border-color)]/70" : undefined}
+        onDragStart={() => { dragSessionIdsRef.current = [session.id]; }}
+        onDragEnd={() => { dragSessionIdsRef.current = null; setDragOverProjectId(null); }}
+      >
         <div className="pb-[2px]">
           <SessionItem
             session={session}
@@ -685,13 +689,13 @@ function SessionSidebar({
     event.stopPropagation();
     setDragOverProjectId(null);
 
-    const raw = event.dataTransfer.getData("application/x-chat-session-ids");
-    if (!raw) {
+    const sessionIds = dragSessionIdsRef.current;
+    dragSessionIdsRef.current = null;
+    if (!sessionIds || sessionIds.length === 0) {
       return;
     }
 
     try {
-      const sessionIds = JSON.parse(raw) as string[];
       const sessionsToMove = sessionIds.filter((sessionId) => {
         const session = sidebarSessions.find((item) => item.id === sessionId);
         return session && session.project_id !== project.id;
@@ -1478,7 +1482,7 @@ function SessionSidebar({
                       setCtxMenu({ type: "project", x: event.clientX, y: event.clientY, project });
                     }}
                     onDragOver={(event) => {
-                      if (selectMode || !event.dataTransfer.types.includes("application/x-chat-session-ids")) {
+                      if (selectMode || !dragSessionIdsRef.current) {
                         return;
                       }
                       event.preventDefault();
@@ -2087,7 +2091,6 @@ export default function ChatView() {
   const scrollToTopOnSend = useSettingsStore((s) => s.scrollToTopOnSend);
   const chatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
-  const showComposerTopicTags = useSettingsStore((s) => s.showComposerTopicTags);
   const showComposerWorkspaceSuggestions = useSettingsStore((s) => s.showComposerWorkspaceSuggestions);
   const showComposerChatFollowUps = useSettingsStore((s) => s.showComposerChatFollowUps);
   const sidebarWidth = useSettingsStore((state) => state.sidebarWidth);
@@ -2422,7 +2425,7 @@ export default function ChatView() {
     refineUnlistenRef.current = null;
   }, []);
 
-  const clearActiveStreamListeners = useCallback(() => {
+  const _clearActiveStreamListeners = useCallback(() => {
     clearStreamListener();
     clearRefineListener();
   }, [clearRefineListener, clearStreamListener]);
@@ -4415,8 +4418,7 @@ export default function ChatView() {
     showComposerChatFollowUps,
   ]);
   const [isComposerHeaderCollapsed, setIsComposerHeaderCollapsed] = useState(false);
-  const hasComposerHeader =
-    (activeTopicSignature?.domain_tags.length ?? 0) > 0 || composerSuggestionRows.length > 0;
+  const hasComposerHeader = composerSuggestionRows.length > 0;
   const showComposerHeader = hasComposerHeader && !isComposerHeaderCollapsed;
 
   // Map model_id to display name from global labels or priority list
@@ -4747,14 +4749,6 @@ export default function ChatView() {
                       className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[32px] bg-[var(--bg-elevated)]/70 backdrop-blur-3xl ring-1 ring-white/[0.08] ${showComposerHeader ? "p-3" : "p-2"} shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5),_0_0_0_1px_rgba(255,255,255,0.02)_inset] transition-all duration-300`}
                     >
                       <div className="flex flex-col gap-2 min-w-0">
-                        {showComposerHeader && showComposerTopicTags && activeTopicSignature && activeTopicSignature.domain_tags.length > 0 && (
-                          <div className="px-1 pt-0.5">
-                            <TopicChips
-                              tags={activeTopicSignature.domain_tags}
-                              onChipClick={(tag) => setInput(prev => `[${tag}] ${prev}`)}
-                            />
-                          </div>
-                        )}
 
                         {showComposerHeader && (
                           <ComposerSuggestionRows
@@ -4775,7 +4769,7 @@ export default function ChatView() {
                                 className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                                 aria-label="Show suggestions"
                               >
-                                <ChevronDown size={13} />
+                                <ChevronUp size={13} />
                               </button>
                             </Tooltip>
                           </div>
