@@ -338,7 +338,7 @@ CREATE TABLE IF NOT EXISTS memories (
     project_id TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL,
     memory_type TEXT NOT NULL DEFAULT 'fact'
-        CHECK(memory_type IN ('fact', 'preference', 'context')),
+        CHECK(memory_type IN ('fact', 'preference')),
     scope TEXT NOT NULL DEFAULT 'workspace'
         CHECK(scope IN ('global', 'workspace')),
     source_session_id TEXT,
@@ -346,6 +346,19 @@ CREATE TABLE IF NOT EXISTS memories (
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- AI memory summaries — one per (scope, workspace_id)
+CREATE TABLE IF NOT EXISTS memory_summaries (
+    id TEXT PRIMARY KEY NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'global'
+        CHECK(scope IN ('global', 'workspace')),
+    workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+    content TEXT NOT NULL DEFAULT '',
+    is_auto_generated INTEGER NOT NULL DEFAULT 1,
+    generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    edited_at TEXT,
+    UNIQUE(scope, workspace_id)
 );
 
 -- AI model priority list with token tracking

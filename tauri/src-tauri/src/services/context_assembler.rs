@@ -186,9 +186,37 @@ pub fn assemble_context(
         }
     }
 
-    // 2. Memories — two-tier retrieval: pinned always, non-pinned by similarity
+    // 2. Memories — summary first, then two-tier retrieval
     let mut memories_text = String::new();
     let mut memory_tokens = 0usize;
+
+    // Inject memory summary (global + workspace) at the top
+    {
+        let summary_rows: Vec<(String, String)> = conn
+            .prepare(
+                "SELECT content, scope FROM memory_summaries WHERE content != '' AND (scope = 'global' OR (scope = 'workspace' AND workspace_id = ?1)) ORDER BY scope ASC"
+            )
+            .ok()
+            .map(|mut stmt| {
+                stmt.query_map(rusqlite::params![workspace_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .ok()
+                .map(|iter| iter.flatten().collect::<Vec<_>>())
+                .unwrap_or_default()
+            })
+            .unwrap_or_default();
+
+        for (content, scope) in summary_rows {
+            let prefix = if scope == "global" { "User summary: " } else { "Workspace context: " };
+            let line = format!("{}{}\n\n", prefix, content);
+            let line_tokens = estimate_tokens(&line);
+            if memory_tokens + line_tokens <= budget.memories {
+                memory_tokens += line_tokens;
+                memories_text.push_str(&line);
+            }
+        }
+    }
 
     // Helper: append a memory line, respecting token budget. Returns true if added.
     let append_memory = |id: String,

@@ -13,6 +13,7 @@ import { api } from "../lib/api";
 import ConfirmDialog from "../components/ConfirmDialog";
 import CompactMenuSelect from "../components/CompactMenuSelect";
 import { TopicsSection } from "../components/TopicsSection";
+import WorkspaceMemoryPanel from "./WorkspaceMemoryPanel";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Tooltip } from "../components/Tooltip";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -798,9 +799,13 @@ export default function WorkspaceSettingsView() {
                     label="AI Memories"
                     value={memoryCount}
                     loading={loadingStats}
-                    onClick={() => navigate("/preferences", { state: { settingsTab: "memory" } })}
                   />
                 </div>
+              </div>
+
+              {/* Workspace Memory Panel */}
+              <div className="pt-4">
+                <WorkspaceMemoryPanel workspaceId={selectedId!} />
               </div>
 
               {/* Conversation Prompt Editor */}

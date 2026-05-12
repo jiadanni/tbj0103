@@ -20,7 +20,7 @@ import WorkspaceSettingsView from "./WorkspaceSettingsView";
 import BackupSettingsSection from "./BackupSettingsSection";
 import GlobalBackupSection from "./GlobalBackupSection";
 import ImportSettingsSection from "./ImportSettingsSection";
-import MemoryView from "./MemoryView";
+import GlobalMemoryView from "./GlobalMemoryView";
 const LogsView = React.lazy(() => import("./LogsView"));
 import CompactMenuSelect from "../components/CompactMenuSelect";
 import { Tooltip } from "../components/Tooltip";
@@ -1805,9 +1805,9 @@ export default function PreferencesView() {
 
                       <div className="flex items-center justify-between py-0.5">
                         <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Workspace Memory</p>
+                          <p className="text-sm text-[var(--text-secondary)]">Memory</p>
                           <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Store and use workspace-scoped persistent facts, preferences, and context
+                            Store and use persistent facts and preferences across conversations
                           </p>
                         </div>
                         <Toggle
@@ -3387,7 +3387,7 @@ export default function PreferencesView() {
 
           {activeTab === "memory" && (
             <div className="flex-1 min-h-0 overflow-hidden">
-              <MemoryView />
+              <GlobalMemoryView />
             </div>
           )}
 
