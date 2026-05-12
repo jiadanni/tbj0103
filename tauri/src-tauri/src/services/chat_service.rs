@@ -330,7 +330,7 @@ pub fn move_sessions(
         let placeholders = session_ids
             .iter()
             .enumerate()
-            .map(|(i, _)| format!("?{}", i + 4))
+            .map(|(i, _)| format!("?{}", i + 3))
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
