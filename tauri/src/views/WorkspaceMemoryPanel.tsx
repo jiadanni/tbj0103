@@ -8,7 +8,7 @@ const MEMORY_TYPES: Memory["memory_type"][] = ["fact", "preference"];
 
 function formatTimestamp(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) { return value; }
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -19,9 +19,10 @@ function formatTimestamp(value: string) {
 
 interface WorkspaceMemoryPanelProps {
   workspaceId: string;
+  onMemoryCountChange?: (count: number) => void;
 }
 
-export default function WorkspaceMemoryPanel({ workspaceId }: WorkspaceMemoryPanelProps) {
+export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange }: WorkspaceMemoryPanelProps) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [summary, setSummary] = useState<MemorySummary | null>(null);
   const [summaryDraft, setSummaryDraft] = useState("");
@@ -34,16 +35,16 @@ export default function WorkspaceMemoryPanel({ workspaceId }: WorkspaceMemoryPan
   const [expanded, setExpanded] = useState(true);
 
   const loadMemories = useCallback(async () => {
-    if (!workspaceId) return;
+    if (!workspaceId) { return; }
     const items = await api.memory.list(workspaceId).catch(() => []);
     setMemories(items);
   }, [workspaceId]);
 
   const loadSummary = useCallback(async () => {
-    if (!workspaceId) return;
+    if (!workspaceId) { return; }
     const s = await api.memory.getSummary("workspace", workspaceId).catch(() => null);
     setSummary(s);
-    if (s) setSummaryDraft(s.content);
+    if (s) { setSummaryDraft(s.content); }
   }, [workspaceId]);
 
   useEffect(() => {
@@ -53,6 +54,10 @@ export default function WorkspaceMemoryPanel({ workspaceId }: WorkspaceMemoryPan
 
   const facts = useMemo(() => memories.filter((m) => m.memory_type === "fact"), [memories]);
   const preferences = useMemo(() => memories.filter((m) => m.memory_type === "preference"), [memories]);
+
+  useEffect(() => {
+    onMemoryCountChange?.(memories.length);
+  }, [memories.length, onMemoryCountChange]);
 
   async function saveSummary() {
     setSummarySubmitting(true);
@@ -78,7 +83,7 @@ export default function WorkspaceMemoryPanel({ workspaceId }: WorkspaceMemoryPan
   }
 
   async function createMemory() {
-    if (!newContent.trim() || !workspaceId) return;
+    if (!newContent.trim() || !workspaceId) { return; }
     setSubmitting(true);
     try {
       const created = await api.memory.create(newContent.trim(), "workspace", newType, workspaceId);
@@ -229,7 +234,7 @@ export default function WorkspaceMemoryPanel({ workspaceId }: WorkspaceMemoryPan
 
           {memories.length === 0 && (
             <p className="text-center text-xs text-[var(--text-muted)] py-4">
-              No workspace memories yet. Add facts or preferences, or they'll be extracted from your chats.
+              No workspace memories yet. Add facts or preferences, or they&apos;ll be extracted from your chats.
             </p>
           )}
         </div>

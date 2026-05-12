@@ -71,13 +71,24 @@ export const Tooltip: React.FC<TooltipProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isVisible) {
-      window.addEventListener("scroll", updatePosition, true);
-      window.addEventListener("resize", updatePosition);
-    }
+    if (!isVisible) {return;}
+    let rafId = 0;
+    const throttledUpdate = () => {
+      window.cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(updatePosition);
+    };
+    // Dismiss tooltip on scroll instead of chasing position — avoids
+    // expensive getBoundingClientRect + setState on every scroll frame.
+    const dismissOnScroll = () => {
+      window.cancelAnimationFrame(rafId);
+      setIsVisible(false);
+    };
+    window.addEventListener("scroll", dismissOnScroll, true);
+    window.addEventListener("resize", throttledUpdate);
     return () => {
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", dismissOnScroll, true);
+      window.removeEventListener("resize", throttledUpdate);
       if (timerRef.current) {clearTimeout(timerRef.current);}
     };
   }, [isVisible, updatePosition]);
