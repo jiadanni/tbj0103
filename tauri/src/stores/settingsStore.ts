@@ -44,7 +44,6 @@ interface AppSettings {
   hideNativeMenu: boolean;
   showUnmanagedModels: boolean;
   modelRefreshCounter: number;
-  showComposerTopicTags: boolean;
   showComposerWorkspaceSuggestions: boolean;
   showComposerChatFollowUps: boolean;
   composerMode: ComposerMode;
@@ -90,7 +89,6 @@ interface SettingsStore extends AppSettings {
   setHideNativeMenu: (v: boolean) => void;
   setShowUnmanagedModels: (v: boolean) => void;
   incrementModelRefreshCounter: () => void;
-  setShowComposerTopicTags: (v: boolean) => void;
   setShowComposerWorkspaceSuggestions: (v: boolean) => void;
   setShowComposerChatFollowUps: (v: boolean) => void;
   setComposerMode: (v: ComposerMode) => void;
@@ -142,7 +140,6 @@ export const useSettingsStore = create<SettingsStore>()(
       hideNativeMenu: false,
       showUnmanagedModels: true,
       modelRefreshCounter: 0,
-      showComposerTopicTags: true,
       showComposerWorkspaceSuggestions: true,
       showComposerChatFollowUps: true,
       composerMode: "normal",
@@ -185,7 +182,6 @@ export const useSettingsStore = create<SettingsStore>()(
       setHideNativeMenu: (hideNativeMenu) => set({ hideNativeMenu }),
       setShowUnmanagedModels: (showUnmanagedModels) => set({ showUnmanagedModels }),
       incrementModelRefreshCounter: () => set((state) => ({ modelRefreshCounter: state.modelRefreshCounter + 1 })),
-      setShowComposerTopicTags: (showComposerTopicTags) => set({ showComposerTopicTags }),
       setShowComposerWorkspaceSuggestions: (showComposerWorkspaceSuggestions) => set({ showComposerWorkspaceSuggestions }),
       setShowComposerChatFollowUps: (showComposerChatFollowUps) => set({ showComposerChatFollowUps }),
       setComposerMode: (composerMode) => set({ composerMode }),

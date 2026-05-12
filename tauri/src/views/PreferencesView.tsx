@@ -433,8 +433,6 @@ export default function PreferencesView() {
   const setExpandChatToWindowWidth = useSettingsStore((state) => state.setExpandChatToWindowWidth);
   const [singleWindowMode, toggleSingleWindowMode] = usePrefsWindowMode();
   const switchWorkspaceSection = useSettingsStore((state) => state.switchWorkspaceSection);
-  const showComposerTopicTags = useSettingsStore((state) => state.showComposerTopicTags);
-  const setShowComposerTopicTags = useSettingsStore((state) => state.setShowComposerTopicTags);
   const showComposerWorkspaceSuggestions = useSettingsStore((state) => state.showComposerWorkspaceSuggestions);
   const setShowComposerWorkspaceSuggestions = useSettingsStore((state) => state.setShowComposerWorkspaceSuggestions);
   const showComposerChatFollowUps = useSettingsStore((state) => state.showComposerChatFollowUps);
@@ -2699,11 +2697,7 @@ export default function PreferencesView() {
                         </p>
                       </div>
                       <div className="flex flex-row items-center gap-x-5">
-                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                          <Toggle on={showComposerTopicTags} onToggle={() => setShowComposerTopicTags(!showComposerTopicTags)} />
-                          <span className="text-[var(--text-secondary)]">Topic tags</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+<label className="flex items-center gap-2 text-sm cursor-pointer">
                           <Toggle on={showComposerWorkspaceSuggestions} onToggle={() => setShowComposerWorkspaceSuggestions(!showComposerWorkspaceSuggestions)} />
                           <span className="text-[var(--text-secondary)]">Context prompts</span>
                         </label>
