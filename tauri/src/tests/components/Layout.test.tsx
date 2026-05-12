@@ -70,7 +70,7 @@ vi.mock("@/views/PreferencesView", () => ({ default: () => <div>Preferences View
 vi.mock("@/views/DocumentBrowserView", () => ({ default: () => <div>Documents View</div> }));
 vi.mock("@/views/HistoryView", () => ({ default: () => <div>History View</div> }));
 vi.mock("@/views/LearningPathView", () => ({ default: () => <div>Learning Path View</div> }));
-vi.mock("@/views/MemoryView", () => ({ default: () => <div>Memory View</div> }));
+vi.mock("@/views/GlobalMemoryView", () => ({ default: () => <div>Memory View</div> }));
 vi.mock("@/views/NoteEditorView", () => ({ default: () => <div>Notes View</div> }));
 vi.mock("@/views/WebCaptureView", () => ({ default: () => <div>Web Capture View</div> }));
 

@@ -1,9 +1,9 @@
 use crate::db::DbState;
 use crate::models::memory::{
-    CreateMemoryRequest, ExtractMemoriesRequest, Memory, UpdateMemoryRequest,
+    CreateMemoryRequest, ExtractMemoriesRequest, Memory, MemorySummary, UpdateMemoryRequest,
 };
 use crate::ollama::client::{OllamaClient, OllamaMessage};
-use crate::services::model_settings::{get_embedding_model, get_ollama_base_url};
+use crate::services::model_settings::{get_configured_chat_model, get_embedding_model, get_ollama_base_url};
 use tauri::State;
 
 fn row_to_memory(row: &rusqlite::Row) -> rusqlite::Result<Memory> {
@@ -351,7 +351,7 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
 
     for em in extracted {
         let valid_type = match em.memory_type.as_str() {
-            "fact" | "preference" | "context" => em.memory_type.clone(),
+            "fact" | "preference" => em.memory_type.clone(),
             _ => "fact".to_string(),
         };
         let id = uuid::Uuid::new_v4().to_string();
@@ -402,4 +402,193 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
     }
 
     Ok(created)
+}
+
+fn row_to_summary(row: &rusqlite::Row) -> rusqlite::Result<MemorySummary> {
+    Ok(MemorySummary {
+        id: row.get(0)?,
+        scope: row.get(1)?,
+        workspace_id: row.get(2)?,
+        content: row.get(3)?,
+        is_auto_generated: row.get::<_, i32>(4)? != 0,
+        generated_at: row.get(5)?,
+        edited_at: row.get(6)?,
+    })
+}
+
+#[tauri::command]
+pub fn get_memory_summary(
+    state: State<DbState>,
+    scope: String,
+    workspace_id: Option<String>,
+) -> Result<Option<MemorySummary>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let result = if scope == "global" {
+        conn.query_row(
+            "SELECT id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at FROM memory_summaries WHERE scope = 'global'",
+            [],
+            row_to_summary,
+        )
+    } else {
+        conn.query_row(
+            "SELECT id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at FROM memory_summaries WHERE scope = 'workspace' AND workspace_id = ?1",
+            rusqlite::params![workspace_id],
+            row_to_summary,
+        )
+    };
+    match result {
+        Ok(s) => Ok(Some(s)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn upsert_memory_summary(
+    state: State<DbState>,
+    scope: String,
+    workspace_id: Option<String>,
+    content: String,
+) -> Result<MemorySummary, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let ws_id = if scope == "global" { None } else { workspace_id };
+
+    conn.execute(
+        "INSERT INTO memory_summaries (id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at)
+         VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)
+         ON CONFLICT(scope, workspace_id) DO UPDATE SET content = excluded.content, is_auto_generated = 0, edited_at = excluded.edited_at",
+        rusqlite::params![id, scope, ws_id, content, now],
+    ).map_err(|e| e.to_string())?;
+
+    // Read back the row (may have been updated, not inserted)
+    let summary = if scope == "global" {
+        conn.query_row(
+            "SELECT id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at FROM memory_summaries WHERE scope = 'global'",
+            [],
+            row_to_summary,
+        )
+    } else {
+        conn.query_row(
+            "SELECT id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at FROM memory_summaries WHERE scope = 'workspace' AND workspace_id = ?1",
+            rusqlite::params![ws_id],
+            row_to_summary,
+        )
+    }.map_err(|e| e.to_string())?;
+
+    Ok(summary)
+}
+
+#[tauri::command]
+pub async fn regenerate_memory_summary(
+    state: State<'_, DbState>,
+    scope: String,
+    workspace_id: Option<String>,
+) -> Result<MemorySummary, String> {
+    // Gather all active facts+preferences for this scope
+    let memories: Vec<(String, String)> = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let mut items = Vec::new();
+        if scope == "global" {
+            let mut stmt = conn.prepare(
+                "SELECT content, memory_type FROM memories WHERE scope = 'global' AND is_active = 1 ORDER BY created_at ASC"
+            ).map_err(|e| e.to_string())?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            }).map_err(|e| e.to_string())?;
+            items = rows.flatten().collect();
+        } else if let Some(ref ws_id) = workspace_id {
+            let mut stmt = conn.prepare(
+                "SELECT content, memory_type FROM memories WHERE scope = 'workspace' AND workspace_id = ?1 AND is_active = 1 ORDER BY created_at ASC"
+            ).map_err(|e| e.to_string())?;
+            let rows = stmt.query_map(rusqlite::params![ws_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            }).map_err(|e| e.to_string())?;
+            items = rows.flatten().collect();
+        }
+        items
+    };
+
+    if memories.is_empty() {
+        // Store empty summary
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        let ws_id = if scope == "global" { None } else { workspace_id.clone() };
+        conn.execute(
+            "INSERT INTO memory_summaries (id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at)
+             VALUES (?1, ?2, ?3, '', 1, ?4, NULL)
+             ON CONFLICT(scope, workspace_id) DO UPDATE SET content = '', is_auto_generated = 1, generated_at = excluded.generated_at, edited_at = NULL",
+            rusqlite::params![id, scope, ws_id, now],
+        ).map_err(|e| e.to_string())?;
+        return get_memory_summary(state, scope, workspace_id)?
+            .ok_or_else(|| "Failed to create summary".to_string());
+    }
+
+    // Build context for LLM
+    let facts_text: Vec<String> = memories.iter()
+        .filter(|(_, t)| t == "fact")
+        .map(|(c, _)| format!("- {}", c))
+        .collect();
+    let prefs_text: Vec<String> = memories.iter()
+        .filter(|(_, t)| t == "preference")
+        .map(|(c, _)| format!("- {}", c))
+        .collect();
+
+    let mut context = String::new();
+    if !facts_text.is_empty() {
+        context.push_str("Facts:\n");
+        context.push_str(&facts_text.join("\n"));
+        context.push('\n');
+    }
+    if !prefs_text.is_empty() {
+        context.push_str("\nPreferences:\n");
+        context.push_str(&prefs_text.join("\n"));
+        context.push('\n');
+    }
+
+    let prompt = format!(
+        "Write a concise summary paragraph (under 100 words) about this person based on the following facts and preferences. \
+        Write in third person. Be direct and factual. Do not add information that isn't in the facts.\n\n{}\n\nOutput ONLY the summary paragraph, nothing else.",
+        context
+    );
+
+    let ollama_url = read_ollama_url(&state);
+    let Ok(client) = OllamaClient::new(ollama_url) else {
+        return Err("Ollama not available".to_string());
+    };
+
+    let model = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        get_configured_chat_model(&conn)
+    };
+    let Some(model) = model else {
+        return Err("No chat model configured".to_string());
+    };
+
+    let msgs = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+
+    let summary_text = client
+        .send_message_with_options("memory_summary", &model, msgs, Some("0s"))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Store the generated summary
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let ws_id = if scope == "global" { None } else { workspace_id.clone() };
+    conn.execute(
+        "INSERT INTO memory_summaries (id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at)
+         VALUES (?1, ?2, ?3, ?4, 1, ?5, NULL)
+         ON CONFLICT(scope, workspace_id) DO UPDATE SET content = excluded.content, is_auto_generated = 1, generated_at = excluded.generated_at, edited_at = NULL",
+        rusqlite::params![id, scope, ws_id, summary_text.trim(), now],
+    ).map_err(|e| e.to_string())?;
+
+    get_memory_summary(state, scope, workspace_id)?
+        .ok_or_else(|| "Failed to read generated summary".to_string())
 }

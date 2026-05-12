@@ -59,6 +59,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v45_workspaces_survey_data",
     "v46_fix_workspace_last_message_at_trigger",
     "v47_raise_migration_threshold",
+    "v48_memory_summaries",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1163,6 +1164,37 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             [],
         );
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v47_raise_migration_threshold');")?;
+    }
+
+    // v48: memory_summaries table + migrate context→fact + drop context CHECK
+    let applied_v48: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v48_memory_summaries'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v48 == 0 {
+        // Create memory_summaries table
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS memory_summaries (
+                id TEXT PRIMARY KEY NOT NULL,
+                scope TEXT NOT NULL DEFAULT 'global'
+                    CHECK(scope IN ('global', 'workspace')),
+                workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+                content TEXT NOT NULL DEFAULT '',
+                is_auto_generated INTEGER NOT NULL DEFAULT 1,
+                generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                edited_at TEXT,
+                UNIQUE(scope, workspace_id)
+            );"
+        )?;
+
+        // Migrate context memories to fact
+        let _ = conn.execute(
+            "UPDATE memories SET memory_type = 'fact' WHERE memory_type = 'context'",
+            [],
+        );
+
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v48_memory_summaries');")?;
     }
 
     Ok(())

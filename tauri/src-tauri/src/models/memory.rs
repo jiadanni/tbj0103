@@ -46,3 +46,14 @@ pub struct ExtractMessage {
     pub role: String,
     pub content: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemorySummary {
+    pub id: String,
+    pub scope: String,
+    pub workspace_id: Option<String>,
+    pub content: String,
+    pub is_auto_generated: bool,
+    pub generated_at: String,
+    pub edited_at: Option<String>,
+}
