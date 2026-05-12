@@ -442,13 +442,23 @@ export interface Memory {
   id: string;
   workspace_id?: string | null;
   content: string;
-  memory_type: "fact" | "preference" | "context" | string;
+  memory_type: "fact" | "preference" | string;
   scope: "global" | "workspace";
   source_session_id?: string | null;
   is_pinned: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface MemorySummary {
+  id: string;
+  scope: "global" | "workspace";
+  workspace_id?: string | null;
+  content: string;
+  is_auto_generated: boolean;
+  generated_at: string;
+  edited_at?: string | null;
 }
 
 export interface AnalysisResult {
@@ -949,6 +959,7 @@ export const api = {
         limit?: number;
         workspaceId?: string | null;
         kindFilters?: string[] | null;
+        includeDescendants?: boolean;
       },
     ) =>
       invoke<QuickSearchResult[]>("query_quick_search", {
@@ -957,6 +968,7 @@ export const api = {
           limit: options?.limit,
           workspace_id: options?.workspaceId ?? null,
           kind_filters: options?.kindFilters ?? null,
+          include_descendants: options?.includeDescendants ?? false,
         },
       }),
     getContext: () => invoke<QuickSearchContext>("get_quick_search_context"),
@@ -1348,6 +1360,12 @@ export const api = {
       invoke<void>("delete_all_memories", { workspaceId, scope }),
     deactivateAll: (workspaceId: string, scope: Memory["scope"]) =>
       invoke<void>("deactivate_all_memories", { workspaceId, scope }),
+    getSummary: (scope: MemorySummary["scope"], workspaceId?: string) =>
+      invoke<MemorySummary | null>("get_memory_summary", { scope, workspaceId: workspaceId ?? null }),
+    upsertSummary: (scope: MemorySummary["scope"], content: string, workspaceId?: string) =>
+      invoke<MemorySummary>("upsert_memory_summary", { scope, content, workspaceId: workspaceId ?? null }),
+    regenerateSummary: (scope: MemorySummary["scope"], workspaceId?: string) =>
+      invoke<MemorySummary>("regenerate_memory_summary", { scope, workspaceId: workspaceId ?? null }),
   },
 
   webAI: {

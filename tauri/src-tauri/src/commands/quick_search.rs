@@ -22,6 +22,7 @@ pub struct QuickSearchRequest {
     pub limit: Option<u32>,
     pub workspace_id: Option<String>,
     pub kind_filters: Option<Vec<String>>,
+    pub include_descendants: Option<bool>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -54,6 +55,7 @@ pub fn query_quick_search(
         limit,
         workspace_id.as_deref(),
         req.kind_filters.as_deref(),
+        req.include_descendants.unwrap_or(false),
     )
 }
 

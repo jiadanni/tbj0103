@@ -55,9 +55,10 @@ export default function QuickSearchWindow() {
 
     async function syncWindowState() {
       try {
-        const [latestSettings, availableWorkspaces] = await Promise.all([
+        const [latestSettings, availableWorkspaces, context] = await Promise.all([
           api.settings.get(),
           api.workspace.list().catch(() => [] as Workspace[]),
+          api.quickSearch.getContext().catch(() => ({ preferred_workspace_id: null })),
         ]);
         if (cancelled) {return;}
 
@@ -68,7 +69,15 @@ export default function QuickSearchWindow() {
         });
         setSettings(latestSettings);
         setWorkspaces(availableWorkspaces);
-        setWorkspaceScope(resolveWorkspaceScope(latestSettings.quick_search_workspace_scope, availableWorkspaces));
+
+        // If no explicit workspace scope was persisted, auto-scope to the active workspace
+        const persistedScope = latestSettings.quick_search_workspace_scope;
+        const preferredScope = context.preferred_workspace_id
+          && availableWorkspaces.some((ws) => ws.id === context.preferred_workspace_id)
+          ? context.preferred_workspace_id
+          : null;
+        const effectiveScope = persistedScope || preferredScope || ALL_WORKSPACES_SCOPE;
+        setWorkspaceScope(resolveWorkspaceScope(effectiveScope, availableWorkspaces));
         setSelectedKinds(normalizeSelectedKinds(latestSettings.quick_search_type_filters));
       } catch {
         // Keep local defaults if settings are not available yet.
@@ -110,6 +119,9 @@ export default function QuickSearchWindow() {
     document.body.style.backgroundColor = "transparent";
   }, [displaySettings]);
 
+  const includeDescendants = workspaceScope !== ALL_WORKSPACES_SCOPE
+    && workspaces.find((ws) => ws.id === workspaceScope)?.parent_workspace_id == null;
+
   useEffect(() => {
     const runQuery = window.setTimeout(() => {
       setIsLoading(true);
@@ -117,6 +129,7 @@ export default function QuickSearchWindow() {
         limit: query.trim() ? 24 : 10,
         workspaceId: workspaceScope === ALL_WORKSPACES_SCOPE ? null : workspaceScope,
         kindFilters: effectiveKindFilters(selectedKinds),
+        includeDescendants,
       })
         .then(setResults)
         .catch(() => setResults([]))
@@ -124,7 +137,7 @@ export default function QuickSearchWindow() {
     }, query.trim() ? 80 : 0);
 
     return () => window.clearTimeout(runQuery);
-  }, [query, selectedKinds, workspaceScope]);
+  }, [query, selectedKinds, workspaceScope, includeDescendants]);
 
   useEffect(() => {
     function handleBlur() {

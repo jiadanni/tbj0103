@@ -2427,9 +2427,10 @@ export default function ChatView() {
     clearRefineListener();
   }, [clearRefineListener, clearStreamListener]);
 
-  useEffect(() => () => {
-    clearActiveStreamListeners();
-  }, [clearActiveStreamListeners]);
+  // Intentionally no unmount cleanup for stream listeners: if the user
+  // navigates away from the chat view while a generation is in progress,
+  // the listener must stay alive so the response is finalised and persisted
+  // in the background. Each listener self-cleans when the stream finishes.
 
   // ── Stabilized callbacks for ChatMessageBubble ──────────────────────────
   const handleCopyMessage = useCallback((msgId: string, content: string) => {
@@ -2884,21 +2885,23 @@ export default function ChatView() {
       return;
     }
 
+    let cancelled = false;
     const trimmedQuery = sessionQuery.trim();
     setSidebarSessions([]);
     if (trimmedQuery) {
       // Allow searching to trigger queries for the current workspace
       const timeoutId = window.setTimeout(() => {
         api.chat.searchSessions(effectiveWorkspaceId, trimmedQuery, null, { includeDescendants })
-          .then(setSidebarSessions).catch(() => { });
+          .then((results) => { if (!cancelled) { setSidebarSessions(results); } }).catch(() => { });
       }, 150);
-      return () => window.clearTimeout(timeoutId);
+      return () => { cancelled = true; window.clearTimeout(timeoutId); };
     } else {
       // When not searching, only fetch on initial mount or workspace change.
       // Other updates (move, create, delete, rename) should handle UI updates via optimistic
       // changes or explicit refresh events.
       api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0, includeDescendants })
-        .then(setSidebarSessions).catch(() => { });
+        .then((results) => { if (!cancelled) { setSidebarSessions(results); } }).catch(() => { });
+      return () => { cancelled = true; };
     }
   }, [effectiveWorkspaceId, sessionQuery, includeDescendants]);
 
