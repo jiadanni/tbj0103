@@ -1,4 +1,5 @@
 use crate::models::context::{ContextSources, TokenBudget};
+use crate::models::workspace::TopicSignature;
 use crate::ollama::client::OllamaMessage;
 use crate::services::vector_index;
 use rusqlite::Connection;
@@ -144,11 +145,12 @@ pub fn assemble_context(
     // Consolidated system instructions query (Global, Workspace, Project, Session)
     let mut stmt = conn
         .prepare(
-            "SELECT 
+            "SELECT
                 (SELECT value FROM settings WHERE key = 'prompt_instructions'),
                 w.prompt_instructions,
                 p.custom_instructions,
-                cs.system_prompt
+                cs.system_prompt,
+                w.topic_signature
              FROM chat_sessions cs
              LEFT JOIN workspaces w ON w.id = cs.workspace_id
              LEFT JOIN projects p ON p.id = cs.project_id
@@ -156,7 +158,7 @@ pub fn assemble_context(
         )
         .map_err(|e| e.to_string())?;
 
-    if let Ok((global_json, ws_prompt, proj_prompt, sess_prompt)) = stmt.query_row(
+    if let Ok((global_json, ws_prompt, proj_prompt, sess_prompt, topic_sig_json)) = stmt.query_row(
         rusqlite::params![session_id],
         |row| {
             Ok((
@@ -164,6 +166,7 @@ pub fn assemble_context(
                 row.get::<_, Option<String>>(1)?,
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
             ))
         },
     ) {
@@ -183,6 +186,24 @@ pub fn assemble_context(
         // Session
         if let Some(text) = sess_prompt {
             if !text.is_empty() { system_parts.push(text); }
+        }
+        // Workspace domain — helps LLM disambiguate short/ambiguous messages
+        if let Some(sig_json) = topic_sig_json {
+            let sig: TopicSignature = serde_json::from_str(&sig_json).unwrap_or_default();
+            let mut active_tags: Vec<String> = sig
+                .domain_tags
+                .iter()
+                .filter(|t| !sig.ignored_tags.contains(&t.tag))
+                .map(|t| t.tag.clone())
+                .collect();
+            for tag in &sig.manual_tags {
+                if !sig.ignored_tags.contains(tag) && !active_tags.contains(tag) {
+                    active_tags.push(tag.clone());
+                }
+            }
+            if !active_tags.is_empty() {
+                system_parts.push(format!("Workspace domain: {}", active_tags.join(", ")));
+            }
         }
     }
 
