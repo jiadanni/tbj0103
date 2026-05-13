@@ -4697,7 +4697,7 @@ export default function ChatView() {
                         className="w-full min-w-0 overflow-x-hidden py-4"
                         computeItemKey={(_, msg) => msg.id}
                         itemContent={(i, msg) => (
-                          <div className={`pb-4 ${chatMessageStyle === "minimal" ? "px-4" : "pl-4 pr-[52px]"}`}>
+                          <div className={`${chatMessageStyle === "minimal" ? "px-4 pb-8" : "pl-4 pr-[52px] pb-4"}`}>
                             <ChatMessageBubble
                               key={msg.id}
                               msg={msg}
