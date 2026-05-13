@@ -116,8 +116,10 @@ export default function LogsView() {
     const a = document.createElement("a");
     a.href = url;
     a.download = `aetherium-logs-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
 
   const handleScroll = () => {
