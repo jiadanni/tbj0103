@@ -467,6 +467,21 @@ export interface AnalysisResult {
   concepts_skipped: number;
   chapters_created: number;
   sections_created: number;
+  job_id?: string;
+  total_chunks?: number;
+  failed_chunks?: number;
+}
+
+export interface WorkspaceAnalysisProgress {
+  job_id: string;
+  workspace_id: string;
+  chunk_index: number;
+  total_chunks: number;
+  label: string;
+  status: 'started' | 'completed' | 'failed' | 'cancelled';
+  nodes_created: number;
+  links_created: number;
+  error?: string;
 }
 
 export interface LearningPathItem {
@@ -1322,6 +1337,20 @@ export const api = {
       }),
     listenDescendantProgress: (onEvent: (event: DescendantAnalysisProgress) => void): Promise<UnlistenFn> =>
       listen<DescendantAnalysisProgress>("descendant-analysis-progress", (event) => {
+        onEvent(event.payload);
+      }),
+    analyzeWorkspaceChunked: (workspaceId: string, model: string, opts?: { ollamaUrl?: string; focusTopic?: string; surveyContext?: string }) =>
+      invoke<AnalysisResult>("analyze_workspace_chunked", {
+        req: {
+          workspace_id: workspaceId,
+          model,
+          ollama_url: opts?.ollamaUrl,
+          focus_topic: opts?.focusTopic,
+          survey_context: opts?.surveyContext,
+        },
+      }),
+    listenWorkspaceProgress: (onEvent: (event: WorkspaceAnalysisProgress) => void): Promise<UnlistenFn> =>
+      listen<WorkspaceAnalysisProgress>("workspace-analysis-progress", (event) => {
         onEvent(event.payload);
       }),
   },

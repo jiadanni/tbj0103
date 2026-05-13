@@ -3,9 +3,8 @@
  * Left rail: AI analysis + concept tools.
  * Main area: overview, suggested actions, graph map, and recent activity.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import ForceGraph2D from "react-force-graph-2d";
 import {
   ArrowRight,
   Brain,
@@ -22,10 +21,8 @@ import {
   Target,
   Trash2,
   X,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
-import { Tooltip } from "../components/Tooltip";
+import RoadmapGraph from "../components/RoadmapGraph";
 import {
   api,
   type AiModel,
@@ -38,16 +35,11 @@ import {
   type DescendantAnalysisProgress,
   type LearningCard,
   type LearningPathItem,
+  type WorkspaceAnalysisProgress,
 } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
-import {
-  buildTreeFromLinks,
-  computeRadialTreeLayout,
-  selectRootNode,
-  estimateOptimalRadius,
-} from "../lib/treeLayout";
 import CompactMenuSelect from "../components/CompactMenuSelect";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
@@ -256,6 +248,7 @@ export default function KnowledgeGraphView() {
   const [analyzeError, setAnalyzeError] = useState("");
   const [analyzeResult, setAnalyzeResult] = useState<AnalysisResult | null>(null);
   const [descendantProgress, setDescendantProgress] = useState<DescendantAnalysisProgress | null>(null);
+  const [chunkProgress, setChunkProgress] = useState<WorkspaceAnalysisProgress | null>(null);
 
   const [conceptSearch, setConceptSearch] = useState("");
   const [selectedConcept, setSelectedConcept] = useState<ConceptNode | null>(null);
@@ -271,16 +264,7 @@ export default function KnowledgeGraphView() {
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const fgRef = useRef<any>(null);
-  const autoFitFrameRef = useRef<number | null>(null);
   const [graphSearch, setGraphSearch] = useState("");
-
-  // Tree layout mode
-  const [layoutMode, setLayoutMode] = useState<"force" | "tree">("force");
-  const [selectedRootId, setSelectedRootId] = useState<string | null>(null);
-  const [treePositions, setTreePositions] = useState<Map<string, { x: number; y: number; fx: number; fy: number }>>(new Map());
 
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
   useEffect(() => {
@@ -384,84 +368,6 @@ export default function KnowledgeGraphView() {
     api.flashcard.listByConcept(selectedConcept.id).then(setConceptCards).catch(() => setConceptCards([]));
   }, [selectedConcept]);
 
-  // Compute tree layout positions when in tree mode
-  useEffect(() => {
-    if (layoutMode !== "tree" || nodes.length === 0) {
-      setTreePositions(new Map());
-      return;
-    }
-
-    const rootId = selectedRootId || selectRootNode(nodes, links);
-    if (!rootId) {
-      setTreePositions(new Map());
-      return;
-    }
-
-    try {
-      // Build tree structure
-      const treeRoot = buildTreeFromLinks(nodes, links, rootId);
-      
-      // Estimate optimal radius based on tree depth
-      const optimalRadius = estimateOptimalRadius(treeRoot);
-      
-      // Compute radial positions
-      const positions = computeRadialTreeLayout(treeRoot, {
-        radius: optimalRadius,
-        angleStartOffset: -Math.PI / 2,
-      });
-      
-      setTreePositions(positions);
-    } catch (error) {
-      console.warn("Failed to compute tree layout:", error);
-      setTreePositions(new Map());
-    }
-  }, [layoutMode, nodes, links, selectedRootId]);
-
-  const _filteredConcepts = useMemo(
-    () => nodes.filter((node) => !conceptSearch || node.name.toLowerCase().includes(conceptSearch.toLowerCase())),
-    [conceptSearch, nodes],
-  );
-
-  const filteredNodes = useMemo(
-    () => graphSearch ? nodes.filter((node) => node.name.toLowerCase().includes(graphSearch.toLowerCase())) : nodes,
-    [graphSearch, nodes],
-  );
-
-  const graphData = useMemo(() => {
-    const visibleIds = new Set(filteredNodes.map((node) => node.id));
-    return {
-      nodes: filteredNodes.map((node) => {
-        const baseNode = {
-          ...node,
-          val: node.hierarchy_level === 'chapter' ? 20 : node.hierarchy_level === 'section' ? 8 : 2,
-        };
-        
-        // Apply tree positions if in tree mode
-        if (layoutMode === "tree") {
-          const pos = treePositions.get(node.id);
-          if (pos) {
-            return { ...baseNode, ...pos };
-          }
-        }
-
-        // In force mode, seed initial position from DB if previously persisted
-        if (layoutMode === "force" && node.x_position != null && node.y_position != null) {
-          return { ...baseNode, x: node.x_position, y: node.y_position };
-        }
-        
-        return baseNode;
-      }),
-      links: links
-        .filter((link) => visibleIds.has(link.source_id) && visibleIds.has(link.target_id))
-        .map((link) => ({ ...link, source: link.source_id, target: link.target_id })),
-    };
-  }, [filteredNodes, links, layoutMode, treePositions]);
-
-  const graphViewportSignature = useMemo(
-    () => `${layoutMode}:${selectedRootId ?? ""}:${graphData.nodes.map((node) => node.id).join("|")}:${graphData.links.length}`,
-    [graphData.links.length, graphData.nodes, layoutMode, selectedRootId],
-  );
-
   const hierarchyTree = useMemo(() => {
     const parentOf = new Map(
       links.filter((l) => l.link_type === 'part_of').map((l) => [l.source_id, l.target_id])
@@ -483,61 +389,6 @@ export default function KnowledgeGraphView() {
     };
   }, [nodes, links]);
 
-  useEffect(() => {
-    if (!fgRef.current) { return; }
-    
-    if (layoutMode === "tree") {
-      // In tree mode, disable forces to respect fixed positions
-      fgRef.current.d3Force('charge')?.strength(0);
-      fgRef.current.d3Force('link')?.strength(0);
-    } else {
-      // In force-directed mode, use normal forces
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      fgRef.current.d3Force('charge')?.strength((n: any) =>
-        n.hierarchy_level === 'chapter' ? -300 : n.hierarchy_level === 'section' ? -150 : -60
-      );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      fgRef.current.d3Force('link')?.strength((l: any) =>
-        l.link_type === 'part_of' ? 0.8 : 0.3
-      );
-    }
-  }, [graphData, layoutMode]);
-
-  const fitGraphToViewport = useCallback((duration = 450) => {
-    if (!fgRef.current || graphData.nodes.length === 0) { return; }
-    if (autoFitFrameRef.current !== null) {
-      window.cancelAnimationFrame(autoFitFrameRef.current);
-    }
-
-    autoFitFrameRef.current = window.requestAnimationFrame(() => {
-      if (!fgRef.current) { return; }
-      fgRef.current.centerAt(0, 0, duration);
-      fgRef.current.zoomToFit(duration, 72);
-      autoFitFrameRef.current = null;
-    });
-  }, [graphData.nodes.length]);
-
-  useEffect(() => {
-    fitGraphToViewport();
-  }, [fitGraphToViewport, graphViewportSignature]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || graphData.nodes.length === 0 || typeof ResizeObserver === "undefined") { return; }
-
-    const observer = new ResizeObserver(() => {
-      fitGraphToViewport(0);
-    });
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [fitGraphToViewport, graphData.nodes.length]);
-
-  useEffect(() => () => {
-    if (autoFitFrameRef.current !== null) {
-      window.cancelAnimationFrame(autoFitFrameRef.current);
-    }
-  }, []);
-
   async function handleAnalyze() {
     const demoWithoutModels = isDemoMode && availableModels.length === 0;
     if (!activeWorkspaceId || isAnalyzing || (!selectedModel && !demoWithoutModels)) { return; }
@@ -545,6 +396,7 @@ export default function KnowledgeGraphView() {
     setIsAnalyzing(true);
     setAnalyzeError("");
     setDescendantProgress(null);
+    setChunkProgress(null);
     try {
       if (demoWithoutModels) {
         await new Promise((resolve) => window.setTimeout(resolve, 450));
@@ -581,11 +433,19 @@ export default function KnowledgeGraphView() {
         return;
       }
 
-      const result = await api.knowledge.analyzeWorkspace(activeWorkspaceId, selectedModel, {
-        ollamaUrl,
-        focusTopic: focusTopic.trim() || undefined,
+      const unlistenChunk = await api.knowledge.listenWorkspaceProgress((event) => {
+        setChunkProgress(event);
       });
-      setAnalyzeResult(result);
+      try {
+        const result = await api.knowledge.analyzeWorkspaceChunked(activeWorkspaceId, selectedModel, {
+          ollamaUrl,
+          focusTopic: focusTopic.trim() || undefined,
+        });
+        setAnalyzeResult(result);
+      } finally {
+        unlistenChunk();
+        setChunkProgress(null);
+      }
       await Promise.all([loadGraph(), loadSummary()]);
     } catch (error: unknown) {
       setAnalyzeError(error instanceof Error ? error.message : String(error));
@@ -645,33 +505,6 @@ export default function KnowledgeGraphView() {
     void Promise.all([loadGraph(), loadSummary()]);
   }
 
-  function zoomIn() {
-    if (fgRef.current) {
-      fgRef.current.zoom(fgRef.current.zoom() * 1.4, 400);
-    }
-  }
-
-  function zoomOut() {
-    if (fgRef.current) {
-      fgRef.current.zoom(fgRef.current.zoom() / 1.4, 400);
-    }
-  }
-
-  // Persist dragged node positions back to the database
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function handleNodeDragEnd(node: any) {
-    // Don't persist in tree mode — positions are computed, not user-set
-    if (layoutMode === "tree") { return; }
-    if (typeof node.x !== "number" || typeof node.y !== "number") { return; }
-
-    api.graph.updateConcept(node.id, {
-      x_position: node.x,
-      y_position: node.y,
-    } as Partial<ConceptNode>).catch(() => {
-      // Non-critical — ignore persistence errors silently
-    });
-  }
-
   if (!activeWorkspaceId) {
     return (
       <div className="flex h-full items-center justify-center px-6">
@@ -697,7 +530,9 @@ export default function KnowledgeGraphView() {
   const analyzeButtonLabel = isAnalyzing
     ? (descendantProgress
       ? `Analyzing ${descendantProgress.workspace_name} (${descendantProgress.index + 1}/${descendantProgress.total})…`
-      : "Analyzing...")
+      : chunkProgress
+        ? `Analyzing chunk ${chunkProgress.chunk_index + 1}/${chunkProgress.total_chunks} — ${chunkProgress.label}…`
+        : "Analyzing...")
     : isDemoWithoutModels ? "Simulate Analysis"
     : includeDescendants ? "Analyze All Sub-Workspaces"
     : "Analyze Workspace";
@@ -1020,109 +855,38 @@ export default function KnowledgeGraphView() {
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]">
-            <Section title="Knowledge Map" eyebrow="Graph">
+            <Section title="Knowledge Map" eyebrow="Roadmap">
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                   <p className="max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-                    Explore concepts and how they connect. The map auto-centers as data changes, and you can still switch between force and tree layouts when you want a different lens.
+                    A top-down roadmap of your concepts. Chapters anchor the spine; sections and concepts branch beneath them. Scroll to zoom, drag to pan.
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
-                    {nodes.length > 0 && (
-                      <>
-                        <div className="flex rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
-                          <Tooltip content="Force-directed layout">
-                            <button
-                              onClick={() => setLayoutMode("force")}
-                              className={`px-2 py-1.5 text-xs font-medium transition-colors ${
-                                layoutMode === "force"
-                                  ? "bg-[var(--accent-color)] text-white"
-                                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                              }`}
-                            >
-                              Force
-                            </button>
-                          </Tooltip>
-                          <Tooltip content="Radial tree layout">
-                            <button
-                              onClick={() => setLayoutMode("tree")}
-                              className={`border-l border-[var(--border-color)] px-2 py-1.5 text-xs font-medium transition-colors ${
-                                layoutMode === "tree"
-                                  ? "bg-[var(--accent-color)] text-white"
-                                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                              }`}
-                            >
-                              Tree
-                            </button>
-                          </Tooltip>
-                        </div>
-
-                        {layoutMode === "tree" && (
-                          <CompactMenuSelect
-                            label="Tree Root"
-                            value={selectedRootId || ""}
-                            options={[
-                              { value: "", label: "Auto-select root" },
-                              ...nodes
-                                .filter((n) => n.hierarchy_level === "chapter")
-                                .map((n) => ({ value: n.id, label: `Root: ${n.name}` })),
-                            ]}
-                            onChange={(val) => setSelectedRootId(val || null)}
-                            widthClassName="min-w-[150px]"
-                          />
-                        )}
-                      </>
-                    )}
-
                     <div className="relative min-w-0 flex-1 basis-[240px] 2xl:max-w-[320px]">
                       <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                       <input
                         value={graphSearch}
                         onChange={(event) => setGraphSearch(event.target.value)}
-                        placeholder="Filter graph..."
+                        placeholder="Filter roadmap..."
                         className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 pl-8 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
                       />
                     </div>
-                    <Tooltip content="Reset graph view">
-                      <button
-                        onClick={() => fitGraphToViewport()}
-                        className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                      >
-                        Reset view
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="Zoom in">
-                      <button
-                        onClick={zoomIn}
-                        className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
-                      >
-                        <ZoomIn size={14} />
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="Zoom out">
-                      <button
-                        onClick={zoomOut}
-                        className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
-                      >
-                        <ZoomOut size={14} />
-                      </button>
-                    </Tooltip>
                   </div>
                 </div>
 
                 <div
-                  ref={containerRef}
-                  className="relative h-[460px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)] 2xl:h-[500px]"
+                  className="relative h-[560px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)] 2xl:h-[640px]"
                   data-testid="knowledge-map"
                 >
-                  {nodes.length === 0 && (
+                  {nodes.length === 0 ? (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[var(--bg-primary)]/90 px-6 text-center">
                       <div className="rounded-full bg-[var(--accent-color)]/10 p-4 text-[var(--accent-color)]">
                         <Network size={26} />
                       </div>
                       <div className="max-w-md">
-                        <div className="text-lg font-semibold text-[var(--text-primary)]">Your map will appear here</div>
+                        <div className="text-lg font-semibold text-[var(--text-primary)]">Your roadmap will appear here</div>
                         <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                          Analyze this workspace after you have a little material in it, and Aetherium will turn that activity into concepts and links.
+                          Analyze this workspace after you have a little material in it, and Aetherium will turn that activity into a structured roadmap.
                         </div>
                       </div>
                       <button
@@ -1134,74 +898,15 @@ export default function KnowledgeGraphView() {
                         {analyzeButtonLabel}
                       </button>
                     </div>
+                  ) : (
+                    <RoadmapGraph
+                      nodes={nodes}
+                      links={links}
+                      selectedConceptId={selectedConcept?.id ?? null}
+                      onSelectConcept={(c) => setSelectedConcept(c)}
+                      searchFilter={graphSearch}
+                    />
                   )}
-
-                  <ForceGraph2D
-                    ref={fgRef}
-                    width={containerRef.current?.clientWidth ?? 0}
-                    height={containerRef.current?.clientHeight ?? 0}
-                    graphData={graphData}
-                    nodeRelSize={6}
-                    linkCurvature={layoutMode === "tree" ? 0.3 : 0}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    nodeColor={(node: any) => {
-                      if (layoutMode === "tree") {
-                        const rootId = selectedRootId || selectRootNode(nodes, links);
-                        if (node.id === rootId) {
-                          return "#fbbf24";
-                        }
-                      }
-                      return colorFor(node.concept_type);
-                    }}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    linkColor={(link: any) => {
-                      if (layoutMode === "tree" && link.link_type === "part_of") {
-                        return "rgba(100,116,139,0.3)";
-                      }
-                      return link.link_type === "part_of" ? "rgba(100,116,139,0.2)"
-                        : link.link_type === "prerequisite" ? "#f59e0b"
-                        : link.link_type === "supports" ? "#34d399"
-                        : link.link_type === "contradicts" ? "#f87171" : "#475569";
-                    }}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    linkWidth={(link: any) => link.link_type === "part_of" ? 0.5 : Math.max(1, link.strength * 2)}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    linkDirectionalArrowLength={(link: any) => link.link_type === "part_of" ? 0 : 4}
-                    linkDirectionalArrowRelPos={1}
-                    linkLabel="link_type"
-                    nodeCanvasObjectMode={() => "after"}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    nodeCanvasObject={(node: any, ctx, globalScale) => {
-                      const level: string = node.hierarchy_level ?? "concept";
-                      const baseSize = level === "chapter" ? 14 : level === "section" ? 11 : 9;
-                      const bold = level === "chapter";
-                      const maxLen = level === "chapter" ? 24 : level === "section" ? 20 : 16;
-                      const label = node.name.slice(0, maxLen) + (node.name.length > maxLen ? "..." : "");
-                      const fontSize = baseSize / globalScale;
-
-                      if (layoutMode === "tree") {
-                        const rootId = selectedRootId || selectRootNode(nodes, links);
-                        if (node.id === rootId && fontSize > 0) {
-                          ctx.fillStyle = "rgba(251, 191, 36, 0.2)";
-                          ctx.globalAlpha = 0.8;
-                          const padding = 5;
-                          const textWidth = ctx.measureText(label).width;
-                          ctx.fillRect(node.x - textWidth / 2 - padding, node.y - fontSize / 2 - 1.5, textWidth + padding * 2, fontSize + 3);
-                          ctx.globalAlpha = 1.0;
-                        }
-                      }
-
-                      ctx.font = `${bold ? "bold " : ""}${fontSize}px Sans-Serif`;
-                      ctx.fillStyle = "#94a3b8";
-                      ctx.textAlign = "center";
-                      ctx.textBaseline = "middle";
-                      ctx.fillText(label, node.x, node.y);
-                    }}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    onNodeClick={(node: any) => setSelectedConcept(nodes.find((item) => item.id === node.id) ?? null)}
-                    onNodeDragEnd={handleNodeDragEnd}
-                    backgroundColor="transparent"
-                  />
                 </div>
               </div>
             </Section>

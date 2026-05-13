@@ -635,6 +635,7 @@ pub fn run() {
             commands::ai_model::list_model_speed_stats,
             // AI knowledge commands
             commands::ai_knowledge::analyze_workspace,
+            commands::ai_knowledge::analyze_workspace_chunked,
             commands::ai_knowledge::analyze_descendants,
             commands::ai_knowledge::suggest_learning_goals,
             // Memory commands
