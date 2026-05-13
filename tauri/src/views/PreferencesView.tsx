@@ -2847,7 +2847,7 @@ export default function PreferencesView() {
                     <div>
                       <label className="text-xs text-[var(--text-secondary)] mb-2 block">Chat Messages Style</label>
                       <div className="flex flex-row flex-wrap gap-x-6 gap-y-2">
-                        {(["bubble", "flat"] as ChatMessageStyle[]).map((style) => (
+                        {(["bubble", "flat", "minimal"] as ChatMessageStyle[]).map((style) => (
                           <label key={style} className="flex items-center gap-2 text-sm cursor-pointer">
                             <input
                               type="radio"
@@ -2861,8 +2861,47 @@ export default function PreferencesView() {
                         ))}
                       </div>
                       <p className="text-xs text-[var(--text-muted)] mt-2">
-                        <strong>Bubble:</strong> colored rounded message bubbles. <strong>Flat:</strong> borderless document-style layout.
+                        <strong>Bubble:</strong> colored rounded message bubbles. <strong>Flat:</strong> borderless document-style layout. <strong>Minimal:</strong> full-width, no bubbles, with role labels.
                       </p>
+
+                      {/* Live preview */}
+                      <div className="mt-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3 overflow-hidden">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Preview</p>
+                        {/* User message */}
+                        <div className={`flex flex-col gap-0.5 ${
+                          chatMessageStyle === "minimal" ? "items-start" : "items-end"
+                        }`}>
+                          {chatMessageStyle === "minimal" && (
+                            <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">You</span>
+                          )}
+                          <div className={`text-xs ${
+                            chatMessageStyle === "minimal"
+                              ? "w-full py-1 text-[var(--text-primary)]"
+                              : chatMessageStyle === "flat"
+                                ? "w-fit rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[var(--text-primary)]"
+                                : "w-fit rounded-2xl rounded-tr-sm message-user px-3 py-1.5"
+                          }`}>
+                            What is the speed of light?
+                          </div>
+                        </div>
+                        {/* Assistant message */}
+                        <div className={`flex flex-col gap-0.5 ${
+                          chatMessageStyle === "minimal" ? "items-start" : "items-start"
+                        }`}>
+                          {chatMessageStyle === "minimal" && (
+                            <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">llama3:8b</span>
+                          )}
+                          <div className={`text-xs ${
+                            chatMessageStyle === "minimal"
+                              ? "w-full py-1 text-[var(--text-primary)]"
+                              : chatMessageStyle === "flat"
+                                ? "w-full rounded border-l-2 border-[var(--accent-color)]/40 bg-transparent px-3 py-1.5 text-[var(--text-primary)]"
+                                : "w-full rounded-2xl rounded-tl-sm message-assistant px-3 py-1.5"
+                          }`}>
+                            The speed of light in a vacuum is approximately 299,792,458 meters per second.
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Expand chat container to window width */}

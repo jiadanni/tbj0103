@@ -100,11 +100,17 @@ pub fn query_filtered(
     let where_sql = where_clauses.join(" AND ");
     // Deduplicate by session_id so one chat only appears once even if many of
     // its rows (messages, summaries) all match the query.
-    // Use a CTE + ROW_NUMBER to avoid GROUP BY with FTS5 functions (bm25/snippet),
-    // which SQLite rejects with "unable to use function bm25 in the requested context".
+    //
+    // Split into two CTEs to satisfy SQLite's FTS5 constraints:
+    //   - FTS5 auxiliary functions (bm25, snippet) cannot be used in the same
+    //     SELECT as window functions (ROW_NUMBER) — SQLite rejects it with
+    //     "unable to use function snippet in the requested context" for OR queries.
+    //   - GROUP BY with FTS5 functions is also rejected.
+    // Solution: materialise the FTS results first (fts_matches AS MATERIALIZED),
+    // then apply ROW_NUMBER in a second CTE over the plain temp table.
     let sql = format!(
         r#"
-        WITH ranked AS (
+        WITH fts_matches AS MATERIALIZED (
             SELECT
                 d.doc_id,
                 d.target_id,
@@ -120,16 +126,20 @@ pub fn query_filtered(
                 d.source_session_id,
                 d.updated_at,
                 COALESCE(snippet(quick_search_documents_fts, 2, '', '', ' ... ', 18), '') AS snip,
-                bm25(quick_search_documents_fts, 8.0, 2.0, 1.0) AS score,
-                ROW_NUMBER() OVER (
-                    PARTITION BY COALESCE(d.session_id, d.doc_id)
-                    ORDER BY bm25(quick_search_documents_fts, 8.0, 2.0, 1.0) ASC, d.updated_at DESC
-                ) AS rn
+                bm25(quick_search_documents_fts, 8.0, 2.0, 1.0) AS score
             FROM quick_search_documents_fts
             JOIN quick_search_documents d ON d.rowid = quick_search_documents_fts.rowid
             LEFT JOIN workspaces w ON w.id = d.workspace_id
             LEFT JOIN projects p ON p.id = d.project_id
             WHERE {}
+        ),
+        ranked AS (
+            SELECT *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY COALESCE(session_id, doc_id)
+                    ORDER BY score ASC, updated_at DESC
+                ) AS rn
+            FROM fts_matches
         )
         SELECT doc_id, target_id, kind, title, subtitle, body,
                workspace_id, workspace_name, project_id, project_name,

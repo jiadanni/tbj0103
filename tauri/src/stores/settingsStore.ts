@@ -4,7 +4,7 @@ import { normalizeTheme, type Theme } from "../lib/theme";
 
 export type DualModelExecutionMode = "serial" | "parallel";
 export type SettingsNavigationLayout = "top-tabs" | "side-tabs";
-export type ChatMessageStyle = "bubble" | "flat";
+export type ChatMessageStyle = "bubble" | "flat" | "minimal";
 export type ComposerMode = "normal" | "family";
 
 interface AppSettings {
