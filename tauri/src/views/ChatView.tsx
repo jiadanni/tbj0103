@@ -2021,7 +2021,7 @@ function StreamingBubble({
   const isMinimal = chatMessageStyle === "minimal";
 
   return (
-    <div className="flex flex-col gap-1 items-start px-4 pb-4">
+    <div className={`flex flex-col gap-1 items-start pb-4 ${isMinimal ? "px-8" : "px-4"}`}>
       {isMinimal && (
         <div className="text-xs font-semibold text-[var(--text-muted)] tracking-wide">Assistant</div>
       )}
@@ -4697,7 +4697,7 @@ export default function ChatView() {
                         className="w-full min-w-0 overflow-x-hidden py-4"
                         computeItemKey={(_, msg) => msg.id}
                         itemContent={(i, msg) => (
-                          <div className={`${chatMessageStyle === "minimal" ? "px-4 pb-8" : "pl-4 pr-[52px] pb-4"}`}>
+                          <div className={`${chatMessageStyle === "minimal" ? "px-8 pb-8" : "pl-4 pr-[52px] pb-4"}`}>
                             <ChatMessageBubble
                               key={msg.id}
                               msg={msg}
