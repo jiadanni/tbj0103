@@ -29,7 +29,7 @@ export default function ComposerSuggestionRows({
     const isDisabled = disabled || (isImmediate && disableImmediateSend);
 
     return (
-      <Tooltip key={suggestion.id} content={isImmediate ? "Send immediately" : "Add to composer · Ctrl+click to send"}>
+      <Tooltip key={suggestion.id} delay={600} className={isImmediate ? "" : "!whitespace-normal text-center"} content={isImmediate ? "Send immediately" : <span>Add to composer<br />Ctrl+click to send</span>}>
         <button
           key={suggestion.id}
           type="button"
