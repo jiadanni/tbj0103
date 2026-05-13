@@ -124,9 +124,8 @@ export default function FlashcardReviewView() {
     });
     setReviewed((r) => r + 1);
     setIsFlipped(false);
-    if (currentIndex < cards.length - 1) {
-      setCurrentIndex((i) => i + 1);
-    } else {
+    setCurrentIndex((i) => i + 1);
+    if (currentIndex >= cards.length - 1) {
       if (activeWorkspaceId) {api.flashcard.getStats(activeWorkspaceId).then(setStats).catch(() => {});}
     }
   }

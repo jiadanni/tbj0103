@@ -60,6 +60,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v46_fix_workspace_last_message_at_trigger",
     "v47_raise_migration_threshold",
     "v48_memory_summaries",
+    "v49_analyze_jobs",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1195,6 +1196,45 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         );
 
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v48_memory_summaries');")?;
+    }
+
+    // v49: analyze_jobs + analyze_job_chunks tables for chunked workspace analysis
+    let applied_v49: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v49_analyze_jobs'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v49 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS analyze_jobs (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                model TEXT NOT NULL,
+                total_chunks INTEGER NOT NULL,
+                completed_chunks INTEGER NOT NULL DEFAULT 0,
+                failed_chunks INTEGER NOT NULL DEFAULT 0,
+                chunk_budget INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                error TEXT
+            );
+            CREATE TABLE IF NOT EXISTS analyze_job_chunks (
+                job_id TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                label TEXT NOT NULL,
+                char_count INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                nodes_created INTEGER NOT NULL DEFAULT 0,
+                links_created INTEGER NOT NULL DEFAULT 0,
+                error TEXT,
+                finished_at TEXT,
+                PRIMARY KEY (job_id, chunk_index)
+            );
+            CREATE INDEX IF NOT EXISTS idx_analyze_jobs_workspace
+                ON analyze_jobs(workspace_id, started_at DESC);"
+        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v49_analyze_jobs');")?;
     }
 
     Ok(())
