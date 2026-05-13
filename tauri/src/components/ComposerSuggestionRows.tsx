@@ -7,7 +7,7 @@ interface ComposerSuggestionRowsProps {
   rows: ComposerSuggestionRow[];
   disabled?: boolean;
   disableImmediateSend?: boolean;
-  onSuggestionClick: (suggestion: ComposerSuggestion) => void;
+  onSuggestionClick: (suggestion: ComposerSuggestion, sendImmediately?: boolean) => void;
   onToggleCollapse?: () => void;
 }
 
@@ -29,12 +29,12 @@ export default function ComposerSuggestionRows({
     const isDisabled = disabled || (isImmediate && disableImmediateSend);
 
     return (
-      <Tooltip key={suggestion.id} content={isImmediate ? "Send immediately" : "Add to composer"}>
+      <Tooltip key={suggestion.id} content={isImmediate ? "Send immediately" : "Add to composer · Ctrl+click to send"}>
         <button
           key={suggestion.id}
           type="button"
           disabled={isDisabled}
-          onClick={() => onSuggestionClick(suggestion)}
+          onClick={(e) => onSuggestionClick(suggestion, e.ctrlKey || e.metaKey)}
           className={`inline-flex items-center rounded-full px-3.5 py-1.5 text-left text-[12px] font-semibold leading-none tracking-[0.01em] transition-all duration-200 hover:-translate-y-px hover:shadow-md ${
             isImmediate
               ? "bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--accent-color)] hover:bg-[rgba(var(--accent-color-rgb),0.15)] ring-1 ring-[rgba(var(--accent-color-rgb),0.3)]"

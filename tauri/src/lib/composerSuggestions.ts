@@ -120,7 +120,7 @@ export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext):
   if (context.topicSignature?.suggested_prompts && context.topicSignature.suggested_prompts.length > 0) {
     return {
       id: "workspace",
-      label: "Workspace",
+      label: "Workspace suggestions",
       collapsible: true,
       defaultExpanded: true,
       suggestions: context.topicSignature.suggested_prompts.map((prompt, index) => ({
