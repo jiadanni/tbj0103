@@ -187,7 +187,7 @@ export function buildChatSuggestionRow(context: ComposerSuggestionContext): Comp
     ]
     : [];
 
-  const suggestions = [...quickReplies, ...followUpSuggestions].slice(0, 5);
+  const suggestions = [...quickReplies, ...followUpSuggestions];
   if (suggestions.length === 0) {
     return null;
   }
