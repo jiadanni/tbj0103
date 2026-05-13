@@ -3532,7 +3532,7 @@ export default function ChatView() {
         : undefined;
       api.ollama.generateFollowUps(model, history, ollamaUrl, memoryContext)
         .then((suggestions) => { if (followUpsGenRef.current === gen) { setFollowUps(suggestions); } })
-        .catch(() => { });
+        .catch((e) => { console.warn("[follow-ups] failed:", e); });
     });
   }
 
@@ -4763,7 +4763,7 @@ export default function ChatView() {
                   <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-10" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-6"}`}>
                     <div
                       data-testid="composer-shell"
-                      className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[32px] bg-[var(--bg-elevated)]/70 backdrop-blur-3xl ring-1 ring-white/[0.08] ${showComposerHeader ? "p-3" : "p-2"} shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5),_0_0_0_1px_rgba(255,255,255,0.02)_inset] transition-all duration-300`}
+                      className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[32px] bg-[var(--bg-elevated)]/70 backdrop-blur-3xl ring-1 ring-[var(--border-color)] ${showComposerHeader ? "p-3" : "p-2"} shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5),_0_0_0_1px_rgba(255,255,255,0.02)_inset] transition-all duration-300`}
                     >
                       <div className="flex flex-col gap-2 min-w-0">
 
