@@ -38,7 +38,7 @@ export default function ComposerSuggestionRows({
           className={`inline-flex shrink-0 [scroll-snap-align:start] items-center rounded-full px-3.5 py-1.5 text-left text-[12px] font-semibold leading-none tracking-[0.01em] transition-all duration-200 hover:-translate-y-px hover:shadow-md ${
             isImmediate
               ? "bg-[rgba(var(--accent-color-rgb),0.1)] text-[var(--accent-color)] hover:bg-[rgba(var(--accent-color-rgb),0.15)] ring-1 ring-[rgba(var(--accent-color-rgb),0.3)]"
-              : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] ring-1 ring-[var(--border-color)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           } disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:shadow-none`}
         >
           {suggestion.label}
