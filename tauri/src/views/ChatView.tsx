@@ -6,7 +6,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { readTextFile } from "@tauri-apps/plugin-fs";
-import { api, type AiModel, type OllamaModel, type SearchResult, type QuickSearchResult, type ThoughtItem, type AppSettings } from "../lib/api";
+import { api, type AiModel, type OllamaModel, type SearchResult, type QuickSearchResult, type ThoughtItem, type AppSettings, type Memory } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Project, type Workspace } from "../stores/workspaceStore";
@@ -2532,6 +2532,7 @@ export default function ChatView() {
   const [messageSources] = useState<Record<string, SearchResult[]>>({});
   const [expandedSources, setExpandedSources] = useState<string | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
+  const followUpsGenRef = useRef(0);
 
   // Per-message metadata (tok/s and duration) persisted on the Message itself;
   // no in-memory state needed — loaded from DB on session open.;
@@ -3511,12 +3512,22 @@ export default function ChatView() {
   }
 
   function triggerFollowUps(sessionId: string) {
+    const gen = ++followUpsGenRef.current;
     const history = (useChatStore.getState().messages[sessionId] ?? []).map(m => ({ role: m.role, content: m.content }));
-    const model = selectedModel || sessions.find((s) => s.id === sessionId)?.model_name || "";
+    const bgModel = useSettingsStore.getState().backgroundModel;
+    const model = bgModel || selectedModel || sessions.find((s) => s.id === sessionId)?.model_name || "";
     if (!model) { return; }
-    api.ollama.generateFollowUps(model, history, ollamaUrl)
-      .then(suggestions => setFollowUps(suggestions))
-      .catch(() => { });
+    const memoryPromise: Promise<Memory[]> = effectiveWorkspaceId
+      ? api.memory.listActive(effectiveWorkspaceId).catch(() => [])
+      : Promise.resolve([]);
+    memoryPromise.then((memories) => {
+      const memoryContext = memories.length > 0
+        ? memories.map((m) => m.content).join("\n")
+        : undefined;
+      api.ollama.generateFollowUps(model, history, ollamaUrl, memoryContext)
+        .then((suggestions) => { if (followUpsGenRef.current === gen) { setFollowUps(suggestions); } })
+        .catch(() => { });
+    });
   }
 
   async function sendMessage() {

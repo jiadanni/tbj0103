@@ -1176,11 +1176,11 @@ export const api = {
         },
       );
     },
-    generateFollowUps: (model: string, messages: { role: string; content: string }[], ollamaUrl?: string) => {
+    generateFollowUps: (model: string, messages: { role: string; content: string }[], ollamaUrl?: string, memoryContext?: string) => {
       const requestId = createRequestId();
       return invokeObserved<string[]>(
         "generate_follow_ups",
-        { model, messages, ollamaUrl, requestId },
+        { model, messages, ollamaUrl, requestId, memoryContext },
         {
           requestId,
           layer: "tauri-ipc",

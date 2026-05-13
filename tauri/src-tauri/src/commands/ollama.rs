@@ -349,6 +349,7 @@ pub async fn generate_follow_ups(
     messages: Vec<OllamaMessage>,
     ollama_url: Option<String>,
     request_id: Option<String>,
+    memory_context: Option<String>,
 ) -> Result<Vec<String>, String> {
     let client = OllamaClient::new(ollama_url)?;
     let ctx = context(
@@ -359,10 +360,16 @@ pub async fn generate_follow_ups(
         Some(false),
     );
 
+    let follow_up_instruction = "Based on this conversation, suggest exactly 3 short follow-up questions the user might ask next.\nReturn ONLY a JSON array of strings, no markdown: [\"question 1\", \"question 2\", \"question 3\"]";
+    let prompt_content = match memory_context.filter(|s| !s.trim().is_empty()) {
+        Some(ctx_str) => format!("Workspace context about the user:\n{ctx_str}\n\n{follow_up_instruction}"),
+        None => follow_up_instruction.to_string(),
+    };
+
     let mut prompt_messages = messages;
     prompt_messages.push(OllamaMessage {
         role: "user".to_string(),
-        content: "Based on this conversation, suggest exactly 3 short follow-up questions the user might ask next.\nReturn ONLY a JSON array of strings, no markdown: [\"question 1\", \"question 2\", \"question 3\"]".to_string(),
+        content: prompt_content,
     });
 
     let raw = client
