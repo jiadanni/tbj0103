@@ -376,8 +376,23 @@ pub async fn generate_follow_ups(
         .send_message_observed(&model, prompt_messages, &ctx)
         .await?;
     let json_str = extract_json_array(&raw);
-    serde_json::from_str::<Vec<String>>(&json_str)
-        .map_err(|e| format!("Failed to parse follow-ups: {e} — raw: {raw}"))
+    if let Ok(v) = serde_json::from_str::<Vec<String>>(&json_str) {
+        return Ok(v);
+    }
+    // Fallback: extract non-empty lines, stripping leading list markers (1. 2. - *)
+    let lines: Vec<String> = raw
+        .lines()
+        .filter_map(|l| {
+            let s = l.trim().trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-' || c == '*' || c == ')').trim().trim_matches('"').to_string();
+            if s.len() > 5 { Some(s) } else { None }
+        })
+        .take(3)
+        .collect();
+    if lines.is_empty() {
+        Err(format!("Failed to parse follow-ups — raw: {raw}"))
+    } else {
+        Ok(lines)
+    }
 }
 
 /// Extracts key topics from a list of text snippets (chat titles, note titles, etc.)
