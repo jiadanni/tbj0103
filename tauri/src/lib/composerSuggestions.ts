@@ -92,12 +92,22 @@ function shouldOfferBinaryReply(question: string) {
     "yes or no",
     "do you want",
     "would you like",
+    "want me to",
+    "shall i",
+    "shall we",
     "should i",
     "should we",
     "can i",
     "can we",
     "okay if i",
     "ok if i",
+    "is that ok",
+    "is that okay",
+    "does that work",
+    "would that work",
+    "are you sure",
+    "is this ok",
+    "is this okay",
   ].some((pattern) => lower.includes(pattern));
 }
 
@@ -163,7 +173,7 @@ export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext):
 
 export function buildChatSuggestionRow(context: ComposerSuggestionContext): ComposerSuggestionRow | null {
   const assistantQuestion = latestAssistantQuestion(context.activeMessages);
-  const followUpSuggestions = uniqueTerms(context.followUps).slice(0, 3).map((suggestion, index) => ({
+  const followUpSuggestions = context.followUps.slice(0, 3).map((suggestion, index) => ({
     id: `chat-follow-up-${index}`,
     label: suggestion,
     prompt: suggestion,
