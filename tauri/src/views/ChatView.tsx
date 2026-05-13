@@ -3844,8 +3844,8 @@ export default function ChatView() {
     }
   }
 
-  async function handleComposerSuggestion(suggestion: ComposerSuggestion) {
-    if (suggestion.action === "send_immediately") {
+  async function handleComposerSuggestion(suggestion: ComposerSuggestion, sendImmediately?: boolean) {
+    if (suggestion.action === "send_immediately" || sendImmediately) {
       await sendMessageWithModel(selectedModel, suggestion.prompt);
       return;
     }

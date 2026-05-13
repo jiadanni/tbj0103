@@ -2699,7 +2699,7 @@ export default function PreferencesView() {
                       <div className="flex flex-row items-center gap-x-5">
 <label className="flex items-center gap-2 text-sm cursor-pointer">
                           <Toggle on={showComposerWorkspaceSuggestions} onToggle={() => setShowComposerWorkspaceSuggestions(!showComposerWorkspaceSuggestions)} />
-                          <span className="text-[var(--text-secondary)]">Context prompts</span>
+                          <span className="text-[var(--text-secondary)]">Workspace suggestions</span>
                         </label>
                         <label className="flex items-center gap-2 text-sm cursor-pointer">
                           <Toggle on={showComposerChatFollowUps} onToggle={() => setShowComposerChatFollowUps(!showComposerChatFollowUps)} />
