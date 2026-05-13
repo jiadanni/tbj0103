@@ -152,9 +152,10 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
       setRedoPickerStyle(null);
     }
   }, [redoPickerOpen]);
-  const messageWidthClassName = expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]";
-  const assistantColumnClassName = msg.role === "assistant" ? "w-full self-center" : "";
-  const userBubbleWidthClassName = msg.role === "user" ? "w-fit self-end" : "";
+  const isMinimal = chatMessageStyle === "minimal";
+  const messageWidthClassName = isMinimal ? "w-full" : expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]";
+  const assistantColumnClassName = isMinimal ? "w-full" : msg.role === "assistant" ? "w-full self-center" : "";
+  const userBubbleWidthClassName = isMinimal ? "w-full" : msg.role === "user" ? "w-fit self-end" : "";
   const assistantBubbleClassName = "rounded-[24px] message-assistant overflow-hidden shadow-none";
   const userBubbleClassName = "rounded-[24px] message-user shadow-none";
 
@@ -169,9 +170,14 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   return (
     <div
       data-msg-id={msg.id}
-      className={`group/msg flex w-full min-w-0 flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-center"}`}
+      className={`group/msg flex w-full min-w-0 flex-col ${isMinimal ? "gap-2 items-start" : `gap-1 ${msg.role === "user" ? "items-end" : "items-center"}`}`}
     >
       {wordDefinition && <WordDefinitionTooltip definition={wordDefinition} />}
+      {isMinimal && (
+        <div className="text-xs font-semibold text-[var(--text-muted)] tracking-wide">
+          {msg.role === "user" ? "You" : "Assistant"}
+        </div>
+      )}
       {editingMessageId === msg.id ? (
         <div className={`w-full min-w-0 ${messageWidthClassName} flex flex-col gap-2`}>
           <textarea
@@ -204,14 +210,16 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
         <>
           <div
             data-testid={msg.role === "assistant" ? "assistant-bubble" : "user-bubble"}
-            className={`min-w-0 ${messageWidthClassName} ${assistantColumnClassName} ${userBubbleWidthClassName} break-words px-4 py-2.5 text-left text-sm ${
-              chatMessageStyle === "flat"
-                ? msg.role === "user"
-                  ? "rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)]"
-                  : "rounded border-l-2 border-[var(--accent-color)]/40 bg-transparent text-[var(--text-primary)]"
-                : msg.role === "user"
-                  ? userBubbleClassName
-                  : assistantBubbleClassName
+            className={`min-w-0 ${messageWidthClassName} ${assistantColumnClassName} ${userBubbleWidthClassName} break-words text-left text-sm ${
+              isMinimal
+                ? "px-0 py-2 text-[var(--text-primary)]"
+                : chatMessageStyle === "flat"
+                  ? msg.role === "user"
+                    ? "px-4 py-2.5 rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                    : "px-4 py-2.5 rounded border-l-2 border-[var(--accent-color)]/40 bg-transparent text-[var(--text-primary)]"
+                  : msg.role === "user"
+                    ? "px-4 py-2.5 " + userBubbleClassName
+                    : "px-4 py-2.5 " + assistantBubbleClassName
             }`}
           >
             {msg.role === "assistant" ? (
@@ -289,7 +297,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
               <p className="break-words whitespace-pre-wrap">{msg.content}</p>
             )}
           </div>
-          <div className={`flex gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
+          <div className={`flex gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity ${isMinimal ? "self-start" : msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
             <Tooltip content="Copy">
               <button
                 onClick={() => onCopy(msg.id, displayMsg.content)}
@@ -394,7 +402,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
               </Tooltip>
             )}
           </div>
-          <div className={`flex items-center gap-2.5 text-[10px] font-medium tracking-[0.02em] text-[var(--text-muted)] tabular-nums ${msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
+          <div className={`flex items-center gap-2.5 text-[10px] font-medium tracking-[0.02em] text-[var(--text-muted)] tabular-nums ${isMinimal ? "self-start" : msg.role === "user" ? "self-end flex-row-reverse" : "self-center"}`}>
             <span>{formatMessageTimestamp(msg.created_at)}</span>
             {showGenInfo && showGenInfoModel && msg.role === "assistant" && displayMsg.model_name && varCount <= 1 ? (
               <span className="text-[var(--text-secondary)]">{displayMsg.model_name}</span>

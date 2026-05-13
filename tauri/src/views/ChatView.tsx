@@ -2018,12 +2018,18 @@ function StreamingBubble({
 
   if (!isCurrentlyStreaming || !visible) { return null; }
 
+  const isMinimal = chatMessageStyle === "minimal";
+
   return (
     <div className="flex flex-col gap-1 items-start px-4 pb-4">
-      <div className={`${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${chatMessageStyle === "flat"
-        ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]"
-        : ""
-        }`}>
+      {isMinimal && (
+        <div className="text-xs font-semibold text-[var(--text-muted)] tracking-wide">Assistant</div>
+      )}
+      <div className={`${
+        isMinimal
+          ? "w-full break-words py-1 text-sm text-[var(--text-primary)]"
+          : `${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${chatMessageStyle === "flat" ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]" : ""}`
+      }`}>
         <div className="prose prose-sm dark:prose-invert max-w-none">
           <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
@@ -4691,7 +4697,7 @@ export default function ChatView() {
                         className="w-full min-w-0 overflow-x-hidden py-4"
                         computeItemKey={(_, msg) => msg.id}
                         itemContent={(i, msg) => (
-                          <div className="pb-4 pl-4 pr-[52px]">
+                          <div className={`pb-4 ${chatMessageStyle === "minimal" ? "px-4" : "pl-4 pr-[52px]"}`}>
                             <ChatMessageBubble
                               key={msg.id}
                               msg={msg}
