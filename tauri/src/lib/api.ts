@@ -728,6 +728,8 @@ export const api = {
       invoke<void>("touch_session_accessed", { sessionId }),
     getRecentSessions: (workspaceId: string, limit?: number, opts?: { includeDescendants?: boolean }) =>
       invoke<ChatSession[]>("get_recent_sessions", { workspaceId, limit, includeDescendants: opts?.includeDescendants }),
+    countSessionsPerChildWorkspace: (parentWorkspaceId: string) =>
+      invoke<Record<string, number>>("count_sessions_per_child_workspace", { parentWorkspaceId }),
     convertToNote: (sessionId: string, ollamaUrl?: string) =>
       invoke<ProjectNote>("convert_chat_to_note", { req: { session_id: sessionId, ollama_url: ollamaUrl } }),
     convertToDocument: (sessionId: string, ollamaUrl?: string) =>

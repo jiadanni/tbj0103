@@ -309,3 +309,12 @@ pub fn get_message_variants(
     let conn = state.0.get().map_err(|e| e.to_string())?;
     chat_service::get_message_variants(&conn, &message_id)
 }
+
+#[tauri::command]
+pub fn count_sessions_per_child_workspace(
+    state: State<DbState>,
+    parent_workspace_id: String,
+) -> Result<std::collections::HashMap<String, i64>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    chat_service::count_sessions_per_child_workspace(&conn, &parent_workspace_id)
+}

@@ -33,6 +33,8 @@ import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
 import { SelectionToolbar } from "../components/SelectionToolbar";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 
 import type { ChatSubView } from "../components/navigationItems";
 
@@ -346,6 +348,7 @@ function SessionSidebar({
     [workspaces, scopedWsId, includeDescendants],
   );
   const clampedSidebarWidth = clampSessionSidebarWidth(sidebarWidth, isSplitPane);
+  const [childWorkspaceSessionCounts, setChildWorkspaceSessionCounts] = useState<Record<string, number>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -398,6 +401,15 @@ function SessionSidebar({
 
   const hideSidebarTooltip = () => setSidebarTooltip(null);
 
+  useEffect(() => {
+    if (!scopedWsId || childWorkspaces.length === 0) {
+      setChildWorkspaceSessionCounts({});
+      return;
+    }
+    api.chat.countSessionsPerChildWorkspace(scopedWsId)
+      .then(setChildWorkspaceSessionCounts)
+      .catch(() => {});
+  }, [scopedWsId, childWorkspaces.length]);
 
   visibleSessions.forEach((session) => {
     if (session.project_id) {
@@ -1455,7 +1467,7 @@ function SessionSidebar({
 
                 if (row.type === "workspace") {
                   const { workspace: wsItem, isOpen: wsOpen } = row;
-                  const wsSessionCount = byWorkspace[wsItem.id]?.length ?? 0;
+                  const wsSessionCount = childWorkspaceSessionCounts[wsItem.id] ?? 0;
                   return (
                     <button
                       onClick={() => setExpanded((prev) => ({ ...prev, [`ws-${wsItem.id}`]: !wsOpen }))}
@@ -2031,7 +2043,7 @@ function StreamingBubble({
           : `${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${chatMessageStyle === "flat" ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]" : ""}`
       }`}>
         <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          <ReactMarkdown skipHtml remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>
         </div>
       </div>
     </div>
