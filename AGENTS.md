@@ -120,6 +120,16 @@ tbj0103/
 - Before adding a returned setter or action to a `useEffect` dependency array, verify that its identity is stable. If it is not stable, either stabilize it in the hook or restructure the effect so it does not depend on the unstable wrapper.
 - When a bug only appears in a specific layout or mode, such as split-pane versus single-pane, treat that as a render-topology clue and inspect the full cycle: render -> effect -> store update -> re-render.
 - For React or Zustand infinite-loop bugs, document the exact repro path and check custom hooks, effect dependencies, and store updates before assuming the issue is in the view alone.
+- **A store field is not a feature until something reads it.** When adding new state to a Zustand store, verify at least one production component subscribes to that field via `useWorkspaceStore((s) => s.field)` (or equivalent). Tests that mount the field's setter or assert on the raw store value do **not** count as readers. Before considering a store field "done," `grep -r "s\.fieldName\|state\.fieldName" src/` should return at least one hit outside `stores/`, `tests/`, and the field's own settings UI. A diff that ships types + setter + persistence + tests but no reader is a feature stuck in the store — invisible during code review, and the bug is silent until a user reports the missing behavior.
+
+#### Pane-scoped vs window-scoped navigation chrome
+
+When adding navigation chrome (workspace switcher, section nav, command bars), decide explicitly whether it is **window-scoped** (rendered once in `Layout.tsx`) or **pane-scoped** (rendered inside `WorkspacePaneChrome` per pane in `SplitPaneLayout.tsx`).
+
+- Window-scoped chrome must read from `useWorkspaceStore` directly.
+- Pane-scoped chrome must read from `useScopedWorkspace` / `useScopedChat` / `useScopedProjects`.
+- Layout presentation choices (sidebar / tabs / dropdown) may legitimately switch a single piece of chrome between these scopes. For example, a `sidebar` choice typically lives per-pane while a `top-tabs` choice typically lives in the shared titlebar.
+- When that scope switch happens, **both `Layout.tsx` and `SplitPaneLayout.tsx` must update together**: gate the window-scoped renderer off when the pane-scoped variant is active, and add the pane-scoped variant inside the pane chrome. Failing to do both produces either double-rendering (chrome in titlebar AND in pane) or an empty region (gated off in titlebar but never added to the pane).
 
 ### Backend (Rust / Tauri)
 
@@ -181,6 +191,7 @@ cargo check --manifest-path tauri/src-tauri/Cargo.toml
 cargo clippy --manifest-path tauri/src-tauri/Cargo.toml -- -D warnings
 
 # Run all checks at once (SwiftLint + ESLint + tsc + clippy)
+# All four checks must exit 0 — treat any non-zero exit (including lint warnings under -D warnings) as a blocker.
 ./lint.sh
 
 # Run dev server (requires Ollama running on :11434 for AI features)
@@ -234,6 +245,15 @@ npm run tauri dev
 - Do **not** add "Co-authored-by: Claude" or similar AI attribution to commits.
 - Do **not** force-push to `develop` or `main`.
 
+### Commit Scope Hygiene
+
+**Stage by filename, not by directory.** When committing, only stage files you intentionally edited in the current task.
+
+- Run `git diff --stat` before `git add` and confirm each file is in scope for the task you set out to do.
+- If you see modified files you don't recognize, they likely belong to in-progress work from a prior session. Leave them unstaged rather than bundling them into an unrelated commit — mixing scopes makes `git blame` and `git bisect` actively misleading later.
+- `git add -A` and `git add .` are discouraged for the same reason. Prefer `git add <path1> <path2> ...` with explicit filenames so the staging decision is visible in your output.
+- The exception is when the user explicitly asks for "everything" — in that case echo back the file list before committing so the scope is logged.
+
 ### Commit Message Quality
 
 **Problem:** Large commits (20+ files, 1000+ lines) with vague titles hide actual scope and make history hard to understand.
@@ -276,6 +296,7 @@ System/Area 2:
 - When fixing a bug, add or update a Swift test covering the regression if the affected code is in the Swift app.
 - When fixing a Tauri bug, add or update a focused `vitest` regression test when the behavior is practical to cover in `src/tests/`.
 - For split-pane Tauri bugs, prefer a regression test that exercises both single-pane and split-pane flows, especially split-toggle behavior, pane-scoped session loading, and stale project-filter cleanup.
+- **Audit test mock defaults when changing render logic.** If a render-time function previously collapsed multiple input values into one output (e.g., mapping `sidebar` → `tabs` in split mode), tests written against the old behavior may have inherited a default mock value that exercises the collapsed branch instead of the branch they appear to test. When refactoring such a function, grep test files for `setState` defaults and confirm each test's setup matches the branch its assertions target — especially for shared default mocks at the top of the file. A test that passes both before and after the change may have been testing the wrong path the whole time.
 
 ---
 
