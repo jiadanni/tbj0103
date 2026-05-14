@@ -484,6 +484,7 @@ pub fn run() {
             commands::chat::get_messages,
             commands::chat::refresh_message,
             commands::chat::get_message_variants,
+            commands::chat::count_sessions_per_child_workspace,
             commands::chat::list_deleted_chat_sessions,
             commands::chat::restore_chat_session,
             commands::chat::hard_delete_chat_session,

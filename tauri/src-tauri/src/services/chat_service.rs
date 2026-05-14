@@ -803,6 +803,35 @@ pub fn get_message_variants(conn: &Connection, message_id: &str) -> Result<Vec<M
 }
 
 
+/// Returns a map of child workspace ID → session count for all direct and
+/// indirect descendants of `parent_workspace_id`. The parent itself is excluded.
+pub fn count_sessions_per_child_workspace(
+    conn: &Connection,
+    parent_workspace_id: &str,
+) -> Result<std::collections::HashMap<String, i64>, String> {
+    let mut stmt = conn
+        .prepare(
+            "WITH RECURSIVE ws_tree(id) AS (
+                SELECT id FROM workspaces WHERE parent_workspace_id = ?1
+                UNION ALL
+                SELECT w.id FROM workspaces w JOIN ws_tree t ON w.parent_workspace_id = t.id
+            )
+            SELECT cs.workspace_id, COUNT(*) AS cnt
+            FROM chat_sessions cs
+            WHERE cs.workspace_id IN (SELECT id FROM ws_tree)
+              AND cs.is_deleted = 0
+            GROUP BY cs.workspace_id",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![parent_workspace_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<std::collections::HashMap<_, _>, _>>()
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
