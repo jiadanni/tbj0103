@@ -8,7 +8,6 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import PromptDialog from "../components/PromptDialog";
-import { Tooltip } from "../components/Tooltip";
 
 /**
  * If a workspace with the given name already exists, prompt the user
@@ -99,6 +98,7 @@ export default function ImportSettingsSection() {
   const [claudeSelected, setClaudeSelected] = useState<Set<string>>(new Set());
   const [claudeSelectedProjects, setClaudeSelectedProjects] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [slotWarnings, setSlotWarnings] = useState<Record<string, string | null>>({});
   const [promptState, setPromptState] = useState<{ defaultValue: string } | null>(null);
   const promptResolveRef = useRef<((value: string | null) => void) | null>(null);
 
@@ -339,6 +339,7 @@ export default function ImportSettingsSection() {
   }
 
   async function pickClaudeFile(
+    key: string,
     label: string,
     setter: (path: string | null) => void,
   ) {
@@ -350,7 +351,14 @@ export default function ImportSettingsSection() {
       filters: [{ name: "JSON", extensions: ["json"] }],
     });
     const filePath = Array.isArray(selected) ? selected[0] : selected;
-    if (filePath) { setter(filePath); }
+    if (filePath) {
+      const filename = filePath.split("/").pop();
+      setSlotWarnings((prev) => ({
+        ...prev,
+        [key]: filename !== label ? `Selected ${filename} — expected ${label}` : null,
+      }));
+      setter(filePath);
+    }
   }
 
   const scanClaudeFiles = useCallback(async () => {
@@ -498,14 +506,13 @@ export default function ImportSettingsSection() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-            {error}
-          </div>
-        )}
-
         <div className="flex flex-col gap-4 max-w-3xl">
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+          {error && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+              {error}
+            </div>
+          )}
+<section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2">
@@ -781,6 +788,7 @@ export default function ImportSettingsSection() {
                         slot.setEnabled(e.target.checked);
                         if (!e.target.checked) {
                           slot.setPath(null);
+                          setSlotWarnings((prev) => ({ ...prev, [slot.key]: null }));
                           setClaudePreviews([]);
                           setClaudeProjects([]);
                           setClaudeMemories(null);
@@ -796,22 +804,20 @@ export default function ImportSettingsSection() {
                   </label>
                   {slot.enabled && (
                     <div className="flex items-center gap-2">
+                      {slotWarnings[slot.key] && (
+                        <span className="text-[11px] text-yellow-400 whitespace-nowrap">
+                          ⚠ {slotWarnings[slot.key]}
+                        </span>
+                      )}
                       <button
                         type="button"
-                        onClick={() => void pickClaudeFile(slot.label, slot.setPath)}
+                        onClick={() => void pickClaudeFile(slot.key, slot.label, slot.setPath)}
                         disabled={importingClaude || claudeScanning}
                         className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
                       >
                         <FolderInput size={12} />
                         {slot.path ? "Change" : "Choose"}
                       </button>
-                      {slot.path && (
-                        <Tooltip content={slot.path}>
-                          <span className="max-w-[260px] truncate text-[11px] text-[var(--text-muted)]">
-                            {slot.path.split("/").pop()}
-                          </span>
-                        </Tooltip>
-                      )}
                     </div>
                   )}
                 </div>
