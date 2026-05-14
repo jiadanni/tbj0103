@@ -1,5 +1,5 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import React, { useEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderOpen, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -377,6 +377,32 @@ function SessionSidebar({
     | { type: "project"; x: number; y: number; project: Project }
     | null
   >(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (ctxMenu && menuRef.current) {
+      const rect = menuRef.current.getBoundingClientRect();
+      const padding = 8;
+      const { innerWidth, innerHeight } = window;
+
+      let newX = ctxMenu.x;
+      let newY = ctxMenu.y;
+
+      if (newX + rect.width > innerWidth - padding) {
+        newX = innerWidth - rect.width - padding;
+      }
+      if (newY + rect.height > innerHeight - padding) {
+        newY = innerHeight - rect.height - padding;
+      }
+
+      newX = Math.max(padding, newX);
+      newY = Math.max(padding, newY);
+
+      if (newX !== ctxMenu.x || newY !== ctxMenu.y) {
+        setCtxMenu((current) => current ? { ...current, x: newX, y: newY } : null);
+      }
+    }
+  }, [ctxMenu]);
   const [convertTarget, setConvertTarget] = useState<{ session: ChatSession; kind: ConvertKind } | null>(null);
   const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
   const navigate = useNavigate();
@@ -1601,6 +1627,7 @@ function SessionSidebar({
 
         {ctxMenu && (
           <div
+            ref={menuRef}
             data-chat-tree-context-menu
             className="fixed z-50 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
             style={{ left: ctxMenu.x, top: ctxMenu.y }}
