@@ -35,7 +35,7 @@ pub async fn process_auto_memory_extraction(
     let sessions = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let sql = format!(
-            "SELECT id, workspace_id, project_id, last_processed_message_count FROM chat_sessions \
+            "SELECT id, workspace_id, folder_id, last_processed_message_count FROM chat_sessions \
              WHERE datetime(updated_at) > datetime('now', '-{} minutes') \
              AND is_incognito = 0 \
              AND exclude_from_analytics = 0 \
@@ -59,7 +59,7 @@ pub async fn process_auto_memory_extraction(
         sessions
     };
 
-    for (session_id, workspace_id, project_id, last_count) in sessions {
+    for (session_id, workspace_id, folder_id, last_count) in sessions {
         let messages = {
             let conn = state.0.get().map_err(|e| e.to_string())?;
             let mut msg_stmt = conn.prepare(
@@ -95,7 +95,7 @@ pub async fn process_auto_memory_extraction(
             && extract_and_store_memories(
                 state,
                 &workspace_id,
-                &project_id,
+                &folder_id,
                 &session_id,
                 &messages,
                 ollama_url.clone(),
@@ -118,7 +118,7 @@ pub async fn process_auto_memory_extraction(
 pub async fn extract_and_store_memories(
     state: &DbState,
     workspace_id: &str,
-    project_id: &str,
+    folder_id: &str,
     session_id: &str,
     recent_messages: &[Message],
     ollama_url: Option<String>,
@@ -302,9 +302,9 @@ pub async fn extract_and_store_memories(
                     let now = chrono::Utc::now().to_rfc3339();
                     for (content, memory_type, id, embedding_bytes) in &new_memories {
                         let _ = conn.execute(
-                            "INSERT INTO memories (id, workspace_id, project_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
+                            "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at)
                              VALUES (?1, ?2, ?3, ?4, ?5, 'workspace', ?6, 0, 1, ?7, ?8)",
-                            rusqlite::params![id, workspace_id, project_id, content, memory_type, session_id, now, now],
+                            rusqlite::params![id, workspace_id, folder_id, content, memory_type, session_id, now, now],
                         );
                         let _ = conn.execute(
                             "INSERT INTO memory_embeddings (memory_id, embedding, model, created_at)

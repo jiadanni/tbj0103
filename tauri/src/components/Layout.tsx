@@ -31,7 +31,7 @@ import { useNavigationHistory } from "../hooks/useNavigationHistory";
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
 const HistoryView = React.lazy(() => import("../views/HistoryView"));
-const ProjectDashboardView = React.lazy(() => import("../views/ProjectDashboardView"));
+const FolderDashboardView = React.lazy(() => import("../views/FolderDashboardView"));
 const PreferencesView = React.lazy(() => import("../views/PreferencesView"));
 const SourceBrowserView = React.lazy(() => import("../views/SourceBrowserView"));
 const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
@@ -1448,7 +1448,7 @@ function CompactSectionNavigation() {
 
   const selectedPath = sectionOptions.some((item) => item.value === activeSegment)
     ? activeSegment
-    : sectionOptions[0]?.value ?? "/project";
+    : sectionOptions[0]?.value ?? "/folder";
 
   return (
     <div className="flex h-10 items-center gap-3 border-b border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 shrink-0">
@@ -1475,7 +1475,7 @@ function pathToPaneView(pathname: string): import("../stores/workspaceStore").Pa
     case "graph": return "graph";
     case "flashcards": return "flashcards";
     case "learning": return "graph";
-    default: return "project";
+    default: return "folder";
   }
 }
 
@@ -1622,8 +1622,8 @@ function AppRoutes() {
   return (
     <Suspense fallback={<LazyFallback />}>
     <Routes>
-      <Route path="/" element={<Navigate to="/project" replace />} />
-      <Route path="/project" element={<ProjectDashboardView />} />
+      <Route path="/" element={<Navigate to="/folder" replace />} />
+      <Route path="/folder" element={<FolderDashboardView />} />
       <Route path="/chat" element={<ChatView />} />
       <Route path="/chat/:sessionId" element={<ChatView />} />
       <Route path="/notes" element={<NoteEditorView />} />

@@ -10,14 +10,14 @@ pub struct SearchResult {
     pub excerpt: String,
     pub score: f64,
     pub source_id: Option<String>,
-    pub project_id: Option<String>,
+    pub folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchRequest {
     pub query: String,
     pub workspace_id: String,
-    pub project_id: Option<String>,
+    pub folder_id: Option<String>,
     pub limit: Option<i64>,
 }
 
@@ -52,7 +52,7 @@ pub fn keyword_search(
                 excerpt: desc.chars().take(120).collect(),
                 score: 1.0,
                 source_id: None,
-                project_id: None,
+                folder_id: None,
             })
         })
         .map_err(|e| e.to_string())?
@@ -60,23 +60,23 @@ pub fn keyword_search(
         .collect::<Vec<_>>();
     results.extend(concepts);
 
-    // Search chat messages (optionally scoped to project)
-    let msg_query = if req.project_id.is_some() {
-        "SELECT m.id, cs.title, m.content, cs.project_id FROM messages m
+    // Search chat messages (optionally scoped to folder)
+    let msg_query = if req.folder_id.is_some() {
+        "SELECT m.id, cs.title, m.content, cs.folder_id FROM messages m
          JOIN chat_sessions cs ON m.session_id = cs.id
-         WHERE cs.project_id = ?3 AND lower(m.content) LIKE ?2
+         WHERE cs.folder_id = ?3 AND lower(m.content) LIKE ?2
          ORDER BY m.created_at DESC LIMIT ?4"
     } else {
-        "SELECT m.id, cs.title, m.content, cs.project_id FROM messages m
+        "SELECT m.id, cs.title, m.content, cs.folder_id FROM messages m
          JOIN chat_sessions cs ON m.session_id = cs.id
          WHERE cs.workspace_id = ?1 AND lower(m.content) LIKE ?2
          ORDER BY m.created_at DESC LIMIT ?4"
     };
-    let project_filter = req.project_id.as_deref().unwrap_or("");
+    let folder_filter = req.folder_id.as_deref().unwrap_or("");
     let mut stmt2 = conn.prepare(msg_query).map_err(|e| e.to_string())?;
     let messages = stmt2
         .query_map(
-            rusqlite::params![req.workspace_id, pattern, project_filter, limit],
+            rusqlite::params![req.workspace_id, pattern, folder_filter, limit],
             |row| {
                 let content: String = row.get(2)?;
                 let excerpt: String = content.chars().take(120).collect();
@@ -87,7 +87,7 @@ pub fn keyword_search(
                     excerpt,
                     score: 0.9,
                     source_id: None,
-                    project_id: row.get(3)?,
+                    folder_id: row.get(3)?,
                 })
             },
         )
@@ -96,7 +96,7 @@ pub fn keyword_search(
         .collect::<Vec<_>>();
     results.extend(messages);
 
-    // Search project notes (workspace-scoped)
+    // Search folder notes (workspace-scoped)
     let mut stmt3 = conn
         .prepare(
             "SELECT n.id, n.title, n.content, n.workspace_id FROM project_notes n
@@ -114,7 +114,7 @@ pub fn keyword_search(
                 excerpt: content.chars().take(120).collect(),
                 score: 0.85,
                 source_id: None,
-                project_id: None,
+                folder_id: None,
             })
         })
         .map_err(|e| e.to_string())?
@@ -229,7 +229,7 @@ pub fn semantic_search(
                     excerpt,
                     score,
                     source_id: Some(source_id),
-                    project_id: None,
+                    folder_id: None,
                 });
             }
         }

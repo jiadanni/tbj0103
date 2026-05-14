@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
-import type { Workspace, Project } from "@/stores/workspaceStore";
+import type { Workspace, Folder } from "@/stores/workspaceStore";
 import { useChatStore } from "@/stores/chatStore";
 
 const INITIAL = {
   workspaces: [],
   activeWorkspaceId: null,
   activeParentWorkspaceId: null,
-  activeProjectId: null,
-  projects: [],
+  activeFolderId: null,
+  folders: [],
   isDemoMode: false,
   workspaceNavigation: "sidebar" as const,
   sectionNavigation: "sidebar" as const,
@@ -16,13 +16,13 @@ const INITIAL = {
   splitSectionNavigation: "match-main" as const,
   activeTopicSignature: null,
   migrationSuggestion: null,
-  projectsByWorkspace: {},
+  foldersByWorkspace: {},
   splitMode: false,
   splitSizes: [50, 50] as [number, number],
   activePaneId: "primary" as const,
   panes: {
-    primary: { workspaceId: null, projectId: null, view: "project" as const, chatSessionId: null, noteSelection: null },
-    secondary: { workspaceId: null, projectId: null, view: "project" as const, chatSessionId: null, noteSelection: null },
+    primary: { workspaceId: null, folderId: null, view: "folder" as const, chatSessionId: null, noteSelection: null },
+    secondary: { workspaceId: null, folderId: null, view: "folder" as const, chatSessionId: null, noteSelection: null },
   },
 };
 
@@ -72,12 +72,12 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
   };
 }
 
-function makeProject(overrides: Partial<Project> = {}): Project {
+function makeFolder(overrides: Partial<Folder> = {}): Folder {
   return {
     id: "p1",
     workspace_id: "ws1",
-    name: "Project 1",
-    project_description: "",
+    name: "Folder 1",
+    folder_description: "",
     custom_instructions: "",
     color: "#000",
     icon: "📁",
@@ -182,14 +182,14 @@ describe("setWorkspaces", () => {
   it("falls back from a deleted active workspace and clears the global selection", () => {
     useWorkspaceStore.setState({
       activeWorkspaceId: "ws-deleted",
-      activeProjectId: "project-1",
+      activeFolderId: "project-1",
       panes: {
-        primary: { workspaceId: "ws-deleted", projectId: "project-1", view: "chat", chatSessionId: "chat-1", noteSelection: null },
-        secondary: { workspaceId: "ws-keep", projectId: "project-2", view: "project", chatSessionId: "chat-2", noteSelection: null },
+        primary: { workspaceId: "ws-deleted", folderId: "project-1", view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-keep", folderId: "project-2", view: "folder", chatSessionId: "chat-2", noteSelection: null },
       },
-      projectsByWorkspace: {
-        "ws-deleted": [makeProject({ id: "project-1", workspace_id: "ws-deleted" })],
-        "ws-keep": [makeProject({ id: "project-2", workspace_id: "ws-keep" })],
+      foldersByWorkspace: {
+        "ws-deleted": [makeFolder({ id: "project-1", workspace_id: "ws-deleted" })],
+        "ws-keep": [makeFolder({ id: "project-2", workspace_id: "ws-keep" })],
       },
     });
     useChatStore.setState({ activeChatId: "chat-1" });
@@ -201,14 +201,14 @@ describe("setWorkspaces", () => {
 
     const state = useWorkspaceStore.getState();
     expect(state.activeWorkspaceId).toBe("ws-keep");
-    expect(state.activeProjectId).toBeNull();
+    expect(state.activeFolderId).toBeNull();
     expect(state.panes.primary.workspaceId).toBe("ws-keep");
-    expect(state.panes.primary.projectId).toBeNull();
+    expect(state.panes.primary.folderId).toBeNull();
     expect(state.panes.primary.chatSessionId).toBeNull();
     expect(state.panes.secondary.workspaceId).toBe("ws-keep");
-    expect(state.panes.secondary.projectId).toBe("project-2");
-    expect(state.projectsByWorkspace).toEqual({
-      "ws-keep": [makeProject({ id: "project-2", workspace_id: "ws-keep" })],
+    expect(state.panes.secondary.folderId).toBe("project-2");
+    expect(state.foldersByWorkspace).toEqual({
+      "ws-keep": [makeFolder({ id: "project-2", workspace_id: "ws-keep" })],
     });
     expect(useChatStore.getState().activeChatId).toBeNull();
   });
@@ -217,8 +217,8 @@ describe("setWorkspaces", () => {
     useWorkspaceStore.setState({
       activeWorkspaceId: "ws-1",
       panes: {
-        primary: { workspaceId: "ws-1", projectId: "project-1", view: "chat", chatSessionId: "chat-1", noteSelection: null },
-        secondary: { workspaceId: "ws-deleted", projectId: "project-2", view: "project", chatSessionId: "chat-2", noteSelection: null },
+        primary: { workspaceId: "ws-1", folderId: "project-1", view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-deleted", folderId: "project-2", view: "folder", chatSessionId: "chat-2", noteSelection: null },
       },
     });
 
@@ -230,27 +230,27 @@ describe("setWorkspaces", () => {
     const state = useWorkspaceStore.getState();
     expect(state.activeWorkspaceId).toBe("ws-1");
     expect(state.panes.primary.workspaceId).toBe("ws-1");
-    expect(state.panes.primary.projectId).toBe("project-1");
+    expect(state.panes.primary.folderId).toBe("project-1");
     expect(state.panes.secondary.workspaceId).toBe("ws-2");
-    expect(state.panes.secondary.projectId).toBeNull();
+    expect(state.panes.secondary.folderId).toBeNull();
     expect(state.panes.secondary.chatSessionId).toBeNull();
   });
 });
 
-// ─── removeProject ─────────────────────────────────────────────────────────
+// ─── removeFolder ─────────────────────────────────────────────────────────
 
-describe("removeProject", () => {
-  it("filters out the matching project", () => {
-    useWorkspaceStore.setState({ projects: [makeProject({ id: "p1" }), makeProject({ id: "p2" })] });
-    useWorkspaceStore.getState().removeProject("p1");
-    expect(useWorkspaceStore.getState().projects).toHaveLength(1);
-    expect(useWorkspaceStore.getState().projects[0].id).toBe("p2");
+describe("removeFolder", () => {
+  it("filters out the matching folder", () => {
+    useWorkspaceStore.setState({ folders: [makeFolder({ id: "p1" }), makeFolder({ id: "p2" })] });
+    useWorkspaceStore.getState().removeFolder("p1");
+    expect(useWorkspaceStore.getState().folders).toHaveLength(1);
+    expect(useWorkspaceStore.getState().folders[0].id).toBe("p2");
   });
 
   it("is a no-op on a missing id", () => {
-    useWorkspaceStore.setState({ projects: [makeProject({ id: "p1" })] });
-    useWorkspaceStore.getState().removeProject("nonexistent");
-    expect(useWorkspaceStore.getState().projects).toHaveLength(1);
+    useWorkspaceStore.setState({ folders: [makeFolder({ id: "p1" })] });
+    useWorkspaceStore.getState().removeFolder("nonexistent");
+    expect(useWorkspaceStore.getState().folders).toHaveLength(1);
   });
 });
 
@@ -285,7 +285,7 @@ describe("dismissMigrationSuggestion", () => {
 
 // ─── independent setters ───────────────────────────────────────────────────
 
-describe("workspace/project selection", () => {
+describe("workspace/folder selection", () => {
   it("setActiveWorkspaceId resolves a root workspace to its first child and tracks the active parent", () => {
     useWorkspaceStore.setState({
       workspaces: [
@@ -293,8 +293,8 @@ describe("workspace/project selection", () => {
         makeWorkspace({ id: "child-1", name: "Child", parent_workspace_id: "root-1" }),
       ],
       panes: {
-        primary: { workspaceId: null, projectId: null, view: "project", chatSessionId: null, noteSelection: null },
-        secondary: { workspaceId: null, projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        primary: { workspaceId: null, folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: null, folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
       },
     });
 
@@ -306,34 +306,34 @@ describe("workspace/project selection", () => {
     expect(state.panes.primary.workspaceId).toBe("child-1");
   });
 
-  it("setActiveWorkspaceId clears activeProjectId and activeChatId when the workspace changes", () => {
-    useWorkspaceStore.setState({ activeWorkspaceId: "ws-1", activeProjectId: "p1" });
+  it("setActiveWorkspaceId clears activeFolderId and activeChatId when the workspace changes", () => {
+    useWorkspaceStore.setState({ activeWorkspaceId: "ws-1", activeFolderId: "p1" });
     useChatStore.setState({ activeChatId: "chat-1" });
 
     useWorkspaceStore.getState().setActiveWorkspaceId("ws-2");
 
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-2");
-    expect(useWorkspaceStore.getState().activeProjectId).toBeNull();
+    expect(useWorkspaceStore.getState().activeFolderId).toBeNull();
     expect(useChatStore.getState().activeChatId).toBeNull();
   });
 
-  it("setActiveWorkspaceId preserves activeProjectId and activeChatId when re-selecting the same workspace", () => {
-    useWorkspaceStore.setState({ activeWorkspaceId: "ws-1", activeProjectId: "p1" });
+  it("setActiveWorkspaceId preserves activeFolderId and activeChatId when re-selecting the same workspace", () => {
+    useWorkspaceStore.setState({ activeWorkspaceId: "ws-1", activeFolderId: "p1" });
     useChatStore.setState({ activeChatId: "chat-1" });
 
     useWorkspaceStore.getState().setActiveWorkspaceId("ws-1");
 
-    expect(useWorkspaceStore.getState().activeProjectId).toBe("p1");
+    expect(useWorkspaceStore.getState().activeFolderId).toBe("p1");
     expect(useChatStore.getState().activeChatId).toBe("chat-1");
   });
 
   it("setActiveWorkspaceId clears the primary pane selection when the workspace changes", () => {
     useWorkspaceStore.setState({
       activeWorkspaceId: "ws-1",
-      activeProjectId: "p1",
+      activeFolderId: "p1",
       panes: {
-        primary: { workspaceId: "ws-1", projectId: "p1", view: "chat", chatSessionId: "chat-1", noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "project", chatSessionId: "chat-2", noteSelection: null },
+        primary: { workspaceId: "ws-1", folderId: "p1", view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "folder", chatSessionId: "chat-2", noteSelection: null },
       },
     });
 
@@ -341,56 +341,56 @@ describe("workspace/project selection", () => {
 
     const state = useWorkspaceStore.getState();
     expect(state.panes.primary.workspaceId).toBe("ws-2");
-    expect(state.panes.primary.projectId).toBeNull();
+    expect(state.panes.primary.folderId).toBeNull();
     expect(state.panes.primary.chatSessionId).toBeNull();
     expect(state.panes.secondary.chatSessionId).toBe("chat-2");
   });
 
-  it("setActiveProjectId does not affect activeWorkspaceId", () => {
+  it("setActiveFolderId does not affect activeWorkspaceId", () => {
     useWorkspaceStore.setState({ activeWorkspaceId: "ws-1" });
-    useWorkspaceStore.getState().setActiveProjectId("p-2");
+    useWorkspaceStore.getState().setActiveFolderId("p-2");
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-1");
-    expect(useWorkspaceStore.getState().activeProjectId).toBe("p-2");
+    expect(useWorkspaceStore.getState().activeFolderId).toBe("p-2");
   });
 
-  it("setProjects clears a stale active project and matching pane selection", () => {
+  it("setFolders clears a stale active folder and matching pane selection", () => {
     useWorkspaceStore.setState({
       activeWorkspaceId: "ws-1",
-      activeProjectId: "p-stale",
+      activeFolderId: "p-stale",
       panes: {
-        primary: { workspaceId: "ws-1", projectId: "p-stale", view: "chat", chatSessionId: "chat-1", noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: "p-keep", view: "project", chatSessionId: null, noteSelection: null },
+        primary: { workspaceId: "ws-1", folderId: "p-stale", view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: "p-keep", view: "folder", chatSessionId: null, noteSelection: null },
       },
     });
 
-    useWorkspaceStore.getState().setProjects([
-      makeProject({ id: "p-fresh", workspace_id: "ws-1" }),
+    useWorkspaceStore.getState().setFolders([
+      makeFolder({ id: "p-fresh", workspace_id: "ws-1" }),
     ]);
 
     const state = useWorkspaceStore.getState();
-    expect(state.activeProjectId).toBeNull();
-    expect(state.panes.primary.projectId).toBeNull();
-    expect(state.panes.secondary.projectId).toBe("p-keep");
+    expect(state.activeFolderId).toBeNull();
+    expect(state.panes.primary.folderId).toBeNull();
+    expect(state.panes.secondary.folderId).toBe("p-keep");
   });
 
-  it("setProjectsForWorkspace clears stale pane project filters for that workspace", () => {
+  it("setFoldersForWorkspace clears stale pane folder filters for that workspace", () => {
     useWorkspaceStore.setState({
       activeWorkspaceId: "ws-1",
-      activeProjectId: "p-stale",
+      activeFolderId: "p-stale",
       panes: {
-        primary: { workspaceId: "ws-1", projectId: "p-stale", view: "chat", chatSessionId: "chat-1", noteSelection: null },
-        secondary: { workspaceId: "ws-1", projectId: "p-stale-2", view: "project", chatSessionId: null, noteSelection: null },
+        primary: { workspaceId: "ws-1", folderId: "p-stale", view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-1", folderId: "p-stale-2", view: "folder", chatSessionId: null, noteSelection: null },
       },
     });
 
-    useWorkspaceStore.getState().setProjectsForWorkspace("ws-1", [
-      makeProject({ id: "p-valid", workspace_id: "ws-1" }),
+    useWorkspaceStore.getState().setFoldersForWorkspace("ws-1", [
+      makeFolder({ id: "p-valid", workspace_id: "ws-1" }),
     ]);
 
     const state = useWorkspaceStore.getState();
-    expect(state.activeProjectId).toBeNull();
-    expect(state.panes.primary.projectId).toBeNull();
-    expect(state.panes.secondary.projectId).toBeNull();
+    expect(state.activeFolderId).toBeNull();
+    expect(state.panes.primary.folderId).toBeNull();
+    expect(state.panes.secondary.folderId).toBeNull();
   });
 
   it("setWorkspaces preserves the active parent and falls back to a sibling child when the active child disappears", () => {
@@ -398,8 +398,8 @@ describe("workspace/project selection", () => {
       activeWorkspaceId: "child-a",
       activeParentWorkspaceId: "root-1",
       panes: {
-        primary: { workspaceId: "child-a", projectId: null, view: "chat", chatSessionId: "chat-1", noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        primary: { workspaceId: "child-a", folderId: null, view: "chat", chatSessionId: "chat-1", noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
       },
     });
 
@@ -422,7 +422,7 @@ describe("split layout", () => {
     useWorkspaceStore.setState({
       workspaces: [makeWorkspace({ id: "ws-1" }), makeWorkspace({ id: "ws-2" })],
       activeWorkspaceId: "ws-1",
-      activeProjectId: "p-1",
+      activeFolderId: "p-1",
     });
 
     useWorkspaceStore.getState().enterSplitMode();
@@ -430,7 +430,7 @@ describe("split layout", () => {
     const state = useWorkspaceStore.getState();
     expect(state.splitMode).toBe(true);
     expect(state.panes.primary.workspaceId).toBe("ws-1");
-    expect(state.panes.primary.projectId).toBe("p-1");
+    expect(state.panes.primary.folderId).toBe("p-1");
     expect(state.panes.secondary.workspaceId).toBe("ws-2");
   });
 
@@ -438,8 +438,8 @@ describe("split layout", () => {
     useWorkspaceStore.setState({
       workspaces: [makeWorkspace({ id: "ws-1" }), makeWorkspace({ id: "ws-2" })],
       panes: {
-        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        primary: { workspaceId: "ws-1", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
       },
     });
 
@@ -447,7 +447,7 @@ describe("split layout", () => {
     useWorkspaceStore.getState().setPaneChatSession("secondary", "chat-2");
 
     const state = useWorkspaceStore.getState();
-    expect(state.panes.primary.view).toBe("project");
+    expect(state.panes.primary.view).toBe("folder");
     expect(state.panes.secondary.view).toBe("chat");
     expect(state.panes.secondary.chatSessionId).toBe("chat-2");
   });
@@ -470,10 +470,10 @@ describe("split layout", () => {
     useWorkspaceStore.setState({
       splitMode: true,
       activeWorkspaceId: "ws-old",
-      activeProjectId: "p-old",
+      activeFolderId: "p-old",
       panes: {
-        primary: { workspaceId: "ws-new", projectId: "p-new", view: "notes", chatSessionId: null, noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
+        primary: { workspaceId: "ws-new", folderId: "p-new", view: "notes", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
       },
     });
 
@@ -482,15 +482,15 @@ describe("split layout", () => {
     const state = useWorkspaceStore.getState();
     expect(state.splitMode).toBe(false);
     expect(state.activeWorkspaceId).toBe("ws-new");
-    expect(state.activeProjectId).toBe("p-new");
+    expect(state.activeFolderId).toBe("p-new");
   });
 
   it("exitSplitMode restores the primary pane chat selection to single-pane chat state", () => {
     useWorkspaceStore.setState({
       splitMode: true,
       panes: {
-        primary: { workspaceId: "ws-1", projectId: "p-1", view: "chat", chatSessionId: "chat-primary", noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "project", chatSessionId: "chat-secondary", noteSelection: null },
+        primary: { workspaceId: "ws-1", folderId: "p-1", view: "chat", chatSessionId: "chat-primary", noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "folder", chatSessionId: "chat-secondary", noteSelection: null },
       },
     });
     useChatStore.setState({ activeChatId: "chat-old" });

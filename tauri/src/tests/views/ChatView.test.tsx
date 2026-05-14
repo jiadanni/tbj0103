@@ -74,14 +74,15 @@ vi.mock("@/lib/api", () => ({
       create: vi.fn(),
       list: vi.fn(() => Promise.resolve([])),
       get: vi.fn(() => Promise.resolve(null)),
+      generateWorkspacePrompts: vi.fn(() => Promise.resolve([])),
     },
     chat: {
-      listSessions: vi.fn((workspaceId: string, projectId: string | null) => Promise.resolve(
-        workspaceId === "ws-1" && projectId === null
+      listSessions: vi.fn((workspaceId: string, folderId: string | null) => Promise.resolve(
+        workspaceId === "ws-1" && folderId === null
           ? [{
               id: "session-1",
               title: "Test Session",
-              project_id: null,
+              folder_id: null,
               workspace_id: "ws-1",
               created_at: "",
               updated_at: "",
@@ -99,7 +100,7 @@ vi.mock("@/lib/api", () => ({
       updateSession: vi.fn(() => Promise.resolve(undefined)),
       deleteSession: vi.fn(() => Promise.resolve(undefined)),
     },
-    project: {
+    folder: {
       list: vi.fn(() => Promise.resolve([])),
       create: vi.fn(),
       update: vi.fn(() => Promise.resolve(undefined)),
@@ -178,17 +179,17 @@ vi.mock("@/lib/api", () => ({
 }));
 
 const setActiveChatId = vi.fn();
-const setActiveProjectId = vi.fn();
+const setActiveFolderId = vi.fn();
 let mockWorkspacePane: Record<string, unknown> | null = null;
 let mockActiveChatId: string | null = null;
 
 vi.mock("@/lib/workspacePane", () => ({
   useScopedChat: () => ({ activeChat: mockActiveChatId, activeChatId: mockActiveChatId, setActiveChatId }),
-  useScopedProjects: () => [],
+  useScopedFolders: () => [],
   useScopedWorkspace: () => ({
     activeWorkspaceId: "ws-1",
-    activeProjectId: null,
-    setActiveProjectId,
+    activeFolderId: null,
+    setActiveFolderId,
     workspace: null,
   }),
   useBubbleUpFlag: () => true,
@@ -248,9 +249,9 @@ describe("ChatView", () => {
         },
       ],
       activeWorkspaceId: "ws-1",
-      projects: [],
-      projectsByWorkspace: {},
-      activeProjectId: null,
+      folders: [],
+      foldersByWorkspace: {},
+      activeFolderId: null,
       activeTopicSignature: null,
       migrationSuggestion: null,
     });
@@ -262,7 +263,7 @@ describe("ChatView", () => {
           title: "Test Session",
           model_name: "test-model",
           system_prompt: "",
-          project_id: "",
+          folder_id: "",
           workspace_id: "ws-1",
           created_at: "",
           updated_at: "",
@@ -408,7 +409,7 @@ describe("ChatView", () => {
       title: "New Chat",
       model_name: "test-model",
       system_prompt: "",
-      project_id: "",
+      folder_id: "",
       workspace_id: "ws-1",
       created_at: "",
       updated_at: "",
@@ -439,7 +440,7 @@ describe("ChatView", () => {
       title: "New Chat",
       model_name: "test-model",
       system_prompt: "",
-      project_id: "",
+      folder_id: "",
       workspace_id: "ws-1",
       created_at: "",
       updated_at: "",
@@ -477,7 +478,7 @@ describe("ChatView", () => {
         title: "New Chat",
         model_name: "test-model",
         system_prompt: "",
-        project_id: "",
+        folder_id: "",
         workspace_id: "ws-1",
         created_at: "",
         updated_at: "",
@@ -493,7 +494,7 @@ describe("ChatView", () => {
       title: "New Chat",
       model_name: "test-model",
       system_prompt: "",
-      project_id: "",
+      folder_id: "",
       workspace_id: "ws-1",
       created_at: "",
       updated_at: "",
@@ -649,7 +650,7 @@ describe("ChatView", () => {
         title: "New Chat",
         model_name: "test-model",
         system_prompt: "",
-        project_id: "",
+        folder_id: "",
         workspace_id: "ws-1",
         created_at: "",
         updated_at: "",
@@ -679,7 +680,7 @@ describe("ChatView", () => {
       title: "New Chat",
       model_name: "test-model",
       system_prompt: "",
-      project_id: "",
+      folder_id: "",
       workspace_id: "ws-1",
       created_at: "",
       updated_at: "",

@@ -18,11 +18,11 @@ CREATE TABLE IF NOT EXISTS workspaces (
     survey_data TEXT
 );
 
-CREATE TABLE IF NOT EXISTS projects (
+CREATE TABLE IF NOT EXISTS folders (
     id TEXT PRIMARY KEY NOT NULL,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    project_description TEXT NOT NULL DEFAULT '',
+    folder_description TEXT NOT NULL DEFAULT '',
     custom_instructions TEXT NOT NULL DEFAULT '',
     color TEXT NOT NULL DEFAULT '#007AFF',
     icon TEXT NOT NULL DEFAULT 'folder',
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id TEXT PRIMARY KEY NOT NULL,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    project_id TEXT NOT NULL DEFAULT '',
+    folder_id TEXT NOT NULL DEFAULT '',
     title TEXT NOT NULL DEFAULT 'New Chat',
     model_name TEXT NOT NULL DEFAULT '',
     system_prompt TEXT NOT NULL DEFAULT '',
@@ -197,7 +197,7 @@ CREATE TABLE IF NOT EXISTS path_milestones (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Project sources (from ProjectSource.swift)
+-- Folder sources (from ProjectSource.swift)
 CREATE TABLE IF NOT EXISTS uploaded_documents (
     id TEXT PRIMARY KEY NOT NULL,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -279,7 +279,7 @@ INSERT OR IGNORE INTO source_chunks (id, source_id, content, chunk_index, embedd
 CREATE TABLE IF NOT EXISTS audio_transcriptions (
     id TEXT PRIMARY KEY NOT NULL,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    folder_id TEXT REFERENCES folders(id) ON DELETE CASCADE,
     filename TEXT NOT NULL,
     transcript TEXT NOT NULL DEFAULT '',
     duration_seconds REAL,
@@ -335,7 +335,7 @@ CREATE TABLE IF NOT EXISTS thought_queue (
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY NOT NULL,
     workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
-    project_id TEXT NOT NULL DEFAULT '',
+    folder_id TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL,
     memory_type TEXT NOT NULL DEFAULT 'fact'
         CHECK(memory_type IN ('fact', 'preference')),
@@ -510,7 +510,7 @@ CREATE TABLE IF NOT EXISTS quick_search_documents (
     kind TEXT NOT NULL
         CHECK(kind IN ('conversation', 'message', 'artifact', 'memory', 'summary')),
     workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
-    project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL,
     session_id TEXT REFERENCES chat_sessions(id) ON DELETE CASCADE,
     source_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
     title TEXT NOT NULL DEFAULT '',
@@ -542,7 +542,7 @@ AFTER DELETE ON quick_search_documents BEGIN
 END;
 
 -- Guard: only update the FTS index when the indexed text columns actually
--- changed. Updating a metadata column (project_id, workspace_id, etc.) no
+-- changed. Updating a metadata column (folder_id, workspace_id, etc.) no
 -- longer causes a superfluous FTS delete+insert pair per row.
 DROP TRIGGER IF EXISTS quick_search_documents_au;
 CREATE TRIGGER quick_search_documents_au
@@ -558,14 +558,14 @@ END;
 CREATE TRIGGER IF NOT EXISTS quick_search_chat_sessions_ai
 AFTER INSERT ON chat_sessions BEGIN
     INSERT INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+        doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
     )
     SELECT
         'session:' || NEW.id,
         NEW.id,
         'conversation',
         NEW.workspace_id,
-        NULLIF(NEW.project_id, ''),
+        NULLIF(NEW.folder_id, ''),
         NEW.id,
         NULL,
         NEW.title,
@@ -587,8 +587,8 @@ DROP TRIGGER IF EXISTS quick_search_chat_sessions_au;
 CREATE TRIGGER quick_search_chat_sessions_au
 AFTER UPDATE ON chat_sessions
 FOR EACH ROW
--- Use IS NOT for project_id comparison so NULL↔value transitions are detected.
-WHEN (OLD.title != NEW.title OR OLD.is_deleted != NEW.is_deleted OR OLD.project_id IS NOT NEW.project_id)
+-- Use IS NOT for folder_id comparison so NULL↔value transitions are detected.
+WHEN (OLD.title != NEW.title OR OLD.is_deleted != NEW.is_deleted OR OLD.folder_id IS NOT NEW.folder_id)
 BEGIN
     -- (a) Session soft-deleted: remove all its search documents in one pass.
     --     session_id = OLD.id covers the conversation doc and all
@@ -601,22 +601,22 @@ BEGIN
     --     and every message, artifact, and summary it contains.
     --     Full table scan is unavoidable here because the rows were absent.
     INSERT OR IGNORE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id,
+        doc_id, target_id, kind, workspace_id, folder_id, session_id,
         source_session_id, title, subtitle, body, updated_at
     )
     SELECT
         'session:' || NEW.id, NEW.id, 'conversation',
-        NEW.workspace_id, NULLIF(NEW.project_id, ''), NEW.id, NULL,
+        NEW.workspace_id, NULLIF(NEW.folder_id, ''), NEW.id, NULL,
         NEW.title, 'Conversation', '', NEW.updated_at
     WHERE OLD.is_deleted = 1 AND NEW.is_deleted = 0;
 
     INSERT OR IGNORE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id,
+        doc_id, target_id, kind, workspace_id, folder_id, session_id,
         source_session_id, title, subtitle, body, updated_at
     )
     SELECT
         'message:' || m.id, m.id, 'message',
-        NEW.workspace_id, NULLIF(NEW.project_id, ''), NEW.id, NULL,
+        NEW.workspace_id, NULLIF(NEW.folder_id, ''), NEW.id, NULL,
         NEW.title,
         CASE m.role
             WHEN 'assistant' THEN 'Assistant reply'
@@ -629,12 +629,12 @@ BEGIN
       AND OLD.is_deleted = 1 AND NEW.is_deleted = 0;
 
     INSERT OR IGNORE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id,
+        doc_id, target_id, kind, workspace_id, folder_id, session_id,
         source_session_id, title, subtitle, body, updated_at
     )
     SELECT
         'artifact:' || a.id, a.id, 'artifact',
-        a.workspace_id, NULLIF(NEW.project_id, ''), a.session_id, NULL,
+        a.workspace_id, NULLIF(NEW.folder_id, ''), a.session_id, NULL,
         a.title,
         CASE
             WHEN a.language IS NOT NULL AND a.language != '' THEN a.artifact_type || ' • ' || a.language
@@ -647,12 +647,12 @@ BEGIN
       AND OLD.is_deleted = 1 AND NEW.is_deleted = 0;
 
     INSERT OR IGNORE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id,
+        doc_id, target_id, kind, workspace_id, folder_id, session_id,
         source_session_id, title, subtitle, body, updated_at
     )
     SELECT
         'summary:' || s.id, s.id, 'summary',
-        s.workspace_id, NULLIF(NEW.project_id, ''), s.session_id, NULL,
+        s.workspace_id, NULLIF(NEW.folder_id, ''), s.session_id, NULL,
         NEW.title, s.summary_type || ' summary',
         s.content, s.updated_at
     FROM conversation_summaries s
@@ -672,28 +672,28 @@ BEGIN
       AND session_id = NEW.id
       AND kind IN ('conversation', 'message', 'summary');
 
-    -- (d) Session remains active and was moved between projects.
-    --     UPDATE project_id in place on all related docs.
-    --     Because project_id is not an FTS-indexed column, quick_search_documents_au
+    -- (d) Session remains active and was moved between folders.
+    --     UPDATE folder_id in place on all related docs.
+    --     Because folder_id is not an FTS-indexed column, quick_search_documents_au
     --     (guarded by WHEN text columns change) will NOT fire — zero FTS work.
     UPDATE quick_search_documents
-    SET project_id = NULLIF(NEW.project_id, '')
+    SET folder_id = NULLIF(NEW.folder_id, '')
     WHERE NEW.is_deleted = 0 AND OLD.is_deleted = 0
-      AND OLD.project_id IS NOT NEW.project_id
+      AND OLD.folder_id IS NOT NEW.folder_id
       AND session_id = NEW.id;
 END;
 
 CREATE TRIGGER IF NOT EXISTS quick_search_messages_ai
 AFTER INSERT ON messages BEGIN
     INSERT OR REPLACE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+        doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
     )
     SELECT
         'message:' || NEW.id,
         NEW.id,
         'message',
         cs.workspace_id,
-        NULLIF(cs.project_id, ''),
+        NULLIF(cs.folder_id, ''),
         NEW.session_id,
         NULL,
         cs.title,
@@ -717,14 +717,14 @@ WHEN (OLD.content != NEW.content OR OLD.role != NEW.role)
 BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'message:' || OLD.id;
     INSERT OR REPLACE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+        doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
     )
     SELECT
         'message:' || NEW.id,
         NEW.id,
         'message',
         cs.workspace_id,
-        NULLIF(cs.project_id, ''),
+        NULLIF(cs.folder_id, ''),
         NEW.session_id,
         NULL,
         cs.title,
@@ -748,14 +748,14 @@ END;
 CREATE TRIGGER IF NOT EXISTS quick_search_artifacts_ai
 AFTER INSERT ON artifacts BEGIN
     INSERT OR REPLACE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+        doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
     )
     SELECT
         'artifact:' || NEW.id,
         NEW.id,
         'artifact',
         NEW.workspace_id,
-        NULLIF(COALESCE(cs.project_id, ''), ''),
+        NULLIF(COALESCE(cs.folder_id, ''), ''),
         NEW.session_id,
         NULL,
         NEW.title,
@@ -777,14 +777,14 @@ WHEN (OLD.content != NEW.content OR OLD.title != NEW.title OR OLD.description !=
 BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'artifact:' || OLD.id;
     INSERT OR REPLACE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+        doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
     )
     SELECT
         'artifact:' || NEW.id,
         NEW.id,
         'artifact',
         NEW.workspace_id,
-        NULLIF(COALESCE(cs.project_id, ''), ''),
+        NULLIF(COALESCE(cs.folder_id, ''), ''),
         NEW.session_id,
         NULL,
         NEW.title,
@@ -806,14 +806,14 @@ END;
 CREATE TRIGGER IF NOT EXISTS quick_search_memories_ai
 AFTER INSERT ON memories BEGIN
     INSERT OR REPLACE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+        doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
     )
     VALUES (
         'memory:' || NEW.id,
         NEW.id,
         'memory',
         NEW.workspace_id,
-        NULLIF(NEW.project_id, ''),
+        NULLIF(NEW.folder_id, ''),
         NULL,
         NEW.source_session_id,
         CASE NEW.memory_type
@@ -838,14 +838,14 @@ WHEN (OLD.content != NEW.content OR OLD.memory_type != NEW.memory_type OR OLD.sc
 BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'memory:' || OLD.id;
     INSERT OR REPLACE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+        doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
     )
     VALUES (
         'memory:' || NEW.id,
         NEW.id,
         'memory',
         NEW.workspace_id,
-        NULLIF(NEW.project_id, ''),
+        NULLIF(NEW.folder_id, ''),
         NULL,
         NEW.source_session_id,
         CASE NEW.memory_type
@@ -870,14 +870,14 @@ END;
 CREATE TRIGGER IF NOT EXISTS quick_search_summaries_ai
 AFTER INSERT ON conversation_summaries BEGIN
     INSERT OR REPLACE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+        doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
     )
     SELECT
         'summary:' || NEW.id,
         NEW.id,
         'summary',
         NEW.workspace_id,
-        NULLIF(cs.project_id, ''),
+        NULLIF(cs.folder_id, ''),
         NEW.session_id,
         NULL,
         cs.title,
@@ -897,14 +897,14 @@ WHEN (OLD.content != NEW.content OR OLD.summary_type != NEW.summary_type)
 BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'summary:' || OLD.id;
     INSERT OR REPLACE INTO quick_search_documents (
-        doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+        doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
     )
     SELECT
         'summary:' || NEW.id,
         NEW.id,
         'summary',
         NEW.workspace_id,
-        NULLIF(cs.project_id, ''),
+        NULLIF(cs.folder_id, ''),
         NEW.session_id,
         NULL,
         cs.title,
@@ -922,11 +922,11 @@ AFTER DELETE ON conversation_summaries BEGIN
 END;
 
 -- Base indexes for fresh installs; existing databases are backfilled in v9.
-CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_folders_workspace ON folders(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace ON chat_sessions(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(folder_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace_project_pinned_updated
-    ON chat_sessions(workspace_id, project_id, is_pinned, updated_at DESC);
+    ON chat_sessions(workspace_id, folder_id, is_pinned, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace_pinned_updated
     ON chat_sessions(workspace_id, is_pinned, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
@@ -968,12 +968,12 @@ CREATE INDEX IF NOT EXISTS idx_learning_paths_workspace ON learning_paths(worksp
 CREATE INDEX IF NOT EXISTS idx_path_milestones_path ON path_milestones(path_id);
 CREATE INDEX IF NOT EXISTS idx_calendar_alarms_workspace ON calendar_alarms(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_thought_queue_session ON thought_queue(session_id);
-CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_id);
+CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(folder_id);
 CREATE INDEX IF NOT EXISTS idx_memories_source_session ON memories(source_session_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_message ON artifacts(message_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_parent ON artifacts(parent_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_context_snapshots_session ON context_snapshots(session_id);
-CREATE INDEX IF NOT EXISTS idx_quick_search_project_session ON quick_search_documents(project_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_quick_search_project_session ON quick_search_documents(folder_id, session_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_active ON chat_sessions(workspace_id, is_pinned, updated_at DESC) WHERE is_deleted = 0;
 CREATE INDEX IF NOT EXISTS idx_sources_unprocessed ON sources(workspace_id) WHERE is_processed = 0;
 

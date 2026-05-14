@@ -164,7 +164,7 @@ pub fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             let _ = crate::commands::quick_search::show_window(app);
         }
         "nav-dashboard" => {
-            let _ = app.emit("menu-navigate", "/project");
+            let _ = app.emit("menu-navigate", "/folder");
         }
         "nav-chat" => {
             let _ = app.emit("menu-navigate", "/chat");

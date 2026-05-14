@@ -45,7 +45,7 @@ pub fn create_flashcard(
     Ok(card)
 }
 
-/// Returns cards due today or overdue, for a given project.
+/// Returns cards due today or overdue, for a given folder.
 #[tauri::command]
 pub fn list_flashcards_due(
     state: State<DbState>,

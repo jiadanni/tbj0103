@@ -119,7 +119,7 @@ export default function App() {
   const fontSize = useSettingsStore((state) => state.fontSize);
   const setFontSize = useSettingsStore((state) => state.setFontSize);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
-  const setProjectsForWorkspace = useWorkspaceStore((state) => state.setProjectsForWorkspace);
+  const setFoldersForWorkspace = useWorkspaceStore((state) => state.setFoldersForWorkspace);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
@@ -316,7 +316,7 @@ export default function App() {
     return () => { unlisten.then(fn => fn()); };
   }, []);
 
-  // Reload projects for all visible workspaces so split panes don't retain stale folder filters.
+  // Reload folders for all visible workspaces so split panes don't retain stale folder filters.
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const splitMode = useWorkspaceStore((s) => s.splitMode);
   const primaryWorkspaceId = useWorkspaceStore((s) => s.panes.primary.workspaceId);
@@ -338,12 +338,12 @@ export default function App() {
 
     let cancelled = false;
     Promise.all(
-      [...workspaceIds].map(async (workspaceId) => [workspaceId, await api.project.list(workspaceId)] as const)
+      [...workspaceIds].map(async (workspaceId) => [workspaceId, await api.folder.list(workspaceId)] as const)
     )
       .then((entries) => {
         if (cancelled) {return;}
-        entries.forEach(([workspaceId, projects]) => {
-          setProjectsForWorkspace(workspaceId, projects);
+        entries.forEach(([workspaceId, folders]) => {
+          setFoldersForWorkspace(workspaceId, folders);
         });
       })
       .catch(() => {});
@@ -351,7 +351,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeWorkspaceId, primaryWorkspaceId, secondaryWorkspaceId, setProjectsForWorkspace, splitMode]);
+  }, [activeWorkspaceId, primaryWorkspaceId, secondaryWorkspaceId, setFoldersForWorkspace, splitMode]);
 
   if (isLoading) {
     return (
@@ -374,7 +374,7 @@ export default function App() {
       <ZoomIndicator fontSize={fontSize} visible={zoomVisible} />
       <Routes>
         <Route path="/*" element={<Layout />} />
-        <Route path="/" element={<Navigate to="/project" replace />} />
+        <Route path="/" element={<Navigate to="/folder" replace />} />
       </Routes>
     </BrowserRouter>
   );

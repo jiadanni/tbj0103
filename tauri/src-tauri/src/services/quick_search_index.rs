@@ -20,14 +20,14 @@ pub fn rebuild(conn: &Connection) -> Result<(), String> {
         BEGIN IMMEDIATE;
         DELETE FROM quick_search_documents;
         INSERT OR REPLACE INTO quick_search_documents (
-            doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+            doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
         )
         SELECT
             'session:' || cs.id,
             cs.id,
             'conversation',
             cs.workspace_id,
-            NULLIF(cs.project_id, ''),
+            NULLIF(cs.folder_id, ''),
             cs.id,
             NULL,
             cs.title,
@@ -38,14 +38,14 @@ pub fn rebuild(conn: &Connection) -> Result<(), String> {
         WHERE cs.is_deleted = 0;
 
         INSERT OR REPLACE INTO quick_search_documents (
-            doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+            doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
         )
         SELECT
             'message:' || m.id,
             m.id,
             'message',
             cs.workspace_id,
-            NULLIF(cs.project_id, ''),
+            NULLIF(cs.folder_id, ''),
             m.session_id,
             NULL,
             cs.title,
@@ -61,14 +61,14 @@ pub fn rebuild(conn: &Connection) -> Result<(), String> {
         WHERE cs.is_deleted = 0;
 
         INSERT OR REPLACE INTO quick_search_documents (
-            doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+            doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
         )
         SELECT
             'artifact:' || a.id,
             a.id,
             'artifact',
             a.workspace_id,
-            NULLIF(COALESCE(cs.project_id, ''), ''),
+            NULLIF(COALESCE(cs.folder_id, ''), ''),
             a.session_id,
             NULL,
             a.title,
@@ -82,14 +82,14 @@ pub fn rebuild(conn: &Connection) -> Result<(), String> {
         LEFT JOIN chat_sessions cs ON cs.id = a.session_id;
 
         INSERT OR REPLACE INTO quick_search_documents (
-            doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+            doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
         )
         SELECT
             'memory:' || m.id,
             m.id,
             'memory',
             m.workspace_id,
-            NULLIF(m.project_id, ''),
+            NULLIF(m.folder_id, ''),
             NULL,
             m.source_session_id,
             CASE m.memory_type
@@ -106,14 +106,14 @@ pub fn rebuild(conn: &Connection) -> Result<(), String> {
         FROM memories m;
 
         INSERT OR REPLACE INTO quick_search_documents (
-            doc_id, target_id, kind, workspace_id, project_id, session_id, source_session_id, title, subtitle, body, updated_at
+            doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
         )
         SELECT
             'summary:' || s.id,
             s.id,
             'summary',
             s.workspace_id,
-            NULLIF(cs.project_id, ''),
+            NULLIF(cs.folder_id, ''),
             s.session_id,
             NULL,
             cs.title,

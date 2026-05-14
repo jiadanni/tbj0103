@@ -497,7 +497,7 @@ function buildMetaLine(result: QuickSearchResult) {
   const parts = [
     result.subtitle,
     result.workspace_name || null,
-    result.project_name || null,
+    result.folder_name || null,
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join(" • ") : "Search result";

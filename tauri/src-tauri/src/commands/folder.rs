@@ -1,63 +1,63 @@
 use crate::db::DbState;
 use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
-use crate::models::project::{CreateProjectRequest, Project, UpdateProjectRequest};
-use crate::services::project_service;
+use crate::models::folder::{CreateFolderRequest, Folder, UpdateFolderRequest};
+use crate::services::folder_service;
 use serde::Serialize;
 use tauri::State;
 
 #[tauri::command]
-pub fn create_project(state: State<DbState>, req: CreateProjectRequest) -> Result<Project, String> {
+pub fn create_folder(state: State<DbState>, req: CreateFolderRequest) -> Result<Folder, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    project_service::create(&conn, req)
+    folder_service::create(&conn, req)
 }
 
 #[tauri::command]
-pub fn list_projects(
+pub fn list_folders(
     state: State<DbState>,
     workspace_id: String,
     include_descendants: Option<bool>,
-) -> Result<Vec<Project>, String> {
+) -> Result<Vec<Folder>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    project_service::list(&conn, &workspace_id, include_descendants.unwrap_or(false))
+    folder_service::list(&conn, &workspace_id, include_descendants.unwrap_or(false))
 }
 
 #[tauri::command]
-pub fn get_project(state: State<DbState>, id: String) -> Result<Option<Project>, String> {
+pub fn get_folder(state: State<DbState>, id: String) -> Result<Option<Folder>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    project_service::get(&conn, &id)
+    folder_service::get(&conn, &id)
 }
 
 #[tauri::command]
-pub fn update_project(
+pub fn update_folder(
     state: State<DbState>,
-    req: UpdateProjectRequest,
+    req: UpdateFolderRequest,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
-    project_service::update(&conn, req, &chats_dir_state.0, pass.as_deref())
+    folder_service::update(&conn, req, &chats_dir_state.0, pass.as_deref())
 }
 
 #[tauri::command]
-pub fn delete_project(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_folder(state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    project_service::delete(&conn, &id)
+    folder_service::delete(&conn, &id)
 }
 
 #[tauri::command]
-pub fn move_project_to_workspace(
+pub fn move_folder_to_workspace(
     state: State<DbState>,
-    project_id: String,
+    folder_id: String,
     target_workspace_id: String,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
-) -> Result<Project, String> {
+) -> Result<Folder, String> {
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
-    project_service::move_to_workspace(
+    folder_service::move_to_workspace(
         &mut conn,
-        &project_id,
+        &folder_id,
         &target_workspace_id,
         &chats_dir_state.0,
         pass.as_deref(),
@@ -79,7 +79,7 @@ mod tests {
     use tauri::test::{mock_builder, mock_context, noop_assets};
 
     #[test]
-    fn update_project_renames_chat_file_directory() {
+    fn update_folder_renames_chat_file_directory() {
         let dir = tempfile::tempdir().expect("Failed to create temp dir");
         let db_path = dir.path().join("test.db");
         let chats_dir = dir.path().join("chats");
@@ -104,12 +104,12 @@ mod tests {
         )
         .expect("Failed to create workspace");
 
-        let project = create_project(
+        let project = create_folder(
             db_state.clone(),
-            CreateProjectRequest {
+            CreateFolderRequest {
                 workspace_id: workspace.id.clone(),
                 name: "Folder One".to_string(),
-                project_description: None,
+                folder_description: None,
                 custom_instructions: None,
                 color: None,
                 icon: None,
@@ -121,7 +121,7 @@ mod tests {
             db_state.clone(),
             CreateChatSessionRequest {
                 workspace_id: workspace.id.clone(),
-                project_id: project.id.clone(),
+                folder_id: project.id.clone(),
                 title: Some("Hierarchy check".to_string()),
                 model_name: None,
                 system_prompt: None,
@@ -144,13 +144,13 @@ mod tests {
             .join(format!("{}.json", session.id));
         assert!(old_path.exists(), "expected original hierarchy path to exist");
 
-        update_project(
+        update_folder(
             db_state,
-            UpdateProjectRequest {
+            UpdateFolderRequest {
                 id: project.id,
                 workspace_id: None,
                 name: Some("Folder Renamed".to_string()),
-                project_description: None,
+                folder_description: None,
                 custom_instructions: None,
                 color: None,
                 icon: None,
@@ -170,7 +170,7 @@ mod tests {
 }
 
 #[derive(Debug, Serialize)]
-pub struct ProjectStats {
+pub struct FolderStats {
     pub note_count: i64,
     pub document_count: i64,
     pub chat_session_count: i64,
@@ -179,16 +179,16 @@ pub struct ProjectStats {
 }
 
 #[tauri::command]
-pub fn get_project_stats(state: State<DbState>, id: String) -> Result<ProjectStats, String> {
+pub fn get_folder_stats(state: State<DbState>, id: String) -> Result<FolderStats, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let chat_session_count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM chat_sessions WHERE project_id = ?1",
+            "SELECT COUNT(*) FROM chat_sessions WHERE folder_id = ?1",
             rusqlite::params![id],
             |r| r.get(0),
         )
         .unwrap_or(0);
-    Ok(ProjectStats {
+    Ok(FolderStats {
         note_count: 0,
         document_count: 0,
         chat_session_count,

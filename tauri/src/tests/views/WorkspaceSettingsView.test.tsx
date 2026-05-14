@@ -45,8 +45,8 @@ const INITIAL = {
   workspaces: [],
   activeWorkspaceId: null,
   activeParentWorkspaceId: null,
-  activeProjectId: null,
-  projects: [],
+  activeFolderId: null,
+  folders: [],
   isDemoMode: false,
   workspaceNavigation: "sidebar" as const,
   sectionNavigation: "sidebar" as const,
@@ -54,13 +54,13 @@ const INITIAL = {
   splitSectionNavigation: "match-main" as const,
   activeTopicSignature: null,
   migrationSuggestion: null,
-  projectsByWorkspace: {},
+  foldersByWorkspace: {},
   splitMode: false,
   splitSizes: [50, 50] as [number, number],
   activePaneId: "primary" as const,
   panes: {
-    primary: { workspaceId: null, projectId: null, view: "project" as const, chatSessionId: null, noteSelection: null },
-    secondary: { workspaceId: null, projectId: null, view: "project" as const, chatSessionId: null, noteSelection: null },
+    primary: { workspaceId: null, folderId: null, view: "folder" as const, chatSessionId: null, noteSelection: null },
+    secondary: { workspaceId: null, folderId: null, view: "folder" as const, chatSessionId: null, noteSelection: null },
   },
 };
 

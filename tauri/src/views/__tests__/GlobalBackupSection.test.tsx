@@ -36,7 +36,7 @@ vi.mock('../../stores/workspaceStore', () => ({
   useWorkspaceStore: () => ({
     setWorkspaces: vi.fn(),
     setActiveWorkspaceId: vi.fn(),
-    setProjectsForWorkspace: vi.fn(),
+    setFoldersForWorkspace: vi.fn(),
   }),
 }));
 

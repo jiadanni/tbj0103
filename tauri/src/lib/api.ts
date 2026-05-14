@@ -4,7 +4,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import type { Workspace, Project } from "../stores/workspaceStore";
+import type { Workspace, Folder } from "../stores/workspaceStore";
 import type { ChatSession, Message } from "../stores/chatStore";
 
 const OBSERVABILITY_ENABLED =
@@ -192,7 +192,7 @@ export interface Source {
 
 export interface SearchResult {
   id: string; result_type: string; title: string; excerpt: string;
-  score: number; source_id?: string; project_id?: string;
+  score: number; source_id?: string; folder_id?: string;
 }
 
 export interface QuickSearchResult {
@@ -204,8 +204,8 @@ export interface QuickSearchResult {
   excerpt: string;
   workspace_id?: string | null;
   workspace_name: string;
-  project_id?: string | null;
-  project_name?: string | null;
+  folder_id?: string | null;
+  folder_name?: string | null;
   session_id?: string | null;
   source_session_id?: string | null;
   updated_at: string;
@@ -572,8 +572,8 @@ export interface DashboardOverview {
 export interface DashboardContinueLearning {
   session_id: string;
   title: string;
-  project_id?: string | null;
-  project_name?: string | null;
+  folder_id?: string | null;
+  folder_name?: string | null;
   updated_at: string;
   route: DashboardRoute;
 }
@@ -675,15 +675,15 @@ export const api = {
     reorder: (ids: string[]) => invoke<void>("reorder_workspaces", { ids }),
   },
 
-  project: {
-    create: (workspaceId: string, name: string, opts?: Partial<{ project_description: string; custom_instructions: string; color: string; icon: string }>) =>
-      invoke<Project>("create_project", { req: { workspace_id: workspaceId, name, ...opts } }),
-    list: (workspaceId: string, opts?: { includeDescendants?: boolean }) => invoke<Project[]>("list_projects", { workspaceId, includeDescendants: opts?.includeDescendants }),
-    get: (id: string) => invoke<Project | null>("get_project", { id }),
-    update: (id: string, fields: Partial<Project>) => invoke<void>("update_project", { req: { id, ...fields } }),
-    delete: (id: string) => invoke<void>("delete_project", { id }),
-    moveToWorkspace: (projectId: string, targetWorkspaceId: string) => invoke<Project>("move_project_to_workspace", { projectId, targetWorkspaceId }),
-    getStats: (id: string) => invoke<{ note_count: number; document_count: number; chat_session_count: number; flashcard_count: number; web_capture_count: number }>("get_project_stats", { id }),
+  folder: {
+    create: (workspaceId: string, name: string, opts?: Partial<{ folder_description: string; custom_instructions: string; color: string; icon: string }>) =>
+      invoke<Folder>("create_folder", { req: { workspace_id: workspaceId, name, ...opts } }),
+    list: (workspaceId: string, opts?: { includeDescendants?: boolean }) => invoke<Folder[]>("list_folders", { workspaceId, includeDescendants: opts?.includeDescendants }),
+    get: (id: string) => invoke<Folder | null>("get_folder", { id }),
+    update: (id: string, fields: Partial<Folder>) => invoke<void>("update_folder", { req: { id, ...fields } }),
+    delete: (id: string) => invoke<void>("delete_folder", { id }),
+    moveToWorkspace: (folderId: string, targetWorkspaceId: string) => invoke<Folder>("move_folder_to_workspace", { folderId, targetWorkspaceId }),
+    getStats: (id: string) => invoke<{ note_count: number; document_count: number; chat_session_count: number; flashcard_count: number; web_capture_count: number }>("get_folder_stats", { id }),
   },
 
   dashboard: {
@@ -692,22 +692,22 @@ export const api = {
   },
 
   chat: {
-    createSession: (workspaceId: string, projectId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string; is_incognito?: boolean; exclude_from_analytics?: boolean }) =>
-      invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, project_id: projectId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt, is_incognito: opts?.is_incognito, exclude_from_analytics: opts?.exclude_from_analytics } }),
-    listSessions: (workspaceId: string, projectId?: string | null, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
-      invoke<ChatSession[]>("list_chat_sessions", { workspaceId, projectId: projectId ?? '', limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),
+    createSession: (workspaceId: string, folderId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string; is_incognito?: boolean; exclude_from_analytics?: boolean }) =>
+      invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, folder_id: folderId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt, is_incognito: opts?.is_incognito, exclude_from_analytics: opts?.exclude_from_analytics } }),
+    listSessions: (workspaceId: string, folderId?: string | null, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
+      invoke<ChatSession[]>("list_chat_sessions", { workspaceId, folderId: folderId ?? '', limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),
     getRelatedChats: (workspaceId: string, tags: string[], sessionId?: string, limit?: number) =>
       invoke<QuickSearchResult[]>("get_related_chats", { req: { workspace_id: workspaceId, tags, session_id: sessionId, limit } }),
-    searchSessions: (workspaceId: string, query: string, projectId?: string | null, opts?: { includeDescendants?: boolean }) =>
-      invoke<ChatSession[]>("search_chat_sessions", { req: { workspace_id: workspaceId, query, project_id: projectId ?? null, include_descendants: opts?.includeDescendants } }),
+    searchSessions: (workspaceId: string, query: string, folderId?: string | null, opts?: { includeDescendants?: boolean }) =>
+      invoke<ChatSession[]>("search_chat_sessions", { req: { workspace_id: workspaceId, query, folder_id: folderId ?? null, include_descendants: opts?.includeDescendants } }),
     getSession: (workspaceId: string, id: string) => invoke<ChatSession | null>("get_chat_session", { workspaceId, id }),
     deleteSession: (workspaceId: string, id: string) => invoke<void>("delete_chat_session", { workspaceId, id }),
     updateSession: (workspaceId: string, id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string; model_name?: string; exclude_from_analytics?: boolean }) =>
       invoke<void>("update_chat_session", { workspaceId, id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt, modelName: fields.model_name, excludeFromAnalytics: fields.exclude_from_analytics }),
-    moveSessions: (sessionIds: string[], targetWorkspaceId: string, targetProjectId?: string) =>
-      invoke<void>("move_chat_sessions", { sessionIds, targetWorkspaceId, targetProjectId }),
+    moveSessions: (sessionIds: string[], targetWorkspaceId: string, targetFolderId?: string) =>
+      invoke<void>("move_chat_sessions", { sessionIds, targetWorkspaceId, targetFolderId }),
     batchMoveSessions: (sessionIds: string[], targetWorkspaceId: string, preserveFolderStructure: boolean) =>
-      invoke<{ sessions_moved: number; projects_created: string[]; project_mapping: Record<string, string> }>(
+      invoke<{ sessions_moved: number; folders_created: string[]; folder_mapping: Record<string, string> }>(
         "batch_move_sessions",
         { req: { session_ids: sessionIds, target_workspace_id: targetWorkspaceId, preserve_folder_structure: preserveFolderStructure } }
       ),
@@ -743,8 +743,8 @@ export const api = {
     disableEncryption: () => invoke<number>("disable_chat_encryption"),
     exportAsJson: (sessionId: string, destPath: string) =>
       invoke<void>("export_chat_as_json", { sessionId, destPath }),
-    importFromJson: (path: string, workspaceId: string, projectId?: string | null, passphrase?: string) =>
-      invoke<ChatSession>("import_chat_from_json", { path, workspaceId, projectId: projectId ?? null, passphrase }),
+    importFromJson: (path: string, workspaceId: string, folderId?: string | null, passphrase?: string) =>
+      invoke<ChatSession>("import_chat_from_json", { path, workspaceId, folderId: folderId ?? null, passphrase }),
     syncAll: () => invoke<number>("sync_all_chats_to_files"),
     previewLmStudioFolder: (folderPath: string) =>
       invoke<{
@@ -754,8 +754,8 @@ export const api = {
           message_count: number;
           created_at: string;
           updated_at: string;
-          project_id: string | null;
-          project_name: string | null;
+          folder_id: string | null;
+          folder_name: string | null;
           source_path: string;
         }[];
         total: number;
@@ -768,20 +768,20 @@ export const api = {
         errors: number;
         error_messages: string[];
       }>("preview_lmstudio_folder", { folderPath }),
-    importLmStudioFolder: (folderPath: string, workspaceName?: string, selectedIds?: string[], selectedProjectIds?: string[]) =>
+    importLmStudioFolder: (folderPath: string, workspaceName?: string, selectedIds?: string[], selectedFolderIds?: string[]) =>
       invoke<{
         imported: number;
         skipped: number;
         workspace_id: string;
         workspace_name: string;
-        projects_created: number;
+        folders_created: number;
         errors: number;
         error_messages: string[];
       }>("import_lmstudio_folder", {
         folderPath,
         workspaceName: workspaceName ?? null,
         selectedIds: selectedIds ?? null,
-        selectedProjectIds: selectedProjectIds ?? null,
+        selectedFolderIds: selectedFolderIds ?? null,
       }),
     importMultipleFolders: (folderPaths: string[]) =>
       invoke<{
@@ -798,7 +798,7 @@ export const api = {
           message?: string;
           imported?: number;
           skipped?: number;
-          projects_created?: number;
+          folders_created?: number;
           errors?: number;
         }>;
       }>("import_multiple_folders", { folderPaths }),
@@ -816,7 +816,7 @@ export const api = {
         projects: { uuid: string; name: string; description: string; has_prompt: boolean; doc_count: number }[];
         memories: {
           conversations_memory: string;
-          project_memories: { project_uuid: string; project_name: string; memory: string }[];
+          folder_memories: { project_uuid: string; folder_name: string; memory: string }[];
         } | null;
       }>("preview_claude_files", {
         conversationsPath: paths.conversationsPath ?? null,
@@ -829,7 +829,7 @@ export const api = {
       projectsPath?: string | null;
       memoriesPath?: string | null;
       selectedIds?: string[];
-      selectedProjectIds?: string[];
+      selectedFolderIds?: string[];
       importMemories?: boolean;
     }) =>
       invoke<{
@@ -837,7 +837,7 @@ export const api = {
         skipped: number;
         workspace_id: string;
         workspace_name: string;
-        projects_created: number;
+        folders_created: number;
         memories_imported: number;
         errors: number;
         error_messages: string[];
@@ -847,7 +847,7 @@ export const api = {
         projectsPath: args.projectsPath ?? null,
         memoriesPath: args.memoriesPath ?? null,
         selectedIds: args.selectedIds ?? null,
-        selectedProjectIds: args.selectedProjectIds ?? null,
+        selectedFolderIds: args.selectedFolderIds ?? null,
         importMemories: args.importMemories ?? false,
       }),
   },
@@ -961,8 +961,8 @@ export const api = {
   },
 
   search: {
-    keyword: (query: string, workspaceId: string, projectId?: string) =>
-      invoke<SearchResult[]>("keyword_search", { req: { query, workspace_id: workspaceId, project_id: projectId } }),
+    keyword: (query: string, workspaceId: string, folderId?: string) =>
+      invoke<SearchResult[]>("keyword_search", { req: { query, workspace_id: workspaceId, folder_id: folderId } }),
     semantic: (query: string, workspaceId: string, queryEmbedding: number[]) =>
       invoke<SearchResult[]>("semantic_search", { req: { query, workspace_id: workspaceId }, queryEmbedding, workspaceId }),
   },

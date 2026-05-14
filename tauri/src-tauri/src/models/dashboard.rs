@@ -21,8 +21,8 @@ pub struct DashboardOverview {
 pub struct DashboardContinueLearning {
     pub session_id: String,
     pub title: String,
-    pub project_id: Option<String>,
-    pub project_name: Option<String>,
+    pub folder_id: Option<String>,
+    pub folder_name: Option<String>,
     pub updated_at: String,
     pub route: DashboardRoute,
 }

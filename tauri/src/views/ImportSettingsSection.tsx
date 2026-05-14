@@ -43,9 +43,9 @@ async function resolveWorkspaceNameConflict(
 export default function ImportSettingsSection() {
   const navigate = useNavigate();
   const {
-    setActiveProjectId,
+    setActiveFolderId,
     setActiveWorkspaceId,
-    setProjectsForWorkspace,
+    setFoldersForWorkspace,
     setWorkspaces,
   } = useWorkspaceStore();
   const workspaces = useWorkspaceStore((s) => s.workspaces);
@@ -58,8 +58,8 @@ export default function ImportSettingsSection() {
       message_count: number;
       created_at: string;
       updated_at: string;
-      project_id: string | null;
-      project_name: string | null;
+      folder_id: string | null;
+      folder_name: string | null;
       source_path: string;
     }[]
   >([]);
@@ -72,7 +72,7 @@ export default function ImportSettingsSection() {
     }[]
   >([]);
   const [lmStudioSelected, setLmStudioSelected] = useState<Set<string>>(new Set());
-  const [lmStudioSelectedProjects, setLmStudioSelectedProjects] = useState<Set<string>>(new Set());
+  const [lmStudioSelectedFolders, setLmStudioSelectedProjects] = useState<Set<string>>(new Set());
   const [lmStudioScanning, setLmStudioScanning] = useState(false);
   const [lmStudioScanErrors, setLmStudioScanErrors] = useState(0);
   const [importingMultipleFolders, setImportingMultipleFolders] = useState(false);
@@ -80,7 +80,7 @@ export default function ImportSettingsSection() {
   const [importingClaude, setImportingClaude] = useState(false);
   const [claudeScanning, setClaudeScanning] = useState(false);
   const [claudeIncludeConversations, setClaudeIncludeConversations] = useState(true);
-  const [claudeIncludeProjects, setClaudeIncludeProjects] = useState(false);
+  const [claudeIncludeFolders, setClaudeIncludeProjects] = useState(false);
   const [claudeIncludeMemories, setClaudeIncludeMemories] = useState(false);
   const [claudeConversationsPath, setClaudeConversationsPath] = useState<string | null>(null);
   const [claudeProjectsPath, setClaudeProjectsPath] = useState<string | null>(null);
@@ -93,10 +93,10 @@ export default function ImportSettingsSection() {
   >([]);
   const [claudeMemories, setClaudeMemories] = useState<{
     conversations_memory: string;
-    project_memories: { project_uuid: string; project_name: string; memory: string }[];
+    folder_memories: { project_uuid: string; folder_name: string; memory: string }[];
   } | null>(null);
   const [claudeSelected, setClaudeSelected] = useState<Set<string>>(new Set());
-  const [claudeSelectedProjects, setClaudeSelectedProjects] = useState<Set<string>>(new Set());
+  const [claudeSelectedFolders, setClaudeSelectedProjects] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [slotWarnings, setSlotWarnings] = useState<Record<string, string | null>>({});
   const [promptState, setPromptState] = useState<{ defaultValue: string } | null>(null);
@@ -161,7 +161,7 @@ export default function ImportSettingsSection() {
       const selectedConversationIds = lmStudioPreviews
         .filter((conversation) => (
           lmStudioSelected.has(conversation.uuid)
-          && (!conversation.project_id || lmStudioSelectedProjects.has(conversation.project_id))
+          && (!conversation.folder_id || lmStudioSelectedFolders.has(conversation.folder_id))
         ))
         .map((conversation) => conversation.uuid);
 
@@ -174,12 +174,12 @@ export default function ImportSettingsSection() {
       const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces, promptForName);
       if (!resolvedName) {return;} // user cancelled
 
-      const selectedProjectIds = [...lmStudioSelectedProjects];
+      const selectedFolderIds = [...lmStudioSelectedFolders];
       const result = await api.chatFile.importLmStudioFolder(
         lmStudioFolder,
         resolvedName !== defaultName ? resolvedName : undefined,
         selectedConversationIds,
-        selectedProjectIds.length > 0 ? selectedProjectIds : undefined,
+        selectedFolderIds.length > 0 ? selectedFolderIds : undefined,
       );
       if (result.imported < 1 && result.skipped > 0) {
         await message(`All ${result.skipped} conversation${result.skipped === 1 ? "" : "s"} already imported — nothing new to add.`, {
@@ -195,7 +195,7 @@ export default function ImportSettingsSection() {
 
       const [freshWorkspaces, importedProjects, firstSession] = await Promise.all([
         api.workspace.list(),
-        api.project.list(result.workspace_id),
+        api.folder.list(result.workspace_id),
         api.chat.listSessions(result.workspace_id, null, { limit: 1, offset: 0 }),
       ]);
       if (firstSession.length < 1) {
@@ -203,13 +203,13 @@ export default function ImportSettingsSection() {
       }
 
       setWorkspaces(freshWorkspaces);
-      setProjectsForWorkspace(result.workspace_id, importedProjects);
+      setFoldersForWorkspace(result.workspace_id, importedProjects);
       setActiveWorkspaceId(result.workspace_id);
-      setActiveProjectId(null);
+      setActiveFolderId(null);
 
       const lines = [
         `${result.imported} conversation${result.imported === 1 ? "" : "s"} imported.`,
-        `${result.projects_created} project${result.projects_created === 1 ? "" : "s"} created.`,
+        `${result.folders_created} project${result.folders_created === 1 ? "" : "s"} created.`,
       ];
       if (result.skipped > 0) {
         lines.push(`${result.skipped} duplicate${result.skipped === 1 ? "" : "s"} skipped.`);
@@ -307,14 +307,14 @@ export default function ImportSettingsSection() {
 
       const [freshWorkspaces, importedProjects, firstSession] = await Promise.all([
         api.workspace.list(),
-        api.project.list(result.workspace_id),
+        api.folder.list(result.workspace_id),
         api.chat.listSessions(result.workspace_id, null, { limit: 1, offset: 0 }),
       ]);
 
       setWorkspaces(freshWorkspaces);
-      setProjectsForWorkspace(result.workspace_id, importedProjects);
+      setFoldersForWorkspace(result.workspace_id, importedProjects);
       setActiveWorkspaceId(result.workspace_id);
-      setActiveProjectId(null);
+      setActiveFolderId(null);
 
       const lines = [
         `${result.imported_sessions} conversation${result.imported_sessions === 1 ? "" : "s"} imported.`,
@@ -372,7 +372,7 @@ export default function ImportSettingsSection() {
 
     try {
       const wantConv = claudeIncludeConversations && !!claudeConversationsPath;
-      const wantProj = claudeIncludeProjects && !!claudeProjectsPath;
+      const wantProj = claudeIncludeFolders && !!claudeProjectsPath;
       const wantMem = claudeIncludeMemories && !!claudeMemoriesPath;
       if (!wantConv && !wantProj && !wantMem) {
         throw new Error("Pick at least one file to scan.");
@@ -402,7 +402,7 @@ export default function ImportSettingsSection() {
     }
   }, [
     claudeIncludeConversations,
-    claudeIncludeProjects,
+    claudeIncludeFolders,
     claudeIncludeMemories,
     claudeConversationsPath,
     claudeProjectsPath,
@@ -412,7 +412,7 @@ export default function ImportSettingsSection() {
   async function importClaudeFiles() {
     const haveAnything =
       (claudeIncludeConversations && claudeSelected.size > 0)
-      || (claudeIncludeProjects && claudeSelectedProjects.size > 0)
+      || (claudeIncludeFolders && claudeSelectedFolders.size > 0)
       || (claudeIncludeMemories && claudeMemories != null);
     if (!haveAnything) { return; }
 
@@ -427,32 +427,32 @@ export default function ImportSettingsSection() {
       const result = await api.chatFile.importClaudeFiles({
         workspaceName: resolvedName !== defaultName ? resolvedName : undefined,
         conversationsPath: claudeIncludeConversations ? claudeConversationsPath : null,
-        projectsPath: claudeIncludeProjects ? claudeProjectsPath : null,
+        projectsPath: claudeIncludeFolders ? claudeProjectsPath : null,
         memoriesPath: claudeIncludeMemories ? claudeMemoriesPath : null,
         selectedIds: claudeIncludeConversations ? [...claudeSelected] : undefined,
-        selectedProjectIds: claudeIncludeProjects && claudeSelectedProjects.size > 0
-          ? [...claudeSelectedProjects]
+        selectedFolderIds: claudeIncludeFolders && claudeSelectedFolders.size > 0
+          ? [...claudeSelectedFolders]
           : undefined,
         importMemories: claudeIncludeMemories,
       });
 
       const [freshWorkspaces, importedProjects, firstSession] = await Promise.all([
         api.workspace.list(),
-        api.project.list(result.workspace_id),
+        api.folder.list(result.workspace_id),
         api.chat.listSessions(result.workspace_id, null, { limit: 1, offset: 0 }),
       ]);
 
       setWorkspaces(freshWorkspaces);
-      setProjectsForWorkspace(result.workspace_id, importedProjects);
+      setFoldersForWorkspace(result.workspace_id, importedProjects);
       setActiveWorkspaceId(result.workspace_id);
-      setActiveProjectId(null);
+      setActiveFolderId(null);
 
       const lines: string[] = [];
       if (result.imported > 0) {
         lines.push(`${result.imported} conversation${result.imported === 1 ? "" : "s"} imported.`);
       }
-      if (result.projects_created > 0) {
-        lines.push(`${result.projects_created} project${result.projects_created === 1 ? "" : "s"} created.`);
+      if (result.folders_created > 0) {
+        lines.push(`${result.folders_created} project${result.folders_created === 1 ? "" : "s"} created.`);
       }
       if (result.memories_imported > 0) {
         lines.push(`${result.memories_imported} memor${result.memories_imported === 1 ? "y" : "ies"} imported.`);
@@ -496,7 +496,7 @@ export default function ImportSettingsSection() {
 
   const selectedLmStudioConversationCount = lmStudioPreviews.filter((conversation) => (
     lmStudioSelected.has(conversation.uuid)
-    && (!conversation.project_id || lmStudioSelectedProjects.has(conversation.project_id))
+    && (!conversation.folder_id || lmStudioSelectedFolders.has(conversation.folder_id))
   )).length;
 
   return (
@@ -587,7 +587,7 @@ export default function ImportSettingsSection() {
                             <p className="truncate text-[10px] text-[var(--text-muted)]">
                               {conversation.message_count} msg{conversation.message_count !== 1 && "s"}
                               {" · "}
-                              {conversation.project_name || "Workspace root"}
+                              {conversation.folder_name || "Workspace root"}
                               {" · "}
                               {conversation.source_path}
                             </p>
@@ -602,7 +602,7 @@ export default function ImportSettingsSection() {
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-[var(--text-primary)]">
-                        Projects ({lmStudioSelectedProjects.size}/{lmStudioProjects.length})
+                        Projects ({lmStudioSelectedFolders.size}/{lmStudioProjects.length})
                       </span>
                       <div className="flex gap-2">
                         <button
@@ -621,7 +621,7 @@ export default function ImportSettingsSection() {
                     </div>
                     <div className="max-h-44 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
                       {lmStudioProjects.map((project) => {
-                        const checked = lmStudioSelectedProjects.has(project.uuid);
+                        const checked = lmStudioSelectedFolders.has(project.uuid);
                         return (
                           <label
                             key={project.uuid}
@@ -758,10 +758,10 @@ export default function ImportSettingsSection() {
                   setPath: setClaudeConversationsPath,
                 },
                 {
-                  key: "projects",
+                  key: "folders",
                   label: "projects.json",
                   description: "Project names, descriptions, and instructions.",
-                  enabled: claudeIncludeProjects,
+                  enabled: claudeIncludeFolders,
                   setEnabled: setClaudeIncludeProjects,
                   path: claudeProjectsPath,
                   setPath: setClaudeProjectsPath,
@@ -831,7 +831,7 @@ export default function ImportSettingsSection() {
                   claudeScanning
                   || importingClaude
                   || (!(claudeIncludeConversations && claudeConversationsPath)
-                      && !(claudeIncludeProjects && claudeProjectsPath)
+                      && !(claudeIncludeFolders && claudeProjectsPath)
                       && !(claudeIncludeMemories && claudeMemoriesPath))
                 }
                 className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
@@ -868,9 +868,9 @@ export default function ImportSettingsSection() {
                     const checked = claudeSelected.has(conv.uuid);
                     const orphan =
                       conv.project_uuid != null
-                      && (!claudeIncludeProjects
+                      && (!claudeIncludeFolders
                           || !claudeProjects.some(
-                              (p) => p.uuid === conv.project_uuid && claudeSelectedProjects.has(p.uuid),
+                              (p) => p.uuid === conv.project_uuid && claudeSelectedFolders.has(p.uuid),
                           ));
                     return (
                       <label
@@ -912,7 +912,7 @@ export default function ImportSettingsSection() {
               <div className="mt-4 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-[var(--text-primary)]">
-                    Projects ({claudeSelectedProjects.size}/{claudeProjects.length})
+                    Projects ({claudeSelectedFolders.size}/{claudeProjects.length})
                   </span>
                   <div className="flex gap-2">
                     <button
@@ -931,7 +931,7 @@ export default function ImportSettingsSection() {
                 </div>
                 <div className="max-h-64 overflow-y-auto rounded-lg border border-[var(--border-color)]">
                   {claudeProjects.map((proj) => {
-                    const checked = claudeSelectedProjects.has(proj.uuid);
+                    const checked = claudeSelectedFolders.has(proj.uuid);
                     return (
                       <label
                         key={proj.uuid}
@@ -965,14 +965,14 @@ export default function ImportSettingsSection() {
 
             {/* ── Memories notice ───────────────────────────────── */}
             {claudeMemories
-              && (claudeMemories.conversations_memory || claudeMemories.project_memories.length > 0) && (
+              && (claudeMemories.conversations_memory || claudeMemories.folder_memories.length > 0) && (
               <div className="mt-4 rounded-lg border border-[var(--border-color)] p-3">
                 <div className="text-xs font-medium text-[var(--text-primary)]">Memories detected</div>
                 <div className="mt-1 text-[11px] text-[var(--text-muted)]">
                   {claudeMemories.conversations_memory ? "Workspace memory" : ""}
-                  {claudeMemories.conversations_memory && claudeMemories.project_memories.length > 0 ? " + " : ""}
-                  {claudeMemories.project_memories.length > 0
-                    ? `${claudeMemories.project_memories.length} project memor${claudeMemories.project_memories.length !== 1 ? "ies" : "y"}`
+                  {claudeMemories.conversations_memory && claudeMemories.folder_memories.length > 0 ? " + " : ""}
+                  {claudeMemories.folder_memories.length > 0
+                    ? `${claudeMemories.folder_memories.length} project memor${claudeMemories.folder_memories.length !== 1 ? "ies" : "y"}`
                     : ""}
                 </div>
               </div>
@@ -1003,7 +1003,7 @@ export default function ImportSettingsSection() {
                     importingClaude
                     || (
                       !(claudeIncludeConversations && claudeSelected.size > 0)
-                      && !(claudeIncludeProjects && claudeSelectedProjects.size > 0)
+                      && !(claudeIncludeFolders && claudeSelectedFolders.size > 0)
                       && !(claudeIncludeMemories && claudeMemories != null)
                     )
                   }

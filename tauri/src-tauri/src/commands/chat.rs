@@ -11,7 +11,7 @@ use crate::services::quick_search_service::{self, QuickSearchResult};
 pub struct SearchChatSessionsRequest {
     pub workspace_id: String,
     pub query: String,
-    pub project_id: Option<String>,
+    pub folder_id: Option<String>,
     pub include_descendants: Option<bool>,
 }
 
@@ -42,13 +42,13 @@ pub fn create_chat_session(
 pub fn list_chat_sessions(
     state: State<DbState>,
     workspace_id: String,
-    project_id: String,
+    folder_id: String,
     limit: Option<i64>,
     offset: Option<i64>,
     include_descendants: Option<bool>,
 ) -> Result<Vec<ChatSession>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::list_sessions(&conn, &workspace_id, &project_id, limit, offset, include_descendants.unwrap_or(false))
+    chat_service::list_sessions(&conn, &workspace_id, &folder_id, limit, offset, include_descendants.unwrap_or(false))
 }
 
 #[tauri::command]
@@ -60,7 +60,7 @@ pub fn search_chat_sessions(
     chat_service::search_sessions(
         &conn,
         &req.workspace_id,
-        req.project_id.as_deref(),
+        req.folder_id.as_deref(),
         &req.query,
         req.include_descendants.unwrap_or(false),
     )
@@ -158,7 +158,7 @@ pub fn move_chat_sessions(
     state: State<DbState>,
     session_ids: Vec<String>,
     target_workspace_id: String,
-    target_project_id: Option<String>,
+    target_folder_id: Option<String>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
 ) -> Result<(), String> {
@@ -168,7 +168,7 @@ pub fn move_chat_sessions(
         &conn,
         &session_ids,
         &target_workspace_id,
-        target_project_id.as_deref(),
+        target_folder_id.as_deref(),
         &chats_dir_state.0,
         pass.as_deref(),
     )
@@ -182,17 +182,17 @@ pub struct BatchMoveSessionsRequest {
     pub preserve_folder_structure: bool,
 }
 
-/// Maps source project ID to newly created/matched destination project ID.
+/// Maps source folder ID to newly created/matched destination folder ID.
 #[derive(Debug, serde::Serialize, Default)]
 pub struct BatchMoveSessionsResult {
     pub sessions_moved: usize,
-    pub projects_created: Vec<String>,
-    /// Map from source project ID to destination project ID
-    pub project_mapping: std::collections::HashMap<String, String>,
+    pub folders_created: Vec<String>,
+    /// Map from source project ID to destination folder ID
+    pub folder_mapping: std::collections::HashMap<String, String>,
 }
 
 /// Batch move sessions across workspaces in a single transaction.
-/// When preserve_folder_structure is true, creates matching projects in the target workspace.
+/// When preserve_folder_structure is true, creates matching folders in the target workspace.
 #[tauri::command]
 pub fn batch_move_sessions(
     state: State<DbState>,
@@ -212,8 +212,8 @@ pub fn batch_move_sessions(
     )?;
     Ok(BatchMoveSessionsResult {
         sessions_moved: outcome.sessions_moved,
-        projects_created: outcome.projects_created,
-        project_mapping: outcome.project_mapping,
+        folders_created: outcome.folders_created,
+        folder_mapping: outcome.folder_mapping,
     })
 }
 

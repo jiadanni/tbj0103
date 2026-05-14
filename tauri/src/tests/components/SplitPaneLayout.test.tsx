@@ -21,7 +21,7 @@ vi.mock("@/views/ChatView", () => ({ default: () => <div>Chat View</div> }));
 vi.mock("@/views/KnowledgeGraphView", () => ({ default: () => <div>Graph View</div> }));
 vi.mock("@/views/NoteEditorView", () => ({ default: () => <div>Notes View</div> }));
 vi.mock("@/views/DocumentBrowserView", () => ({ default: () => <div>Docs View</div> }));
-vi.mock("@/views/ProjectDashboardView", () => ({ default: () => <div>Dashboard View</div> }));
+vi.mock("@/views/FolderDashboardView", () => ({ default: () => <div>Dashboard View</div> }));
 
 import SplitPaneLayout from "@/components/SplitPaneLayout";
 
@@ -60,8 +60,8 @@ const INITIAL_STORE = {
   workspaces: [PARENT_WS, CHILD_WS, CHILD_WS2],
   activeWorkspaceId: "ws-parent",
   activeParentWorkspaceId: null,
-  activeProjectId: null,
-  projects: [],
+  activeFolderId: null,
+  folders: [],
   isDemoMode: false,
   workspaceNavigation: "sidebar" as const,
   sectionNavigation: "sidebar" as const,
@@ -69,13 +69,13 @@ const INITIAL_STORE = {
   splitSectionNavigation: "tabs" as const,
   activeTopicSignature: null,
   migrationSuggestion: null,
-  projectsByWorkspace: {},
+  foldersByWorkspace: {},
   splitMode: true,
   splitSizes: [50, 50] as [number, number],
   activePaneId: "primary" as const,
   panes: {
-    primary: { workspaceId: "ws-parent", projectId: null, view: "chat" as const, chatSessionId: null, noteSelection: null },
-    secondary: { workspaceId: "ws-child", projectId: null, view: "chat" as const, chatSessionId: null, noteSelection: null },
+    primary: { workspaceId: "ws-parent", folderId: null, view: "chat" as const, chatSessionId: null, noteSelection: null },
+    secondary: { workspaceId: "ws-child", folderId: null, view: "chat" as const, chatSessionId: null, noteSelection: null },
   },
 };
 

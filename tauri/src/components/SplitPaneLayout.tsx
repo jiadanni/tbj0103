@@ -7,13 +7,13 @@ import CompactMenuSelect from "./CompactMenuSelect";
 import { Tooltip } from "./Tooltip";
 
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
-const ProjectDashboardView = React.lazy(() => import("../views/ProjectDashboardView"));
+const FolderDashboardView = React.lazy(() => import("../views/FolderDashboardView"));
 const DocumentBrowserView = React.lazy(() => import("../views/DocumentBrowserView"));
 const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
 const ChatView = React.lazy(() => import("../views/ChatView"));
 
 const PANE_NAV_ITEMS: { view: PaneView; icon: LucideIcon; label: string }[] = [
-  { view: "project", icon: BarChart2, label: "Dashboard" },
+  { view: "folder", icon: BarChart2, label: "Dashboard" },
   { view: "chat", icon: MessageSquare, label: "Chat" },
   { view: "notes", icon: FileEdit, label: "Notes" },
   { view: "documents", icon: FileText, label: "Documents" },
@@ -76,8 +76,8 @@ function PaneWorkspaceSidebar({ paneId }: { paneId: PaneId }) {
 function PaneViewRenderer({ view }: { view: PaneView }) {
   let Content;
   switch (view) {
-    case "project":
-      Content = <ProjectDashboardView />;
+    case "folder":
+      Content = <FolderDashboardView />;
       break;
     case "chat":
       Content = <ChatView />;
@@ -92,7 +92,7 @@ function PaneViewRenderer({ view }: { view: PaneView }) {
       Content = <KnowledgeGraphView />;
       break;
     default:
-      Content = <ProjectDashboardView />;
+      Content = <FolderDashboardView />;
   }
   return <Suspense fallback={<div className="flex h-full items-center justify-center text-[var(--text-muted)] text-sm">Loading…</div>}>{Content}</Suspense>;
 }
@@ -103,7 +103,7 @@ function SplitSectionDropdown({ paneId }: { paneId: PaneId }) {
   const sectionOptions = PANE_NAV_ITEMS.map(({ view, label }) => ({ value: view, label }));
   const selectedView = sectionOptions.some((item) => item.value === activeView)
     ? activeView
-    : "project";
+    : "folder";
 
   return (
     <div className="flex items-center gap-3 px-3 py-2 border-b border-[var(--border-color)] bg-[var(--bg-elevated)]">

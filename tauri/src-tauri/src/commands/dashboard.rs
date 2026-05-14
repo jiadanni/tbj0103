@@ -115,11 +115,11 @@ pub fn get_dashboard_summary(
         .query_row(
             &format!("{cte}SELECT s.id,
                     s.title,
-                    NULLIF(s.project_id, ''),
+                    NULLIF(s.folder_id, ''),
                     p.name,
                     COALESCE(s.last_accessed_at, s.updated_at) AS last_seen
              FROM chat_sessions s
-             LEFT JOIN projects p ON p.id = s.project_id
+             LEFT JOIN folders p ON p.id = s.folder_id
              WHERE s.workspace_id {ws_cond}
                AND s.is_deleted = 0
                AND s.is_incognito = 0
@@ -132,8 +132,8 @@ pub fn get_dashboard_summary(
                 Ok(DashboardContinueLearning {
                     session_id: session_id.clone(),
                     title: row.get(1)?,
-                    project_id: row.get(2)?,
-                    project_name: row.get(3)?,
+                    folder_id: row.get(2)?,
+                    folder_name: row.get(3)?,
                     updated_at: row.get(4)?,
                     route: route(format!("/chat/{session_id}"), None),
                 })
@@ -196,7 +196,7 @@ pub fn get_dashboard_summary(
                        COALESCE(p.name, '') AS subtitle,
                        s.updated_at AS timestamp
                 FROM chat_sessions s
-                LEFT JOIN projects p ON p.id = s.project_id
+                LEFT JOIN folders p ON p.id = s.folder_id
                 WHERE s.workspace_id {ws_cond}
                   AND s.is_deleted = 0
                   AND s.is_incognito = 0

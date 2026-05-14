@@ -6,7 +6,7 @@ use tauri::State;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportRequest {
     pub workspace_id: String,
-    pub project_id: Option<String>,
+    pub folder_id: Option<String>,
     pub include_chats: Option<bool>,
     pub include_notes: Option<bool>,
     pub include_concepts: Option<bool>,
@@ -53,21 +53,21 @@ pub fn export_markdown(auth: State<AuthState>, state: State<DbState>, req: Expor
     // Chats (all workspace sessions, or filtered by optional project)
     if req.include_chats.unwrap_or(true) {
         // Single JOIN query instead of N+1 (1 session fetch + N message fetches)
-        let sql = if req.project_id.is_some() {
+        let sql = if req.folder_id.is_some() {
             "SELECT cs.id, cs.title, m.role, m.content
              FROM chat_sessions cs
              LEFT JOIN messages m ON m.session_id = cs.id
-             WHERE cs.project_id = ?1
+             WHERE cs.folder_id = ?1
              ORDER BY cs.created_at, m.created_at"
         } else {
             "SELECT cs.id, cs.title, m.role, m.content
              FROM chat_sessions cs
-             JOIN projects p ON cs.project_id = p.id
+             JOIN folders p ON cs.folder_id = p.id
              LEFT JOIN messages m ON m.session_id = cs.id
              WHERE p.workspace_id = ?1
              ORDER BY cs.created_at, m.created_at"
         };
-        let param = if let Some(ref pid) = req.project_id {
+        let param = if let Some(ref pid) = req.folder_id {
             pid
         } else {
             &req.workspace_id

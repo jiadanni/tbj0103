@@ -62,13 +62,13 @@ struct LmStudioConversationPreview {
     message_count: usize,
     created_at: String,
     updated_at: String,
-    project_id: Option<String>,
-    project_name: Option<String>,
+    folder_id: Option<String>,
+    folder_name: Option<String>,
     source_path: String,
 }
 
 #[derive(Serialize)]
-struct LmStudioProjectPreview {
+struct LmStudioFolderPreview {
     uuid: String,
     name: String,
     conversation_count: usize,
@@ -155,7 +155,7 @@ fn lmstudio_selection_matches(
     preview_id: &str,
     subfolder: &str,
     selected_ids: Option<&std::collections::HashSet<&str>>,
-    selected_project_ids: Option<&std::collections::HashSet<&str>>,
+    selected_folder_ids: Option<&std::collections::HashSet<&str>>,
 ) -> bool {
     if let Some(filter) = selected_ids {
         if !filter.contains(preview_id) {
@@ -163,7 +163,7 @@ fn lmstudio_selection_matches(
         }
     }
 
-    if let Some(filter) = selected_project_ids {
+    if let Some(filter) = selected_folder_ids {
         if !subfolder.is_empty() && !filter.contains(subfolder) {
             return false;
         }
@@ -197,7 +197,7 @@ pub fn reveal_chat_file(
 ) -> Result<(), String> {
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
     let encrypted = crypto.0.lock().map_err(|e| e.to_string())?.is_some();
-    // Try the workspace/project subdirectory path first
+    // Try the workspace/folder subdirectory path first
     let path = chat_file_store::session_file_path_for_session(&conn, &chats_dir_state.0, &session_id, encrypted);
     let fallback_path = chat_file_store::session_file_path_for_session(&conn, &chats_dir_state.0, &session_id, !encrypted);
     // Legacy flat-directory paths as final fallback
@@ -346,7 +346,7 @@ pub fn import_chat_from_json(
     auth: State<AuthState>,
     path: String,
     workspace_id: String,
-    project_id: Option<String>,
+    folder_id: Option<String>,
     passphrase: Option<String>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
@@ -359,7 +359,7 @@ pub fn import_chat_from_json(
         &conn,
         &validated_path,
         &workspace_id,
-        project_id.as_deref().unwrap_or(""),
+        folder_id.as_deref().unwrap_or(""),
         passphrase.as_deref(),
     )?;
 
@@ -372,14 +372,14 @@ pub fn import_chat_from_json(
     );
 
     conn.query_row(
-        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id, created_at, updated_at
+        "SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id, created_at, updated_at
          FROM chat_sessions WHERE id = ?1",
         rusqlite::params![session_id],
         |row| {
             Ok(ChatSession {
                 id: row.get(0)?,
                 workspace_id: row.get(1)?,
-                project_id: row.get(2)?,
+                folder_id: row.get(2)?,
                 title: row.get(3)?,
                 model_name: row.get(4)?,
                 system_prompt: row.get(5)?,
@@ -403,7 +403,7 @@ pub fn import_chat_from_json(
 }
 
 /// Import all LM Studio `.conversation.json` files from a folder (recursively).
-/// Root folder name → workspace, subfolders → projects, conversations → sessions.
+/// Root folder name → workspace, subfolders → folders, conversations → sessions.
 /// Returns the workspace ID and count of imported sessions.
 #[tauri::command]
 pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value, String> {
@@ -418,7 +418,7 @@ pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value,
     }
 
     let mut previews = Vec::new();
-    let mut project_counts: std::collections::BTreeMap<String, (usize, usize)> =
+    let mut folder_counts: std::collections::BTreeMap<String, (usize, usize)> =
         std::collections::BTreeMap::new();
     let mut errors = Vec::new();
 
@@ -427,12 +427,12 @@ pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value,
         match std::fs::read(&conv.path) {
             Ok(bytes) => match chat_file_store::parse_lmstudio_conversation(&bytes) {
                 Ok(data) => {
-                    let project_id = (!conv.subfolder.is_empty()).then(|| conv.subfolder.clone());
-                    let project_name = project_id.clone();
+                    let folder_id = (!conv.subfolder.is_empty()).then(|| conv.subfolder.clone());
+                    let folder_name = folder_id.clone();
                     let message_count = data.messages.len();
 
-                    if let Some(project_key) = project_id.as_ref() {
-                        let entry = project_counts.entry(project_key.clone()).or_insert((0, 0));
+                    if let Some(folder_key) = folder_id.as_ref() {
+                        let entry = folder_counts.entry(folder_key.clone()).or_insert((0, 0));
                         entry.0 += 1;
                         entry.1 += message_count;
                     }
@@ -443,8 +443,8 @@ pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value,
                         message_count,
                         created_at: data.created_at,
                         updated_at: data.updated_at,
-                        project_id,
-                        project_name,
+                        folder_id,
+                        folder_name,
                         source_path: preview_id,
                     });
                 }
@@ -475,16 +475,16 @@ pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value,
     }
 
     previews.sort_by(|left, right| {
-        left.project_name
-            .cmp(&right.project_name)
+        left.folder_name
+            .cmp(&right.folder_name)
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
             .then_with(|| left.created_at.cmp(&right.created_at))
             .then_with(|| left.uuid.cmp(&right.uuid))
     });
 
-    let projects = project_counts
+    let folders = folder_counts
         .into_iter()
-        .map(|(name, (conversation_count, message_count))| LmStudioProjectPreview {
+        .map(|(name, (conversation_count, message_count))| LmStudioFolderPreview {
             uuid: name.clone(),
             name,
             conversation_count,
@@ -495,7 +495,7 @@ pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value,
     Ok(serde_json::json!({
         "conversations": previews,
         "total": previews.len(),
-        "projects": projects,
+        "folders": folders,
         "errors": errors.len(),
         "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
     }))
@@ -506,7 +506,7 @@ pub fn import_lmstudio_folder(
     folder_path: String,
     workspace_name: Option<String>,
     selected_ids: Option<Vec<String>>,
-    selected_project_ids: Option<Vec<String>>,
+    selected_folder_ids: Option<Vec<String>>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
@@ -535,7 +535,7 @@ pub fn import_lmstudio_folder(
     let selected_id_filter: Option<std::collections::HashSet<&str>> = selected_ids
         .as_ref()
         .map(|ids| ids.iter().map(|id| id.as_str()).collect());
-    let selected_project_filter: Option<std::collections::HashSet<&str>> = selected_project_ids
+    let selected_folder_filter: Option<std::collections::HashSet<&str>> = selected_folder_ids
         .as_ref()
         .map(|ids| ids.iter().map(|id| id.as_str()).collect());
 
@@ -552,8 +552,8 @@ pub fn import_lmstudio_folder(
     let mut workspace_id: Option<String> = existing_workspace_id;
     let mut created_workspace = false;
 
-    // Build project map lazily: subfolder name -> project ID.
-    let mut project_map: std::collections::HashMap<String, String> =
+    // Build folder map lazily: subfolder name -> folder ID.
+    let mut folder_map: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
 
     let mut session_ids = Vec::new();
@@ -567,7 +567,7 @@ pub fn import_lmstudio_folder(
             &preview_id,
             &conv.subfolder,
             selected_id_filter.as_ref(),
-            selected_project_filter.as_ref(),
+            selected_folder_filter.as_ref(),
         ) {
             continue;
         }
@@ -590,35 +590,35 @@ pub fn import_lmstudio_folder(
                         new_workspace_id
                     };
 
-                    let project_id = if conv.subfolder.is_empty() {
+                    let folder_id = if conv.subfolder.is_empty() {
                         String::new()
-                    } else if let Some(existing_project_id) = project_map.get(&conv.subfolder) {
-                        existing_project_id.clone()
+                    } else if let Some(existing_folder_id) = folder_map.get(&conv.subfolder) {
+                        existing_folder_id.clone()
                     } else {
-                        let normalized_project_name = conv.subfolder.trim();
-                        let project_id = if let Ok(existing_project_id) = conn.query_row(
-                            "SELECT id FROM projects WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) LIMIT 1",
-                            rusqlite::params![workspace_id, normalized_project_name],
+                        let normalized_folder_name = conv.subfolder.trim();
+                        let folder_id = if let Ok(existing_folder_id) = conn.query_row(
+                            "SELECT id FROM folders WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) LIMIT 1",
+                            rusqlite::params![workspace_id, normalized_folder_name],
                             |row| row.get::<_, String>(0),
                         ) {
-                            existing_project_id
+                            existing_folder_id
                         } else {
                             let id = uuid::Uuid::new_v4().to_string();
                             conn.execute(
-                                "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
+                                "INSERT INTO folders (id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at)
                                  VALUES (?1, ?2, ?3, '', '', '#007AFF', 'folder', ?4, ?4)",
                                 rusqlite::params![id, workspace_id, conv.subfolder, now],
                             ).map_err(|e| e.to_string())?;
                             id
                         };
-                        project_map.insert(conv.subfolder.clone(), project_id.clone());
-                        project_id
+                        folder_map.insert(conv.subfolder.clone(), folder_id.clone());
+                        folder_id
                     };
 
-                    // Skip duplicate: same title + created_at in same workspace/project
+                    // Skip duplicate: same title + created_at in same workspace/folder
                     let duplicate: bool = conn.query_row(
-                        "SELECT 1 FROM chat_sessions WHERE workspace_id = ?1 AND project_id = ?2 AND title = ?3 AND created_at = ?4 AND is_imported = 1 LIMIT 1",
-                        rusqlite::params![workspace_id, project_id, data.title, data.created_at],
+                        "SELECT 1 FROM chat_sessions WHERE workspace_id = ?1 AND folder_id = ?2 AND title = ?3 AND created_at = ?4 AND is_imported = 1 LIMIT 1",
+                        rusqlite::params![workspace_id, folder_id, data.title, data.created_at],
                         |_| Ok(true),
                     ).unwrap_or(false);
 
@@ -631,7 +631,7 @@ pub fn import_lmstudio_folder(
                         &conn,
                         &data,
                         &workspace_id,
-                        &project_id,
+                        &folder_id,
                     ) {
                         Ok(sid) => session_ids.push(sid),
                         Err(e) => errors.push(format!("{}: {e}", conv.path.display())),
@@ -687,7 +687,7 @@ pub fn import_lmstudio_folder(
         "skipped": skipped,
         "workspace_id": workspace_id.unwrap_or_default(),
         "workspace_name": workspace_name,
-        "projects_created": project_map.len(),
+        "folders_created": folder_map.len(),
         "errors": errors.len(),
         "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
     }))
@@ -788,7 +788,7 @@ pub fn import_multiple_folders(
                     new_id
                 };
 
-                let mut project_map: std::collections::HashMap<String, String> =
+                let mut folder_map: std::collections::HashMap<String, String> =
                     std::collections::HashMap::new();
                 let mut session_ids = Vec::new();
                 let mut import_errors = Vec::new();
@@ -798,38 +798,38 @@ pub fn import_multiple_folders(
                     match std::fs::read(&conv.path) {
                         Ok(bytes) => match chat_file_store::parse_lmstudio_conversation(&bytes) {
                             Ok(data) => {
-                                let project_id = if conv.subfolder.is_empty() {
+                                let folder_id = if conv.subfolder.is_empty() {
                                     String::new()
-                                } else if let Some(existing_project_id) = project_map.get(&conv.subfolder) {
-                                    existing_project_id.clone()
+                                } else if let Some(existing_folder_id) = folder_map.get(&conv.subfolder) {
+                                    existing_folder_id.clone()
                                 } else {
-                                    let normalized_project_name = conv.subfolder.trim();
-                                    let project_id = if let Ok(existing_project_id) = conn.query_row(
-                                        "SELECT id FROM projects WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) LIMIT 1",
-                                        rusqlite::params![workspace_id, normalized_project_name],
+                                    let normalized_folder_name = conv.subfolder.trim();
+                                    let folder_id = if let Ok(existing_folder_id) = conn.query_row(
+                                        "SELECT id FROM folders WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) LIMIT 1",
+                                        rusqlite::params![workspace_id, normalized_folder_name],
                                         |row| row.get::<_, String>(0),
                                     ) {
-                                        existing_project_id
+                                        existing_folder_id
                                     } else {
                                         let id = uuid::Uuid::new_v4().to_string();
                                         if let Err(e) = conn.execute(
-                                            "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
+                                            "INSERT INTO folders (id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at)
                                              VALUES (?1, ?2, ?3, '', '', '#007AFF', 'folder', ?4, ?4)",
                                             rusqlite::params![id, workspace_id, conv.subfolder, now],
                                         ) {
-                                            import_errors.push(format!("{}: Failed to create project: {}", conv.path.display(), e));
+                                            import_errors.push(format!("{}: Failed to create folder: {}", conv.path.display(), e));
                                             continue;
                                         }
                                         id
                                     };
-                                    project_map.insert(conv.subfolder.clone(), project_id.clone());
-                                    project_id
+                                    folder_map.insert(conv.subfolder.clone(), folder_id.clone());
+                                    folder_id
                                 };
 
                                 // Check for duplicates
                                 let duplicate: bool = conn.query_row(
-                                    "SELECT 1 FROM chat_sessions WHERE workspace_id = ?1 AND project_id = ?2 AND title = ?3 AND created_at = ?4 AND is_imported = 1 LIMIT 1",
-                                    rusqlite::params![workspace_id, project_id, data.title, data.created_at],
+                                    "SELECT 1 FROM chat_sessions WHERE workspace_id = ?1 AND folder_id = ?2 AND title = ?3 AND created_at = ?4 AND is_imported = 1 LIMIT 1",
+                                    rusqlite::params![workspace_id, folder_id, data.title, data.created_at],
                                     |_| Ok(true),
                                 ).unwrap_or(false);
 
@@ -838,7 +838,7 @@ pub fn import_multiple_folders(
                                     continue;
                                 }
 
-                                match chat_file_store::import_chat_data(&conn, &data, &workspace_id, &project_id) {
+                                match chat_file_store::import_chat_data(&conn, &data, &workspace_id, &folder_id) {
                                     Ok(sid) => session_ids.push(sid),
                                     Err(e) => import_errors.push(format!("{}: {}", conv.path.display(), e)),
                                 }
@@ -866,7 +866,7 @@ pub fn import_multiple_folders(
                     "status": "success",
                     "imported": session_ids.len(),
                     "skipped": skipped,
-                    "projects_created": project_map.len(),
+                    "folders_created": folder_map.len(),
                     "errors": import_errors.len(),
                 }));
             }
@@ -952,7 +952,7 @@ pub fn import_gemini_takeout(
 
         conn.execute(
             "INSERT INTO chat_sessions (
-                id, workspace_id, project_id, title, model_name, system_prompt,
+                id, workspace_id, folder_id, title, model_name, system_prompt,
                 is_pinned, is_incognito, exclude_from_analytics, is_deleted,
                 is_imported, created_at, updated_at
             ) VALUES (?1, ?2, '', ?3, ?4, ?5, 0, 0, 0, 0, 1, ?6, ?6)",
@@ -1041,7 +1041,7 @@ pub fn preview_claude_files(
         .transpose()?
         .unwrap_or_default();
 
-    let projects = proj_bytes
+    let claude_projects = proj_bytes
         .as_deref()
         .map(chat_file_store::preview_claude_projects)
         .transpose()?
@@ -1055,46 +1055,46 @@ pub fn preview_claude_files(
     Ok(serde_json::json!({
         "conversations": conversations,
         "total": conversations.len(),
-        "projects": projects,
+        "folders": claude_projects,
         "memories": memories,
     }))
 }
 
-/// Resolve which Aetherium project a Claude conversation should land in.
+/// Resolve which Aetherium folder a Claude conversation should land in.
 ///
 /// Inputs:
 ///   - `conversation_project_uuid`: the `project_uuid` recorded on the conversation
-///     in conversations.json (None if the chat had no project in the source export).
-///   - `project_map`: UUID → Aetherium project_id for projects that were created
+///     in conversations.json (None if the chat had no folder in the source export).
+///   - `folder_map`: UUID → Aetherium folder_id for folders that were created
 ///     during this import (populated only if projects.json was supplied and the
 ///     project was selected).
 ///   - `workspace_id`: target workspace.
-///   - `unassigned_project_id`: lazy-init slot for the placeholder
-///     "Unassigned Imports" project. The first time orphan handling needs it, the
-///     closure should create the project row and cache its id here.
+///   - `unassigned_folder_id`: lazy-init slot for the placeholder
+///     "Unassigned Imports" folder. The first time orphan handling needs it, the
+///     closure should create the folder row and cache its id here.
 ///
-/// Returns the project_id string to write into chat_sessions.project_id
-/// (empty string means "loose chat in workspace, no project").
-fn resolve_project_id_for_import(
+/// Returns the folder_id string to write into chat_sessions.folder_id
+/// (empty string means "loose chat in workspace, no folder").
+fn resolve_folder_id_for_import(
     conversation_project_uuid: Option<&str>,
-    project_map: &std::collections::HashMap<String, String>,
+    folder_map: &std::collections::HashMap<String, String>,
     workspace_id: &str,
-    unassigned_project_id: &mut Option<String>,
+    unassigned_folder_id: &mut Option<String>,
     conn: &rusqlite::Connection,
     now: &str,
 ) -> Result<String, String> {
     let Some(uuid) = conversation_project_uuid else {
         return Ok(String::new());
     };
-    if let Some(mapped) = project_map.get(uuid) {
+    if let Some(mapped) = folder_map.get(uuid) {
         return Ok(mapped.clone());
     }
-    if let Some(id) = unassigned_project_id.as_ref() {
+    if let Some(id) = unassigned_folder_id.as_ref() {
         return Ok(id.clone());
     }
     let existing = conn
         .query_row(
-            "SELECT id FROM projects WHERE workspace_id = ?1 AND name = ?2 LIMIT 1",
+            "SELECT id FROM folders WHERE workspace_id = ?1 AND name = ?2 LIMIT 1",
             rusqlite::params![workspace_id, "Unassigned Imports"],
             |row| row.get::<_, String>(0),
         )
@@ -1104,14 +1104,14 @@ fn resolve_project_id_for_import(
     } else {
         let id = uuid::Uuid::new_v4().to_string();
         conn.execute(
-            "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
+            "INSERT INTO folders (id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at)
              VALUES (?1, ?2, 'Unassigned Imports', '', '', '#8E8E93', 'inbox', ?3, ?3)",
             rusqlite::params![id, workspace_id, now],
         )
         .map_err(|e| e.to_string())?;
         id
     };
-    *unassigned_project_id = Some(id.clone());
+    *unassigned_folder_id = Some(id.clone());
     Ok(id)
 }
 
@@ -1121,8 +1121,8 @@ fn resolve_project_id_for_import(
 ///
 /// Linking: if both conversations.json and projects.json are imported, each
 /// conversation's `project_uuid` is used to attach it to the corresponding
-/// project. Conversations whose project was not imported go to a placeholder
-/// project per `resolve_project_id_for_import`.
+/// project. Conversations whose folder was not imported go to a placeholder
+/// folder per `resolve_folder_id_for_import`.
 ///
 /// Use `preview_claude_files` first to populate the picker UI.
 #[allow(clippy::too_many_arguments)]
@@ -1133,7 +1133,7 @@ pub fn import_claude_files(
     projects_path: Option<String>,
     memories_path: Option<String>,
     selected_ids: Option<Vec<String>>,
-    selected_project_ids: Option<Vec<String>>,
+    selected_folder_ids: Option<Vec<String>>,
     import_memories: Option<bool>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
@@ -1200,52 +1200,52 @@ pub fn import_claude_files(
         new_id
     };
 
-    // Create projects from projects.json (if supplied), filtered by selection.
-    let mut projects_created = 0usize;
-    let mut project_map: std::collections::HashMap<String, String> =
+    // Create folders from projects.json (if supplied), filtered by selection.
+    let mut folders_created = 0usize;
+    let mut folder_map: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
-    let project_id_filter: Option<std::collections::HashSet<&str>> = selected_project_ids
+    let folder_id_filter: Option<std::collections::HashSet<&str>> = selected_folder_ids
         .as_ref()
         .map(|ids| ids.iter().map(|s| s.as_str()).collect());
 
     if let Some(bytes) = proj_bytes.as_deref() {
-        let projects = chat_file_store::parse_claude_projects(bytes)?;
-        for (proj_uuid, proj_name, proj_description, proj_prompt) in &projects {
-            if let Some(ref filter) = project_id_filter {
+        let claude_projects = chat_file_store::parse_claude_projects(bytes)?;
+        for (proj_uuid, proj_name, proj_description, proj_prompt) in &claude_projects {
+            if let Some(ref filter) = folder_id_filter {
                 if !filter.contains(proj_uuid.as_str()) {
                     continue;
                 }
             }
             let normalized = proj_name.trim();
-            let existing_project_id = conn
+            let existing_folder_id = conn
                 .query_row(
-                    "SELECT id FROM projects WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) LIMIT 1",
+                    "SELECT id FROM folders WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) LIMIT 1",
                     rusqlite::params![workspace_id, normalized],
                     |row| row.get::<_, String>(0),
                 )
                 .ok();
 
-            let project_id = if let Some(id) = existing_project_id {
+            let folder_id = if let Some(id) = existing_folder_id {
                 id
             } else {
                 let id = uuid::Uuid::new_v4().to_string();
                 conn.execute(
-                    "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
+                    "INSERT INTO folders (id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, '#007AFF', 'folder', ?6, ?6)",
                     rusqlite::params![id, workspace_id, proj_name, proj_description, proj_prompt, now],
                 )
                 .map_err(|e| e.to_string())?;
-                projects_created += 1;
+                folders_created += 1;
                 id
             };
-            project_map.insert(proj_uuid.clone(), project_id);
+            folder_map.insert(proj_uuid.clone(), folder_id);
         }
     }
 
-    // Import conversations, routing each to a project via resolve_project_id_for_import.
+    // Import conversations, routing each to a folder via resolve_folder_id_for_import.
     let mut session_ids = Vec::new();
     let mut errors = Vec::new();
-    let mut unassigned_project_id: Option<String> = None;
+    let mut unassigned_folder_id: Option<String> = None;
 
     for (data, conversation_project_uuid) in &chat_data_list {
         let exists: bool = conn
@@ -1259,16 +1259,16 @@ pub fn import_claude_files(
             continue;
         }
 
-        let project_id = resolve_project_id_for_import(
+        let folder_id = resolve_folder_id_for_import(
             conversation_project_uuid.as_deref(),
-            &project_map,
+            &folder_map,
             &workspace_id,
-            &mut unassigned_project_id,
+            &mut unassigned_folder_id,
             &conn,
             &now,
         )?;
 
-        match chat_file_store::import_chat_data(&conn, data, &workspace_id, &project_id) {
+        match chat_file_store::import_chat_data(&conn, data, &workspace_id, &folder_id) {
             Ok(sid) => session_ids.push(sid),
             Err(e) => errors.push(format!("{}: {e}", data.title)),
         }
@@ -1296,11 +1296,11 @@ pub fn import_claude_files(
                     ).map_err(|e| e.to_string())?;
                     memories_imported += 1;
                 }
-                for pm in &preview.project_memories {
-                    if let Some(proj_id) = project_map.get(&pm.project_uuid) {
+                for pm in &preview.folder_memories {
+                    if let Some(proj_id) = folder_map.get(&pm.project_uuid) {
                         let mem_id = uuid::Uuid::new_v4().to_string();
                         conn.execute(
-                            "INSERT INTO memories (id, workspace_id, project_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
+                            "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
                              VALUES (?1, ?2, ?3, ?4, 'context', 'workspace', 0, 1, ?5, ?5)",
                             rusqlite::params![mem_id, workspace_id, proj_id, pm.memory, now],
                         ).map_err(|e| e.to_string())?;
@@ -1308,7 +1308,7 @@ pub fn import_claude_files(
                     } else {
                         errors.push(format!(
                             "Skipped memory for project '{}' (project not imported)",
-                            pm.project_name
+                            pm.folder_name
                         ));
                     }
                 }
@@ -1322,7 +1322,7 @@ pub fn import_claude_files(
         "skipped": total_attempted.saturating_sub(session_ids.len() + errors.len()),
         "workspace_id": workspace_id,
         "workspace_name": workspace_name,
-        "projects_created": projects_created,
+        "folders_created": folders_created,
         "memories_imported": memories_imported,
         "errors": errors.len(),
         "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),

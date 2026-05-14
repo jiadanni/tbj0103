@@ -7,7 +7,7 @@ import Sidebar from "@/components/Sidebar";
 describe("Sidebar", () => {
   it("marks the active navigation item as the current page and uses the elevated pill treatment", () => {
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Sidebar onOpenCommandPalette={vi.fn()} />
       </MemoryRouter>
     );
@@ -19,7 +19,7 @@ describe("Sidebar", () => {
 
   it("shows a tooltip for collapsed navigation items on hover", () => {
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Sidebar onOpenCommandPalette={vi.fn()} />
       </MemoryRouter>
     );
@@ -33,7 +33,7 @@ describe("Sidebar", () => {
 
   it("hides the tooltip when pointer leaves a collapsed item", () => {
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Sidebar onOpenCommandPalette={vi.fn()} />
       </MemoryRouter>
     );

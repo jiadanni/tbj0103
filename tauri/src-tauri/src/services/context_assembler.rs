@@ -142,7 +142,7 @@ pub fn assemble_context(
     // 1. System Prompt (order: global → workspace → project → session)
     let mut system_parts = vec![];
 
-    // Consolidated system instructions query (Global, Workspace, Project, Session)
+    // Consolidated system instructions query (Global, Workspace, Folder, Session)
     let mut stmt = conn
         .prepare(
             "SELECT
@@ -153,7 +153,7 @@ pub fn assemble_context(
                 w.topic_signature
              FROM chat_sessions cs
              LEFT JOIN workspaces w ON w.id = cs.workspace_id
-             LEFT JOIN projects p ON p.id = cs.project_id
+             LEFT JOIN folders p ON p.id = cs.folder_id
              WHERE cs.id = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -179,7 +179,7 @@ pub fn assemble_context(
         if let Some(text) = ws_prompt {
             if !text.is_empty() { system_parts.push(text); }
         }
-        // Project
+        // Folder
         if let Some(text) = proj_prompt {
             if !text.is_empty() { system_parts.push(text); }
         }

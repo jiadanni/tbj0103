@@ -6,10 +6,10 @@ import {
 } from "@/lib/composerSuggestions";
 
 describe("composerSuggestions", () => {
-  it("builds workspace suggestions from project and topic context", () => {
+  it("builds workspace suggestions from folder and topic context", () => {
     const row = buildWorkspaceSuggestionRow({
       workspaceName: "Frontend Lab",
-      projectName: "Tauri App",
+      folderName: "Tauri App",
       topicSignature: {
         domain_tags: [
           { tag: "React", weight: 0.8, source: "auto" },
@@ -39,7 +39,7 @@ describe("composerSuggestions", () => {
   it("builds chat suggestions from binary assistant questions and follow ups", () => {
     const row = buildChatSuggestionRow({
       workspaceName: "Workspace",
-      projectName: null,
+      folderName: null,
       topicSignature: null,
       processedDocCount: 0,
       activeMessages: [

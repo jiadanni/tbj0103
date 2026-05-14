@@ -55,12 +55,12 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Transformer Architecture', 'Deep dive into attention mechanisms and transformer models', '#007AFF', 'brain', ?3, ?4)",
+        "INSERT INTO folders (id, workspace_id, name, folder_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Transformer Architecture', 'Deep dive into attention mechanisms and transformer models', '#007AFF', 'brain', ?3, ?4)",
         rusqlite::params![DEMO_PROJECT_AI, DEMO_WS_AI, now, now],
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Large Language Models', 'Practical applications and fine-tuning of LLMs', '#5AC8FA', 'rectangle.stack.fill', ?3, ?4)",
+        "INSERT INTO folders (id, workspace_id, name, folder_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Large Language Models', 'Practical applications and fine-tuning of LLMs', '#5AC8FA', 'rectangle.stack.fill', ?3, ?4)",
         rusqlite::params![DEMO_PROJECT_AI_LLMS, DEMO_WS_AI, now, now],
     ).map_err(|e| e.to_string())?;
 
@@ -308,7 +308,7 @@ def self_attention(query, key, value, mask=None):
         ],
     ).map_err(|e| e.to_string())?;
 
-    // AI Workspace: Project Note
+    // AI Workspace: Folder Note
     conn.execute(
         "INSERT INTO project_notes (id, workspace_id, title, content, note_type, tags, created_at, updated_at)
          VALUES (?1, ?2, 'Attention Mechanism Deep Dive', ?3, 'ai_generated', '[\"math\", \"deep-learning\"]', ?4, ?5)",
@@ -336,12 +336,12 @@ Compared to RNNs ($O(n \\cdot d^2)$), self-attention is $O(n^2 \\cdot d)$, makin
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Harmony & Chords', 'Understanding chord construction, inversions, and progressions', '#34C759', 'music.note.list', ?3, ?4)",
+        "INSERT INTO folders (id, workspace_id, name, folder_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Harmony & Chords', 'Understanding chord construction, inversions, and progressions', '#34C759', 'music.note.list', ?3, ?4)",
         rusqlite::params![DEMO_PROJECT_MUSIC_HARMONY, DEMO_WS_MUSIC, now, now],
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Rhythm & Meter', 'Time signatures, subdivisions, and rhythmic patterns', '#AF52DE', 'metronome', ?3, ?4)",
+        "INSERT INTO folders (id, workspace_id, name, folder_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Rhythm & Meter', 'Time signatures, subdivisions, and rhythmic patterns', '#AF52DE', 'metronome', ?3, ?4)",
         rusqlite::params![DEMO_PROJECT_MUSIC_RHYTHM, DEMO_WS_MUSIC, now, now],
     ).map_err(|e| e.to_string())?;
 
@@ -597,12 +597,12 @@ Key topics:
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Fall of the Republic', 'The transformation from Republic to Empire', '#FF9500', 'building.columns', ?3, ?4)",
+        "INSERT INTO folders (id, workspace_id, name, folder_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Fall of the Republic', 'The transformation from Republic to Empire', '#FF9500', 'building.columns', ?3, ?4)",
         rusqlite::params![DEMO_PROJECT_ROME, DEMO_WS_ROME, now, now],
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Roman Military', 'Legions, tactics, and military organization of Rome', '#FF3B30', 'shield.fill', ?3, ?4)",
+        "INSERT INTO folders (id, workspace_id, name, folder_description, color, icon, created_at, updated_at) VALUES (?1, ?2, 'Roman Military', 'Legions, tactics, and military organization of Rome', '#FF3B30', 'shield.fill', ?3, ?4)",
         rusqlite::params![DEMO_PROJECT_ROME_MILITARY, DEMO_WS_ROME, now, now],
     ).map_err(|e| e.to_string())?;
 
@@ -827,7 +827,7 @@ Notable achievements:
         ],
     ).map_err(|e| e.to_string())?;
 
-    // Rome Workspace: Project Note
+    // Rome Workspace: Folder Note
     conn.execute(
         "INSERT INTO project_notes (id, workspace_id, title, content, note_type, tags, created_at, updated_at)
          VALUES (?1, ?2, 'Duties of a Legionary Legate', ?3, 'manual', '[\"military\", \"organization\"]', ?4, ?5)",
@@ -865,7 +865,7 @@ pub fn deactivate_demo_mode(state: State<DbState>) -> Result<(), String> {
         "DELETE FROM messages WHERE session_id LIKE 'demo-%'",
         "DELETE FROM citations WHERE message_id LIKE 'demo-%'",
         "DELETE FROM chat_sessions WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
-        "DELETE FROM projects WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
+        "DELETE FROM folders WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
         "DELETE FROM concept_nodes WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
         "DELETE FROM concept_links WHERE source_id LIKE 'demo-%' OR target_id LIKE 'demo-%'",
         "DELETE FROM concept_mentions WHERE concept_id LIKE 'demo-%' OR source_id LIKE 'demo-%'",
@@ -929,15 +929,15 @@ pub fn deactivate_demo_mode(state: State<DbState>) -> Result<(), String> {
 fn create_demo_chat(
     conn: &rusqlite::Connection,
     ws_id: &str,
-    project_id: &str,
+    folder_id: &str,
     session_id: &str,
     title: &str,
     messages: Vec<(&str, &str)>,
     now: &str,
 ) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, project_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6)",
-        rusqlite::params![session_id, ws_id, project_id, title, now, now],
+        "INSERT INTO chat_sessions (id, workspace_id, folder_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6)",
+        rusqlite::params![session_id, ws_id, folder_id, title, now, now],
     ).map_err(|e| e.to_string())?;
 
     for (role, content) in messages {
