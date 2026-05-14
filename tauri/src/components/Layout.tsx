@@ -1494,6 +1494,7 @@ export default function Layout() {
   const setDemo = useWorkspaceStore((state) => state.setDemo);
   const loadArtifact = useArtifactStore((state) => state.loadArtifact);
   const setArtifactPanelOpen = useArtifactStore((state) => state.setPanelOpen);
+  const showStatusBar = useSettingsStore((state) => state.showStatusBar);
   const splitUnsupportedRoute = ["/preferences"].some((path) => location.pathname.startsWith(path));
   const showSplitPaneLayout = splitMode && !splitUnsupportedRoute;
   const showSinglePaneNavigation = !showSplitPaneLayout;
@@ -1605,7 +1606,7 @@ export default function Layout() {
           </div>
         )}
       </div>
-      <StatusBar />
+      {showStatusBar && <StatusBar />}
       <ArtifactPanel />
     </div>
   );
