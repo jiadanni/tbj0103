@@ -34,7 +34,7 @@ impl std::str::FromStr for MessageRole {
 pub struct ChatSession {
     pub id: String,
     pub workspace_id: String,
-    pub project_id: String,
+    pub folder_id: String,
     pub title: String,
     pub model_name: String,
     pub system_prompt: String,
@@ -82,7 +82,7 @@ pub struct Citation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateChatSessionRequest {
     pub workspace_id: String,
-    pub project_id: String,
+    pub folder_id: String,
     pub title: Option<String>,
     pub model_name: Option<String>,
     pub system_prompt: Option<String>,
@@ -113,12 +113,12 @@ pub struct AddCitationRequest {
 }
 
 impl ChatSession {
-    pub fn new(workspace_id: impl Into<String>, project_id: impl Into<String>) -> Self {
+    pub fn new(workspace_id: impl Into<String>, folder_id: impl Into<String>) -> Self {
         let now = chrono::Utc::now().to_rfc3339();
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             workspace_id: workspace_id.into(),
-            project_id: project_id.into(),
+            folder_id: folder_id.into(),
             title: "New Chat".to_string(),
             model_name: String::new(),
             system_prompt: String::new(),

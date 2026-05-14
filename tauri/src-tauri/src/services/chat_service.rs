@@ -1,7 +1,7 @@
 use crate::models::chat::{
     AddMessageRequest, ChatSession, CreateChatSessionRequest, Message, MessageRole,
 };
-use crate::models::project::Project;
+use crate::models::folder::Folder;
 use crate::services::chat_file_store;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
 use rusqlite::Connection;
@@ -11,15 +11,15 @@ use std::path::Path;
 #[derive(Debug, Clone, Default)]
 pub struct BatchMoveSessionsOutcome {
     pub sessions_moved: usize,
-    pub projects_created: Vec<String>,
-    pub project_mapping: HashMap<String, String>,
+    pub folders_created: Vec<String>,
+    pub folder_mapping: HashMap<String, String>,
 }
 
 fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatSession> {
     Ok(ChatSession {
         id: row.get(0)?,
         workspace_id: row.get(1)?,
-        project_id: row.get(2)?,
+        folder_id: row.get(2)?,
         title: row.get(3)?,
         model_name: row.get(4)?,
         system_prompt: row.get(5)?,
@@ -56,12 +56,12 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     })
 }
 
-fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
-    Ok(Project {
+fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Folder> {
+    Ok(Folder {
         id: row.get(0)?,
         workspace_id: row.get(1)?,
         name: row.get(2)?,
-        project_description: row.get(3)?,
+        folder_description: row.get(3)?,
         custom_instructions: row.get(4)?,
         color: row.get(5)?,
         icon: row.get(6)?,
@@ -74,7 +74,7 @@ pub fn create_session(
     conn: &Connection,
     req: CreateChatSessionRequest,
 ) -> Result<ChatSession, String> {
-    let mut session = ChatSession::new(req.workspace_id, req.project_id);
+    let mut session = ChatSession::new(req.workspace_id, req.folder_id);
     if let Some(title) = req.title {
         session.title = title;
     }
@@ -91,7 +91,7 @@ pub fn create_session(
 
     conn.execute(
         "INSERT INTO chat_sessions (
-            id, workspace_id, project_id, title, model_name, system_prompt,
+            id, workspace_id, folder_id, title, model_name, system_prompt,
             is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at,
             last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
             created_at, updated_at
@@ -99,7 +99,7 @@ pub fn create_session(
         rusqlite::params![
             session.id,
             session.workspace_id,
-            session.project_id,
+            session.folder_id,
             session.title,
             session.model_name,
             session.system_prompt,
@@ -125,7 +125,7 @@ pub fn create_session(
 pub fn list_sessions(
     conn: &Connection,
     workspace_id: &str,
-    project_id: &str,
+    folder_id: &str,
     limit: Option<i64>,
     offset: Option<i64>,
     include_descendants: bool,
@@ -133,9 +133,9 @@ pub fn list_sessions(
     let limit = limit.unwrap_or(200).clamp(1, 1000);
     let offset = offset.unwrap_or(0).max(0);
     let (cte, ws_cond) = workspace_filter_sql(include_descendants);
-    let sql = if project_id.is_empty() {
+    let sql = if folder_id.is_empty() {
         format!(
-            "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+            "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
@@ -147,24 +147,24 @@ pub fn list_sessions(
         )
     } else {
         format!(
-            "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+            "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
-         WHERE workspace_id {ws_cond} AND project_id = ?2 AND is_deleted = 0
+         WHERE workspace_id {ws_cond} AND folder_id = ?2 AND is_deleted = 0
          ORDER BY is_pinned DESC, updated_at DESC
          LIMIT ?3 OFFSET ?4"
         )
     };
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let rows = if project_id.is_empty() {
+    let rows = if folder_id.is_empty() {
         stmt.query_map(rusqlite::params![workspace_id, limit, offset], row_to_session)
     } else {
         stmt.query_map(
-            rusqlite::params![workspace_id, project_id, limit, offset],
+            rusqlite::params![workspace_id, folder_id, limit, offset],
             row_to_session,
         )
     }
@@ -177,15 +177,15 @@ pub fn list_sessions(
 pub fn search_sessions(
     conn: &Connection,
     workspace_id: &str,
-    project_id: Option<&str>,
+    folder_id: Option<&str>,
     query: &str,
     include_descendants: bool,
 ) -> Result<Vec<ChatSession>, String> {
     let pattern = format!("%{}%", query.trim());
     let (cte, ws_cond) = workspace_filter_sql(include_descendants);
-    let sql = if project_id.unwrap_or_default().is_empty() {
+    let sql = if folder_id.unwrap_or_default().is_empty() {
         format!(
-            "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+            "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
@@ -197,22 +197,22 @@ pub fn search_sessions(
         )
     } else {
         format!(
-            "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+            "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
-         WHERE workspace_id {ws_cond} AND project_id = ?2 AND is_deleted = 0
+         WHERE workspace_id {ws_cond} AND folder_id = ?2 AND is_deleted = 0
            AND (title LIKE ?3 OR model_name LIKE ?3)
          ORDER BY is_pinned DESC, updated_at DESC"
         )
     };
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let rows = if let Some(project_id) = project_id.filter(|id| !id.is_empty()) {
+    let rows = if let Some(folder_id) = folder_id.filter(|id| !id.is_empty()) {
         stmt.query_map(
-            rusqlite::params![workspace_id, project_id, pattern],
+            rusqlite::params![workspace_id, folder_id, pattern],
             row_to_session,
         )
     } else {
@@ -226,7 +226,7 @@ pub fn search_sessions(
 
 pub fn get_session(conn: &Connection, id: &str) -> Result<Option<ChatSession>, String> {
     let result = conn.query_row(
-        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+        "SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
@@ -271,7 +271,7 @@ pub fn list_deleted(
 ) -> Result<Vec<ChatSession>, String> {
     let (cte, ws_cond) = workspace_filter_sql(include_descendants);
     let sql = format!(
-        "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+        "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
@@ -313,7 +313,7 @@ pub fn move_sessions(
     conn: &Connection,
     session_ids: &[String],
     target_workspace_id: &str,
-    target_project_id: Option<&str>,
+    target_folder_id: Option<&str>,
     chats_dir: &Path,
     passphrase: Option<&str>,
 ) -> Result<(), String> {
@@ -322,7 +322,7 @@ pub fn move_sessions(
     }
 
     let previous_paths = chat_file_store::capture_session_file_variants(conn, chats_dir, session_ids);
-    let target_project_id = target_project_id.unwrap_or_default();
+    let target_folder_id = target_folder_id.unwrap_or_default();
 
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|e| e.to_string())?;
@@ -334,13 +334,13 @@ pub fn move_sessions(
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
-            "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2 WHERE id IN ({})",
+            "UPDATE chat_sessions SET workspace_id = ?1, folder_id = ?2 WHERE id IN ({})",
             placeholders
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
             Vec::with_capacity(2 + session_ids.len());
         params.push(Box::new(target_workspace_id.to_string()));
-        params.push(Box::new(target_project_id.to_string()));
+        params.push(Box::new(target_folder_id.to_string()));
         for session_id in session_ids {
             params.push(Box::new(session_id.clone()));
         }
@@ -395,7 +395,7 @@ pub fn batch_move_sessions(
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
-            "SELECT id, project_id FROM chat_sessions WHERE id IN ({})",
+            "SELECT id, folder_id FROM chat_sessions WHERE id IN ({})",
             placeholders
         );
         let params: Vec<&dyn rusqlite::types::ToSql> = session_ids
@@ -416,29 +416,29 @@ pub fn batch_move_sessions(
             .map_err(|e| e.to_string())?;
 
         if preserve_folder_structure {
-            let source_project_ids: HashSet<String> = session_project_pairs
+            let source_folder_ids: HashSet<String> = session_project_pairs
                 .iter()
-                .filter(|(_, project_id)| !project_id.is_empty())
-                .map(|(_, project_id)| project_id.clone())
+                .filter(|(_, folder_id)| !folder_id.is_empty())
+                .map(|(_, folder_id)| folder_id.clone())
                 .collect();
 
-            let mut source_projects: HashMap<String, Project> = HashMap::new();
-            for project_id in &source_project_ids {
+            let mut source_projects: HashMap<String, Folder> = HashMap::new();
+            for folder_id in &source_folder_ids {
                 let project = conn
                     .query_row(
-                        "SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
-                         FROM projects WHERE id = ?1",
-                        rusqlite::params![project_id],
+                        "SELECT id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at
+                         FROM folders WHERE id = ?1",
+                        rusqlite::params![folder_id],
                         row_to_project,
                     )
                     .ok();
                 if let Some(project) = project {
-                    source_projects.insert(project_id.clone(), project);
+                    source_projects.insert(folder_id.clone(), project);
                 }
             }
 
-            let existing_projects: Vec<(String, String)> = conn
-                .prepare("SELECT id, name FROM projects WHERE workspace_id = ?1")
+            let existing_folders: Vec<(String, String)> = conn
+                .prepare("SELECT id, name FROM folders WHERE workspace_id = ?1")
                 .map_err(|e| e.to_string())?
                 .query_map(rusqlite::params![target_workspace_id], |row| {
                     Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -447,27 +447,27 @@ pub fn batch_move_sessions(
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
 
-            let existing_by_name: HashMap<String, String> = existing_projects
+            let existing_by_name: HashMap<String, String> = existing_folders
                 .iter()
                 .map(|(id, name)| (name.trim().to_lowercase(), id.clone()))
                 .collect();
 
-            for (source_project_id, source_project) in &source_projects {
+            for (source_folder_id, source_project) in &source_projects {
                 let normalized_name = source_project.name.trim().to_lowercase();
-                let target_project_id =
+                let target_folder_id =
                     if let Some(existing_id) = existing_by_name.get(&normalized_name) {
                         existing_id.clone()
                     } else {
                         let new_project =
-                            Project::new(target_workspace_id.to_string(), source_project.name.clone());
+                            Folder::new(target_workspace_id.to_string(), source_project.name.clone());
                         conn.execute(
-                            "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
+                            "INSERT INTO folders (id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at)
                              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                             rusqlite::params![
                                 new_project.id,
                                 new_project.workspace_id,
                                 new_project.name,
-                                source_project.project_description,
+                                source_project.folder_description,
                                 source_project.custom_instructions,
                                 source_project.color,
                                 source_project.icon,
@@ -476,34 +476,34 @@ pub fn batch_move_sessions(
                             ],
                         )
                         .map_err(|e| e.to_string())?;
-                        outcome.projects_created.push(new_project.id.clone());
+                        outcome.folders_created.push(new_project.id.clone());
                         new_project.id
                     };
                 outcome
-                    .project_mapping
-                    .insert(source_project_id.clone(), target_project_id);
+                    .folder_mapping
+                    .insert(source_folder_id.clone(), target_folder_id);
             }
 
-            for (session_id, source_project_id) in &session_project_pairs {
-                let target_project_id = if source_project_id.is_empty() {
+            for (session_id, source_folder_id) in &session_project_pairs {
+                let target_folder_id = if source_folder_id.is_empty() {
                     String::new()
                 } else {
                     outcome
-                        .project_mapping
-                        .get(source_project_id)
+                        .folder_mapping
+                        .get(source_folder_id)
                         .cloned()
                         .unwrap_or_default()
                 };
 
                 conn.execute(
-                    "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2 WHERE id = ?3",
-                    rusqlite::params![target_workspace_id, target_project_id, session_id],
+                    "UPDATE chat_sessions SET workspace_id = ?1, folder_id = ?2 WHERE id = ?3",
+                    rusqlite::params![target_workspace_id, target_folder_id, session_id],
                 )
                 .map_err(|e| e.to_string())?;
             }
         } else {
             let sql = format!(
-                "UPDATE chat_sessions SET workspace_id = ?1, project_id = ?2 WHERE id IN ({})",
+                "UPDATE chat_sessions SET workspace_id = ?1, folder_id = ?2 WHERE id IN ({})",
                 placeholders
             );
             let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
@@ -684,7 +684,7 @@ pub fn get_recent(
     let limit = limit.unwrap_or(10).clamp(1, 100);
     let (cte, ws_cond) = workspace_filter_sql(include_descendants);
     let sql = format!(
-        "{cte}SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned,
+        "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 created_at, updated_at,
@@ -855,7 +855,7 @@ mod tests {
         
         let req = CreateChatSessionRequest {
             workspace_id: ws_id.clone(),
-            project_id: "".to_string(),
+            folder_id: "".to_string(),
             title: Some("Test Chat".to_string()),
             model_name: Some("gpt-4".to_string()),
             system_prompt: None,
@@ -881,7 +881,7 @@ mod tests {
         
         create_session(&conn, CreateChatSessionRequest {
             workspace_id: ws_id.clone(),
-            project_id: "".to_string(),
+            folder_id: "".to_string(),
             title: Some("Apple".to_string()),
             model_name: None,
             system_prompt: None,
@@ -893,7 +893,7 @@ mod tests {
         
         create_session(&conn, CreateChatSessionRequest {
             workspace_id: ws_id.clone(),
-            project_id: "".to_string(),
+            folder_id: "".to_string(),
             title: Some("Banana".to_string()),
             model_name: None,
             system_prompt: None,
@@ -919,7 +919,7 @@ mod tests {
         
         let s = create_session(&conn, CreateChatSessionRequest {
             workspace_id: ws_id.clone(),
-            project_id: "".to_string(),
+            folder_id: "".to_string(),
             title: Some("To be deleted".to_string()),
             model_name: None,
             system_prompt: None,
@@ -945,7 +945,7 @@ mod tests {
         
         let s = create_session(&conn, CreateChatSessionRequest {
             workspace_id: ws_id.clone(),
-            project_id: "".to_string(),
+            folder_id: "".to_string(),
             title: None,
             model_name: None,
             system_prompt: None,
@@ -997,7 +997,7 @@ mod tests {
         // Create a session in the child workspace
         create_session(&conn, CreateChatSessionRequest {
             workspace_id: child.id.clone(),
-            project_id: "".to_string(),
+            folder_id: "".to_string(),
             title: Some("Child Session".to_string()),
             model_name: None,
             system_prompt: None,
@@ -1028,7 +1028,7 @@ mod tests {
         // Create a session in the parent workspace
         create_session(&conn, CreateChatSessionRequest {
             workspace_id: parent_id.clone(),
-            project_id: "".to_string(),
+            folder_id: "".to_string(),
             title: Some("Parent Session".to_string()),
             model_name: None,
             system_prompt: None,

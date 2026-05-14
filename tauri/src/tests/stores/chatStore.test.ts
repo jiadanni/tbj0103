@@ -29,7 +29,7 @@ function makeSession(overrides: Partial<ChatSession> = {}): ChatSession {
   return {
     id: "s1",
     workspace_id: "ws1",
-    project_id: "p1",
+    folder_id: "p1",
     title: "Test Session",
     model_name: "llama3",
     system_prompt: "",

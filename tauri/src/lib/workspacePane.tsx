@@ -6,7 +6,7 @@ import {
   type PaneView,
   useWorkspaceStore,
   type NoteSelectionState,
-  type Project,
+  type Folder,
 } from "../stores/workspaceStore";
 
 interface WorkspacePaneContextValue {
@@ -30,7 +30,7 @@ export function useWorkspacePane() {
 const NOOP_SET_VIEW = (_view: PaneView) => undefined;
 const NOOP_SET_NOTE = (_selection: NoteSelectionState | null) => undefined;
 const NOOP_FOCUS = () => undefined;
-const EMPTY_PROJECTS: Project[] = [];
+const EMPTY_FOLDERS: Folder[] = [];
 
 export function useScopedWorkspace() {
   const pane = useWorkspacePane();
@@ -45,9 +45,9 @@ export function useScopedWorkspace() {
       [paneId],
     ),
   );
-  const activeProjectId = useWorkspaceStore(
+  const activeFolderId = useWorkspaceStore(
     useCallback(
-      (s) => (paneId ? s.panes[paneId].projectId : s.activeProjectId),
+      (s) => (paneId ? s.panes[paneId].folderId : s.activeFolderId),
       [paneId],
     ),
   );
@@ -72,10 +72,10 @@ export function useScopedWorkspace() {
     [paneId],
   );
 
-  const setActiveProjectId = useCallback(
-    (projectId: string | null) => {
-      if (paneId) { useWorkspaceStore.getState().setPaneProject(paneId, projectId); }
-      else { useWorkspaceStore.getState().setActiveProjectId(projectId); }
+  const setActiveFolderId = useCallback(
+    (folderId: string | null) => {
+      if (paneId) { useWorkspaceStore.getState().setPaneFolder(paneId, folderId); }
+      else { useWorkspaceStore.getState().setActiveFolderId(folderId); }
     },
     [paneId],
   );
@@ -105,11 +105,11 @@ export function useScopedWorkspace() {
     return {
       paneId: null,
       activeWorkspaceId,
-      activeProjectId,
+      activeFolderId,
       activeView,
       noteSelection,
       setActiveWorkspaceId,
-      setActiveProjectId,
+      setActiveFolderId,
       setActiveView: NOOP_SET_VIEW,
       setNoteSelection: NOOP_SET_NOTE,
       setPaneFocus: NOOP_FOCUS,
@@ -120,11 +120,11 @@ export function useScopedWorkspace() {
   return {
     paneId: pane.paneId,
     activeWorkspaceId,
-    activeProjectId,
+    activeFolderId,
     activeView,
     noteSelection,
     setActiveWorkspaceId,
-    setActiveProjectId,
+    setActiveFolderId,
     setActiveView,
     setNoteSelection,
     setPaneFocus,
@@ -160,16 +160,16 @@ export function useScopedChat() {
   };
 }
 
-export function useScopedProjects() {
+export function useScopedFolders() {
   const pane = useWorkspacePane();
   const paneId = pane?.paneId ?? null;
 
   return useWorkspaceStore(
     useCallback(
       (s) => {
-        if (!paneId) { return s.projects; }
+        if (!paneId) { return s.folders; }
         const workspaceId = s.panes[paneId].workspaceId;
-        return workspaceId ? (s.projectsByWorkspace[workspaceId] ?? EMPTY_PROJECTS) : EMPTY_PROJECTS;
+        return workspaceId ? (s.foldersByWorkspace[workspaceId] ?? EMPTY_FOLDERS) : EMPTY_FOLDERS;
       },
       [paneId],
     ),

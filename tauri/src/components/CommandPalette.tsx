@@ -42,7 +42,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
 }
 
 const COMMANDS: CommandItem[] = [
-  { label: "Go to Dashboard",          value: "dashboard",      path: "/project"       },
+  { label: "Go to Dashboard",          value: "dashboard",      path: "/folder"       },
   { label: "Go to Chat",               value: "chat",           path: "/chat"          },
   { label: "Chat Sessions",            value: "chat-sessions",  path: "/chat",         state: { subView: "sessions" as ChatSubView } },
   { label: "Go to Notes",              value: "notes",          path: "/notes"         },
@@ -101,7 +101,7 @@ export default function CommandPalette({ workspaceId, onClose }: Props) {
     }, 120);
 
     return () => clearTimeout(timer);
-  }, [query, workspaceId]);
+  }, [query, workspaceId, includeDescendants]);
 
   const handleSelectCommand = (cmd: CommandItem) => {
     navigate(cmd.path, { state: cmd.state });

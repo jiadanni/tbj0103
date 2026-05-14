@@ -90,7 +90,7 @@ pub struct SessionFileVariants {
 }
 
 /// Returns the file path for a session organized into workspace/project subdirectories.
-/// Path: `chats_dir/{workspace_name}/{project_name}/{session_id}.json[.enc]`
+/// Path: `chats_dir/{workspace_name}/{folder_name}/{session_id}.json[.enc]`
 /// Falls back to the flat `chats_dir/{session_id}.json[.enc]` path if the session
 /// is not found in the database.
 pub fn session_file_path_for_session(
@@ -104,7 +104,7 @@ pub fn session_file_path_for_session(
             "SELECT w.name, COALESCE(NULLIF(p.name, ''), '')
              FROM chat_sessions cs
              JOIN workspaces w ON w.id = cs.workspace_id
-             LEFT JOIN projects p ON p.id = cs.project_id AND cs.project_id != ''
+             LEFT JOIN folders p ON p.id = cs.folder_id AND cs.folder_id != ''
              WHERE cs.id = ?1",
             rusqlite::params![session_id],
             |r| Ok((r.get(0)?, r.get(1)?)),
@@ -362,17 +362,17 @@ pub fn import_session_from_file(
     conn: &Connection,
     path: &Path,
     workspace_id: &str,
-    project_id: &str,
+    folder_id: &str,
     passphrase: Option<&str>,
 ) -> Result<String, String> {
     let data = read_session_file(path, passphrase)?;
     let session_id = uuid::Uuid::new_v4().to_string();
     conn.execute(
         "INSERT INTO chat_sessions
-             (id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, is_imported, parent_session_id, branch_message_id, created_at, updated_at)
+             (id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, is_imported, parent_session_id, branch_message_id, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 0, 0, NULL, 1, NULL, NULL, ?7, ?8)",
         rusqlite::params![
-            session_id, workspace_id, project_id, data.title, data.model, data.system_prompt,
+            session_id, workspace_id, folder_id, data.title, data.model, data.system_prompt,
             data.created_at, data.updated_at
         ],
     )
@@ -763,7 +763,7 @@ pub fn import_chat_data(
     conn: &Connection,
     data: &ChatFileData,
     workspace_id: &str,
-    project_id: &str,
+    folder_id: &str,
 ) -> Result<String, String> {
     if data.messages.is_empty() {
         return Err("Conversation contains no supported messages.".to_string());
@@ -772,14 +772,14 @@ pub fn import_chat_data(
     let session_id = uuid::Uuid::new_v4().to_string();
     conn.execute(
         "INSERT INTO chat_sessions
-             (id, workspace_id, project_id, title, model_name, system_prompt,
+             (id, workspace_id, folder_id, title, model_name, system_prompt,
               is_pinned, is_incognito, exclude_from_analytics, is_deleted,
               deleted_at, is_imported, parent_session_id, branch_message_id, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 0, 0, NULL, 1, NULL, NULL, ?7, ?8)",
         rusqlite::params![
             session_id,
             workspace_id,
-            project_id,
+            folder_id,
             data.title,
             data.model,
             data.system_prompt,
@@ -1090,12 +1090,12 @@ struct ClaudeConversation {
     #[serde(default)]
     chat_messages: Vec<ClaudeChatMessage>,
     #[serde(default)]
-    project: Option<ClaudeConversationProject>,
+    project: Option<ClaudeConversationFolder>,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-struct ClaudeConversationProject {
+struct ClaudeConversationFolder {
     uuid: String,
     #[serde(default)]
     name: Option<String>,
@@ -1141,7 +1141,7 @@ struct ClaudeAttachment {
 }
 
 #[derive(Debug, Deserialize)]
-struct ClaudeProject {
+struct ClaudeFolder {
     uuid: String,
     name: String,
     #[serde(default)]
@@ -1292,14 +1292,14 @@ pub fn parse_claude_conversations(
         .collect())
 }
 
-/// Parse a Claude Desktop `projects.json` into a map of project UUID -> (name, description, system_prompt).
+/// Parse a Claude Desktop `folders.json` into a map of project UUID -> (name, description, system_prompt).
 pub fn parse_claude_projects(
     bytes: &[u8],
 ) -> Result<Vec<(String, String, String, String)>, String> {
-    let projects: Vec<ClaudeProject> =
-        serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude projects JSON: {e}"))?;
+    let folders: Vec<ClaudeFolder> =
+        serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude folders JSON: {e}"))?;
 
-    Ok(projects
+    Ok(folders
         .into_iter()
         .map(|p| {
             (
@@ -1312,12 +1312,12 @@ pub fn parse_claude_projects(
         .collect())
 }
 
-/// Return lightweight project previews from `projects.json`.
+/// Return lightweight project previews from `folders.json`.
 pub fn preview_claude_projects(bytes: &[u8]) -> Result<Vec<ClaudeProjectPreview>, String> {
-    let projects: Vec<ClaudeProject> =
-        serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude projects JSON: {e}"))?;
+    let folders: Vec<ClaudeFolder> =
+        serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude folders JSON: {e}"))?;
 
-    Ok(projects
+    Ok(folders
         .into_iter()
         .map(|p| ClaudeProjectPreview {
             uuid: p.uuid,
@@ -1330,7 +1330,7 @@ pub fn preview_claude_projects(bytes: &[u8]) -> Result<Vec<ClaudeProjectPreview>
 }
 
 /// Deserialize `memories.json` and build previews, resolving project UUIDs to
-/// names using the provided `projects.json` bytes (if available).
+/// names using the provided `folders.json` bytes (if available).
 pub fn preview_claude_memories(
     mem_bytes: &[u8],
     project_bytes: Option<&[u8]>,
@@ -1340,7 +1340,7 @@ pub fn preview_claude_memories(
         #[serde(default)]
         conversations_memory: String,
         #[serde(default)]
-        project_memories: std::collections::HashMap<String, String>,
+        folder_memories: std::collections::HashMap<String, String>,
     }
 
     let accounts: Vec<ClaudeMemoryAccount> =
@@ -1348,29 +1348,29 @@ pub fn preview_claude_memories(
 
     let account = accounts.into_iter().next().unwrap_or(ClaudeMemoryAccount {
         conversations_memory: String::new(),
-        project_memories: std::collections::HashMap::new(),
+        folder_memories: std::collections::HashMap::new(),
     });
 
-    // Build UUID → name map from projects.json
+    // Build UUID → name map from folders.json
     let name_map: std::collections::HashMap<String, String> = project_bytes
-        .and_then(|b| serde_json::from_slice::<Vec<ClaudeProject>>(b).ok())
+        .and_then(|b| serde_json::from_slice::<Vec<ClaudeFolder>>(b).ok())
         .unwrap_or_default()
         .into_iter()
         .map(|p| (p.uuid, p.name))
         .collect();
 
-    let project_memories: Vec<ClaudeProjectMemoryPreview> = account
-        .project_memories
+    let folder_memories: Vec<ClaudeProjectMemoryPreview> = account
+        .folder_memories
         .into_iter()
         .filter(|(_, mem)| !mem.trim().is_empty())
         .map(|(uuid, memory)| {
-            let project_name = name_map
+            let folder_name = name_map
                 .get(&uuid)
                 .cloned()
                 .unwrap_or_else(|| format!("Unknown project ({uuid})"));
             ClaudeProjectMemoryPreview {
                 project_uuid: uuid,
-                project_name,
+                folder_name,
                 memory,
             }
         })
@@ -1378,7 +1378,7 @@ pub fn preview_claude_memories(
 
     Ok(ClaudeMemoryPreview {
         conversations_memory: account.conversations_memory,
-        project_memories,
+        folder_memories,
     })
 }
 
@@ -1407,14 +1407,14 @@ pub struct ClaudeProjectPreview {
 #[derive(Debug, Clone, Serialize)]
 pub struct ClaudeMemoryPreview {
     pub conversations_memory: String,
-    pub project_memories: Vec<ClaudeProjectMemoryPreview>,
+    pub folder_memories: Vec<ClaudeProjectMemoryPreview>,
 }
 
 /// A single project memory entry for preview.
 #[derive(Debug, Clone, Serialize)]
 pub struct ClaudeProjectMemoryPreview {
     pub project_uuid: String,
-    pub project_name: String,
+    pub folder_name: String,
     pub memory: String,
 }
 

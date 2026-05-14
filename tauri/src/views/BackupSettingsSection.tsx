@@ -28,8 +28,8 @@ export default function BackupSettingsSection() {
     workspaces,
     activeWorkspaceId,
     setActiveWorkspaceId,
-    setActiveProjectId,
-    setProjectsForWorkspace,
+    setActiveFolderId,
+    setFoldersForWorkspace,
     setWorkspaces,
   } = useWorkspaceStore();
   const [creating, setCreating] = useState(false);
@@ -91,13 +91,13 @@ export default function BackupSettingsSection() {
       const restoredWorkspaceId = await api.backup.restore(backupJson);
       const [nextWorkspaces, nextProjects] = await Promise.all([
         api.workspace.list(),
-        api.project.list(restoredWorkspaceId),
+        api.folder.list(restoredWorkspaceId),
       ]);
 
       setWorkspaces(nextWorkspaces);
-      setProjectsForWorkspace(restoredWorkspaceId, nextProjects);
+      setFoldersForWorkspace(restoredWorkspaceId, nextProjects);
       setActiveWorkspaceId(restoredWorkspaceId);
-      setActiveProjectId(null);
+      setActiveFolderId(null);
 
       await message("The backup file was restored into your workspace list.", {
         title: "Restore complete",

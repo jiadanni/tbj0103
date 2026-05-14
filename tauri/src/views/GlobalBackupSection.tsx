@@ -27,7 +27,7 @@ export default function GlobalBackupSection() {
   const {
     setWorkspaces,
     setActiveWorkspaceId,
-    setProjectsForWorkspace,
+    setFoldersForWorkspace,
   } = useWorkspaceStore();
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -87,8 +87,8 @@ export default function GlobalBackupSection() {
       // Preload projects for first restored workspace
       if (restoredIds.length > 0) {
         const firstId = restoredIds[0];
-        const projects = await api.project.list(firstId);
-        setProjectsForWorkspace(firstId, projects);
+        const projects = await api.folder.list(firstId);
+        setFoldersForWorkspace(firstId, projects);
         setActiveWorkspaceId(firstId);
       }
 

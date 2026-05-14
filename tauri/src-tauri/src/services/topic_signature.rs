@@ -65,7 +65,7 @@ const GENERIC_TOPIC_TAGS: &[&str] = &[
     "things",
     "stuff",
     "project",
-    "projects",
+    "folders",
     "app",
     "apps",
     "line",

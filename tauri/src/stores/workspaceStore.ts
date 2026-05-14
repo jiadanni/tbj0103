@@ -19,11 +19,11 @@ export interface Workspace {
   survey_data: string | null;
 }
 
-export interface Project {
+export interface Folder {
   id: string;
   workspace_id: string;
   name: string;
-  project_description: string;
+  folder_description: string;
   custom_instructions: string;
   color: string;
   icon: string;
@@ -38,7 +38,7 @@ export type NavigationPresentation = "sidebar" | "icon-bar" | "top-tabs" | "top-
 export type SplitNavigationPresentation = "match-main" | "tabs" | "dropdown";
 
 export type PaneView =
-  | "project"
+  | "folder"
   | "chat"
   | "memory"
   | "notes"
@@ -52,14 +52,14 @@ export type PaneView =
   | "recycle-bin";
 
 export interface NoteSelectionState {
-  kind: "project" | "daily";
+  kind: "folder" | "daily";
   id?: string;
   date?: string;
 }
 
 export interface WorkspacePaneState {
   workspaceId: string | null;
-  projectId: string | null;
+  folderId: string | null;
   view: PaneView;
   chatSessionId: string | null;
   noteSelection: NoteSelectionState | null;
@@ -69,8 +69,8 @@ const SPLIT_LAYOUT_KEY = "workspaceSplitLayout";
 
 const DEFAULT_PANE_STATE: WorkspacePaneState = {
   workspaceId: null,
-  projectId: null,
-  view: "project",
+  folderId: null,
+  view: "folder",
   chatSessionId: null,
   noteSelection: null,
 };
@@ -237,26 +237,26 @@ function normalizePaneWorkspaceId(
   return normalizeWorkspaceSelection(workspaces, fallbackWorkspaceId).workspaceId;
 }
 
-function hasProjectId(projects: Project[], projectId: string | null) {
-  return !!projectId && projects.some((project) => project.id === projectId);
+function hasFolderId(folders: Folder[], folderId: string | null) {
+  return !!folderId && folders.some((f) => f.id === folderId);
 }
 
-function reconcilePaneProjectsForWorkspace(
+function reconcilePaneFoldersForWorkspace(
   panes: Record<PaneId, WorkspacePaneState>,
   workspaceId: string,
-  projects: Project[],
+  folders: Folder[],
 ): Record<PaneId, WorkspacePaneState> {
   const nextPanes = { ...panes };
 
   (["primary", "secondary"] as PaneId[]).forEach((paneId) => {
     const pane = panes[paneId];
-    if (pane.workspaceId !== workspaceId || !pane.projectId || hasProjectId(projects, pane.projectId)) {
+    if (pane.workspaceId !== workspaceId || !pane.folderId || hasFolderId(folders, pane.folderId)) {
       return;
     }
 
     nextPanes[paneId] = {
       ...pane,
-      projectId: null,
+      folderId: null,
     };
   });
 
@@ -267,9 +267,9 @@ interface WorkspaceStore {
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
   activeParentWorkspaceId: string | null;
-  activeProjectId: string | null;
-  projects: Project[];
-  projectsByWorkspace: Record<string, Project[]>;
+  activeFolderId: string | null;
+  folders: Folder[];
+  foldersByWorkspace: Record<string, Folder[]>;
   isDemoMode: boolean;
   workspaceNavigation: NavigationPresentation;
   sectionNavigation: NavigationPresentation;
@@ -285,13 +285,13 @@ interface WorkspaceStore {
   setWorkspaces: (ws: Workspace[]) => void;
   setActiveWorkspaceId: (id: string | null) => void;
   setActiveParentWorkspaceId: (id: string | null) => void;
-  setActiveProjectId: (id: string | null) => void;
-  setProjects: (ps: Project[]) => void;
-  setProjectsForWorkspace: (workspaceId: string, projects: Project[]) => void;
+  setActiveFolderId: (id: string | null) => void;
+  setFolders: (ps: Folder[]) => void;
+  setFoldersForWorkspace: (workspaceId: string, folders: Folder[]) => void;
   setDemo: (active: boolean, workspaceId?: string) => void;
   addWorkspace: (ws: Workspace) => void;
-  addProject: (p: Project) => void;
-  removeProject: (id: string) => void;
+  addFolder: (p: Folder) => void;
+  removeFolder: (id: string) => void;
   setWorkspaceNavigation: (layout: NavigationPresentation) => void;
   setSectionNavigation: (layout: NavigationPresentation) => void;
   setSplitWorkspaceNavigation: (layout: SplitNavigationPresentation) => void;
@@ -307,7 +307,7 @@ interface WorkspaceStore {
   setSplitSizes: (sizes: [number, number]) => void;
   setActivePaneId: (paneId: PaneId) => void;
   setPaneWorkspace: (paneId: PaneId, workspaceId: string | null) => void;
-  setPaneProject: (paneId: PaneId, projectId: string | null) => void;
+  setPaneFolder: (paneId: PaneId, folderId: string | null) => void;
   setPaneView: (paneId: PaneId, view: PaneView) => void;
   setPaneChatSession: (paneId: PaneId, chatSessionId: string | null) => void;
   setPaneNoteSelection: (paneId: PaneId, noteSelection: NoteSelectionState | null) => void;
@@ -349,9 +349,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
   workspaces: [],
   activeWorkspaceId: null,
   activeParentWorkspaceId: null,
-  activeProjectId: null,
-  projects: [],
-  projectsByWorkspace: {},
+  activeFolderId: null,
+  folders: [],
+  foldersByWorkspace: {},
     isDemoMode: false,
     workspaceNavigation: migratedNavigation.workspaceNavigation,
     sectionNavigation: migratedNavigation.sectionNavigation,
@@ -393,14 +393,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         primary: {
           ...state.panes.primary,
           workspaceId: primaryWorkspaceId,
-          projectId: primaryWorkspaceChanged ? null : state.panes.primary.projectId,
+          folderId: primaryWorkspaceChanged ? null : state.panes.primary.folderId,
           chatSessionId: primaryWorkspaceChanged ? null : state.panes.primary.chatSessionId,
           noteSelection: primaryWorkspaceChanged ? null : state.panes.primary.noteSelection,
         },
         secondary: {
           ...state.panes.secondary,
           workspaceId: secondaryWorkspaceId,
-          projectId: secondaryWorkspaceChanged ? null : state.panes.secondary.projectId,
+          folderId: secondaryWorkspaceChanged ? null : state.panes.secondary.folderId,
           chatSessionId: secondaryWorkspaceChanged ? null : state.panes.secondary.chatSessionId,
           noteSelection: secondaryWorkspaceChanged ? null : state.panes.secondary.noteSelection,
         },
@@ -415,10 +415,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         workspaces: sortedWorkspaces,
         activeWorkspaceId,
         activeParentWorkspaceId: activeSelection.parentWorkspaceId,
-        activeProjectId: activeWorkspaceChanged ? null : state.activeProjectId,
+        activeFolderId: activeWorkspaceChanged ? null : state.activeFolderId,
         panes,
-        projectsByWorkspace: Object.fromEntries(
-          Object.entries(state.projectsByWorkspace).filter(([workspaceId]) =>
+        foldersByWorkspace: Object.fromEntries(
+          Object.entries(state.foldersByWorkspace).filter(([workspaceId]) =>
             sortedWorkspaces.some((workspace) => workspace.id === workspaceId)
           )
         ),
@@ -436,7 +436,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         primary: {
           ...state.panes.primary,
           workspaceId: nextSelection.workspaceId,
-          projectId: nextSelection.workspaceId === state.panes.primary.workspaceId ? state.panes.primary.projectId : null,
+          folderId: nextSelection.workspaceId === state.panes.primary.workspaceId ? state.panes.primary.folderId : null,
           chatSessionId: nextSelection.workspaceId === state.panes.primary.workspaceId ? state.panes.primary.chatSessionId : null,
           noteSelection: nextSelection.workspaceId === state.panes.primary.workspaceId ? state.panes.primary.noteSelection : null,
         },
@@ -448,56 +448,56 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       return {
         activeWorkspaceId: nextSelection.workspaceId,
         activeParentWorkspaceId: nextSelection.parentWorkspaceId,
-        activeProjectId: workspaceChanged ? null : state.activeProjectId,
+        activeFolderId: workspaceChanged ? null : state.activeFolderId,
         panes,
       };
     }),
     setActiveParentWorkspaceId: (activeParentWorkspaceId) => set(() => ({ activeParentWorkspaceId })),
-    setActiveProjectId: (activeProjectId) => set((state) => {
+    setActiveFolderId: (activeFolderId) => set((state) => {
       const panes = {
         ...state.panes,
         primary: {
           ...state.panes.primary,
-          projectId: activeProjectId,
+          folderId: activeFolderId,
         },
       };
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
-      return { activeProjectId, panes };
+      return { activeFolderId, panes };
     }),
-    setProjects: (projects) => set((state) => {
-      const workspaceId = projects[0]?.workspace_id ?? state.activeWorkspaceId;
-      const projectsByWorkspace = workspaceId
-        ? { ...state.projectsByWorkspace, [workspaceId]: projects }
-        : state.projectsByWorkspace;
-      const activeProjectId = workspaceId === state.activeWorkspaceId && !hasProjectId(projects, state.activeProjectId)
+    setFolders: (folders) => set((state) => {
+      const workspaceId = folders[0]?.workspace_id ?? state.activeWorkspaceId;
+      const foldersByWorkspace = workspaceId
+        ? { ...state.foldersByWorkspace, [workspaceId]: folders }
+        : state.foldersByWorkspace;
+      const activeFolderId = workspaceId === state.activeWorkspaceId && !hasFolderId(folders, state.activeFolderId)
         ? null
-        : state.activeProjectId;
+        : state.activeFolderId;
       const panes = workspaceId
-        ? reconcilePaneProjectsForWorkspace(state.panes, workspaceId, projects)
+        ? reconcilePaneFoldersForWorkspace(state.panes, workspaceId, folders)
         : state.panes;
 
       if (panes !== state.panes) {
         persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
       }
 
-      return { projects, projectsByWorkspace, activeProjectId, panes };
+      return { folders, foldersByWorkspace, activeFolderId, panes };
     }),
-    setProjectsForWorkspace: (workspaceId, projects) => set((state) => {
-      const activeProjectId = workspaceId === state.activeWorkspaceId && !hasProjectId(projects, state.activeProjectId)
+    setFoldersForWorkspace: (workspaceId, folders) => set((state) => {
+      const activeFolderId = workspaceId === state.activeWorkspaceId && !hasFolderId(folders, state.activeFolderId)
         ? null
-        : state.activeProjectId;
-      const panes = reconcilePaneProjectsForWorkspace(state.panes, workspaceId, projects);
+        : state.activeFolderId;
+      const panes = reconcilePaneFoldersForWorkspace(state.panes, workspaceId, folders);
 
       if (panes !== state.panes) {
         persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
       }
 
       return {
-        projects: workspaceId === state.activeWorkspaceId ? projects : state.projects,
-        activeProjectId,
-        projectsByWorkspace: {
-          ...state.projectsByWorkspace,
-          [workspaceId]: projects,
+        folders: workspaceId === state.activeWorkspaceId ? folders : state.folders,
+        activeFolderId,
+        foldersByWorkspace: {
+          ...state.foldersByWorkspace,
+          [workspaceId]: folders,
         },
         panes,
       };
@@ -520,19 +520,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       }
       return { workspaces: sortWorkspaces([...s.workspaces, ws], s.workspaceSortOrder) };
     }),
-    addProject: (p) => set((s) => ({
-      projects: p.workspace_id === s.activeWorkspaceId ? [...s.projects, p] : s.projects,
-      projectsByWorkspace: {
-        ...s.projectsByWorkspace,
-        [p.workspace_id]: [...(s.projectsByWorkspace[p.workspace_id] ?? []), p],
+    addFolder: (p) => set((s) => ({
+      folders: p.workspace_id === s.activeWorkspaceId ? [...s.folders, p] : s.folders,
+      foldersByWorkspace: {
+        ...s.foldersByWorkspace,
+        [p.workspace_id]: [...(s.foldersByWorkspace[p.workspace_id] ?? []), p],
       },
     })),
-    removeProject: (id) => set((s) => ({
-      projects: s.projects.filter((p) => p.id !== id),
-      projectsByWorkspace: Object.fromEntries(
-        Object.entries(s.projectsByWorkspace).map(([workspaceId, projects]) => [
+    removeFolder: (id) => set((s) => ({
+      folders: s.folders.filter((p) => p.id !== id),
+      foldersByWorkspace: Object.fromEntries(
+        Object.entries(s.foldersByWorkspace).map(([workspaceId, folders]) => [
           workspaceId,
-          projects.filter((project) => project.id !== id),
+          folders.filter((f) => f.id !== id),
         ])
       ),
     })),
@@ -613,7 +613,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         primary: {
           ...state.panes.primary,
           workspaceId: primaryWorkspaceId,
-          projectId: state.activeProjectId,
+          folderId: state.activeFolderId,
           chatSessionId: state.panes.primary.chatSessionId,
           view: state.panes.primary.view,
         },
@@ -622,7 +622,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           workspaceId: state.panes.secondary.workspaceId && state.panes.secondary.workspaceId !== primaryWorkspaceId
             ? state.panes.secondary.workspaceId
             : secondaryWorkspaceId,
-          projectId: state.panes.secondary.workspaceId === secondaryWorkspaceId ? state.panes.secondary.projectId : null,
+          folderId: state.panes.secondary.workspaceId === secondaryWorkspaceId ? state.panes.secondary.folderId : null,
           chatSessionId: state.panes.secondary.workspaceId === secondaryWorkspaceId ? state.panes.secondary.chatSessionId : null,
           noteSelection: state.panes.secondary.workspaceId === secondaryWorkspaceId ? state.panes.secondary.noteSelection : null,
           view: state.panes.secondary.view ?? "project",
@@ -639,7 +639,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         state.activeParentWorkspaceId,
       );
       const activeWorkspaceId = nextSelection.workspaceId;
-      const activeProjectId = state.panes.primary.projectId ?? state.activeProjectId;
+      const activeFolderId = state.panes.primary.folderId ?? state.activeFolderId;
       useChatStore.getState().setActiveChatId(state.panes.primary.chatSessionId ?? null);
       persistSplitLayout({ splitMode: false, splitSizes: state.splitSizes, activePaneId: "primary", panes: state.panes });
       return {
@@ -647,7 +647,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         activePaneId: "primary",
         activeWorkspaceId,
         activeParentWorkspaceId: nextSelection.parentWorkspaceId,
-        activeProjectId,
+        activeFolderId,
       };
     }),
     toggleSplitMode: () => {
@@ -675,7 +675,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       const nextPane = {
         ...state.panes[paneId],
         workspaceId: nextWorkspaceId,
-        projectId: nextWorkspaceId === state.panes[paneId].workspaceId ? state.panes[paneId].projectId : null,
+        folderId: nextWorkspaceId === state.panes[paneId].workspaceId ? state.panes[paneId].folderId : null,
         chatSessionId: nextWorkspaceId === state.panes[paneId].workspaceId ? state.panes[paneId].chatSessionId : null,
         noteSelection: nextWorkspaceId === state.panes[paneId].workspaceId ? state.panes[paneId].noteSelection : null,
       };
@@ -683,12 +683,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });
       return { panes };
     }),
-    setPaneProject: (paneId, projectId) => set((state) => {
+    setPaneFolder: (paneId, folderId) => set((state) => {
       const panes = {
         ...state.panes,
         [paneId]: {
           ...state.panes[paneId],
-          projectId,
+          folderId,
         },
       };
       persistSplitLayout({ splitMode: state.splitMode, splitSizes: state.splitSizes, activePaneId: state.activePaneId, panes });

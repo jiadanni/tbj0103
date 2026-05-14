@@ -17,21 +17,21 @@ pub struct BackupInfo {
     pub created_at: String,
     pub filename: String,
     pub size_bytes: i64,
-    pub project_count: i64,
+    pub folder_count: i64,
     pub chat_count: i64,
 }
 
 const BACKUP_TABLES: [(&str, &str); 17] = [
     (
-        "projects",
-        "SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
-         FROM projects
+        "folders",
+        "SELECT id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at
+         FROM folders
          WHERE workspace_id = ?1
          ORDER BY created_at ASC",
     ),
     (
         "chat_sessions",
-        "SELECT id, workspace_id, project_id, title, model_name, system_prompt, is_pinned, is_incognito,
+        "SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned, is_incognito,
                 exclude_from_analytics, is_deleted, deleted_at, last_accessed_at, last_processed_message_count,
                 is_imported, parent_session_id, branch_message_id, created_at, updated_at
          FROM chat_sessions
@@ -139,7 +139,7 @@ const BACKUP_TABLES: [(&str, &str); 17] = [
     ),
     (
         "audio_transcriptions",
-        "SELECT id, workspace_id, project_id, filename, transcript, duration_seconds, is_processed, created_at
+        "SELECT id, workspace_id, folder_id, filename, transcript, duration_seconds, is_processed, created_at
          FROM audio_transcriptions
          WHERE workspace_id = ?1
          ORDER BY created_at ASC",
@@ -171,7 +171,7 @@ const OPTIONAL_BACKUP_TABLES: [(&str, &str); 6] = [
     ),
     (
         "memories",
-        "SELECT id, workspace_id, project_id, content, memory_type, scope, source_session_id, is_pinned, is_active,
+        "SELECT id, workspace_id, folder_id, content, memory_type, scope, source_session_id, is_pinned, is_active,
                 created_at, updated_at
          FROM memories
          WHERE workspace_id = ?1
@@ -203,7 +203,7 @@ const OPTIONAL_BACKUP_TABLES: [(&str, &str); 6] = [
 ];
 
 const RESTORE_TABLE_ORDER: [&str; 23] = [
-    "projects",
+    "folders",
     "chat_sessions",
     "messages",
     "citations",
@@ -266,7 +266,7 @@ pub fn create_backup(auth: State<AuthState>, state: State<DbState>, workspace_id
         "workspace": workspace,
         "data": data,
         "stats": {
-            "project_count": data.get("projects").and_then(|rows| rows.as_array()).map_or(0, |rows| rows.len()),
+            "folder_count": data.get("folders").and_then(|rows| rows.as_array()).map_or(0, |rows| rows.len()),
             "chat_count": data.get("chat_sessions").and_then(|rows| rows.as_array()).map_or(0, |rows| rows.len()),
             "message_count": data.get("messages").and_then(|rows| rows.as_array()).map_or(0, |rows| rows.len()),
             "note_count": data.get("project_notes").and_then(|rows| rows.as_array()).map_or(0, |rows| rows.len()),
@@ -367,9 +367,9 @@ fn restore_legacy_backup(
     )
     .map_err(|e| e.to_string())?;
 
-    if let Some(projects) = workspace.get("projects").and_then(|value| value.as_array()) {
-        for project in projects {
-            insert_value_object(&tx, "projects", project)?;
+    if let Some(folders) = workspace.get("folders").and_then(|value| value.as_array()) {
+        for folder in folders {
+            insert_value_object(&tx, "folders", folder)?;
         }
     }
 
@@ -571,8 +571,8 @@ pub fn create_global_backup(auth: State<AuthState>, state: State<DbState>) -> Re
             }
         }
 
-        let project_count = data
-            .get("projects")
+        let folder_count = data
+            .get("folders")
             .and_then(|rows| rows.as_array())
             .map_or(0, |rows| rows.len());
         let chat_count = data
@@ -583,7 +583,7 @@ pub fn create_global_backup(auth: State<AuthState>, state: State<DbState>) -> Re
         workspaces.push(serde_json::json!({
             "workspace": workspace,
             "data": data,
-            "project_count": project_count,
+            "folder_count": folder_count,
             "chat_count": chat_count,
         }));
     }
@@ -605,9 +605,9 @@ pub fn create_global_backup(auth: State<AuthState>, state: State<DbState>) -> Re
         serde_json::json!({})
     };
 
-    let total_projects: usize = workspaces
+    let total_folders: usize = workspaces
         .iter()
-        .filter_map(|w| w.get("project_count").and_then(|c| c.as_u64()))
+        .filter_map(|w| w.get("folder_count").and_then(|c| c.as_u64()))
         .map(|c| c as usize)
         .sum();
     let total_chats: usize = workspaces
@@ -627,7 +627,7 @@ pub fn create_global_backup(auth: State<AuthState>, state: State<DbState>) -> Re
         "settings": settings,
         "stats": {
             "workspace_count": workspaces.len(),
-            "total_project_count": total_projects,
+            "total_folder_count": total_folders,
             "total_chat_count": total_chats,
         }
     });

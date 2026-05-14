@@ -2061,7 +2061,7 @@ export default function PreferencesView() {
                           className="text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                         >
                           <option value="">Stay on current</option>
-                          <option value="/project">Dashboard</option>
+                          <option value="/folder">Dashboard</option>
                           <option value="/chat">Chat</option>
                           <option value="/notes">Notes</option>
                           <option value="/sources">Sources</option>

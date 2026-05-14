@@ -23,7 +23,7 @@ pub mod memory;
 pub mod mlx;
 pub mod note;
 pub mod ollama;
-pub mod project;
+pub mod folder;
 pub mod quick_search;
 pub mod search;
 pub mod security;

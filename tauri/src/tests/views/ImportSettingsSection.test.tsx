@@ -58,7 +58,7 @@ vi.mock("@/lib/api", () => ({
         },
       ])),
     },
-    project: {
+    folder: {
       list: vi.fn(() => Promise.resolve([])),
     },
     chat: {
@@ -66,7 +66,7 @@ vi.mock("@/lib/api", () => ({
         {
           id: "session-1",
           workspace_id: "workspace-1",
-          project_id: "",
+          folder_id: "",
           title: "Imported Chat",
           model_name: "",
           system_prompt: "",
@@ -88,8 +88,8 @@ vi.mock("@/lib/api", () => ({
             message_count: 3,
             created_at: "2024-01-01T00:00:00Z",
             updated_at: "2024-01-01T00:00:00Z",
-            project_id: null,
-            project_name: null,
+            folder_id: null,
+            folder_name: null,
             source_path: "root-chat.conversation.json",
           },
           {
@@ -98,8 +98,8 @@ vi.mock("@/lib/api", () => ({
             message_count: 5,
             created_at: "2024-01-02T00:00:00Z",
             updated_at: "2024-01-02T00:00:00Z",
-            project_id: "Project A",
-            project_name: "Project A",
+            folder_id: "Project A",
+            folder_name: "Project A",
             source_path: "Project A/chat.conversation.json",
           },
           {
@@ -108,8 +108,8 @@ vi.mock("@/lib/api", () => ({
             message_count: 7,
             created_at: "2024-01-03T00:00:00Z",
             updated_at: "2024-01-03T00:00:00Z",
-            project_id: "Project B",
-            project_name: "Project B",
+            folder_id: "Project B",
+            folder_name: "Project B",
             source_path: "Project B/chat.conversation.json",
           },
         ],
@@ -136,7 +136,7 @@ vi.mock("@/lib/api", () => ({
         skipped: 0,
         workspace_id: "workspace-1",
         workspace_name: "LM Imports",
-        projects_created: 1,
+        folders_created: 1,
         errors: 0,
         error_messages: [],
       })),
@@ -159,9 +159,9 @@ describe("ImportSettingsSection", () => {
       workspaces: [],
       activeWorkspaceId: null,
       activeParentWorkspaceId: null,
-      activeProjectId: null,
-      projects: [],
-      projectsByWorkspace: {},
+      activeFolderId: null,
+      folders: [],
+      foldersByWorkspace: {},
     });
   });
 

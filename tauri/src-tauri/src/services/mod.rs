@@ -16,7 +16,7 @@ pub mod linking_engine;
 pub mod memory_pipeline;
 pub mod model_settings;
 pub mod note_template_engine;
-pub mod project_service;
+pub mod folder_service;
 pub mod quick_search_index;
 pub mod quick_search_service;
 pub mod retrieval_engine;

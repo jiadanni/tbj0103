@@ -11,7 +11,7 @@ pub mod learning_goal;
 pub mod mcp;
 pub mod memory;
 pub mod note;
-pub mod project;
+pub mod folder;
 pub mod source;
 pub mod summary;
 pub mod system;

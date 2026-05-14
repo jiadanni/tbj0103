@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
-import ProjectDashboardView from "@/views/ProjectDashboardView";
+import FolderDashboardView from "@/views/FolderDashboardView";
 
 const mocks = vi.hoisted(() => ({
   getSummary: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock("@/lib/workspacePane", () => ({
   }),
 }));
 
-describe("ProjectDashboardView", () => {
+describe("FolderDashboardView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useWorkspaceStore.setState({
@@ -68,8 +68,8 @@ describe("ProjectDashboardView", () => {
       continue_learning: {
         session_id: "session-1",
         title: "cgroups vs namespaces",
-        project_id: "proj-1",
-        project_name: "Containers",
+        folder_id: "proj-1",
+        folder_name: "Containers",
         updated_at: "2026-04-06T09:00:00Z",
         route: { path: "/chat/session-1", state: null },
       },
@@ -132,7 +132,7 @@ describe("ProjectDashboardView", () => {
   it("renders progression, review, and goal sections from the dashboard summary", async () => {
     render(
       <MemoryRouter>
-        <ProjectDashboardView />
+        <FolderDashboardView />
       </MemoryRouter>,
     );
 

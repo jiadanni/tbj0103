@@ -53,8 +53,8 @@ vi.mock("@/lib/workspacePane", () => ({
   WorkspacePaneProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useScopedWorkspace: () => ({
     activeWorkspaceId: "ws-1",
-    activeProjectId: null,
-    activeView: "project",
+    activeFolderId: null,
+    activeView: "folder",
     activeChatSessionId: null,
     noteSelection: null,
     isSplitPane: true,
@@ -65,7 +65,7 @@ vi.mock("@/views/ChatView", () => ({ default: () => <div>Chat View</div> }));
 vi.mock("@/views/KnowledgeGraphView", () => ({ default: () => <div>Graph View</div> }));
 vi.mock("@/views/DailyNotesView", () => ({ default: () => <div>Daily Notes View</div> }));
 vi.mock("@/views/FlashcardReviewView", () => ({ default: () => <div>Flashcards View</div> }));
-vi.mock("@/views/ProjectDashboardView", () => ({ default: () => <div>Project Dashboard</div> }));
+vi.mock("@/views/FolderDashboardView", () => ({ default: () => <div>Project Dashboard</div> }));
 vi.mock("@/views/PreferencesView", () => ({ default: () => <div>Preferences View</div> }));
 vi.mock("@/views/DocumentBrowserView", () => ({ default: () => <div>Documents View</div> }));
 vi.mock("@/views/HistoryView", () => ({ default: () => <div>History View</div> }));
@@ -80,8 +80,8 @@ const INITIAL = {
   workspaces: [],
   activeWorkspaceId: null,
   activeParentWorkspaceId: null,
-  activeProjectId: null,
-  projects: [],
+  activeFolderId: null,
+  folders: [],
   isDemoMode: false,
   workspaceNavigation: "sidebar" as const,
   sectionNavigation: "sidebar" as const,
@@ -89,13 +89,13 @@ const INITIAL = {
   splitSectionNavigation: "match-main" as const,
   activeTopicSignature: null,
   migrationSuggestion: null,
-  projectsByWorkspace: {},
+  foldersByWorkspace: {},
   splitMode: false,
   splitSizes: [50, 50] as [number, number],
   activePaneId: "primary" as const,
   panes: {
-    primary: { workspaceId: null, projectId: null, view: "project" as const, chatSessionId: null, noteSelection: null },
-    secondary: { workspaceId: null, projectId: null, view: "project" as const, chatSessionId: null, noteSelection: null },
+    primary: { workspaceId: null, folderId: null, view: "folder" as const, chatSessionId: null, noteSelection: null },
+    secondary: { workspaceId: null, folderId: null, view: "folder" as const, chatSessionId: null, noteSelection: null },
   },
 };
 
@@ -110,7 +110,7 @@ describe("Layout", () => {
 
   it("marks the workspace tab bar as a drag region", () => {
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -121,7 +121,7 @@ describe("Layout", () => {
 
   it("keeps the workspace tab strip separate from the fixed titlebar actions", () => {
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -140,7 +140,7 @@ describe("Layout", () => {
 
   it("renders a dedicated draggable handle in the title bar", () => {
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -164,7 +164,7 @@ describe("Layout", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -180,7 +180,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ sectionNavigation: "sidebar" });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -192,7 +192,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ sectionNavigation: "top-tabs" });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -214,7 +214,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ splitMode: true });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -226,7 +226,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ sectionNavigation: "top-tabs" });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -238,7 +238,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ sectionNavigation: "top-dropdown" });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -256,7 +256,7 @@ describe("Layout", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -280,7 +280,7 @@ describe("Layout", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -304,7 +304,7 @@ describe("Layout", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -342,7 +342,7 @@ describe("Layout", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -357,7 +357,7 @@ describe("Layout", () => {
 
   it("renders the global History button in the titlebar on standard routes", () => {
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -384,7 +384,7 @@ describe("Layout", () => {
           {
             id: "chat-1",
             workspace_id: "ws-1",
-            project_id: "project-1",
+            folder_id: "project-1",
             title: "Rust debugging notes",
             model_name: "llama3.2",
             system_prompt: "",
@@ -402,7 +402,7 @@ describe("Layout", () => {
         {
           id: "chat-2",
           workspace_id: "ws-2",
-          project_id: "project-2",
+          folder_id: "project-2",
           title: "Security checklist",
           model_name: "qwen3",
           system_prompt: "",
@@ -424,7 +424,7 @@ describe("Layout", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -453,7 +453,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ activeWorkspaceId: "ws-1" });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -478,7 +478,7 @@ describe("Layout", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -503,13 +503,13 @@ describe("Layout", () => {
       activeWorkspaceId: "ws-1",
       splitMode: true,
       panes: {
-        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
+        primary: { workspaceId: "ws-1", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "chat", chatSessionId: null, noteSelection: null },
       },
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -531,13 +531,13 @@ describe("Layout", () => {
       activeWorkspaceId: "ws-1",
       splitMode: true,
       panes: {
-        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
+        primary: { workspaceId: "ws-1", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "chat", chatSessionId: null, noteSelection: null },
       },
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -571,13 +571,13 @@ describe("Layout", () => {
       activeWorkspaceId: "ws-1",
       splitMode: true,
       panes: {
-        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
+        primary: { workspaceId: "ws-1", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "chat", chatSessionId: null, noteSelection: null },
       },
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -599,13 +599,13 @@ describe("Layout", () => {
       splitMode: true,
       splitWorkspaceNavigation: "dropdown",
       panes: {
-        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
+        primary: { workspaceId: "ws-1", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "chat", chatSessionId: null, noteSelection: null },
       },
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -625,13 +625,13 @@ describe("Layout", () => {
       splitMode: true,
       splitWorkspaceNavigation: "dropdown",
       panes: {
-        primary: { workspaceId: "ws-1", projectId: null, view: "project", chatSessionId: null, noteSelection: null },
-        secondary: { workspaceId: "ws-2", projectId: null, view: "chat", chatSessionId: null, noteSelection: null },
+        primary: { workspaceId: "ws-1", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "chat", chatSessionId: null, noteSelection: null },
       },
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -675,7 +675,7 @@ describe("Layout", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -716,7 +716,7 @@ describe("Layout", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -732,7 +732,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ sectionNavigation: "top-tabs" });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -747,7 +747,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ sectionNavigation: "top-tabs" });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -780,7 +780,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ sectionNavigation: "top-dropdown" });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -798,7 +798,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ sectionNavigation: "top-dropdown" });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -812,7 +812,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ sectionNavigation: "top-tabs" });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );
@@ -826,7 +826,7 @@ describe("Layout", () => {
     useWorkspaceStore.setState({ sectionNavigation: "top-dropdown" });
 
     render(
-      <MemoryRouter initialEntries={["/project"]}>
+      <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
       </MemoryRouter>
     );

@@ -17,7 +17,7 @@ export interface Message {
 export interface ChatSession {
   id: string;
   workspace_id: string;
-  project_id: string;
+  folder_id: string;
   title: string;
   model_name: string;
   system_prompt: string;

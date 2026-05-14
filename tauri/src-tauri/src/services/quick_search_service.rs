@@ -21,8 +21,8 @@ pub struct QuickSearchResult {
     pub excerpt: String,
     pub workspace_id: Option<String>,
     pub workspace_name: String,
-    pub project_id: Option<String>,
-    pub project_name: Option<String>,
+    pub folder_id: Option<String>,
+    pub folder_name: Option<String>,
     pub session_id: Option<String>,
     pub source_session_id: Option<String>,
     pub updated_at: String,
@@ -120,8 +120,8 @@ pub fn query_filtered(
                 d.body,
                 d.workspace_id,
                 COALESCE(w.name, '') AS workspace_name,
-                NULLIF(d.project_id, '') AS project_id,
-                NULLIF(COALESCE(p.name, ''), '') AS project_name,
+                NULLIF(d.folder_id, '') AS folder_id,
+                NULLIF(COALESCE(p.name, ''), '') AS folder_name,
                 d.session_id,
                 d.source_session_id,
                 d.updated_at,
@@ -130,7 +130,7 @@ pub fn query_filtered(
             FROM quick_search_documents_fts
             JOIN quick_search_documents d ON d.rowid = quick_search_documents_fts.rowid
             LEFT JOIN workspaces w ON w.id = d.workspace_id
-            LEFT JOIN projects p ON p.id = d.project_id
+            LEFT JOIN folders p ON p.id = d.folder_id
             WHERE {}
         ),
         ranked AS (
@@ -142,7 +142,7 @@ pub fn query_filtered(
             FROM fts_matches
         )
         SELECT doc_id, target_id, kind, title, subtitle, body,
-               workspace_id, workspace_name, project_id, project_name,
+               workspace_id, workspace_name, folder_id, folder_name,
                session_id, source_session_id, updated_at, snip, score
         FROM ranked
         WHERE rn = 1
@@ -178,8 +178,8 @@ pub fn query_filtered(
                 excerpt,
                 workspace_id: row.get(6)?,
                 workspace_name: row.get(7)?,
-                project_id: row.get(8)?,
-                project_name: row.get(9)?,
+                folder_id: row.get(8)?,
+                folder_name: row.get(9)?,
                 session_id: row.get(10)?,
                 source_session_id: row.get(11)?,
                 updated_at: row.get(12)?,
@@ -237,14 +237,14 @@ fn recent_results(
             ), ''),
             cs.workspace_id,
             COALESCE(w.name, ''),
-            NULLIF(cs.project_id, ''),
+            NULLIF(cs.folder_id, ''),
             NULLIF(COALESCE(p.name, ''), ''),
             cs.id,
             NULL,
             COALESCE(cs.last_accessed_at, cs.updated_at)
         FROM chat_sessions cs
         LEFT JOIN workspaces w ON w.id = cs.workspace_id
-        LEFT JOIN projects p ON p.id = cs.project_id
+        LEFT JOIN folders p ON p.id = cs.folder_id
         WHERE cs.is_deleted = 0
     "#,
     );
@@ -287,8 +287,8 @@ fn recent_results(
                 excerpt: truncate_plaintext(&sanitize_quick_search_text(&excerpt), 180),
                 workspace_id: row.get(6)?,
                 workspace_name: row.get(7)?,
-                project_id: row.get(8)?,
-                project_name: row.get(9)?,
+                folder_id: row.get(8)?,
+                folder_name: row.get(9)?,
                 session_id: row.get(10)?,
                 source_session_id: row.get(11)?,
                 updated_at: row.get(12)?,

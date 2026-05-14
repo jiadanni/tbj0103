@@ -1,15 +1,15 @@
-use crate::models::project::{CreateProjectRequest, Project, UpdateProjectRequest};
+use crate::models::folder::{CreateFolderRequest, Folder, UpdateFolderRequest};
 use crate::services::chat_file_store;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
 use rusqlite::Connection;
 use std::path::Path;
 
-fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
-    Ok(Project {
+fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Folder> {
+    Ok(Folder {
         id: row.get(0)?,
         workspace_id: row.get(1)?,
         name: row.get(2)?,
-        project_description: row.get(3)?,
+        folder_description: row.get(3)?,
         custom_instructions: row.get(4)?,
         color: row.get(5)?,
         icon: row.get(6)?,
@@ -18,10 +18,10 @@ fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
     })
 }
 
-pub fn create(conn: &Connection, req: CreateProjectRequest) -> Result<Project, String> {
-    let mut project = Project::new(req.workspace_id.clone(), req.name);
-    if let Some(description) = req.project_description {
-        project.project_description = description;
+pub fn create(conn: &Connection, req: CreateFolderRequest) -> Result<Folder, String> {
+    let mut project = Folder::new(req.workspace_id.clone(), req.name);
+    if let Some(description) = req.folder_description {
+        project.folder_description = description;
     }
     if let Some(instructions) = req.custom_instructions {
         project.custom_instructions = instructions;
@@ -34,13 +34,13 @@ pub fn create(conn: &Connection, req: CreateProjectRequest) -> Result<Project, S
     }
 
     conn.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
+        "INSERT INTO folders (id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             project.id,
             project.workspace_id,
             project.name,
-            project.project_description,
+            project.folder_description,
             project.custom_instructions,
             project.color,
             project.icon,
@@ -53,11 +53,11 @@ pub fn create(conn: &Connection, req: CreateProjectRequest) -> Result<Project, S
     Ok(project)
 }
 
-pub fn list(conn: &Connection, workspace_id: &str, include_descendants: bool) -> Result<Vec<Project>, String> {
+pub fn list(conn: &Connection, workspace_id: &str, include_descendants: bool) -> Result<Vec<Folder>, String> {
     let (cte, ws_cond) = workspace_filter_sql(include_descendants);
     let sql = format!(
-        "{cte}SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
-         FROM projects WHERE workspace_id {ws_cond} ORDER BY created_at DESC"
+        "{cte}SELECT id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at
+         FROM folders WHERE workspace_id {ws_cond} ORDER BY created_at DESC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
@@ -67,10 +67,10 @@ pub fn list(conn: &Connection, workspace_id: &str, include_descendants: bool) ->
         .map_err(|e| e.to_string())
 }
 
-pub fn get(conn: &Connection, id: &str) -> Result<Option<Project>, String> {
+pub fn get(conn: &Connection, id: &str) -> Result<Option<Folder>, String> {
     let result = conn.query_row(
-        "SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
-         FROM projects WHERE id = ?1",
+        "SELECT id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at
+         FROM folders WHERE id = ?1",
         rusqlite::params![id],
         row_to_project,
     );
@@ -83,13 +83,13 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<Project>, String> {
 
 pub fn update(
     conn: &Connection,
-    req: UpdateProjectRequest,
+    req: UpdateFolderRequest,
     chats_dir: &Path,
     passphrase: Option<&str>,
 ) -> Result<(), String> {
     let session_ids = if req.name.is_some() {
         let mut stmt = conn
-            .prepare("SELECT id FROM chat_sessions WHERE project_id = ?1")
+            .prepare("SELECT id FROM chat_sessions WHERE folder_id = ?1")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(rusqlite::params![req.id.clone()], |row| row.get::<_, String>(0))
@@ -104,9 +104,9 @@ pub fn update(
     let now = chrono::Utc::now().to_rfc3339();
 
     conn.execute(
-        "UPDATE projects SET
+        "UPDATE folders SET
             name = COALESCE(?1, name),
-            project_description = COALESCE(?2, project_description),
+            folder_description = COALESCE(?2, folder_description),
             custom_instructions = COALESCE(?3, custom_instructions),
             color = COALESCE(?4, color),
             icon = COALESCE(?5, icon),
@@ -114,7 +114,7 @@ pub fn update(
          WHERE id = ?7",
         rusqlite::params![
             req.name,
-            req.project_description,
+            req.folder_description,
             req.custom_instructions,
             req.color,
             req.icon,
@@ -138,23 +138,23 @@ pub fn update(
 }
 
 pub fn delete(conn: &Connection, id: &str) -> Result<(), String> {
-    conn.execute("DELETE FROM projects WHERE id = ?1", rusqlite::params![id])
+    conn.execute("DELETE FROM folders WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 pub fn move_to_workspace(
     conn: &mut Connection,
-    project_id: &str,
+    folder_id: &str,
     target_workspace_id: &str,
     chats_dir: &Path,
     passphrase: Option<&str>,
-) -> Result<Project, String> {
+) -> Result<Folder, String> {
     let mut session_id_stmt = conn
-        .prepare("SELECT id FROM chat_sessions WHERE project_id = ?1")
+        .prepare("SELECT id FROM chat_sessions WHERE folder_id = ?1")
         .map_err(|e| e.to_string())?;
     let session_ids = session_id_stmt
-        .query_map(rusqlite::params![project_id], |row| row.get::<_, String>(0))
+        .query_map(rusqlite::params![folder_id], |row| row.get::<_, String>(0))
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -163,11 +163,11 @@ pub fn move_to_workspace(
     let previous_paths =
         chat_file_store::capture_session_file_variants(conn, chats_dir, &session_ids);
 
-    let source_project: Project = conn
+    let source_project: Folder = conn
         .query_row(
-            "SELECT id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at
-             FROM projects WHERE id = ?1",
-            rusqlite::params![project_id],
+            "SELECT id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at
+             FROM folders WHERE id = ?1",
+            rusqlite::params![folder_id],
             row_to_project,
         )
         .map_err(|e| e.to_string())?;
@@ -178,16 +178,16 @@ pub fn move_to_workspace(
 
     let now = chrono::Utc::now().to_rfc3339();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let new_project = Project::new(target_workspace_id.to_string(), source_project.name.clone());
+    let new_project = Folder::new(target_workspace_id.to_string(), source_project.name.clone());
 
     tx.execute(
-        "INSERT INTO projects (id, workspace_id, name, project_description, custom_instructions, color, icon, created_at, updated_at)
+        "INSERT INTO folders (id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             new_project.id,
             new_project.workspace_id,
             new_project.name,
-            source_project.project_description,
+            source_project.folder_description,
             source_project.custom_instructions,
             source_project.color,
             source_project.icon,
@@ -199,15 +199,15 @@ pub fn move_to_workspace(
 
     tx.execute(
         "UPDATE chat_sessions
-         SET workspace_id = ?1, project_id = ?2, updated_at = ?3
-         WHERE project_id = ?4",
-        rusqlite::params![target_workspace_id, new_project.id, now, project_id],
+         SET workspace_id = ?1, folder_id = ?2, updated_at = ?3
+         WHERE folder_id = ?4",
+        rusqlite::params![target_workspace_id, new_project.id, now, folder_id],
     )
     .map_err(|e| e.to_string())?;
 
     tx.execute(
-        "DELETE FROM projects WHERE id = ?1",
-        rusqlite::params![project_id],
+        "DELETE FROM folders WHERE id = ?1",
+        rusqlite::params![folder_id],
     )
     .map_err(|e| e.to_string())?;
 
@@ -223,11 +223,11 @@ pub fn move_to_workspace(
         )?;
     }
 
-    Ok(Project {
+    Ok(Folder {
         id: new_project.id,
         workspace_id: new_project.workspace_id,
         name: new_project.name,
-        project_description: source_project.project_description,
+        folder_description: source_project.folder_description,
         custom_instructions: source_project.custom_instructions,
         color: source_project.color,
         icon: source_project.icon,
@@ -252,23 +252,23 @@ mod tests {
     }
 
     #[test]
-    fn test_create_and_get_project() {
+    fn test_create_and_get_folder() {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         let ws_id = setup_workspace(&conn, "Test Workspace");
         
-        let req = CreateProjectRequest {
+        let req = CreateFolderRequest {
             workspace_id: ws_id.clone(),
-            name: "Test Project".to_string(),
-            project_description: Some("Desc".to_string()),
+            name: "Test Folder".to_string(),
+            folder_description: Some("Desc".to_string()),
             custom_instructions: None,
             color: None,
             icon: None,
         };
         
         let created = create(&conn, req).unwrap();
-        assert_eq!(created.name, "Test Project");
-        assert_eq!(created.project_description, "Desc");
+        assert_eq!(created.name, "Test Folder");
+        assert_eq!(created.folder_description, "Desc");
         
         let fetched = get(&conn, &created.id).unwrap().unwrap();
         assert_eq!(fetched.id, created.id);
@@ -276,24 +276,24 @@ mod tests {
     }
 
     #[test]
-    fn test_list_and_delete_projects() {
+    fn test_list_and_delete_folders() {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         let ws_id = setup_workspace(&conn, "Test Workspace");
         
-        create(&conn, CreateProjectRequest {
+        create(&conn, CreateFolderRequest {
             workspace_id: ws_id.clone(),
-            name: "Project A".to_string(),
-            project_description: None,
+            name: "Folder A".to_string(),
+            folder_description: None,
             custom_instructions: None,
             color: None,
             icon: None,
         }).unwrap();
         
-        let p_b = create(&conn, CreateProjectRequest {
+        let p_b = create(&conn, CreateFolderRequest {
             workspace_id: ws_id.clone(),
-            name: "Project B".to_string(),
-            project_description: None,
+            name: "Folder B".to_string(),
+            folder_description: None,
             custom_instructions: None,
             color: None,
             icon: None,
@@ -305,7 +305,7 @@ mod tests {
         delete(&conn, &p_b.id).unwrap();
         let after_delete = list(&conn, &ws_id, false).unwrap();
         assert_eq!(after_delete.len(), 1);
-        assert_eq!(after_delete[0].name, "Project A");
+        assert_eq!(after_delete[0].name, "Folder A");
     }
 
     #[test]
@@ -315,10 +315,10 @@ mod tests {
         let ws1_id = setup_workspace(&conn, "WS 1");
         let ws2_id = setup_workspace(&conn, "WS 2");
         
-        let p = create(&conn, CreateProjectRequest {
+        let p = create(&conn, CreateFolderRequest {
             workspace_id: ws1_id.clone(),
-            name: "Moving Project".to_string(),
-            project_description: None,
+            name: "Moving Folder".to_string(),
+            folder_description: None,
             custom_instructions: None,
             color: None,
             icon: None,
@@ -329,7 +329,7 @@ mod tests {
         let moved = move_to_workspace(&mut conn, &p.id, &ws2_id, temp_dir.path(), None).unwrap();
         
         assert_eq!(moved.workspace_id, ws2_id);
-        assert_eq!(moved.name, "Moving Project");
+        assert_eq!(moved.name, "Moving Folder");
         
         let ws1_projects = list(&conn, &ws1_id, false).unwrap();
         assert_eq!(ws1_projects.len(), 0);
@@ -339,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_projects_with_descendants() {
+    fn test_list_folders_with_descendants() {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         let parent_id = setup_workspace(&conn, "Parent WS");
@@ -349,22 +349,22 @@ mod tests {
             description: None,
         }).unwrap();
         // Create a project in the child workspace
-        create(&conn, CreateProjectRequest {
+        create(&conn, CreateFolderRequest {
             workspace_id: child.id.clone(),
-            name: "Child Project".to_string(),
-            project_description: None,
+            name: "Child Folder".to_string(),
+            folder_description: None,
             custom_instructions: None,
             color: None,
             icon: None,
         }).unwrap();
-        // Without bubbling: parent sees 0 projects
+        // Without bubbling: parent sees 0 folders
         let exact = list(&conn, &parent_id, false).unwrap();
-        assert_eq!(exact.len(), 0, "parent should not see child projects without bubbling");
+        assert_eq!(exact.len(), 0, "parent should not see child folders without bubbling");
         // With bubbling: parent sees child's project
         let bubbled = list(&conn, &parent_id, true).unwrap();
-        assert_eq!(bubbled.len(), 1, "parent should see child projects with bubbling");
-        assert_eq!(bubbled[0].name, "Child Project");
-        // Child with bubbling sees only its own projects (no upward leak)
+        assert_eq!(bubbled.len(), 1, "parent should see child folders with bubbling");
+        assert_eq!(bubbled[0].name, "Child Folder");
+        // Child with bubbling sees only its own folders (no upward leak)
         let child_view = list(&conn, &child.id, true).unwrap();
         assert_eq!(child_view.len(), 1, "child should see its own project");
         assert_eq!(child_view[0].workspace_id, child.id);

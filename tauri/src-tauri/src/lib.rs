@@ -452,13 +452,13 @@ pub fn run() {
             commands::workspace::hide_workspace,
             commands::workspace::unhide_workspace,
             commands::workspace::reorder_workspaces,
-            // Project commands
-            commands::project::create_project,
-            commands::project::list_projects,
-            commands::project::get_project,
-            commands::project::update_project,
-            commands::project::delete_project,
-            commands::project::move_project_to_workspace,
+            // Folder commands
+            commands::folder::create_folder,
+            commands::folder::list_folders,
+            commands::folder::get_folder,
+            commands::folder::update_folder,
+            commands::folder::delete_folder,
+            commands::folder::move_folder_to_workspace,
             commands::dashboard::get_dashboard_summary,
             // Artifact commands
             commands::artifact::create_artifact,
@@ -611,8 +611,8 @@ pub fn run() {
             commands::chat::get_token_usage_by_date,
             commands::chat::touch_session_accessed,
             commands::chat::get_recent_sessions,
-            // Project stats
-            commands::project::get_project_stats,
+            // Folder stats
+            commands::folder::get_folder_stats,
             // Web capture commands
             commands::web_capture::create_web_capture,
             commands::web_capture::list_web_captures,

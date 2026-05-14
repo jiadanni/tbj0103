@@ -1,7 +1,7 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder, FolderOpen, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2 } from "lucide-react";
+import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder as FolderIcon, FolderOpen, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
@@ -9,7 +9,7 @@ import { readTextFile } from "@tauri-apps/plugin-fs";
 import { api, type AiModel, type OllamaModel, type SearchResult, type QuickSearchResult, type ThoughtItem, type AppSettings, type Memory } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
-import { useWorkspaceStore, type Project, type Workspace } from "../stores/workspaceStore";
+import { useWorkspaceStore, type Folder, type Workspace } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession, Message } from "../stores/chatStore";
 import ComposerSuggestionRows from "../components/ComposerSuggestionRows";
@@ -19,7 +19,7 @@ import ChatMessageBubble from "../components/ChatMessageBubble";
 import ChatMinimap from "../components/ChatMinimap";
 import { Tooltip } from "../components/Tooltip";
 import ConvertChatModal, { type ConvertKind } from "../components/ConvertChatModal";
-import { useScopedChat, useScopedProjects, useScopedWorkspace, useWorkspacePane, useBubbleUpFlag } from "../lib/workspacePane";
+import { useScopedChat, useScopedFolders, useScopedWorkspace, useWorkspacePane, useBubbleUpFlag } from "../lib/workspacePane";
 import {
   buildChatSuggestionRow,
   buildWorkspaceSuggestionRow,
@@ -155,16 +155,16 @@ interface SessionItemProps {
 interface SessionSidebarProps {
   sidebarSessions: ChatSession[];
   workspaces: Workspace[];
-  projectsByWorkspace: Record<string, Project[]>;
-  projects: Project[];
-  activeProjectId: string | null;
-  setActiveProjectId: (projectId: string | null) => void;
-  activeProject: Project | null;
-  moveSessionsToTarget: (sessionIds: string[], workspaceId: string, projectId: string | null) => Promise<void>;
-  bulkDeleteSessions: (sessionIds: string[], projectIds?: string[]) => Promise<void>;
-  renameProject: (projectId: string, name: string) => Promise<void>;
-  deleteProject: (projectId: string) => Promise<void>;
-  moveProjectToWorkspace: (project: Project, targetWorkspaceId: string) => Promise<void>;
+  foldersByWorkspace: Record<string, Folder[]>;
+  folders: Folder[];
+  activeFolderId: string | null;
+  setActiveFolderId: (folderId: string | null) => void;
+  activeFolder: Folder | null;
+  moveSessionsToTarget: (sessionIds: string[], workspaceId: string, folderId: string | null) => Promise<void>;
+  bulkDeleteSessions: (sessionIds: string[], folderIds?: string[]) => Promise<void>;
+  renameFolder: (folderId: string, name: string) => Promise<void>;
+  deleteFolder: (folderId: string) => Promise<void>;
+  moveFolderToWorkspace: (folder: Folder, targetWorkspaceId: string) => Promise<void>;
   createWorkspaceForMove: (name: string) => Promise<Workspace>;
   sessionQuery: string;
   setSessionQuery: (q: string) => void;
@@ -193,19 +193,19 @@ interface SessionSidebarProps {
   openSession: (session: ChatSession) => void;
 }
 
-type WorkspaceProjectFlyoutState = {
+type WorkspaceFolderFlyoutState = {
   mode: "session-move" | "bulk-move";
   workspaceId: string;
   workspaceName: string;
-  projects: Project[];
+  folders: Folder[];
   left: number;
   top: number;
   maxHeight: number;
 };
 
 type SessionSidebarRow =
-  | { type: "session"; key: string; session: ChatSession; depth: number; showProjectBorder: boolean }
-  | { type: "project"; key: string; project: Project; isOpen: boolean; expandKey: string; depth: number }
+  | { type: "session"; key: string; session: ChatSession; depth: number; showFolderBorder: boolean }
+  | { type: "folder"; key: string; folder: Folder; isOpen: boolean; expandKey: string; depth: number }
   | { type: "workspace"; key: string; workspace: Workspace; isOpen: boolean };
 
 function SessionItem({
@@ -316,8 +316,8 @@ function SessionItem({
 }
 
 function SessionSidebar({
-  sidebarSessions, workspaces, projectsByWorkspace, projects, activeProjectId: _activeProjectId, setActiveProjectId,
-  activeProject: _activeProject, moveSessionsToTarget, bulkDeleteSessions, renameProject, deleteProject, moveProjectToWorkspace, createWorkspaceForMove, sessionQuery, setSessionQuery,
+  sidebarSessions, workspaces, foldersByWorkspace, folders, activeFolderId: _activeFolderId, setActiveFolderId,
+  activeFolder: _activeFolder, moveSessionsToTarget, bulkDeleteSessions, renameFolder, deleteFolder, moveFolderToWorkspace, createWorkspaceForMove, sessionQuery, setSessionQuery,
   creatingFolder, setCreatingFolder, newFolderName, setNewFolderName,
   creatingFolderPending,
   folderInputRef,
@@ -353,28 +353,28 @@ function SessionSidebar({
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const lastSelectedIdRef = useRef<string | null>(null);
-  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
+  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
   const [moveMenuOpen, setMoveMenuOpen] = useState(false);
   const [bulkFolderMoveOpen, setBulkFolderMoveOpen] = useState(false);
   const [_bulkMoveWorkspaceId, setBulkMoveWorkspaceId] = useState<string | null>(null);
   const [bulkActionPending, setBulkActionPending] = useState<"move" | "delete" | null>(null);
-  const [projectRenamingId, setProjectRenamingId] = useState<string | null>(null);
-  const [projectRenameValue, setProjectRenameValue] = useState("");
-  const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
+  const [folderRenamingId, setFolderRenamingId] = useState<string | null>(null);
+  const [folderRenameValue, setFolderRenameValue] = useState("");
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const dragSessionIdsRef = useRef<string[] | null>(null);
   const [ctxMoveOpen, setCtxMoveOpen] = useState(false);
   const [ctxFolderMoveOpen, setCtxFolderMoveOpen] = useState(false);
   const [_ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
-  const [ctxProjectMoveWorkspaceId, setCtxProjectMoveWorkspaceId] = useState<string | null>(null);
+  const [ctxFolderMoveWorkspaceId, setCtxFolderMoveWorkspaceId] = useState<string | null>(null);
   const [folderMoveShowCreate, setFolderMoveShowCreate] = useState(false);
   const [folderMoveNewName, setFolderMoveNewName] = useState("");
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [showNewWorkspaceInput, setShowNewWorkspaceInput] = useState(false);
   const [workspaceMoveQuery, setWorkspaceMoveQuery] = useState("");
-  const [workspaceProjectFlyout, setWorkspaceProjectFlyout] = useState<WorkspaceProjectFlyoutState | null>(null);
+  const [workspaceFolderFlyout, setWorkspaceFolderFlyout] = useState<WorkspaceFolderFlyoutState | null>(null);
   const [ctxMenu, setCtxMenu] = useState<
     | { type: "session"; x: number; y: number; session: ChatSession }
-    | { type: "project"; x: number; y: number; project: Project }
+    | { type: "folder"; x: number; y: number; folder: Folder }
     | null
   >(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -411,10 +411,10 @@ function SessionSidebar({
     setNewFolderName("");
   };
   const visibleSessions = sidebarSessions;
-  const byProject: Record<string, ChatSession[]> = {};
+  const byFolder: Record<string, ChatSession[]> = {};
   const ungrouped: ChatSession[] = [];
   const [sidebarTooltip, setSidebarTooltip] = useState<{ label: string; top: number; left: number } | null>(null);
-  const selectedCount = selectedIds.size + selectedProjectIds.size;
+  const selectedCount = selectedIds.size + selectedFolderIds.size;
 
   const showSidebarTooltip = (label: string, e: ReactMouseEvent<HTMLElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -438,8 +438,8 @@ function SessionSidebar({
   }, [scopedWsId, childWorkspaces.length]);
 
   visibleSessions.forEach((session) => {
-    if (session.project_id) {
-      (byProject[session.project_id] ??= []).push(session);
+    if (session.folder_id) {
+      (byFolder[session.folder_id] ??= []).push(session);
     } else {
       ungrouped.push(session);
     }
@@ -460,8 +460,8 @@ function SessionSidebar({
     }
     ungrouped.length = 0;
     ungrouped.push(...parentUngrouped);
-    // Also partition project-grouped sessions by workspace
-    for (const [projectId, sessions] of Object.entries(byProject)) {
+    // Also partition folder-grouped sessions by workspace
+    for (const [folderId, sessions] of Object.entries(byFolder)) {
       const parentSessions: ChatSession[] = [];
       for (const session of sessions) {
         if (childWsIds.has(session.workspace_id)) {
@@ -471,17 +471,17 @@ function SessionSidebar({
         }
       }
       if (parentSessions.length > 0) {
-        byProject[projectId] = parentSessions;
+        byFolder[folderId] = parentSessions;
       } else {
-        delete byProject[projectId];
+        delete byFolder[folderId];
       }
     }
   }
 
-  // Flat ordered list mirroring display order: ungrouped then per-project sessions
+  // Flat ordered list mirroring display order: ungrouped then per-folder sessions
   const flatOrderedSessionIds: string[] = [
     ...ungrouped.map((s) => s.id),
-    ...projects.flatMap((p) => (byProject[p.id] ?? []).map((s) => s.id)),
+    ...folders.flatMap((p) => (byFolder[p.id] ?? []).map((s) => s.id)),
   ];
 
   function handleSessionClick(id: string, modifiers: { shift: boolean; meta: boolean; ctrl: boolean }) {
@@ -518,46 +518,46 @@ function SessionSidebar({
     ? workspaces.filter((workspace) => workspace.name.toLowerCase().includes(normalizedWorkspaceMoveQuery))
     : workspaces;
 
-  function openWorkspaceProjectFlyout(
-    mode: WorkspaceProjectFlyoutState["mode"],
+  function openWorkspaceFolderFlyout(
+    mode: WorkspaceFolderFlyoutState["mode"],
     workspace: Workspace,
-    workspaceProjects: Project[],
+    workspaceFolders: Folder[],
     anchor: HTMLElement,
   ) {
     const rect = anchor.getBoundingClientRect();
-    const estimatedHeight = Math.min(28 * 16, (workspaceProjects.length + 1) * 32 + 16);
+    const estimatedHeight = Math.min(28 * 16, (workspaceFolders.length + 1) * 32 + 16);
     const top = Math.max(8, Math.min(rect.top, window.innerHeight - estimatedHeight - 8));
     const maxHeight = Math.max(120, window.innerHeight - top - 8);
     const left = Math.min(rect.right + 4, window.innerWidth - 220 - 8);
 
-    setWorkspaceProjectFlyout({
+    setWorkspaceFolderFlyout({
       mode,
       workspaceId: workspace.id,
       workspaceName: workspace.name,
-      projects: workspaceProjects,
+      folders: workspaceFolders,
       left,
       top,
       maxHeight,
     });
   }
 
-  function toggleProjectSelection(projectId: string) {
-    const projectSessionIds = (byProject[projectId] ?? []).map((session) => session.id);
-    const shouldSelect = !selectedProjectIds.has(projectId);
+  function toggleFolderSelection(folderId: string) {
+    const folderSessionIds = (byFolder[folderId] ?? []).map((session) => session.id);
+    const shouldSelect = !selectedFolderIds.has(folderId);
 
-    setSelectedProjectIds((prev) => {
+    setSelectedFolderIds((prev) => {
       const next = new Set(prev);
       if (shouldSelect) {
-        next.add(projectId);
+        next.add(folderId);
       } else {
-        next.delete(projectId);
+        next.delete(folderId);
       }
       return next;
     });
 
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      for (const sessionId of projectSessionIds) {
+      for (const sessionId of folderSessionIds) {
         if (shouldSelect) {
           next.add(sessionId);
         } else {
@@ -568,12 +568,12 @@ function SessionSidebar({
     });
   }
 
-  function renderSessionRow(session: ChatSession, depth = 0, showProjectBorder = false) {
+  function renderSessionRow(session: ChatSession, depth = 0, showFolderBorder = false) {
     return (
       <div
-        className={showProjectBorder ? "ml-3 border-l border-[var(--border-color)]/70" : undefined}
+        className={showFolderBorder ? "ml-3 border-l border-[var(--border-color)]/70" : undefined}
         onDragStart={() => { dragSessionIdsRef.current = [session.id]; }}
-        onDragEnd={() => { dragSessionIdsRef.current = null; setDragOverProjectId(null); }}
+        onDragEnd={() => { dragSessionIdsRef.current = null; setDragOverFolderId(null); }}
       >
         <div className="pb-[2px]">
           <SessionItem
@@ -620,13 +620,13 @@ function SessionSidebar({
       }];
       if (expanded[`ws-${ws.id}`] ?? false) {
         const wsSessions = byWorkspace[ws.id] ?? [];
-        const wsProjects = projectsByWorkspace[ws.id] ?? [];
-        // Sub-group workspace sessions by project
-        const wsByProject: Record<string, ChatSession[]> = {};
+        const wsFolders = foldersByWorkspace[ws.id] ?? [];
+        // Sub-group workspace sessions by folder
+        const wsByFolder: Record<string, ChatSession[]> = {};
         const wsUngrouped: ChatSession[] = [];
         for (const session of wsSessions) {
-          if (session.project_id) {
-            (wsByProject[session.project_id] ??= []).push(session);
+          if (session.folder_id) {
+            (wsByFolder[session.folder_id] ??= []).push(session);
           } else {
             wsUngrouped.push(session);
           }
@@ -638,30 +638,30 @@ function SessionSidebar({
             key: session.id,
             session,
             depth: 1,
-            showProjectBorder: true,
+            showFolderBorder: true,
           })),
         );
-        // Then project folders
-        for (const proj of wsProjects) {
-          if (!(wsByProject[proj.id]?.length)) { continue; }
-          const projKey = `ws-${ws.id}-project-${proj.id}`;
+        // Then folders
+        for (const proj of wsFolders) {
+          if (!(wsByFolder[proj.id]?.length)) { continue; }
+          const projKey = `ws-${ws.id}-folder-${proj.id}`;
           const projOpen = expanded[projKey] ?? true;
           wsRows.push({
-            type: "project" as const,
+            type: "folder" as const,
             key: projKey,
-            project: proj,
+            folder: proj,
             isOpen: projOpen,
             expandKey: projKey,
             depth: 1,
           });
           if (projOpen) {
             wsRows.push(
-              ...(wsByProject[proj.id] ?? []).map((session) => ({
+              ...(wsByFolder[proj.id] ?? []).map((session) => ({
                 type: "session" as const,
                 key: session.id,
                 session,
                 depth: 2,
-                showProjectBorder: true,
+                showFolderBorder: true,
               })),
             );
           }
@@ -674,58 +674,58 @@ function SessionSidebar({
       key: session.id,
       session,
       depth: 0,
-      showProjectBorder: false,
+      showFolderBorder: false,
     })),
-    ...projects.flatMap((project) => {
-      const projectRows: SessionSidebarRow[] = [{
-        type: "project" as const,
-        key: `project-${project.id}`,
-        project,
-        isOpen: expanded[project.id] ?? true,
-        expandKey: project.id,
+    ...folders.flatMap(( folder) => {
+      const folderRows: SessionSidebarRow[] = [{
+        type: "folder" as const,
+        key: `folder-${folder.id}`,
+        folder,
+        isOpen: expanded[folder.id] ?? true,
+        expandKey: folder.id,
         depth: 0,
       }];
 
-      if (expanded[project.id] ?? true) {
-        projectRows.push(
-          ...(byProject[project.id] ?? []).map((session) => ({
+      if (expanded[folder.id] ?? true) {
+        folderRows.push(
+          ...(byFolder[folder.id] ?? []).map((session) => ({
             type: "session" as const,
             key: session.id,
             session,
             depth: 1,
-            showProjectBorder: true,
+            showFolderBorder: true,
           })),
         );
       }
 
-      return projectRows;
+      return folderRows;
     }),
   ];
 
   function resetSelectionState() {
     setSelectMode(false);
     setSelectedIds(new Set());
-    setSelectedProjectIds(new Set());
+    setSelectedFolderIds(new Set());
     lastSelectedIdRef.current = null;
     setMoveMenuOpen(false);
     setBulkFolderMoveOpen(false);
     setBulkMoveWorkspaceId(null);
-    setDragOverProjectId(null);
+    setDragOverFolderId(null);
     setCtxMoveOpen(false);
     setCtxFolderMoveOpen(false);
     setCtxMoveWorkspaceId(null);
-    setCtxProjectMoveWorkspaceId(null);
+    setCtxFolderMoveWorkspaceId(null);
     setShowNewWorkspaceInput(false);
     setNewWorkspaceName("");
     setFolderMoveShowCreate(false);
     setFolderMoveNewName("");
-    setWorkspaceProjectFlyout(null);
+    setWorkspaceFolderFlyout(null);
   }
 
-  async function handleProjectDrop(event: React.DragEvent, project: Project) {
+  async function handleFolderDrop(event: React.DragEvent, folder: Folder) {
     event.preventDefault();
     event.stopPropagation();
-    setDragOverProjectId(null);
+    setDragOverFolderId(null);
 
     const sessionIds = dragSessionIdsRef.current;
     dragSessionIdsRef.current = null;
@@ -736,22 +736,22 @@ function SessionSidebar({
     try {
       const sessionsToMove = sessionIds.filter((sessionId) => {
         const session = sidebarSessions.find((item) => item.id === sessionId);
-        return session && session.project_id !== project.id;
+        return session && session.folder_id !== folder.id;
       });
 
       if (sessionsToMove.length === 0) {
         return;
       }
 
-      await moveSessionsToTarget(sessionsToMove, project.workspace_id, project.id);
-      setExpanded((prev) => ({ ...prev, [project.id]: true }));
+      await moveSessionsToTarget(sessionsToMove, folder.workspace_id, folder.id);
+      setExpanded((prev) => ({ ...prev, [folder.id]: true }));
     } catch (error) {
       console.error("Failed to drop chat into folder:", error);
     }
   }
 
   function renderSessionMoveSubmenu(
-    onSelect: (workspaceId: string, projectId: string | null) => void,
+    onSelect: (workspaceId: string, folderId: string | null) => void,
     flipUp = false,
   ) {
     function handleCreateWorkspace() {
@@ -808,26 +808,26 @@ function SessionSidebar({
           )}
           <div className="my-1 border-t border-[var(--border-color)]" />
           {filteredWorkspaces.map((workspace) => {
-            const workspaceProjects = projectsByWorkspace[workspace.id] ?? [];
-            const hasProjects = workspaceProjects.length > 0;
+            const workspaceFolders = foldersByWorkspace[workspace.id] ?? [];
+            const hasFolders = workspaceFolders.length > 0;
             return (
               <div
                 key={workspace.id}
                 className="relative"
                 onMouseEnter={(event) => {
-                  if (!hasProjects) {
-                    setWorkspaceProjectFlyout((current) => current?.mode === "session-move" ? null : current);
+                  if (!hasFolders) {
+                    setWorkspaceFolderFlyout((current) => current?.mode === "session-move" ? null : current);
                     setCtxMoveWorkspaceId(null);
                     return;
                   }
                   setCtxMoveWorkspaceId(workspace.id);
-                  openWorkspaceProjectFlyout("session-move", workspace, workspaceProjects, event.currentTarget);
+                  openWorkspaceFolderFlyout("session-move", workspace, workspaceFolders, event.currentTarget);
                 }}
               >
                 <button
                   onClick={() => {
-                    if (!hasProjects) {
-                      setWorkspaceProjectFlyout(null);
+                    if (!hasFolders) {
+                      setWorkspaceFolderFlyout(null);
                       onSelect(workspace.id, null);
                       return;
                     }
@@ -836,7 +836,7 @@ function SessionSidebar({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                 >
                   <span className="truncate flex-1">{workspace.name}</span>
-                  {hasProjects && <ChevronRight size={11} />}
+                  {hasFolders && <ChevronRight size={11} />}
                 </button>
               </div>
             );
@@ -872,9 +872,9 @@ function SessionSidebar({
   }
 
   function renderFolderMoveSubmenu(
-    currentProjectId: string | null,
+    currentFolderId: string | null,
     workspaceId: string,
-    onSelect: (projectId: string | null) => void,
+    onSelect: (folderId: string | null) => void,
   ) {
     async function handleCreateFolderAndMove() {
       const name = folderMoveNewName.trim();
@@ -882,17 +882,17 @@ function SessionSidebar({
       setFolderMoveShowCreate(false);
       setFolderMoveNewName("");
       try {
-        const newProject = await api.project.create(workspaceId, name);
-        const refreshedProjects = await api.project.list(workspaceId, { includeDescendants });
-        useWorkspaceStore.getState().setProjectsForWorkspace(workspaceId, refreshedProjects);
-        onSelect(newProject.id);
+        const newFolder = await api.folder.create(workspaceId, name);
+        const refreshedFolders = await api.folder.list(workspaceId, { includeDescendants });
+        useWorkspaceStore.getState().setFoldersForWorkspace(workspaceId, refreshedFolders);
+        onSelect(newFolder.id);
       } catch (error) {
         const description = error instanceof Error ? error.message : "Failed to create folder.";
         showAlertDialog("Create folder failed", description, "danger");
       }
     }
 
-    const isAtRoot = !currentProjectId;
+    const isAtRoot = !currentFolderId;
     return (
       <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
         <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
@@ -904,19 +904,19 @@ function SessionSidebar({
             <MessageSquare size={11} />
             <span className="truncate flex-1">No folder{isAtRoot ? " (Current)" : ""}</span>
           </button>
-          {projects.length > 0 && <div className="my-1 border-t border-[var(--border-color)]" />}
-          {projects.map((project) => {
-            const isCurrent = project.id === currentProjectId;
+          {folders.length > 0 && <div className="my-1 border-t border-[var(--border-color)]" />}
+          {folders.map(( folder) => {
+            const isCurrent = folder.id === currentFolderId;
             return (
               <button
-                key={project.id}
-                onClick={() => onSelect(project.id)}
+                key={folder.id}
+                onClick={() => onSelect(folder.id)}
                 disabled={isCurrent}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <Folder size={11} style={project.color ? { color: project.color } : undefined} />
+                <FolderIcon size={11} style={folder.color ? { color: folder.color } : undefined} />
                 <span className="truncate flex-1">
-                  {project.name}{isCurrent ? " (Current)" : ""}
+                  {folder.name}{isCurrent ? " (Current)" : ""}
                 </span>
               </button>
             );
@@ -949,8 +949,8 @@ function SessionSidebar({
     );
   }
 
-  function renderProjectWorkspaceMoveSubmenu(
-    project: Project,
+  function renderFolderWorkspaceMoveSubmenu(
+    folder: Folder,
     onSelect: (workspaceId: string) => void,
     flipUp = false,
   ) {
@@ -959,10 +959,10 @@ function SessionSidebar({
       if (!name) { return; }
       setShowNewWorkspaceInput(false);
       setNewWorkspaceName("");
-      setCtxProjectMoveWorkspaceId(null);
+      setCtxFolderMoveWorkspaceId(null);
       setCtxMenu(null);
       void createWorkspaceForMove(name)
-        .then((workspace) => moveProjectToWorkspace(project, workspace.id))
+        .then((workspace) => moveFolderToWorkspace(folder, workspace.id))
         .catch((error) => {
           const description = error instanceof Error
             ? error.message
@@ -1010,7 +1010,7 @@ function SessionSidebar({
           )}
           <div className="my-1 border-t border-[var(--border-color)]" />
           {filteredWorkspaces.map((workspace) => {
-            const isCurrentWorkspace = workspace.id === project.workspace_id;
+            const isCurrentWorkspace = workspace.id === folder.workspace_id;
             return (
               <button
                 key={workspace.id}
@@ -1031,10 +1031,10 @@ function SessionSidebar({
                 onClick={() => {
                   const name = workspaceMoveQuery.trim();
                   setWorkspaceMoveQuery("");
-                  setCtxProjectMoveWorkspaceId(null);
+                  setCtxFolderMoveWorkspaceId(null);
                   setCtxMenu(null);
                   void createWorkspaceForMove(name)
-                    .then((workspace) => moveProjectToWorkspace(project, workspace.id))
+                    .then((workspace) => moveFolderToWorkspace(folder, workspace.id))
                     .catch((error) => {
                       const description = error instanceof Error
                         ? error.message
@@ -1237,26 +1237,26 @@ function SessionSidebar({
                       )}
                       <div className="my-1 border-t border-[var(--border-color)]" />
                       {filteredWorkspaces.map((workspace) => {
-                        const workspaceProjects = projectsByWorkspace[workspace.id] ?? [];
-                        const hasProjects = workspaceProjects.length > 0;
+                        const workspaceFolders = foldersByWorkspace[workspace.id] ?? [];
+                        const hasFolders = workspaceFolders.length > 0;
                         return (
                           <div
                             key={workspace.id}
                             className="relative"
                             onMouseEnter={(event) => {
-                              if (!hasProjects) {
-                                setWorkspaceProjectFlyout((current) => current?.mode === "bulk-move" ? null : current);
+                              if (!hasFolders) {
+                                setWorkspaceFolderFlyout((current) => current?.mode === "bulk-move" ? null : current);
                                 setBulkMoveWorkspaceId(null);
                                 return;
                               }
                               setBulkMoveWorkspaceId(workspace.id);
-                              openWorkspaceProjectFlyout("bulk-move", workspace, workspaceProjects, event.currentTarget);
+                              openWorkspaceFolderFlyout("bulk-move", workspace, workspaceFolders, event.currentTarget);
                             }}
                           >
                             <button
                               onClick={() => {
-                                if (!hasProjects) {
-                                  setWorkspaceProjectFlyout(null);
+                                if (!hasFolders) {
+                                  setWorkspaceFolderFlyout(null);
                                   setBulkActionPending("move");
                                   void moveSessionsToTarget(Array.from(selectedIds), workspace.id, null).then(() => {
                                     resetSelectionState();
@@ -1270,7 +1270,7 @@ function SessionSidebar({
                               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                             >
                               <span className="truncate flex-1">{workspace.name}</span>
-                              {hasProjects && <ChevronRight size={11} />}
+                              {hasFolders && <ChevronRight size={11} />}
                             </button>
                           </div>
                         );
@@ -1319,7 +1319,7 @@ function SessionSidebar({
                     disabled={selectedIds.size === 0 || bulkActionPending !== null}
                     className={`flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors ${isSplitPane ? "text-xs" : "text-[11px]"} hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30`}
                   >
-                    <Folder size={12} />
+                    <FolderIcon size={12} />
                     To folder
                   </button>
                 </Tooltip>
@@ -1343,15 +1343,15 @@ function SessionSidebar({
                       >
                         <MessageSquare size={11} /> No folder
                       </button>
-                      {projects.length > 0 && <div className="my-1 border-t border-[var(--border-color)]" />}
-                      {projects.map((project) => (
+                      {folders.length > 0 && <div className="my-1 border-t border-[var(--border-color)]" />}
+                      {folders.map(( folder) => (
                         <button
-                          key={project.id}
+                          key={folder.id}
                           onClick={() => {
                             if (!bulkWorkspaceId) { return; }
                             setBulkFolderMoveOpen(false);
                             setBulkActionPending("move");
-                            void moveSessionsToTarget(Array.from(selectedIds), bulkWorkspaceId, project.id).then(() => {
+                            void moveSessionsToTarget(Array.from(selectedIds), bulkWorkspaceId, folder.id).then(() => {
                               resetSelectionState();
                             }).finally(() => {
                               setBulkActionPending(null);
@@ -1359,8 +1359,8 @@ function SessionSidebar({
                           }}
                           className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                         >
-                          <Folder size={11} style={project.color ? { color: project.color } : undefined} />
-                          <span className="truncate">{project.name}</span>
+                          <FolderIcon size={11} style={folder.color ? { color: folder.color } : undefined} />
+                          <span className="truncate">{folder.name}</span>
                         </button>
                       ))}
                     </div>
@@ -1372,7 +1372,7 @@ function SessionSidebar({
                 <button
                   onClick={() => {
                     setBulkActionPending("delete");
-                    void bulkDeleteSessions(Array.from(selectedIds), Array.from(selectedProjectIds)).then(() => {
+                    void bulkDeleteSessions(Array.from(selectedIds), Array.from(selectedFolderIds)).then(() => {
                       resetSelectionState();
                     }).finally(() => {
                       setBulkActionPending(null);
@@ -1420,7 +1420,7 @@ function SessionSidebar({
         {/* Inline folder creation */}
         {creatingFolder && (
           <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[var(--border-color)]">
-            <Folder size={isSplitPane ? 13 : 12} className="text-[var(--text-muted)] flex-shrink-0" />
+            <FolderIcon size={isSplitPane ? 13 : 12} className="text-[var(--text-muted)] flex-shrink-0" />
             <input
               ref={folderInputRef}
               value={newFolderName}
@@ -1473,7 +1473,7 @@ function SessionSidebar({
 
         {/* Session list */}
         <div className="flex-1 min-h-0">
-          {visibleSessions.length === 0 && projects.length === 0 ? (
+          {visibleSessions.length === 0 && folders.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-3">
               <MessageSquare size={isSplitPane ? 22 : 20} className="text-[var(--text-muted)] opacity-30" />
               <p className={`text-[var(--text-muted)] ${isSplitPane ? "text-xs" : "text-[11px]"}`}>No conversations yet</p>
@@ -1488,7 +1488,7 @@ function SessionSidebar({
               computeItemKey={(_, row) => row.key}
               itemContent={(_, row) => {
                 if (row.type === "session") {
-                  return renderSessionRow(row.session, row.depth, row.showProjectBorder);
+                  return renderSessionRow(row.session, row.depth, row.showFolderBorder);
                 }
 
                 if (row.type === "workspace") {
@@ -1511,13 +1511,13 @@ function SessionSidebar({
                   );
                 }
 
-                const { project, isOpen, expandKey, depth: projectDepth } = row;
+                const { folder, isOpen, expandKey, depth: folderDepth } = row;
                 return (
                   <button
                     onContextMenu={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      setCtxMenu({ type: "project", x: event.clientX, y: event.clientY, project });
+                      setCtxMenu({ type: "folder", x: event.clientX, y: event.clientY, folder });
                     }}
                     onDragOver={(event) => {
                       if (selectMode || !dragSessionIdsRef.current) {
@@ -1525,40 +1525,40 @@ function SessionSidebar({
                       }
                       event.preventDefault();
                       event.dataTransfer.dropEffect = "move";
-                      setDragOverProjectId(project.id);
+                      setDragOverFolderId(folder.id);
                     }}
                     onDragLeave={(event) => {
                       const relatedTarget = event.relatedTarget as Node | null;
                       if (relatedTarget && event.currentTarget.contains(relatedTarget)) {
                         return;
                       }
-                      setDragOverProjectId((current) => current === project.id ? null : current);
+                      setDragOverFolderId((current) => current === folder.id ? null : current);
                     }}
                     onDrop={(event) => {
-                      void handleProjectDrop(event, project);
+                      void handleFolderDrop(event, folder);
                     }}
                     onClick={() => {
                       if (selectMode) {
-                        toggleProjectSelection(project.id);
+                        toggleFolderSelection(folder.id);
                         return;
                       }
                       setExpanded((prev) => ({ ...prev, [expandKey]: !isOpen }));
                     }}
-                    className={`w-full flex items-center gap-1.5 rounded-xl border px-3 py-2 text-left transition-colors ${dragOverProjectId === project.id
+                    className={`w-full flex items-center gap-1.5 rounded-xl border px-3 py-2 text-left transition-colors ${dragOverFolderId === folder.id
                       ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
-                      : selectedProjectIds.has(project.id)
+                      : selectedFolderIds.has(folder.id)
                         ? "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                         : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                       }`}
-                    style={{ paddingLeft: projectDepth > 0 ? `${projectDepth * 12 + 12}px` : undefined }}
+                    style={{ paddingLeft: folderDepth > 0 ? `${folderDepth * 12 + 12}px` : undefined }}
                   >
                     {selectMode && (
                       <button
                         onClick={(event) => {
                           event.stopPropagation();
-                          toggleProjectSelection(project.id);
+                          toggleFolderSelection(folder.id);
                         }}
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${selectedProjectIds.has(project.id)
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${selectedFolderIds.has(folder.id)
                           ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
                           : "border-[var(--text-muted)] text-transparent"
                           }`}
@@ -1566,37 +1566,37 @@ function SessionSidebar({
                         <Check size={10} />
                       </button>
                     )}
-                    <Folder size={isSplitPane ? 14 : 13} className="text-[var(--text-muted)] shrink-0" />
-                    {projectRenamingId === project.id ? (
+                    <FolderIcon size={isSplitPane ? 14 : 13} className="text-[var(--text-muted)] shrink-0" />
+                    {folderRenamingId === folder.id ? (
                       <input
                         autoFocus
-                        value={projectRenameValue}
-                        onChange={(event) => setProjectRenameValue(event.target.value)}
+                        value={folderRenameValue}
+                        onChange={(event) => setFolderRenameValue(event.target.value)}
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => {
                           if (event.key === "Enter") {
                             event.preventDefault();
-                            void renameProject(project.id, projectRenameValue).then(() => {
-                              setProjectRenamingId(null);
-                              setProjectRenameValue("");
+                            void renameFolder(folder.id, folderRenameValue).then(() => {
+                              setFolderRenamingId(null);
+                              setFolderRenameValue("");
                             });
                           }
                           if (event.key === "Escape") {
                             event.preventDefault();
-                            setProjectRenamingId(null);
-                            setProjectRenameValue("");
+                            setFolderRenamingId(null);
+                            setFolderRenameValue("");
                           }
                         }}
                         onBlur={() => {
-                          void renameProject(project.id, projectRenameValue).then(() => {
-                            setProjectRenamingId(null);
-                            setProjectRenameValue("");
+                          void renameFolder(folder.id, folderRenameValue).then(() => {
+                            setFolderRenamingId(null);
+                            setFolderRenameValue("");
                           });
                         }}
                         className={`flex-1 rounded border border-[var(--accent-color)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${isSplitPane ? "text-sm" : "text-xs"}`}
                       />
                     ) : (
-                      <span className={`flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{project.name}</span>
+                      <span className={`flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>{folder.name}</span>
                     )}
                     <ChevronDown size={12} className={`text-[var(--text-muted)] transition-transform ${isOpen ? "" : "-rotate-90"}`} />
                   </button>
@@ -1736,15 +1736,15 @@ function SessionSidebar({
                     onClick={() => setCtxFolderMoveOpen((v) => !v)}
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                   >
-                    <Folder size={11} />
+                    <FolderIcon size={11} />
                     <span className="truncate flex-1">Move to folder</span>
                     <ChevronRight size={11} />
                   </button>
                   {ctxFolderMoveOpen && renderFolderMoveSubmenu(
-                    ctxMenu.session.project_id || null,
+                    ctxMenu.session.folder_id || null,
                     ctxMenu.session.workspace_id,
-                    (targetProjectId) => {
-                      void moveSessionsToTarget([ctxMenu.session.id], ctxMenu.session.workspace_id, targetProjectId).catch((error: unknown) => {
+                    (targetFolderId) => {
+                      void moveSessionsToTarget([ctxMenu.session.id], ctxMenu.session.workspace_id, targetFolderId).catch((error: unknown) => {
                         const description = error instanceof Error
                           ? error.message
                           : typeof error === "string" && error.trim()
@@ -1771,8 +1771,8 @@ function SessionSidebar({
                     <span className="truncate flex-1">Move to workspace</span>
                     <ChevronRight size={11} />
                   </button>
-                  {ctxMoveOpen && renderSessionMoveSubmenu((targetWorkspaceId, targetProjectId) => {
-                    void moveSessionsToTarget([ctxMenu.session.id], targetWorkspaceId, targetProjectId).catch((error: unknown) => {
+                  {ctxMoveOpen && renderSessionMoveSubmenu((targetWorkspaceId, targetFolderId) => {
+                    void moveSessionsToTarget([ctxMenu.session.id], targetWorkspaceId, targetFolderId).catch((error: unknown) => {
                       const description = error instanceof Error
                         ? error.message
                         : typeof error === "string" && error.trim()
@@ -1814,7 +1814,7 @@ function SessionSidebar({
               <>
                 <button
                   onClick={() => {
-                    setActiveProjectId(ctxMenu.project.id);
+                    setActiveFolderId(ctxMenu.folder.id);
                     setCtxMenu(null);
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
@@ -1823,8 +1823,8 @@ function SessionSidebar({
                 </button>
                 <button
                   onClick={() => {
-                    setProjectRenamingId(ctxMenu.project.id);
-                    setProjectRenameValue(ctxMenu.project.name);
+                    setFolderRenamingId(ctxMenu.folder.id);
+                    setFolderRenameValue(ctxMenu.folder.name);
                     setCtxMenu(null);
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
@@ -1834,29 +1834,29 @@ function SessionSidebar({
                 <div className="my-1 border-t border-[var(--border-color)]" />
                 <div
                   className="relative"
-                  onMouseEnter={() => setCtxProjectMoveWorkspaceId("open")}
-                  onMouseLeave={() => setCtxProjectMoveWorkspaceId(null)}
+                  onMouseEnter={() => setCtxFolderMoveWorkspaceId("open")}
+                  onMouseLeave={() => setCtxFolderMoveWorkspaceId(null)}
                 >
                   <button
-                    onClick={() => setCtxProjectMoveWorkspaceId((current) => current === "open" ? null : "open")}
+                    onClick={() => setCtxFolderMoveWorkspaceId((current) => current === "open" ? null : "open")}
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                   >
                     <MoveRight size={11} />
                     <span className="truncate flex-1">Move to workspace</span>
                     <ChevronRight size={11} />
                   </button>
-                  {ctxProjectMoveWorkspaceId === "open" && (() => {
-                    const project = ctxMenu.project;
-                    return renderProjectWorkspaceMoveSubmenu(project, (targetWorkspaceId) => {
-                      setCtxProjectMoveWorkspaceId(null);
+                  {ctxFolderMoveWorkspaceId === "open" && (() => {
+                    const folder = ctxMenu.folder;
+                    return renderFolderWorkspaceMoveSubmenu(folder, (targetWorkspaceId) => {
+                      setCtxFolderMoveWorkspaceId(null);
                       setCtxMenu(null);
-                      void moveProjectToWorkspace(project, targetWorkspaceId);
+                      void moveFolderToWorkspace(folder, targetWorkspaceId);
                     }, ctxMenu.y > window.innerHeight * 0.55);
                   })()}
                 </div>
                 <button
                   onClick={() => {
-                    void deleteProject(ctxMenu.project.id);
+                    void deleteFolder(ctxMenu.folder.id);
                     setCtxMenu(null);
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
@@ -1867,21 +1867,21 @@ function SessionSidebar({
             )}
           </div>
         )}
-        {workspaceProjectFlyout && (
+        {workspaceFolderFlyout && (
           <div
-            data-chat-tree-context-menu={workspaceProjectFlyout.mode === "session-move" ? "" : undefined}
+            data-chat-tree-context-menu={workspaceFolderFlyout.mode === "session-move" ? "" : undefined}
             className="fixed z-[55] min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
             style={{
-              left: workspaceProjectFlyout.left,
-              top: workspaceProjectFlyout.top,
-              maxHeight: `${workspaceProjectFlyout.maxHeight}px`,
+              left: workspaceFolderFlyout.left,
+              top: workspaceFolderFlyout.top,
+              maxHeight: `${workspaceFolderFlyout.maxHeight}px`,
             }}
           >
             <div className="max-h-full overflow-y-auto">
               <button
                 onClick={() => {
-                  if (workspaceProjectFlyout.mode === "session-move" && ctxMenu?.type === "session") {
-                    void moveSessionsToTarget([ctxMenu.session.id], workspaceProjectFlyout.workspaceId, null).catch((error: unknown) => {
+                  if (workspaceFolderFlyout.mode === "session-move" && ctxMenu?.type === "session") {
+                    void moveSessionsToTarget([ctxMenu.session.id], workspaceFolderFlyout.workspaceId, null).catch((error: unknown) => {
                       const description = error instanceof Error
                         ? error.message
                         : typeof error === "string" && error.trim()
@@ -1893,26 +1893,26 @@ function SessionSidebar({
                     setCtxMoveWorkspaceId(null);
                     setCtxMoveOpen(false);
                     setCtxMenu(null);
-                  } else if (workspaceProjectFlyout.mode === "bulk-move") {
+                  } else if (workspaceFolderFlyout.mode === "bulk-move") {
                     setBulkActionPending("move");
-                    void moveSessionsToTarget(Array.from(selectedIds), workspaceProjectFlyout.workspaceId, null).then(() => {
+                    void moveSessionsToTarget(Array.from(selectedIds), workspaceFolderFlyout.workspaceId, null).then(() => {
                       resetSelectionState();
                     }).finally(() => {
                       setBulkActionPending(null);
                     });
                   }
-                  setWorkspaceProjectFlyout(null);
+                  setWorkspaceFolderFlyout(null);
                 }}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
               >
                 <MessageSquare size={11} /> Workspace root
               </button>
-              {workspaceProjectFlyout.projects.map((project) => (
+              {workspaceFolderFlyout.folders.map(( folder) => (
                 <button
-                  key={project.id}
+                  key={folder.id}
                   onClick={() => {
-                    if (workspaceProjectFlyout.mode === "session-move" && ctxMenu?.type === "session") {
-                      void moveSessionsToTarget([ctxMenu.session.id], workspaceProjectFlyout.workspaceId, project.id).catch((error: unknown) => {
+                    if (workspaceFolderFlyout.mode === "session-move" && ctxMenu?.type === "session") {
+                      void moveSessionsToTarget([ctxMenu.session.id], workspaceFolderFlyout.workspaceId, folder.id).catch((error: unknown) => {
                         const description = error instanceof Error
                           ? error.message
                           : typeof error === "string" && error.trim()
@@ -1924,19 +1924,19 @@ function SessionSidebar({
                       setCtxMoveWorkspaceId(null);
                       setCtxMoveOpen(false);
                       setCtxMenu(null);
-                    } else if (workspaceProjectFlyout.mode === "bulk-move") {
+                    } else if (workspaceFolderFlyout.mode === "bulk-move") {
                       setBulkActionPending("move");
-                      void moveSessionsToTarget(Array.from(selectedIds), workspaceProjectFlyout.workspaceId, project.id).then(() => {
+                      void moveSessionsToTarget(Array.from(selectedIds), workspaceFolderFlyout.workspaceId, folder.id).then(() => {
                         resetSelectionState();
                       }).finally(() => {
                         setBulkActionPending(null);
                       });
                     }
-                    setWorkspaceProjectFlyout(null);
+                    setWorkspaceFolderFlyout(null);
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                 >
-                  <Folder size={11} /> <span className="truncate">{project.name}</span>
+                  <FolderIcon size={11} /> <span className="truncate">{folder.name}</span>
                 </button>
               ))}
             </div>
@@ -2098,17 +2098,17 @@ export default function ChatView() {
   const streamingContentForMinimap = useChatStore((s) => s.streamingContent);
   const updateMessage = useChatStore((s) => s.updateMessage);
 
-  const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
+  const activeFolderId = useWorkspaceStore((s) => s.activeFolderId);
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const activePaneId = useWorkspaceStore((s) => s.activePaneId);
   const isDemoMode = useWorkspaceStore((s) => s.isDemoMode);
-  const setProjectsForWorkspace = useWorkspaceStore((s) => s.setProjectsForWorkspace);
-  const projectsByWorkspace = useWorkspaceStore((s) => s.projectsByWorkspace);
+  const setFoldersForWorkspace = useWorkspaceStore((s) => s.setFoldersForWorkspace);
+  const foldersByWorkspace = useWorkspaceStore((s) => s.foldersByWorkspace);
   const addWorkspace = useWorkspaceStore((s) => s.addWorkspace);
   const {
-    activeProjectId: scopedProjectId,
+    activeFolderId: scopedFolderId,
     setActiveWorkspaceId: setScopedWorkspaceId,
-    setActiveProjectId: setScopedProjectId,
+    setActiveFolderId: setScopedFolderId,
     activeWorkspaceId: scopedWorkspaceId,
   } = useScopedWorkspace();
   const activeTopicSignature = useWorkspaceStore((s) => s.activeTopicSignature);
@@ -2116,7 +2116,7 @@ export default function ChatView() {
   const setWorkspaceTopicSignature = useWorkspaceStore((s) => s.setWorkspaceTopicSignature);
   const setMigrationSuggestion = useWorkspaceStore((s) => s.setMigrationSuggestion);
   const workspaces = useWorkspaceStore((s) => s.workspaces);
-  const projects = useScopedProjects();
+  const folders = useScopedFolders();
   const preferredModel = useSettingsStore((s) => s.preferredModel);
   const draftModel = useSettingsStore((s) => s.draftModel);
   const setPreferredModel = useSettingsStore((s) => s.setPreferredModel);
@@ -2180,9 +2180,9 @@ export default function ChatView() {
   const handledLocationActionKeyRef = useRef<string | null>(null);
   const currentSessionId = routeSessionId ?? activeChatId ?? null;
   const effectiveWorkspaceId = scopedWorkspaceId ?? activeWorkspaceId;
-  const effectiveProjectId = scopedProjectId ?? activeProjectId;
+  const effectiveFolderId = scopedFolderId ?? activeFolderId;
   const includeDescendants = useBubbleUpFlag();
-  const sessionScopeKey = `${effectiveWorkspaceId ?? ""}::${effectiveProjectId ?? ""}`;
+  const sessionScopeKey = `${effectiveWorkspaceId ?? ""}::${effectiveFolderId ?? ""}`;
   const sessions = isSplitPane ? scopedSessions : globalSessions;
 
   const applySessionList = useCallback((transform: (prev: ChatSession[]) => ChatSession[]) => {
@@ -2386,7 +2386,7 @@ export default function ChatView() {
   async function handleCreateFolder(nameOverride?: string) {
     if (creatingFolderRequestRef.current) { return; }
     const folderName = (nameOverride ?? newFolderName).trim();
-    const previousProjectId = effectiveProjectId;
+    const previousFolderId = effectiveFolderId;
     if (!folderName || !effectiveWorkspaceId) {
       setCreatingFolder(false);
       setNewFolderName("");
@@ -2395,10 +2395,10 @@ export default function ChatView() {
     creatingFolderRequestRef.current = true;
     setCreatingFolderPending(true);
     try {
-      await api.project.create(effectiveWorkspaceId, folderName);
-      const refreshedProjects = await api.project.list(effectiveWorkspaceId, { includeDescendants });
-      setProjectsForWorkspace(effectiveWorkspaceId, refreshedProjects);
-      setScopedProjectId(previousProjectId);
+      await api.folder.create(effectiveWorkspaceId, folderName);
+      const refreshedFolders = await api.folder.list(effectiveWorkspaceId, { includeDescendants });
+      setFoldersForWorkspace(effectiveWorkspaceId, refreshedFolders);
+      setScopedFolderId(previousFolderId);
     } catch (e) {
       console.error(e);
     } finally {
@@ -2749,9 +2749,9 @@ export default function ChatView() {
   const activeSession = activeChatId ? sessions.find((s) => s.id === activeChatId) ?? null : null;
   const activeSessionWorkspaceId = activeSession?.workspace_id ?? effectiveWorkspaceId;
   const activeWorkspaceName = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId)?.name ?? "No workspace";
-  const effectiveProjectName = (
-    effectiveProjectId
-      ? (projectsByWorkspace[effectiveWorkspaceId ?? ""] ?? projects).find((project) => project.id === effectiveProjectId)?.name ?? null
+  const effectiveFolderName = (
+    effectiveFolderId
+      ? (foldersByWorkspace[effectiveWorkspaceId ?? ""] ?? folders).find(( folder) => folder.id === effectiveFolderId)?.name ?? null
       : null
   );
 
@@ -2954,28 +2954,28 @@ export default function ChatView() {
     }
   }, [effectiveWorkspaceId, sessionQuery, includeDescendants]);
 
-  async function refreshProjectTree(workspaceId: string) {
-    const refreshedProjects = await api.project.list(workspaceId, { includeDescendants });
+  async function refreshFolderTree(workspaceId: string) {
+    const refreshedFolders = await api.folder.list(workspaceId, { includeDescendants });
     const refreshedSidebarSessions = await api.chat.listSessions(workspaceId, null, { limit: 200, offset: 0, includeDescendants });
-    setProjectsForWorkspace(workspaceId, refreshedProjects);
+    setFoldersForWorkspace(workspaceId, refreshedFolders);
     setSidebarSessions(refreshedSidebarSessions);
   }
 
-  async function refreshScopedSessions(workspaceId: string, projectId: string | null) {
-    const refreshedSessions = await api.chat.listSessions(workspaceId, projectId, { limit: 200, offset: 0, includeDescendants });
+  async function refreshScopedSessions(workspaceId: string, folderId: string | null) {
+    const refreshedSessions = await api.chat.listSessions(workspaceId, folderId, { limit: 200, offset: 0, includeDescendants });
     replaceSessions(refreshedSessions);
   }
 
-  async function bulkDeleteSessions(sessionIds: string[], projectIds: string[] = []) {
+  async function bulkDeleteSessions(sessionIds: string[], folderIds: string[] = []) {
     if (isDemoMode) {
       await message("Session deletion is not available in Demo Mode.", { title: "Demo Mode" });
       return;
     }
-    if (!effectiveWorkspaceId || (sessionIds.length === 0 && projectIds.length === 0)) { return; }
+    if (!effectiveWorkspaceId || (sessionIds.length === 0 && folderIds.length === 0)) { return; }
     const settings = useSettingsStore.getState();
     const isImmediate = settings.immediateDelete;
     const skipConfirm = !isImmediate && !settings.confirmMoveToTrash;
-    const totalCount = sessionIds.length + projectIds.length;
+    const totalCount = sessionIds.length + folderIds.length;
 
     if (!skipConfirm) {
       const confirmMsg = isImmediate
@@ -2991,24 +2991,24 @@ export default function ChatView() {
     }
 
     await Promise.all(sessionIds.map((id) => api.chat.deleteSession(effectiveWorkspaceId, id)));
-    for (const projectId of projectIds) {
-      const projectSessionIds = sidebarSessions
-        .filter((session) => session.project_id === projectId && !sessionIds.includes(session.id))
+    for (const folderId of folderIds) {
+      const folderSessionIds = sidebarSessions
+        .filter((session) => session.folder_id === folderId && !sessionIds.includes(session.id))
         .map((session) => session.id);
-      if (projectSessionIds.length > 0) {
-        await api.chat.moveSessions(projectSessionIds, effectiveWorkspaceId, undefined);
+      if (folderSessionIds.length > 0) {
+        await api.chat.moveSessions(folderSessionIds, effectiveWorkspaceId, undefined);
       }
-      await api.project.delete(projectId);
+      await api.folder.delete(folderId);
     }
     const removedSessionIds = new Set(sessionIds);
     replaceSessions(sessions.filter((session) => !removedSessionIds.has(session.id)));
 
     await Promise.all([
-      refreshProjectTree(effectiveWorkspaceId),
-      refreshScopedSessions(effectiveWorkspaceId, projectIds.includes(effectiveProjectId ?? "") ? null : effectiveProjectId),
+      refreshFolderTree(effectiveWorkspaceId),
+      refreshScopedSessions(effectiveWorkspaceId, folderIds.includes(effectiveFolderId ?? "") ? null : effectiveFolderId),
     ]);
-    if (projectIds.includes(effectiveProjectId ?? "")) {
-      setScopedProjectId(null);
+    if (folderIds.includes(effectiveFolderId ?? "")) {
+      setScopedFolderId(null);
     }
     if (activeChatId && sessionIds.includes(activeChatId)) {
       setActiveChatId(null);
@@ -3019,7 +3019,7 @@ export default function ChatView() {
     setAttachedSources([]);
   }, [effectiveWorkspaceId, activeChatId]);
 
-  // Load sessions (scoped to active project, or unscoped when none selected)
+  // Load sessions (scoped to active folder, or unscoped when none selected)
   useEffect(() => {
     if (!effectiveWorkspaceId) {
       setLoadedSessionScopeKey(null);
@@ -3027,12 +3027,12 @@ export default function ChatView() {
       return;
     }
 
-    const scopeKey = `${effectiveWorkspaceId}::${effectiveProjectId ?? ""}`;
+    const scopeKey = `${effectiveWorkspaceId}::${effectiveFolderId ?? ""}`;
     let cancelled = false;
     replaceSessions([]);
     setLoadedSessionScopeKey(null);
 
-    api.chat.listSessions(effectiveWorkspaceId, effectiveProjectId, { limit: 200, offset: 0, includeDescendants })
+    api.chat.listSessions(effectiveWorkspaceId, effectiveFolderId, { limit: 200, offset: 0, includeDescendants })
       .then((nextSessions) => {
         if (cancelled) { return; }
         replaceSessions(nextSessions);
@@ -3046,7 +3046,7 @@ export default function ChatView() {
     return () => {
       cancelled = true;
     };
-  }, [effectiveWorkspaceId, effectiveProjectId, replaceSessions, includeDescendants]);
+  }, [effectiveWorkspaceId, effectiveFolderId, replaceSessions, includeDescendants]);
 
   useEffect(() => {
     if (!effectiveWorkspaceId || !currentSessionId) { return; }
@@ -3346,7 +3346,7 @@ export default function ChatView() {
   }, [activeChatId, hasLoadedActiveMessages, activeMessages.length, isStreaming]);
 
   const activateSession = useCallback((session: ChatSession) => {
-    setScopedProjectId(session.project_id || null);
+    setScopedFolderId(session.folder_id || null);
     setActiveChatId(session.id);
     if (!isSplitPane && routeSessionId !== session.id) {
       navigate(`/chat/${session.id}`);
@@ -3364,12 +3364,12 @@ export default function ChatView() {
       next[existingIndex] = session;
       return next;
     });
-  }, [setScopedProjectId, setActiveChatId, isSplitPane, routeSessionId, navigate, mergeSessionIntoScope, setSidebarSessions]);
+  }, [setScopedFolderId, setActiveChatId, isSplitPane, routeSessionId, navigate, mergeSessionIntoScope, setSidebarSessions]);
 
   const onChatClick = useCallback(async (chat: QuickSearchResult) => {
     if (chat.target_id === currentSessionId) { return; }
     // Look up the session in the current local list first to avoid an extra
-    // round-trip. Fall back to a backend fetch for sessions in other projects
+    // round-trip. Fall back to a backend fetch for sessions in other folders
     // or workspaces that haven't been loaded into this pane yet.
     let session = sessions.find((s) => s.id === chat.target_id) ?? null;
     if (!session && effectiveWorkspaceId) {
@@ -3412,12 +3412,12 @@ export default function ChatView() {
       return unusedSession;
     }
 
-    return api.chat.createSession(effectiveWorkspaceId, effectiveProjectId, {
+    return api.chat.createSession(effectiveWorkspaceId, effectiveFolderId, {
       modelName: selectedModel,
       is_incognito: privacy.isIncognito,
       exclude_from_analytics: privacy.excludeFromAnalytics,
     });
-  }, [effectiveWorkspaceId, sessions, effectiveProjectId, selectedModel]);
+  }, [effectiveWorkspaceId, sessions, effectiveFolderId, selectedModel]);
 
   const createNewSession = useCallback(async (options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) => {
     if (!effectiveWorkspaceId) { return; }
@@ -3996,11 +3996,11 @@ export default function ChatView() {
     }
   }
 
-  async function moveSessionsToTarget(sessionIds: string[], workspaceId: string, projectId: string | null) {
+  async function moveSessionsToTarget(sessionIds: string[], workspaceId: string, folderId: string | null) {
     if (sessionIds.length === 0) { return; }
     const sessionIdSet = new Set(sessionIds);
     const isCrossWorkspaceMove = workspaceId !== effectiveWorkspaceId;
-    const shouldPreserveProjectStructure = isCrossWorkspaceMove && projectId === null;
+    const shouldPreserveFolderStructure = isCrossWorkspaceMove && folderId === null;
 
     // Optimistic UI update: remove from source immediately
     if (isCrossWorkspaceMove) {
@@ -4008,112 +4008,112 @@ export default function ChatView() {
       replaceSessions(sessions.filter((session) => !sessionIdSet.has(session.id)));
     }
 
-    if (isCrossWorkspaceMove && shouldPreserveProjectStructure) {
-      // Use batch move: single IPC call handles project lookup/create + all moves
+    if (isCrossWorkspaceMove && shouldPreserveFolderStructure) {
+      // Use batch move: single IPC call handles folder lookup/create + all moves
       const result = await api.chat.batchMoveSessions(sessionIds, workspaceId, true);
 
-      // Determine which project to navigate to
-      const mappedProjectIds = Object.values(result.project_mapping);
-      const destinationProjectIdForView = mappedProjectIds.length === 1 ? mappedProjectIds[0] : null;
+      // Determine which folder to navigate to
+      const mappedFolderIds = Object.values(result.folder_mapping);
+      const destinationFolderIdForView = mappedFolderIds.length === 1 ? mappedFolderIds[0] : null;
 
       setScopedWorkspaceId(workspaceId);
-      setScopedProjectId(destinationProjectIdForView);
+      setScopedFolderId(destinationFolderIdForView);
 
       // Refresh only the destination workspace tree (source already updated optimistically)
-      await refreshProjectTree(workspaceId);
+      await refreshFolderTree(workspaceId);
 
       if (activeChatId && sessionIds.includes(activeChatId)) {
         setActiveChatId(sessionIds.length === 1 ? activeChatId : null);
       }
     } else if (isCrossWorkspaceMove) {
-      // Cross-workspace move to specific project or root
-      await api.chat.moveSessions(sessionIds, workspaceId, projectId ?? undefined);
+      // Cross-workspace move to specific folder or root
+      await api.chat.moveSessions(sessionIds, workspaceId, folderId ?? undefined);
 
       setScopedWorkspaceId(workspaceId);
-      setScopedProjectId(projectId);
+      setScopedFolderId(folderId);
 
       // Refresh only the destination workspace tree
-      await refreshProjectTree(workspaceId);
+      await refreshFolderTree(workspaceId);
 
       if (activeChatId && sessionIds.includes(activeChatId)) {
         setActiveChatId(sessionIds.length === 1 ? activeChatId : null);
       }
     } else {
       // Same-workspace move
-      await api.chat.moveSessions(sessionIds, workspaceId, projectId ?? undefined);
+      await api.chat.moveSessions(sessionIds, workspaceId, folderId ?? undefined);
 
       // Optimistic local update for same-workspace
-      setScopedProjectId(projectId);
+      setScopedFolderId(folderId);
       setSidebarSessions((prev) => prev.map((session) => (
         sessionIdSet.has(session.id)
-          ? { ...session, workspace_id: workspaceId, project_id: projectId ?? "" }
+          ? { ...session, workspace_id: workspaceId, folder_id: folderId ?? "" }
           : session
       )));
       replaceSessions(sessions.map((session) => (
         sessionIdSet.has(session.id)
-          ? { ...session, workspace_id: workspaceId, project_id: projectId ?? "" }
+          ? { ...session, workspace_id: workspaceId, folder_id: folderId ?? "" }
           : session
       )));
 
       // Light refresh for project counts (sessions already updated optimistically)
       if (effectiveWorkspaceId) {
-        const refreshedProjects = await api.project.list(effectiveWorkspaceId, { includeDescendants });
-        setProjectsForWorkspace(effectiveWorkspaceId, refreshedProjects);
+        const refreshedFolders = await api.folder.list(effectiveWorkspaceId, { includeDescendants });
+        setFoldersForWorkspace(effectiveWorkspaceId, refreshedFolders);
       }
     }
   }
 
-  async function renameProject(projectId: string, name: string) {
+  async function renameFolder(folderId: string, name: string) {
     if (!effectiveWorkspaceId || !name.trim()) { return; }
-    await api.project.update(projectId, { name: name.trim() });
-    await refreshProjectTree(effectiveWorkspaceId);
+    await api.folder.update(folderId, { name: name.trim() });
+    await refreshFolderTree(effectiveWorkspaceId);
   }
 
-  async function moveProjectToWorkspace(project: Project, targetWorkspaceId: string) {
-    if (project.workspace_id === targetWorkspaceId) { return; }
+  async function moveFolderToWorkspace(folder: Folder, targetWorkspaceId: string) {
+    if (folder.workspace_id === targetWorkspaceId) { return; }
 
-    const projectSessionIds = sidebarSessions
-      .filter((session) => session.project_id === project.id)
+    const folderSessionIds = sidebarSessions
+      .filter((session) => session.folder_id === folder.id)
       .map((session) => session.id);
 
     // Snapshot state for potential rollback
     const prevSidebarSessions = [...sidebarSessions];
     const prevSessions = [...sessions];
-    const prevWorkspaceProjects = useWorkspaceStore.getState().projectsByWorkspace[project.workspace_id] ?? [];
+    const prevWorkspaceProjects = useWorkspaceStore.getState().foldersByWorkspace[folder.workspace_id] ?? [];
 
     // Optimistic UI update: remove from source workspace locally without doing a full refresh
     // Instead we just remove it from sidebarSessions and sessions, and let the background refresh
-    // or navigation handle the rest, specifically avoiding refreshProjectTree(effectiveWorkspaceId).
-    setSidebarSessions((prev) => prev.filter((session) => session.project_id !== project.id));
-    replaceSessions(sessions.filter((session) => session.project_id !== project.id));
+    // or navigation handle the rest, specifically avoiding refreshFolderTree(effectiveWorkspaceId).
+    setSidebarSessions((prev) => prev.filter((session) => session.folder_id !== folder.id));
+    replaceSessions(sessions.filter((session) => session.folder_id !== folder.id));
 
     // For the projects list, we can optimistically update the workspace store
-    useWorkspaceStore.getState().setProjectsForWorkspace(
-      project.workspace_id,
-      prevWorkspaceProjects.filter(p => p.id !== project.id)
+    useWorkspaceStore.getState().setFoldersForWorkspace(
+      folder.workspace_id,
+      prevWorkspaceProjects.filter(p => p.id !== folder.id)
     );
 
     try {
       // Use the single transaction Rust backend command
-      const movedProject = await api.project.moveToWorkspace(project.id, targetWorkspaceId);
+      const movedProject = await api.folder.moveToWorkspace(folder.id, targetWorkspaceId);
 
       // Now navigate to the target workspace and refresh only its tree.
       setScopedWorkspaceId(targetWorkspaceId);
-      setScopedProjectId(movedProject.id);
-      await refreshProjectTree(targetWorkspaceId);
+      setScopedFolderId(movedProject.id);
+      await refreshFolderTree(targetWorkspaceId);
 
-      if (activeChatId && projectSessionIds.includes(activeChatId)) {
+      if (activeChatId && folderSessionIds.includes(activeChatId)) {
         // If we had the active chat open, keep it open if it was a single move, or reset if multiple
-        setActiveChatId(projectSessionIds.length === 1 ? activeChatId : null);
-      } else if (effectiveProjectId === project.id) {
+        setActiveChatId(folderSessionIds.length === 1 ? activeChatId : null);
+      } else if (effectiveFolderId === folder.id) {
         // If we had the project open but not a chat, we navigate to the new project.
-        setScopedProjectId(movedProject.id);
+        setScopedFolderId(movedProject.id);
       }
     } catch (error) {
       // Rollback on failure
       setSidebarSessions(prevSidebarSessions);
       replaceSessions(prevSessions);
-      useWorkspaceStore.getState().setProjectsForWorkspace(project.workspace_id, prevWorkspaceProjects);
+      useWorkspaceStore.getState().setFoldersForWorkspace(folder.workspace_id, prevWorkspaceProjects);
 
       const description = error instanceof Error
         ? error.message
@@ -4124,9 +4124,9 @@ export default function ChatView() {
     }
   }
 
-  async function deleteProject(projectId: string) {
+  async function deleteFolder(folderId: string) {
     if (!effectiveWorkspaceId) { return; }
-    const projectSessions = sidebarSessions.filter((session) => session.project_id === projectId).map((session) => session.id);
+    const projectSessions = sidebarSessions.filter((session) => session.folder_id === folderId).map((session) => session.id);
     const confirmMsg = projectSessions.length > 0
       ? `Delete this folder? ${projectSessions.length} chat${projectSessions.length === 1 ? "" : "s"} will be moved to the workspace root.`
       : "Delete this empty folder?";
@@ -4141,13 +4141,13 @@ export default function ChatView() {
     if (projectSessions.length > 0) {
       await api.chat.moveSessions(projectSessions, effectiveWorkspaceId, undefined);
     }
-    await api.project.delete(projectId);
-    if (effectiveProjectId === projectId) {
-      setScopedProjectId(null);
+    await api.folder.delete(folderId);
+    if (effectiveFolderId === folderId) {
+      setScopedFolderId(null);
     }
     await Promise.all([
-      refreshProjectTree(effectiveWorkspaceId),
-      refreshScopedSessions(effectiveWorkspaceId, effectiveProjectId === projectId ? null : effectiveProjectId),
+      refreshFolderTree(effectiveWorkspaceId),
+      refreshScopedSessions(effectiveWorkspaceId, effectiveFolderId === folderId ? null : effectiveFolderId),
     ]);
   }
 
@@ -4391,7 +4391,7 @@ export default function ChatView() {
     }
   }
 
-  const activeProject = projects.find((p) => p.id === effectiveProjectId) ?? null;
+  const activeFolder = folders.find((p) => p.id === effectiveFolderId) ?? null;
   const activeWorkspace = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId) ?? null;
 
   // Bucket enabled models into Fast / Balanced / Powerful tiers
@@ -4452,7 +4452,7 @@ export default function ChatView() {
   const composerSuggestionRows = useMemo(() => {
     const suggestionContext = {
       workspaceName: activeWorkspace?.name ?? null,
-      projectName: activeProject?.name ?? null,
+      folderName: activeFolder?.name ?? null,
       topicSignature: activeTopicSignature,
       processedDocCount: attachedSources.length,
       activeMessages,
@@ -4465,7 +4465,7 @@ export default function ChatView() {
     ].filter((row): row is NonNullable<typeof row> => row !== null);
   }, [
     activeWorkspace,
-    activeProject,
+    activeFolder,
     activeTopicSignature,
     attachedSources.length,
     activeMessages,
@@ -4506,16 +4506,16 @@ export default function ChatView() {
       <SessionSidebar
         sidebarSessions={sidebarSessions}
         workspaces={workspaces}
-        projectsByWorkspace={projectsByWorkspace}
-        projects={projects}
-        activeProjectId={effectiveProjectId}
-        setActiveProjectId={setScopedProjectId}
-        activeProject={activeProject}
+        foldersByWorkspace={foldersByWorkspace}
+        folders={folders}
+        activeFolderId={effectiveFolderId}
+        setActiveFolderId={setScopedFolderId}
+        activeFolder={activeFolder}
         moveSessionsToTarget={moveSessionsToTarget}
         bulkDeleteSessions={bulkDeleteSessions}
-        renameProject={renameProject}
-        deleteProject={deleteProject}
-        moveProjectToWorkspace={moveProjectToWorkspace}
+        renameFolder={renameFolder}
+        deleteFolder={deleteFolder}
+        moveFolderToWorkspace={moveFolderToWorkspace}
         createWorkspaceForMove={createWorkspaceForMove}
         sessionQuery={sessionQuery}
         setSessionQuery={setSessionQuery}
@@ -4638,10 +4638,10 @@ export default function ChatView() {
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
                         <span className="truncate">{activeWorkspaceName}</span>
-                        {effectiveProjectName && (
+                        {effectiveFolderName && (
                           <>
                             <span>/</span>
-                            <span className="truncate">{effectiveProjectName}</span>
+                            <span className="truncate">{effectiveFolderName}</span>
                           </>
                         )}
                       </div>

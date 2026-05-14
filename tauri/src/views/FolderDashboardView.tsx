@@ -87,7 +87,7 @@ function normalizeKnowledgeRoute(route: DashboardRoute): DashboardRoute {
 }
 
 
-export default function ProjectDashboardView() {
+export default function FolderDashboardView() {
   const navigate = useNavigate();
   const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
@@ -263,7 +263,7 @@ export default function ProjectDashboardView() {
                       {continueLearning.title}
                     </div>
                     <div className="mt-1 text-sm text-[var(--text-secondary)]">
-                      {continueLearning.project_name || "Workspace thread"}
+                      {continueLearning.folder_name || "Workspace thread"}
                     </div>
                     <div className="mt-3 text-xs text-[var(--text-muted)]">
                       Last touched {timeAgo(continueLearning.updated_at)}

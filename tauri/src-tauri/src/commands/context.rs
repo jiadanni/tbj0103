@@ -48,7 +48,7 @@ fn workspace_has_enriched_context(
         "SELECT EXISTS(
             SELECT 1
             FROM chat_sessions cs
-            LEFT JOIN projects p ON p.id = cs.project_id
+            LEFT JOIN folders p ON p.id = cs.folder_id
             WHERE cs.id = ?1
               AND (
                 TRIM(COALESCE(cs.system_prompt, '')) != ''

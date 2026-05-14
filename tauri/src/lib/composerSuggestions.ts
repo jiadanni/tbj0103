@@ -20,7 +20,7 @@ export interface ComposerSuggestionRow {
 
 export interface ComposerSuggestionContext {
   workspaceName?: string | null;
-  projectName?: string | null;
+  folderName?: string | null;
   topicSignature?: TopicSignature | null;
   processedDocCount: number;
   activeMessages: Message[];
@@ -147,7 +147,7 @@ export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext):
     .slice(0, 4)
     .map((tag) => tag.tag) ?? [];
   const terms = uniqueTerms([
-    context.projectName,
+    context.folderName,
     ...topicTerms,
     context.workspaceName,
   ]).slice(0, 4);

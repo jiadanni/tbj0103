@@ -61,6 +61,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v47_raise_migration_threshold",
     "v48_memory_summaries",
     "v49_analyze_jobs",
+    "v50_rename_projects_to_folders",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -133,8 +134,8 @@ fn seed_all_migrations(conn: &Connection) -> Result<()> {
 fn run_migrations(conn: &Connection) -> Result<()> {
     create_migrations_table(conn)?;
 
-    // v1: drop the hard FK on chat_sessions.project_id so that sessions
-    // can exist independently of a project (project is optional context).
+    // v1: drop the hard FK on chat_sessions.folder_id so that sessions
+    // can exist independently of a folder (folder is optional context).
     let applied: i64 = conn.query_row(
         "SELECT COUNT(*) FROM _migrations WHERE name = 'v1_chat_project_no_fk'",
         [],
@@ -519,7 +520,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
-    // v15: Project-scoped memories
+    // v15: Folder-scoped memories
     let applied_v15: i64 = conn.query_row(
         "SELECT COUNT(*) FROM _migrations WHERE name = 'v15_project_scoped_memories'",
         [],
@@ -1235,6 +1236,24 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                 ON analyze_jobs(workspace_id, started_at DESC);"
         )?;
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v49_analyze_jobs');")?;
+    }
+
+    // v50: rename projects → folders across all tables
+    let applied_v50: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v50_rename_projects_to_folders'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v50 == 0 {
+        conn.execute_batch(
+            "ALTER TABLE projects RENAME TO folders;
+             ALTER TABLE folders RENAME COLUMN project_description TO folder_description;
+             ALTER TABLE chat_sessions RENAME COLUMN project_id TO folder_id;
+             ALTER TABLE audio_transcriptions RENAME COLUMN project_id TO folder_id;
+             ALTER TABLE memories RENAME COLUMN project_id TO folder_id;
+             ALTER TABLE quick_search_documents RENAME COLUMN project_id TO folder_id;
+             INSERT INTO _migrations(name) VALUES('v50_rename_projects_to_folders');",
+        )?;
     }
 
     Ok(())

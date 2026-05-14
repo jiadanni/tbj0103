@@ -20,7 +20,7 @@ pub struct BackupManifestEntry {
     pub created_at: String,
     pub filename: String,
     pub size_bytes: i64,
-    pub project_count: i64,
+    pub folder_count: i64,
     pub chat_count: i64,
 }
 
@@ -28,7 +28,7 @@ pub struct BackupManifestEntry {
 pub struct WorkspaceBackup {
     pub id: String,
     pub name: String,
-    pub projects: Vec<ProjectBackup>,
+    pub folders: Vec<ProjectBackup>,
     pub learning_goals: Vec<LearningGoalBackup>,
     pub concept_nodes: Vec<ConceptNodeBackup>,
     pub concept_links: Vec<ConceptLinkBackup>,
@@ -40,7 +40,7 @@ pub struct WorkspaceBackup {
 pub struct ProjectBackup {
     pub id: String,
     pub name: String,
-    pub project_description: String,
+    pub folder_description: String,
     pub custom_instructions: String,
     pub color: String,
     pub icon: String,

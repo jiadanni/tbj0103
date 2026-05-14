@@ -422,7 +422,7 @@ pub async fn handle_search_chat_messages(
             "SELECT m.id, cs.title, m.content, m.created_at, m.role
              FROM messages m
              JOIN chat_sessions cs ON m.session_id = cs.id
-             JOIN projects p ON cs.project_id = p.id
+             JOIN folders p ON cs.folder_id = p.id
              WHERE p.workspace_id = ?1 AND lower(m.content) LIKE ?2
              ORDER BY m.created_at DESC LIMIT ?3",
         )
@@ -507,7 +507,7 @@ pub async fn handle_get_workspace_stats(
     let chat_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM chat_sessions cs
-             JOIN projects p ON cs.project_id = p.id
+             JOIN folders p ON cs.folder_id = p.id
              WHERE p.workspace_id = ?1",
             rusqlite::params![workspace_id],
             |row| row.get(0),
