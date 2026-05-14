@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api, type PerformanceStats, type BackgroundTaskEvent } from "../lib/api";
+import { useChatStore } from "../stores/chatStore";
 import { Tooltip } from "./Tooltip";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ const JOB_LABELS: Record<string, string> = {
   memory_extraction: "Memory",
   summarization: "Summary",
   git_sync: "Git Sync",
+  ai_generating: "Generating…",
 };
 
 function JobPill({ taskType }: { taskType: string }) {
@@ -122,6 +124,10 @@ function JobPill({ taskType }: { taskType: string }) {
 const POLL_INTERVAL_MS = 2500;
 
 export default function StatusBar() {
+  const streamingSessionId = useChatStore((s) => s.streamingSessionId);
+  const refiningSessionId = useChatStore((s) => s.refiningSessionId);
+  const isAiStreaming = streamingSessionId !== null || refiningSessionId !== null;
+
   const [stats, setStats] = useState<PerformanceStats | null>(null);
   const [activeJobs, setActiveJobs] = useState<Set<string>>(new Set());
   // [P2] In-flight guard: prevents overlapping getPerformanceStats() calls.
@@ -217,8 +223,9 @@ export default function StatusBar() {
 
   // [P2] Build a screen-reader announcement string for background jobs only —
   // the continuously-updating metrics are not announced.
-  const jobAnnouncement = jobList.length > 0
-    ? jobList.map((t) => JOB_LABELS[t] ?? t).join(", ") + " running"
+  const allActiveTypes = [...(isAiStreaming ? ["ai_generating"] : []), ...jobList];
+  const jobAnnouncement = allActiveTypes.length > 0
+    ? allActiveTypes.map((t) => JOB_LABELS[t] ?? t).join(", ") + " running"
     : "";
 
   return (
@@ -239,11 +246,10 @@ export default function StatusBar() {
         {jobAnnouncement}
       </span>
 
-      {/* Left — active background jobs (visible) */}
+      {/* Left — active background jobs + AI streaming (visible) */}
       <div className="flex items-center gap-4 min-w-0 overflow-hidden" aria-hidden="true">
-        {jobList.length === 0 ? null : (
-          jobList.slice(0, 3).map((type) => <JobPill key={type} taskType={type} />)
-        )}
+        {isAiStreaming && <JobPill taskType="ai_generating" />}
+        {jobList.slice(0, 3).map((type) => <JobPill key={type} taskType={type} />)}
       </div>
 
       {/* Right — performance meters (aria-hidden; screen readers get no value from constant churn) */}

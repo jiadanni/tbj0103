@@ -51,6 +51,7 @@ interface AppSettings {
   customModelFamilies: string[];
   quickSearchShortcut: string;
   suppressedOversizedModels: string[];
+  showStatusBar: boolean;
 }
 
 interface SettingsStore extends AppSettings {
@@ -99,6 +100,7 @@ interface SettingsStore extends AppSettings {
   setQuickSearchShortcut: (v: string) => void;
   addSuppressedOversizedModel: (model: string) => void;
   clearSuppressedOversizedModels: () => void;
+  setShowStatusBar: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -147,6 +149,7 @@ export const useSettingsStore = create<SettingsStore>()(
       customModelFamilies: [],
       quickSearchShortcut: "CmdOrCtrl+Shift+K",
       suppressedOversizedModels: [],
+      showStatusBar: true,
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchWorkspaceScope: (quickSearchWorkspaceScope) => set({ quickSearchWorkspaceScope }),
@@ -205,6 +208,7 @@ export const useSettingsStore = create<SettingsStore>()(
           : { suppressedOversizedModels: [...state.suppressedOversizedModels, model] }
       )),
       clearSuppressedOversizedModels: () => set({ suppressedOversizedModels: [] }),
+      setShowStatusBar: (showStatusBar) => set({ showStatusBar }),
     }),
     {
       name: "aetherium-settings",

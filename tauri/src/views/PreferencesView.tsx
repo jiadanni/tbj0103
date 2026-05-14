@@ -437,6 +437,8 @@ export default function PreferencesView() {
   const setShowComposerWorkspaceSuggestions = useSettingsStore((state) => state.setShowComposerWorkspaceSuggestions);
   const showComposerChatFollowUps = useSettingsStore((state) => state.showComposerChatFollowUps);
   const setShowComposerChatFollowUps = useSettingsStore((state) => state.setShowComposerChatFollowUps);
+  const showStatusBar = useSettingsStore((state) => state.showStatusBar);
+  const setShowStatusBar = useSettingsStore((state) => state.setShowStatusBar);
   const composerMode = useSettingsStore((state) => state.composerMode);
   const setComposerMode = useSettingsStore((state) => state.setComposerMode);
   const modelFamilyLabels = useSettingsStore((state) => state.modelFamilyLabels);
@@ -2802,6 +2804,15 @@ export default function PreferencesView() {
                         <Toggle on={dbSettings.confirm_move_to_trash} onToggle={() => set("confirm_move_to_trash", !dbSettings.confirm_move_to_trash)} />
                       </div>
                     )}
+
+                    {/* Status Bar */}
+                    <div className="flex items-center justify-between py-0.5">
+                      <div>
+                        <p className="text-sm text-[var(--text-secondary)]">Show Status Bar</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">Display the system status bar (CPU, RAM, active jobs) at the bottom of the window</p>
+                      </div>
+                      <Toggle on={showStatusBar} onToggle={() => setShowStatusBar(!showStatusBar)} />
+                    </div>
 
                     {/* Show Gen Info */}
                     <div className="space-y-1">
