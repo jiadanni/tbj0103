@@ -52,7 +52,6 @@ pub struct SuggestGoalsRequest {
 
 #[derive(Debug, Clone)]
 struct SourceItem {
-    label: String,
     text: String,
     kind: String,
 }
@@ -61,7 +60,6 @@ struct SourceItem {
 struct WorkspaceChunk {
     label: String,
     text: String,
-    item_count: usize,
 }
 
 #[derive(Debug, Default)]
@@ -375,7 +373,6 @@ fn gather_workspace_items(
                     let snippet = safe_truncate(&item.1, 400);
                     let entry = format!("Note: {}\n{}\n", item.0, snippet);
                     items.push(SourceItem {
-                        label: format!("Note: {}", item.0),
                         text: entry,
                         kind: "note".to_string(),
                     });
@@ -399,7 +396,6 @@ fn gather_workspace_items(
                     let snippet = safe_truncate(&item.1, 300);
                     let entry = format!("Daily note ({}): {}\n", item.0, snippet);
                     items.push(SourceItem {
-                        label: format!("Daily note ({})", item.0),
                         text: entry,
                         kind: "daily_note".to_string(),
                     });
@@ -422,7 +418,6 @@ fn gather_workspace_items(
                 let snippet = safe_truncate(&content, 500);
                 let entry = format!("Message: {}\n", snippet);
                 items.push(SourceItem {
-                    label: "Message".to_string(),
                     text: entry,
                     kind: "message".to_string(),
                 });
@@ -454,7 +449,6 @@ fn gather_workspace_items(
                     };
                     let entry = format!("{} ({}): {}\n", label, title, snippet);
                     items.push(SourceItem {
-                        label: format!("{} ({})", label, title),
                         text: entry,
                         kind: "source".to_string(),
                     });
@@ -474,7 +468,6 @@ fn pack_into_chunks(items: Vec<SourceItem>, budget: usize) -> Vec<WorkspaceChunk
     }
     let mut chunks: Vec<WorkspaceChunk> = Vec::new();
     let mut current_text = String::new();
-    let mut current_count = 0usize;
     let mut kinds: Vec<String> = Vec::new();
 
     for item in &items {
@@ -486,14 +479,11 @@ fn pack_into_chunks(items: Vec<SourceItem>, budget: usize) -> Vec<WorkspaceChunk
             chunks.push(WorkspaceChunk {
                 label: format!("Batch {total} · {kind_summary} · {size_k}"),
                 text: current_text,
-                item_count: current_count,
             });
             current_text = String::new();
-            current_count = 0;
             kinds.clear();
         }
         current_text.push_str(&item.text);
-        current_count += 1;
         if !kinds.contains(&item.kind) {
             kinds.push(item.kind.clone());
         }
@@ -506,7 +496,6 @@ fn pack_into_chunks(items: Vec<SourceItem>, budget: usize) -> Vec<WorkspaceChunk
         chunks.push(WorkspaceChunk {
             label: format!("Batch {total} · {kind_summary} · {size_k}"),
             text: current_text,
-            item_count: current_count,
         });
     }
     // Re-label with correct total
@@ -1041,7 +1030,6 @@ async fn analyze_workspace_chunked_impl(
         chunks.push(WorkspaceChunk {
             label: "Batch 1/1 · survey · 0.0k".to_string(),
             text: String::new(),
-            item_count: 0,
         });
     }
 
@@ -1507,8 +1495,7 @@ mod tests {
     fn pack_into_chunks_respects_budget() {
         // 50 items, each 600 chars, total 30k, budget 6000 → expect 5 chunks
         let items: Vec<SourceItem> = (0..50)
-            .map(|i| SourceItem {
-                label: format!("Item {i}"),
+            .map(|_i| SourceItem {
                 text: "x".repeat(600),
                 kind: "note".to_string(),
             })
@@ -1517,7 +1504,6 @@ mod tests {
         assert!(chunks.len() >= 5 && chunks.len() <= 6, "expected 5-6 chunks, got {}", chunks.len());
         for chunk in &chunks {
             assert!(chunk.text.len() <= 6000, "chunk exceeded budget: {} chars", chunk.text.len());
-            assert!(chunk.item_count > 0);
         }
         // Total chars preserved
         let total: usize = chunks.iter().map(|c| c.text.len()).sum();
@@ -1528,7 +1514,6 @@ mod tests {
     fn pack_into_chunks_single_large_item() {
         // An item larger than budget goes into its own chunk
         let items = vec![SourceItem {
-            label: "Big".to_string(),
             text: "x".repeat(8000),
             kind: "note".to_string(),
         }];
