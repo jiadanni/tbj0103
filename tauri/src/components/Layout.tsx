@@ -91,8 +91,10 @@ function handleHorizontalWheel(event: React.WheelEvent<HTMLDivElement>) {
 
 function resolveSplitWorkspaceNavigation(
   workspaceNavigation: ReturnType<typeof useWorkspaceStore.getState>["workspaceNavigation"]
-) {
-  return workspaceNavigation === "top-dropdown" ? "dropdown" : "tabs";
+): "sidebar" | "tabs" | "dropdown" {
+  if (workspaceNavigation === "top-dropdown") { return "dropdown"; }
+  if (workspaceNavigation === "sidebar") { return "sidebar"; }
+  return "tabs";
 }
 
 function workspaceTabClassName({
@@ -936,7 +938,7 @@ function WorkspaceTabBar({
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const splitUnsupportedRoute = ["/preferences"].some((path) => location.pathname.startsWith(path));
-  const showSplitTitlebarWorkspaceNavigation = splitMode && !splitUnsupportedRoute;
+  const showSplitTitlebarWorkspaceNavigation = splitMode && !splitUnsupportedRoute && workspaceNavigation !== "sidebar";
   const showSinglePaneWorkspaceDropdown = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "top-dropdown";
   const showSplitToggle = !splitUnsupportedRoute || splitMode;
   function resetCreateWorkspaceForm() {
