@@ -2,6 +2,8 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { Check, Copy, Pencil, RotateCcw, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, BookOpen, Sparkles, Loader } from "lucide-react";
 import type { Message } from "../stores/chatStore";
 import type { AiModel, SearchResult } from "../lib/api";
@@ -239,14 +241,14 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                     {thoughtExpanded && (
                       <div className="border-t border-[var(--border-color)] px-3 py-2.5">
                         <div className="prose prose-sm prose-invert min-w-0 max-w-none text-[var(--text-secondary)]">
-                          <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>{parts.thought}</ReactMarkdown>
+                          <ReactMarkdown skipHtml remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>{parts.thought}</ReactMarkdown>
                         </div>
                       </div>
                     )}
                   </div>
                 )}
                 <div className="prose prose-sm prose-invert min-w-0 max-w-none" ref={assistantProseRef}>
-                  <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  <ReactMarkdown skipHtml remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>
                     {parts?.answer || displayMsg.content}
                   </ReactMarkdown>
                 </div>

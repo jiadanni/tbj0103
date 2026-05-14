@@ -6,6 +6,7 @@ import { installConsoleTimestamps, enableBatchLogForwarding } from "./lib/consol
 import { isLinux } from "./lib/platform";
 import { api } from "./lib/api";
 import "./styles/globals.css";
+import "katex/dist/katex.min.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
