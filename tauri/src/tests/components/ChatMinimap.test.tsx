@@ -20,6 +20,13 @@ const messages: Message[] = [
     content: "Second message",
     created_at: "2026-05-10T10:01:00.000Z",
   },
+  {
+    id: "user-2",
+    session_id: "session-1",
+    role: "user",
+    content: "Third message",
+    created_at: "2026-05-10T10:02:00.000Z",
+  },
 ];
 
 function createScrollContainer(offsetWidth: number, clientWidth: number) {
