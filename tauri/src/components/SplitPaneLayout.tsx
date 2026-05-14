@@ -22,8 +22,55 @@ const PANE_NAV_ITEMS: { view: PaneView; icon: LucideIcon; label: string }[] = [
 
 function resolveSplitSectionNavigation(
   sectionNavigation: ReturnType<typeof useWorkspaceStore.getState>["sectionNavigation"]
-) {
-  return sectionNavigation === "top-dropdown" ? "dropdown" : "tabs";
+): "sidebar" | "tabs" | "dropdown" {
+  if (sectionNavigation === "top-dropdown") { return "dropdown"; }
+  if (sectionNavigation === "sidebar") { return "sidebar"; }
+  return "tabs";
+}
+
+function resolveSplitWorkspaceNavigation(
+  workspaceNavigation: ReturnType<typeof useWorkspaceStore.getState>["workspaceNavigation"]
+): "sidebar" | "tabs" | "dropdown" {
+  if (workspaceNavigation === "top-dropdown") { return "dropdown"; }
+  if (workspaceNavigation === "sidebar") { return "sidebar"; }
+  return "tabs";
+}
+
+function PaneWorkspaceSidebar({ paneId }: { paneId: PaneId }) {
+  const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
+  const rootWorkspaces = allWorkspaces.filter((ws) => ws.parent_workspace_id === null);
+  const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
+  const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
+  const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
+
+  function selectWorkspace(workspaceId: string) {
+    setActivePaneId(paneId);
+    const ws = allWorkspaces.find((w) => w.id === workspaceId);
+    if (!ws) { return; }
+    setPaneWorkspace(paneId, workspaceId);
+  }
+
+  return (
+    <div
+      className="flex h-full w-[160px] shrink-0 flex-col gap-0.5 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] py-2 px-2 overflow-y-auto"
+      data-testid={`pane-workspace-sidebar-${paneId}`}
+    >
+      <div className="px-1 pb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Workspaces</div>
+      {rootWorkspaces.map((ws) => (
+        <button
+          key={`${paneId}-ws-${ws.id}`}
+          onClick={() => selectWorkspace(ws.id)}
+          className={`flex items-center rounded-md px-2 py-1.5 text-left text-xs whitespace-nowrap truncate transition-colors ${
+            paneWorkspaceId === ws.id || allWorkspaces.find((w) => w.id === paneWorkspaceId)?.parent_workspace_id === ws.id
+              ? "bg-[var(--accent-color)] text-white"
+              : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          {ws.name}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function PaneViewRenderer({ view }: { view: PaneView }) {
@@ -136,24 +183,54 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
   );
 }
 
+function SplitSectionSidebar({ paneId }: { paneId: PaneId }) {
+  const setPaneView = useWorkspaceStore((s) => s.setPaneView);
+  const { activeView } = useScopedWorkspace();
+  return (
+    <div
+      className="flex h-full w-[140px] shrink-0 flex-col gap-0.5 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] py-2 px-2"
+      data-testid={`pane-section-sidebar-${paneId}`}
+    >
+      {PANE_NAV_ITEMS.map(({ view, icon: Icon, label }) => (
+        <button
+          key={`${paneId}-${view}`}
+          onClick={() => setPaneView(paneId, view)}
+          className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs whitespace-nowrap transition-colors ${
+            activeView === view
+              ? "bg-[var(--accent-color)] text-white"
+              : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <Icon size={14} />
+          <span className="truncate">{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
   const sectionNavigation = useWorkspaceStore((s) => s.sectionNavigation);
+  const workspaceNavigation = useWorkspaceStore((s) => s.workspaceNavigation);
   const setPaneView = useWorkspaceStore((s) => s.setPaneView);
   const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
   const { activeView } = useScopedWorkspace();
   const resolvedSplitSectionNavigation = resolveSplitSectionNavigation(sectionNavigation);
+  const resolvedSplitWorkspaceNavigation = resolveSplitWorkspaceNavigation(workspaceNavigation);
 
   return (
     <div
-      className="flex h-full flex-col min-w-0 min-h-0 bg-[var(--bg-primary)]"
+      className="flex h-full min-w-0 min-h-0 bg-[var(--bg-primary)]"
       onClick={() => setActivePaneId(paneId)}
       onFocusCapture={() => setActivePaneId(paneId)}
     >
+      {resolvedSplitWorkspaceNavigation === "sidebar" && <PaneWorkspaceSidebar paneId={paneId} />}
+      <div className="flex h-full flex-1 flex-col min-w-0 min-h-0">
       <div className="flex flex-col shrink-0 bg-[var(--bg-sidebar)]">
         <PaneSubWorkspaceTabs paneId={paneId} />
         {resolvedSplitSectionNavigation === "dropdown" ? (
           <SplitSectionDropdown paneId={paneId} />
-        ) : (
+        ) : resolvedSplitSectionNavigation === "sidebar" ? null : (
           <div className="flex items-center min-w-0 px-2 py-1.5 bg-[var(--bg-elevated)] border-b border-[var(--border-color)]">
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
               {PANE_NAV_ITEMS.map(({ view, icon: Icon, label }) => (
@@ -174,8 +251,12 @@ function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
           </div>
         )}
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden">
-        <PaneViewRenderer view={activeView} />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {resolvedSplitSectionNavigation === "sidebar" && <SplitSectionSidebar paneId={paneId} />}
+        <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
+          <PaneViewRenderer view={activeView} />
+        </div>
+      </div>
       </div>
     </div>
   );

@@ -495,6 +495,7 @@ describe("Layout", () => {
 
   it("renders split workspace navigation in the shared titlebar while keeping titlebar actions", () => {
     useWorkspaceStore.setState({
+      workspaceNavigation: "top-tabs",
       workspaces: [
         { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
         { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
@@ -522,6 +523,7 @@ describe("Layout", () => {
 
   it("uses the same workspace tab styling in split view as single-pane mode", () => {
     useWorkspaceStore.setState({
+      workspaceNavigation: "top-tabs",
       workspaces: [
         { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
         { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
@@ -552,6 +554,7 @@ describe("Layout", () => {
 
   it("keeps duplicated split workspace tab strips in the shared titlebar", () => {
     useWorkspaceStore.setState({
+      workspaceNavigation: "top-tabs",
       workspaces: Array.from({ length: 8 }, (_, index) => ({
         id: `ws-${index + 1}`,
         name: `Workspace ${index + 1}`,
