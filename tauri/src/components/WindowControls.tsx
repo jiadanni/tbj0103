@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isLinux, isMac } from "../lib/platform";
 import { Tooltip } from "./Tooltip";
@@ -50,13 +50,26 @@ export async function onDragRegionDoubleClick(e: React.MouseEvent) {
 }
 
 function WindowControls() {
+  const appWindow = getCurrentWindow();
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    if (isMac) {return;}
+    let unlisten: (() => void) | undefined;
+
+    appWindow.isMaximized().then(setIsMaximized);
+
+    appWindow.onResized(() => {
+      appWindow.isMaximized().then(setIsMaximized);
+    }).then((fn) => { unlisten = fn; });
+
+    return () => { unlisten?.(); };
+  }, [appWindow]);
+
   if (isMac) {return null;}
 
-  const appWindow = getCurrentWindow();
-
   async function handleMaximizeToggle() {
-    const maximized = await appWindow.isMaximized();
-    if (maximized) {
+    if (isMaximized) {
       await appWindow.unmaximize();
     } else {
       await maximizeWindow();
@@ -65,7 +78,7 @@ function WindowControls() {
 
   return (
     <div className="relative z-10 flex min-w-[96px] shrink-0 items-center justify-end gap-0.5" data-no-drag>
-      <Tooltip content="Minimize" position="bottom">
+      <Tooltip content="Minimise" position="bottom">
         <button
           onClick={() => appWindow.minimize()}
           className="w-8 h-10 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
@@ -75,14 +88,21 @@ function WindowControls() {
           </svg>
         </button>
       </Tooltip>
-      <Tooltip content="Maximize" position="bottom">
+      <Tooltip content={isMaximized ? "Restore" : "Maximise"} position="bottom">
         <button
           onClick={handleMaximizeToggle}
           className="w-8 h-10 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
         >
-          <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-            <rect x="0.5" y="0.5" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1" />
-          </svg>
+          {isMaximized ? (
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+              <rect x="2.5" y="0.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1" />
+              <rect x="0.5" y="2.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1" fill="var(--bg-primary)" />
+            </svg>
+          ) : (
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+              <rect x="0.5" y="0.5" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1" />
+            </svg>
+          )}
         </button>
       </Tooltip>
       <Tooltip content="Close" position="bottom">
