@@ -3,11 +3,39 @@
  */
 import { useCallback, useRef, useState } from "react";
 import { ask, message, open } from "@tauri-apps/plugin-dialog";
-import { Check, CheckSquare, FolderInput, RefreshCw, Square, X } from "lucide-react";
+import { Check, CheckSquare, ChevronDown, ChevronRight, FolderInput, RefreshCw, Square, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import PromptDialog from "../components/PromptDialog";
+
+type ProjectDestType = "new-workspace" | "new-sub-workspace" | "folder-in-sub";
+
+interface ProjectDestination {
+  type: ProjectDestType;
+  parentId: string | null;       // for new-sub-workspace
+  subWorkspaceId: string | null; // for folder-in-sub
+  name: string;
+}
+
+interface ClaudeProjectPreview {
+  uuid: string;
+  name: string;
+  description: string;
+  has_prompt: boolean;
+  doc_count: number;
+  conversation_count: number;
+  has_memory: boolean;
+}
+
+interface ClaudeConvPreview {
+  uuid: string;
+  name: string;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+  project_uuid: string | null;
+}
 
 /**
  * If a workspace with the given name already exists, prompt the user
@@ -80,25 +108,23 @@ export default function ImportSettingsSection() {
   const [importingClaude, setImportingClaude] = useState(false);
   const [claudeScanning, setClaudeScanning] = useState(false);
   const [claudeIncludeConversations, setClaudeIncludeConversations] = useState(true);
-  const [claudeIncludeFolders, setClaudeIncludeProjects] = useState(false);
-  const [claudeIncludeMemories, setClaudeIncludeMemories] = useState(false);
-  const [claudeConversationsPath, setClaudeConversationsPath] = useState<string | null>(null);
-  const [claudeProjectsPath, setClaudeProjectsPath] = useState<string | null>(null);
-  const [claudeMemoriesPath, setClaudeMemoriesPath] = useState<string | null>(null);
-  const [claudePreviews, setClaudePreviews] = useState<
-    { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null }[]
-  >([]);
-  const [claudeProjects, setClaudeProjects] = useState<
-    { uuid: string; name: string; description: string; has_prompt: boolean; doc_count: number }[]
-  >([]);
-  const [claudeMemories, setClaudeMemories] = useState<{
-    conversations_memory: string;
-    folder_memories: { project_uuid: string; folder_name: string; memory: string }[];
-  } | null>(null);
-  const [claudeSelected, setClaudeSelected] = useState<Set<string>>(new Set());
-  const [claudeSelectedFolders, setClaudeSelectedProjects] = useState<Set<string>>(new Set());
+  const [claudeIncludeProjects, setClaudeIncludeProjects] = useState(true);
+  const [claudeIncludeMemories, setClaudeIncludeMemories] = useState(true);
+  const [claudeFolderPath, setClaudeFolderPath] = useState<string | null>(null);
+  const [claudeDetectedFormat, setClaudeDetectedFormat] = useState<"legacy" | "v2" | null>(null);
+  const [claudeFilesFound, setClaudeFilesFound] = useState<{ conversations: boolean; projects: boolean; memories: boolean } | null>(null);
+  const [claudeProjects, setClaudeProjects] = useState<ClaudeProjectPreview[]>([]);
+  const [claudeConvsByProject, setClaudeConvsByProject] = useState<Record<string, ClaudeConvPreview[]>>({});
+  const [claudeOrphans, setClaudeOrphans] = useState<ClaudeConvPreview[]>([]);
+  const [claudeSelected, setClaudeSelected] = useState<Set<string>>(new Set()); // orphan conv UUIDs
+  const [claudeSelectedFolders, setClaudeSelectedProjects] = useState<Set<string>>(new Set()); // project UUIDs
+  const [projectDestinations, setProjectDestinations] = useState<Record<string, ProjectDestination>>({});
+  const [projectMemoryEnabled, setProjectMemoryEnabled] = useState<Record<string, boolean>>({});
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [orphansExpanded, setOrphansExpanded] = useState(false);
+  const [bulkDestType, setBulkDestType] = useState<ProjectDestType>("new-workspace");
+  const [bulkParentId, setBulkParentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [slotWarnings, setSlotWarnings] = useState<Record<string, string | null>>({});
   const [promptState, setPromptState] = useState<{ defaultValue: string } | null>(null);
   const promptResolveRef = useRef<((value: string | null) => void) | null>(null);
 
@@ -139,9 +165,9 @@ export default function ImportSettingsSection() {
 
       setLmStudioFolder(folderPath);
       setLmStudioPreviews(result.conversations);
-      setLmStudioProjects(result.projects);
+      setLmStudioProjects(result.folders);
       setLmStudioSelected(new Set(result.conversations.map((conversation) => conversation.uuid)));
-      setLmStudioSelectedProjects(new Set(result.projects.map((project) => project.uuid)));
+      setLmStudioSelectedProjects(new Set(result.folders.map((project) => project.uuid)));
       setLmStudioScanErrors(result.errors);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "LM Studio scan failed";
@@ -338,61 +364,78 @@ export default function ImportSettingsSection() {
     }
   }
 
-  async function pickClaudeFile(
-    key: string,
-    label: string,
-    setter: (path: string | null) => void,
-  ) {
+  function resetClaudePreview() {
+    setClaudeProjects([]);
+    setClaudeConvsByProject({});
+    setClaudeOrphans([]);
+    setClaudeSelected(new Set());
+    setClaudeSelectedProjects(new Set());
+    setProjectDestinations({});
+    setProjectMemoryEnabled({});
+    setExpandedProjects(new Set());
+    setOrphansExpanded(false);
+  }
+
+  async function pickClaudeFolder() {
     setError(null);
-    const selected = await open({
-      directory: false,
-      multiple: false,
-      title: `Select ${label}`,
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    });
-    const filePath = Array.isArray(selected) ? selected[0] : selected;
-    if (filePath) {
-      const filename = filePath.split("/").pop();
-      setSlotWarnings((prev) => ({
-        ...prev,
-        [key]: filename !== label ? `Selected ${filename} — expected ${label}` : null,
-      }));
-      setter(filePath);
+    const selected = await open({ directory: true, multiple: false, title: "Select Claude export folder" });
+    const folderPath = Array.isArray(selected) ? selected[0] : selected;
+    if (!folderPath) { return; }
+
+    try {
+      const detected = await api.chatFile.detectClaudeFormat(folderPath);
+      setClaudeFolderPath(folderPath);
+      setClaudeDetectedFormat(detected.format);
+      setClaudeFilesFound(detected.files_found);
+      resetClaudePreview();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Could not detect Claude export format";
+      setError(msg);
+      setClaudeFolderPath(null);
+      setClaudeDetectedFormat(null);
+      setClaudeFilesFound(null);
     }
   }
 
   const scanClaudeFiles = useCallback(async () => {
+    if (!claudeFolderPath) { return; }
     setError(null);
     setClaudeScanning(true);
-    setClaudePreviews([]);
-    setClaudeProjects([]);
-    setClaudeMemories(null);
-    setClaudeSelected(new Set());
-    setClaudeSelectedProjects(new Set());
+    resetClaudePreview();
 
     try {
-      const wantConv = claudeIncludeConversations && !!claudeConversationsPath;
-      const wantProj = claudeIncludeFolders && !!claudeProjectsPath;
-      const wantMem = claudeIncludeMemories && !!claudeMemoriesPath;
-      if (!wantConv && !wantProj && !wantMem) {
-        throw new Error("Pick at least one file to scan.");
-      }
-
       const result = await api.chatFile.previewClaudeFiles({
-        conversationsPath: wantConv ? claudeConversationsPath : null,
-        projectsPath: wantProj ? claudeProjectsPath : null,
-        memoriesPath: wantMem ? claudeMemoriesPath : null,
+        folderPath: claudeFolderPath,
+        includeConversations: claudeIncludeConversations,
+        includeProjects: claudeIncludeProjects,
+        includeMemories: claudeIncludeMemories,
       });
 
-      if (result.total < 1 && result.projects.length < 1 && !result.memories) {
-        throw new Error("Selected files contained nothing importable.");
+      if (result.folders.length === 0 && result.orphan_count === 0) {
+        throw new Error("No importable conversations found in the selected folder.");
       }
 
-      setClaudePreviews(result.conversations);
-      setClaudeProjects(result.projects);
-      setClaudeMemories(result.memories);
-      setClaudeSelected(new Set(result.conversations.map((c) => c.uuid)));
-      setClaudeSelectedProjects(new Set(result.projects.map((p) => p.uuid)));
+      setClaudeProjects(result.folders);
+      setClaudeConvsByProject(result.conversations_by_project);
+      setClaudeOrphans(result.orphan_conversations);
+
+      // Initialize per-project state
+      const selectedFolders = new Set<string>();
+      const dests: Record<string, ProjectDestination> = {};
+      const memEnabled: Record<string, boolean> = {};
+
+      for (const proj of result.folders) {
+        if (proj.conversation_count > 0) {
+          selectedFolders.add(proj.uuid);
+        }
+        dests[proj.uuid] = { type: "new-workspace", parentId: null, subWorkspaceId: null, name: proj.name };
+        memEnabled[proj.uuid] = proj.has_memory;
+      }
+
+      setClaudeSelectedProjects(selectedFolders);
+      setClaudeSelected(new Set(result.orphan_conversations.map((c) => c.uuid)));
+      setProjectDestinations(dests);
+      setProjectMemoryEnabled(memEnabled);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Claude scan failed";
       setError(msg);
@@ -400,86 +443,116 @@ export default function ImportSettingsSection() {
     } finally {
       setClaudeScanning(false);
     }
-  }, [
-    claudeIncludeConversations,
-    claudeIncludeFolders,
-    claudeIncludeMemories,
-    claudeConversationsPath,
-    claudeProjectsPath,
-    claudeMemoriesPath,
-  ]);
+  }, [claudeFolderPath, claudeIncludeConversations, claudeIncludeProjects, claudeIncludeMemories]);
 
-  async function importClaudeFiles() {
-    const haveAnything =
-      (claudeIncludeConversations && claudeSelected.size > 0)
-      || (claudeIncludeFolders && claudeSelectedFolders.size > 0)
-      || (claudeIncludeMemories && claudeMemories != null);
-    if (!haveAnything) { return; }
+  function applyBulkDestination() {
+    setProjectDestinations((prev) => {
+      const next = { ...prev };
+      for (const uuid of claudeSelectedFolders) {
+        const existing = next[uuid];
+        if (existing) {
+          next[uuid] = { ...existing, type: bulkDestType, parentId: bulkParentId, subWorkspaceId: null };
+        }
+      }
+      return next;
+    });
+  }
 
+  function destIsComplete(dest: ProjectDestination): boolean {
+    if (dest.type === "new-workspace") { return dest.name.trim().length > 0; }
+    if (dest.type === "new-sub-workspace") { return !!dest.parentId && dest.name.trim().length > 0; }
+    return !!dest.subWorkspaceId && dest.name.trim().length > 0;
+  }
+
+  async function doClaudeImport() {
+    if (!claudeFolderPath) { return; }
     setError(null);
     setImportingClaude(true);
 
     try {
-      const defaultName = "Imported Conversations";
-      const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces, promptForName);
-      if (!resolvedName) { return; }
+      const folderMappings: Record<string, string> = {};
+      const projectMemoryTargets: Record<string, string> = {};
+
+      for (const projUuid of claudeSelectedFolders) {
+        const dest = projectDestinations[projUuid];
+        if (!dest) { continue; }
+
+        let folderId: string;
+        if (dest.type === "new-workspace") {
+          const ws = await api.workspace.create(dest.name.trim());
+          const folder = await api.folder.create(ws.id, dest.name.trim(), {});
+          folderId = folder.id;
+        } else if (dest.type === "new-sub-workspace") {
+          if (!dest.parentId) { throw new Error(`Missing parent for project "${dest.name}"`); }
+          const ws = await api.workspace.createChild(dest.parentId, dest.name.trim());
+          const folder = await api.folder.create(ws.id, dest.name.trim(), {});
+          folderId = folder.id;
+        } else {
+          if (!dest.subWorkspaceId) { throw new Error(`Missing sub-workspace for project "${dest.name}"`); }
+          const folder = await api.folder.create(dest.subWorkspaceId, dest.name.trim(), {});
+          folderId = folder.id;
+        }
+        folderMappings[projUuid] = folderId;
+        if (projectMemoryEnabled[projUuid]) {
+          projectMemoryTargets[projUuid] = folderId;
+        }
+      }
+
+      // Orphan workspace
+      let orphansFolderId: string | null = null;
+      if (claudeOrphans.length > 0 && claudeSelected.size > 0) {
+        const existing = workspaces.find((w) => w.name === "Unassigned Imports" && !w.parent_workspace_id);
+        const ws = existing ?? await api.workspace.create("Unassigned Imports");
+        const stamp = new Date().toISOString().slice(0, 10);
+        const folder = await api.folder.create(ws.id, `Claude Import ${stamp}`, {});
+        orphansFolderId = folder.id;
+      }
+
+      const freshWs = await api.workspace.list();
+      setWorkspaces(freshWs);
 
       const result = await api.chatFile.importClaudeFiles({
-        workspaceName: resolvedName !== defaultName ? resolvedName : undefined,
-        conversationsPath: claudeIncludeConversations ? claudeConversationsPath : null,
-        projectsPath: claudeIncludeFolders ? claudeProjectsPath : null,
-        memoriesPath: claudeIncludeMemories ? claudeMemoriesPath : null,
-        selectedIds: claudeIncludeConversations ? [...claudeSelected] : undefined,
-        selectedFolderIds: claudeIncludeFolders && claudeSelectedFolders.size > 0
-          ? [...claudeSelectedFolders]
-          : undefined,
-        importMemories: claudeIncludeMemories,
+        folderPath: claudeFolderPath,
+        folderMappings,
+        projectMemoryTargets,
+        orphansFolderId,
+        selectedConversationIds: claudeOrphans.length > 0 ? [...claudeSelected] : undefined,
+        selectedProjectIds: [...claudeSelectedFolders],
       });
 
-      const [freshWorkspaces, importedProjects, firstSession] = await Promise.all([
-        api.workspace.list(),
-        api.folder.list(result.workspace_id),
-        api.chat.listSessions(result.workspace_id, null, { limit: 1, offset: 0 }),
-      ]);
+      const finalFreshWs = await api.workspace.list();
+      setWorkspaces(finalFreshWs);
 
-      setWorkspaces(freshWorkspaces);
-      setFoldersForWorkspace(result.workspace_id, importedProjects);
-      setActiveWorkspaceId(result.workspace_id);
-      setActiveFolderId(null);
+      // Try to navigate to the first imported session
+      let firstSession = null;
+      const firstFolderId = orphansFolderId ?? Object.values(folderMappings)[0];
+      if (firstFolderId) {
+        const wsId = finalFreshWs.find((w) => !w.parent_workspace_id)?.id;
+        if (wsId) {
+          const sessions = await api.chat.listSessions(wsId, firstFolderId, { limit: 1, offset: 0 });
+          firstSession = sessions[0] ?? null;
+        }
+      }
+
+      // Reset state
+      setClaudeFolderPath(null);
+      setClaudeDetectedFormat(null);
+      setClaudeFilesFound(null);
+      resetClaudePreview();
 
       const lines: string[] = [];
       if (result.imported > 0) {
         lines.push(`${result.imported} conversation${result.imported === 1 ? "" : "s"} imported.`);
       }
-      if (result.folders_created > 0) {
-        lines.push(`${result.folders_created} project${result.folders_created === 1 ? "" : "s"} created.`);
-      }
       if (result.memories_imported > 0) {
         lines.push(`${result.memories_imported} memor${result.memories_imported === 1 ? "y" : "ies"} imported.`);
-      }
-      if (result.skipped > 0) {
-        lines.push(`${result.skipped} duplicate${result.skipped === 1 ? "" : "s"} skipped.`);
       }
       if (result.errors > 0) {
         lines.push(`${result.errors} item${result.errors === 1 ? "" : "s"} had errors.`);
       }
-      if (lines.length === 0) {
-        lines.push("Nothing was imported.");
-      }
+      if (lines.length === 0) { lines.push("Nothing new was imported."); }
 
-      // Clear preview state on success
-      setClaudeConversationsPath(null);
-      setClaudeProjectsPath(null);
-      setClaudeMemoriesPath(null);
-      setClaudePreviews([]);
-      setClaudeProjects([]);
-      setClaudeMemories(null);
-      setClaudeSelected(new Set());
-      setClaudeSelectedProjects(new Set());
-
-      if (firstSession.length > 0) {
-        navigate(`/chat/${firstSession[0].id}`);
-      }
+      if (firstSession) { navigate(`/chat/${firstSession.id}`); }
 
       await message(lines.join("\n"), {
         title: "Claude import complete",
@@ -498,6 +571,8 @@ export default function ImportSettingsSection() {
     lmStudioSelected.has(conversation.uuid)
     && (!conversation.folder_id || lmStudioSelectedFolders.has(conversation.folder_id))
   )).length;
+
+  const rootWorkspaces = workspaces.filter((w) => !w.parent_workspace_id);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -733,181 +808,77 @@ export default function ImportSettingsSection() {
           </section>
 
           <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Claude Desktop Export</h2>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <FolderInput size={16} className="text-[var(--accent-color)]" />
+                    <h2 className="text-sm font-medium text-[var(--text-primary)]">Claude Desktop Export</h2>
+                  </div>
+                  <p className="mt-2 text-xs text-[var(--text-muted)]">
+                    Select your Claude export folder. Each project routes to its own workspace or sub-workspace.
+                  </p>
                 </div>
-                <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Select your Claude export files. Each is optional and can come from a different folder. Conversations are linked to projects via <code>project_uuid</code>; unmatched chats land in an <em>Unassigned Imports</em> project.
-                </p>
-              </div>
-            </div>
-
-            {/* ── File slots ───────────────────────────────────────── */}
-            <div className="mt-4 flex flex-col gap-3">
-              {[
-                {
-                  key: "conversations",
-                  label: "conversations.json",
-                  description: "Your chat history.",
-                  enabled: claudeIncludeConversations,
-                  setEnabled: setClaudeIncludeConversations,
-                  path: claudeConversationsPath,
-                  setPath: setClaudeConversationsPath,
-                },
-                {
-                  key: "folders",
-                  label: "projects.json",
-                  description: "Project names, descriptions, and instructions.",
-                  enabled: claudeIncludeFolders,
-                  setEnabled: setClaudeIncludeProjects,
-                  path: claudeProjectsPath,
-                  setPath: setClaudeProjectsPath,
-                },
-                {
-                  key: "memories",
-                  label: "memories.json",
-                  description: "Workspace and per-project memories.",
-                  enabled: claudeIncludeMemories,
-                  setEnabled: setClaudeIncludeMemories,
-                  path: claudeMemoriesPath,
-                  setPath: setClaudeMemoriesPath,
-                },
-              ].map((slot) => (
-                <div
-                  key={slot.key}
-                  className="flex flex-col gap-2 rounded-lg border border-[var(--border-color)] p-3 sm:flex-row sm:items-center sm:justify-between"
+                <button
+                  onClick={() => void pickClaudeFolder()}
+                  disabled={claudeScanning || importingClaude}
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
                 >
-                  <label className="flex cursor-pointer items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={slot.enabled}
-                      onChange={(e) => {
-                        slot.setEnabled(e.target.checked);
-                        if (!e.target.checked) {
-                          slot.setPath(null);
-                          setSlotWarnings((prev) => ({ ...prev, [slot.key]: null }));
-                          setClaudePreviews([]);
-                          setClaudeProjects([]);
-                          setClaudeMemories(null);
-                        }
-                      }}
-                      className="mt-0.5"
-                      disabled={importingClaude || claudeScanning}
-                    />
-                    <div>
-                      <div className="text-xs font-medium text-[var(--text-primary)]">{slot.label}</div>
-                      <div className="text-[11px] text-[var(--text-muted)]">{slot.description}</div>
-                    </div>
-                  </label>
-                  {slot.enabled && (
-                    <div className="flex items-center gap-2">
-                      {slotWarnings[slot.key] && (
-                        <span className="text-[11px] text-yellow-400 whitespace-nowrap">
-                          ⚠ {slotWarnings[slot.key]}
+                  <FolderInput size={12} />
+                  {claudeFolderPath ? "Change Folder" : "Select Folder"}
+                </button>
+              </div>
+
+              {claudeFolderPath && claudeFilesFound && (
+                <div className="flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] text-[var(--text-muted)] truncate max-w-[70%]">{claudeFolderPath}</div>
+                    <span className="text-[11px] font-medium text-[var(--accent-color)]">
+                      {claudeDetectedFormat === "v2" ? "v2 (2026+)" : "legacy"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {(["conversations", "projects", "memories"] as const).map((k) => (
+                      <span key={k} className={`text-[11px] ${claudeFilesFound[k] ? "text-green-400" : "text-[var(--text-muted)] line-through"}`}>
+                        {claudeFilesFound[k] ? "✓" : "✗"} {k}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-4 mt-1">
+                    {([
+                      { key: "conversations", label: "Conversations", enabled: claudeIncludeConversations, set: setClaudeIncludeConversations, available: claudeFilesFound.conversations },
+                      { key: "projects", label: "Projects", enabled: claudeIncludeProjects, set: setClaudeIncludeProjects, available: claudeFilesFound.projects },
+                      { key: "memories", label: "Memories", enabled: claudeIncludeMemories, set: setClaudeIncludeMemories, available: claudeFilesFound.memories },
+                    ] as const).map((item) => (
+                      <label key={item.key} className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={item.enabled && item.available}
+                          disabled={!item.available || claudeScanning || importingClaude}
+                          onChange={(e) => item.set(e.target.checked)}
+                          className="rounded"
+                        />
+                        <span className={`text-xs ${item.available ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
+                          {item.label}
                         </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => void pickClaudeFile(slot.key, slot.label, slot.setPath)}
-                        disabled={importingClaude || claudeScanning}
-                        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-                      >
-                        <FolderInput size={12} />
-                        {slot.path ? "Change" : "Choose"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                onClick={() => void scanClaudeFiles()}
-                disabled={
-                  claudeScanning
-                  || importingClaude
-                  || (!(claudeIncludeConversations && claudeConversationsPath)
-                      && !(claudeIncludeFolders && claudeProjectsPath)
-                      && !(claudeIncludeMemories && claudeMemoriesPath))
-                }
-                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-              >
-                {claudeScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {claudeScanning ? "Selecting..." : "Select Files"}
-              </button>
-            </div>
-
-            {/* ── Conversations preview ─────────────────────────── */}
-            {claudePreviews.length > 0 && (
-              <div className="mt-4 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-[var(--text-primary)]">
-                    Conversations ({claudeSelected.size}/{claudePreviews.length})
-                  </span>
-                  <div className="flex gap-2">
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex justify-end mt-1">
                     <button
-                      onClick={() => setClaudeSelected(new Set(claudePreviews.map((c) => c.uuid)))}
-                      className="text-xs text-[var(--accent-color)] hover:underline"
+                      onClick={() => void scanClaudeFiles()}
+                      disabled={claudeScanning || importingClaude || !claudeFolderPath}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
                     >
-                      All
-                    </button>
-                    <button
-                      onClick={() => setClaudeSelected(new Set())}
-                      className="text-xs text-[var(--text-muted)] hover:underline"
-                    >
-                      None
+                      {claudeScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
+                      {claudeScanning ? "Scanning..." : "Select"}
                     </button>
                   </div>
                 </div>
-                <div className="max-h-64 overflow-y-auto rounded-lg border border-[var(--border-color)]">
-                  {claudePreviews.map((conv) => {
-                    const checked = claudeSelected.has(conv.uuid);
-                    const orphan =
-                      conv.project_uuid != null
-                      && (!claudeIncludeFolders
-                          || !claudeProjects.some(
-                              (p) => p.uuid === conv.project_uuid && claudeSelectedFolders.has(p.uuid),
-                          ));
-                    return (
-                      <label
-                        key={conv.uuid}
-                        className="flex cursor-pointer items-start gap-2 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 hover:bg-[var(--bg-hover)]"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => {
-                            setClaudeSelected((prev) => {
-                              const next = new Set(prev);
-                              if (checked) { next.delete(conv.uuid); } else { next.add(conv.uuid); }
-                              return next;
-                            });
-                          }}
-                          className="mt-0.5"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-xs text-[var(--text-primary)]">{conv.name}</div>
-                          <div className="text-[11px] text-[var(--text-muted)]">
-                            {conv.message_count} msg{conv.message_count === 1 ? "" : "s"}
-                            {orphan && (
-                              <span className="ml-2 rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-                                will land in Unassigned Imports
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+              )}
+            </div>
 
-            {/* ── Projects preview ──────────────────────────────── */}
+            {/* ── Per-project rows ─────────────────────────────── */}
             {claudeProjects.length > 0 && (
               <div className="mt-4 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
@@ -915,99 +886,261 @@ export default function ImportSettingsSection() {
                     Projects ({claudeSelectedFolders.size}/{claudeProjects.length})
                   </span>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setClaudeSelectedProjects(new Set(claudeProjects.map((p) => p.uuid)))}
-                      className="text-xs text-[var(--accent-color)] hover:underline"
-                    >
-                      All
-                    </button>
-                    <button
-                      onClick={() => setClaudeSelectedProjects(new Set())}
-                      className="text-xs text-[var(--text-muted)] hover:underline"
-                    >
-                      None
-                    </button>
+                    <button onClick={() => setClaudeSelectedProjects(new Set(claudeProjects.map((p) => p.uuid)))} className="text-xs text-[var(--accent-color)] hover:underline">All</button>
+                    <button onClick={() => setClaudeSelectedProjects(new Set())} className="text-xs text-[var(--text-muted)] hover:underline">None</button>
                   </div>
                 </div>
-                <div className="max-h-64 overflow-y-auto rounded-lg border border-[var(--border-color)]">
+
+                {/* Bulk action */}
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                  <span className="text-[11px] text-[var(--text-muted)]">Bulk:</span>
+                  {([
+                    { v: "new-workspace" as const, label: "New workspace" },
+                    { v: "new-sub-workspace" as const, label: "New sub-workspace" },
+                    { v: "folder-in-sub" as const, label: "Folder in sub-workspace" },
+                  ]).map((opt) => (
+                    <button
+                      key={opt.v}
+                      type="button"
+                      onClick={() => setBulkDestType(opt.v)}
+                      className={`rounded-md border px-2.5 py-1 text-xs ${bulkDestType === opt.v ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)]" : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                  {(bulkDestType === "new-sub-workspace" || bulkDestType === "folder-in-sub") && (
+                    <select
+                      value={bulkParentId ?? ""}
+                      onChange={(e) => setBulkParentId(e.target.value || null)}
+                      className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-xs text-[var(--text-primary)]"
+                    >
+                      <option value="">Select workspace…</option>
+                      {rootWorkspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+                  )}
+                  <button
+                    onClick={applyBulkDestination}
+                    className="ml-auto rounded-md border border-[var(--border-color)] px-2.5 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    Apply to selected
+                  </button>
+                </div>
+
+                <div className="flex flex-col divide-y divide-[var(--border-color)] rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
                   {claudeProjects.map((proj) => {
                     const checked = claudeSelectedFolders.has(proj.uuid);
+                    const dest = projectDestinations[proj.uuid];
+                    const expanded = expandedProjects.has(proj.uuid);
+                    const convs = claudeConvsByProject[proj.uuid] ?? [];
+                    const subWsOptions = dest?.parentId
+                      ? workspaces.filter((w) => w.parent_workspace_id === dest.parentId)
+                      : [];
+
                     return (
-                      <label
-                        key={proj.uuid}
-                        className="flex cursor-pointer items-start gap-2 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 hover:bg-[var(--bg-hover)]"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => {
-                            setClaudeSelectedProjects((prev) => {
+                      <div key={proj.uuid} className="p-3">
+                        <div className="flex items-start gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setClaudeSelectedProjects((prev) => {
                               const next = new Set(prev);
                               if (checked) { next.delete(proj.uuid); } else { next.add(proj.uuid); }
                               return next;
-                            });
-                          }}
-                          className="mt-0.5"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-xs text-[var(--text-primary)]">{proj.name}</div>
-                          <div className="text-[11px] text-[var(--text-muted)]">
-                            {proj.has_prompt ? "Has instructions" : "No instructions"}
-                            {proj.doc_count > 0 ? ` · ${proj.doc_count} doc${proj.doc_count === 1 ? "" : "s"}` : ""}
+                            })}
+                            className="mt-0.5 shrink-0 text-[var(--accent-color)]"
+                          >
+                            {checked ? <CheckSquare size={16} /> : <Square size={16} className="text-[var(--text-muted)]" />}
+                          </button>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="truncate text-xs font-medium text-[var(--text-primary)]">{proj.name}</span>
+                              {proj.conversation_count === 0 && (
+                                <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400">no chats</span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-[var(--text-muted)]">
+                              {proj.has_prompt ? "Has instructions" : "No instructions"}
+                              {proj.doc_count > 0 ? ` · ${proj.doc_count} doc${proj.doc_count === 1 ? "" : "s"}` : ""}
+                              {" · "}
+                              {proj.conversation_count} chat{proj.conversation_count === 1 ? "" : "s"}
+                            </div>
                           </div>
                         </div>
-                      </label>
+
+                        {checked && dest && (
+                          <div className="mt-2 ml-6 flex flex-col gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {([
+                                { v: "new-workspace" as const, label: "New workspace" },
+                                { v: "new-sub-workspace" as const, label: "New sub-workspace" },
+                                { v: "folder-in-sub" as const, label: "Folder in sub-workspace" },
+                              ]).map((opt) => (
+                                <button
+                                  key={opt.v}
+                                  type="button"
+                                  onClick={() => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, type: opt.v, subWorkspaceId: null } }))}
+                                  className={`rounded-md border px-2 py-0.5 text-[11px] ${dest.type === opt.v ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)]" : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              {(dest.type === "new-sub-workspace" || dest.type === "folder-in-sub") && (
+                                <select
+                                  value={dest.parentId ?? ""}
+                                  onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, parentId: e.target.value || null, subWorkspaceId: null } }))}
+                                  className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)]"
+                                >
+                                  <option value="">Select workspace…</option>
+                                  {rootWorkspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                                </select>
+                              )}
+                              {dest.type === "folder-in-sub" && (
+                                <select
+                                  value={dest.subWorkspaceId ?? ""}
+                                  disabled={!dest.parentId}
+                                  onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, subWorkspaceId: e.target.value || null } }))}
+                                  className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)] disabled:opacity-40"
+                                >
+                                  <option value="">{dest.parentId ? (subWsOptions.length ? "Select sub-workspace…" : "No sub-workspaces yet") : "Pick workspace first"}</option>
+                                  {subWsOptions.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                                </select>
+                              )}
+                              <div className="flex items-center gap-1">
+                                <span className="text-[11px] text-[var(--text-muted)]">Name:</span>
+                                <input
+                                  type="text"
+                                  value={dest.name}
+                                  onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, name: e.target.value } }))}
+                                  className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)] w-40"
+                                />
+                              </div>
+                            </div>
+
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!projectMemoryEnabled[proj.uuid]}
+                                disabled={!proj.has_memory}
+                                onChange={(e) => setProjectMemoryEnabled((prev) => ({ ...prev, [proj.uuid]: e.target.checked }))}
+                                className="rounded"
+                              />
+                              <span className={`text-[11px] ${proj.has_memory ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
+                                Import project memory{!proj.has_memory ? " (none in export)" : ""}
+                              </span>
+                            </label>
+
+                            {convs.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedProjects((prev) => {
+                                  const next = new Set(prev);
+                                  if (expanded) { next.delete(proj.uuid); } else { next.add(proj.uuid); }
+                                  return next;
+                                })}
+                                className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                              >
+                                {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                {convs.length} conversation{convs.length === 1 ? "" : "s"}
+                              </button>
+                            )}
+
+                            {expanded && convs.length > 0 && (
+                              <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)]">
+                                {convs.map((conv) => (
+                                  <div key={conv.uuid} className="border-b border-[var(--border-color)] px-3 py-1.5 last:border-b-0">
+                                    <div className="truncate text-[11px] text-[var(--text-primary)]">{conv.name || "Untitled"}</div>
+                                    <div className="text-[10px] text-[var(--text-muted)]">{conv.message_count} msg{conv.message_count === 1 ? "" : "s"}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
               </div>
             )}
 
-            {/* ── Memories notice ───────────────────────────────── */}
-            {claudeMemories
-              && (claudeMemories.conversations_memory || claudeMemories.folder_memories.length > 0) && (
-              <div className="mt-4 rounded-lg border border-[var(--border-color)] p-3">
-                <div className="text-xs font-medium text-[var(--text-primary)]">Memories detected</div>
-                <div className="mt-1 text-[11px] text-[var(--text-muted)]">
-                  {claudeMemories.conversations_memory ? "Workspace memory" : ""}
-                  {claudeMemories.conversations_memory && claudeMemories.folder_memories.length > 0 ? " + " : ""}
-                  {claudeMemories.folder_memories.length > 0
-                    ? `${claudeMemories.folder_memories.length} project memor${claudeMemories.folder_memories.length !== 1 ? "ies" : "y"}`
-                    : ""}
+            {/* ── Orphan conversations ──────────────────────────── */}
+            {claudeOrphans.length > 0 && (
+              <div className="mt-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-[var(--text-primary)]">
+                    Unassigned ({claudeSelected.size}/{claudeOrphans.length})
+                  </span>
+                  <div className="flex gap-2">
+                    <button onClick={() => setClaudeSelected(new Set(claudeOrphans.map((c) => c.uuid)))} className="text-xs text-[var(--accent-color)] hover:underline">All</button>
+                    <button onClick={() => setClaudeSelected(new Set())} className="text-xs text-[var(--text-muted)] hover:underline">None</button>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-[var(--text-muted)]">→ &ldquo;Unassigned Imports&rdquo; workspace (auto-created)</span>
+                    <button
+                      type="button"
+                      onClick={() => setOrphansExpanded((p) => !p)}
+                      className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                    >
+                      {orphansExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      {claudeOrphans.length} conversation{claudeOrphans.length === 1 ? "" : "s"}
+                    </button>
+                  </div>
+                  {orphansExpanded && (
+                    <div className="mt-2 max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)]">
+                      {claudeOrphans.map((conv) => {
+                        const checked = claudeSelected.has(conv.uuid);
+                        return (
+                          <label key={conv.uuid} className="flex cursor-pointer items-center gap-2 border-b border-[var(--border-color)] px-3 py-1.5 last:border-b-0 hover:bg-[var(--bg-hover)]">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => setClaudeSelected((prev) => {
+                                const next = new Set(prev);
+                                if (checked) { next.delete(conv.uuid); } else { next.add(conv.uuid); }
+                                return next;
+                              })}
+                            />
+                            <span className="truncate text-[11px] text-[var(--text-primary)]">{conv.name || "Untitled"}</span>
+                            <span className="ml-auto shrink-0 text-[10px] text-[var(--text-muted)]">{conv.message_count} msg{conv.message_count === 1 ? "" : "s"}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {(claudePreviews.length > 0 || claudeProjects.length > 0 || claudeMemories) && (
+            {/* ── Action row ───────────────────────────────────── */}
+            {(claudeProjects.length > 0 || claudeOrphans.length > 0) && (
               <div className="mt-4 flex items-center justify-end gap-2">
                 <button
                   onClick={() => {
-                    setClaudeConversationsPath(null);
-                    setClaudeProjectsPath(null);
-                    setClaudeMemoriesPath(null);
-                    setClaudePreviews([]);
-                    setClaudeProjects([]);
-                    setClaudeMemories(null);
-                    setClaudeSelected(new Set());
-                    setClaudeSelectedProjects(new Set());
+                    setClaudeFolderPath(null);
+                    setClaudeDetectedFormat(null);
+                    setClaudeFilesFound(null);
+                    resetClaudePreview();
                   }}
                   disabled={importingClaude}
-                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
                 >
-                  <X size={12} />
-                  Clear
+                  <X size={12} /> Clear
                 </button>
                 <button
-                  onClick={() => void importClaudeFiles()}
+                  onClick={() => void doClaudeImport()}
                   disabled={
                     importingClaude
-                    || (
-                      !(claudeIncludeConversations && claudeSelected.size > 0)
-                      && !(claudeIncludeFolders && claudeSelectedFolders.size > 0)
-                      && !(claudeIncludeMemories && claudeMemories != null)
-                    )
+                    || (claudeSelectedFolders.size === 0 && claudeSelected.size === 0)
+                    || [...claudeSelectedFolders].some((uuid) => {
+                      const d = projectDestinations[uuid];
+                      return !d || !destIsComplete(d);
+                    })
                   }
-                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-2 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-2 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
                 >
                   {importingClaude ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
                   {importingClaude ? "Importing..." : "Import"}

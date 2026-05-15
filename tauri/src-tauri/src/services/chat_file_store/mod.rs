@@ -21,6 +21,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+pub mod claude_v2;
+
 // ── Public file-data structs ──────────────────────────────────────────────────
 
 /// LM Studio-compatible on-disk representation of a chat session.
@@ -1228,6 +1230,56 @@ fn extract_claude_message_content(msg: &ClaudeChatMessage) -> String {
     }
 }
 
+/// Content extractor for v2 message shape — identical logic, different struct.
+pub(super) fn extract_claude_message_content_v2(msg: &claude_v2::V2Message) -> String {
+    if msg.content.is_empty() {
+        let mut text = msg.text.clone();
+        for att in &msg.attachments {
+            if let (Some(name), Some(content)) = (&att.file_name, &att.extracted_content) {
+                if !content.is_empty() {
+                    text.push_str(&format!("\n\n---\n📎 {name}\n{content}"));
+                }
+            }
+        }
+        return text;
+    }
+
+    let mut parts: Vec<String> = Vec::new();
+    for block in &msg.content {
+        match block.block_type.as_str() {
+            "text" => {
+                if let Some(ref t) = block.text {
+                    if !t.is_empty() { parts.push(t.clone()); }
+                }
+            }
+            "thinking" => {
+                if let Some(ref t) = block.thinking {
+                    if !t.is_empty() { parts.push(format!("<think>\n{}\n</think>", t.trim())); }
+                }
+            }
+            "tool_use" => {
+                if let Some(ref name) = block.name {
+                    let input_str = block.input.as_ref()
+                        .map(|v| serde_json::to_string_pretty(v).unwrap_or_default())
+                        .unwrap_or_default();
+                    if !input_str.is_empty() {
+                        parts.push(format!("🔧 Tool: {name}\n```json\n{input_str}\n```"));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    for att in &msg.attachments {
+        if let (Some(name), Some(content)) = (&att.file_name, &att.extracted_content) {
+            if !content.is_empty() {
+                parts.push(format!("---\n📎 {name}\n{content}"));
+            }
+        }
+    }
+    if parts.is_empty() { msg.text.clone() } else { parts.join("\n\n") }
+}
+
 /// Convert a single parsed Claude conversation into `(ChatFileData, project_uuid)`.
 /// Returns `None` if the conversation has no importable messages.
 fn claude_conversation_to_chat_data(
@@ -1325,6 +1377,8 @@ pub fn preview_claude_projects(bytes: &[u8]) -> Result<Vec<ClaudeProjectPreview>
             description: p.description.unwrap_or_default(),
             has_prompt: p.prompt_template.as_ref().is_some_and(|s| !s.is_empty()),
             doc_count: p.docs.len(),
+            conversation_count: 0, // filled in by preview_claude_files for legacy format
+            has_memory: false,     // filled in by preview_claude_files for legacy format
         })
         .collect())
 }
@@ -1401,6 +1455,8 @@ pub struct ClaudeProjectPreview {
     pub description: String,
     pub has_prompt: bool,
     pub doc_count: usize,
+    pub conversation_count: usize,
+    pub has_memory: bool,
 }
 
 /// Preview of Claude Desktop memories.

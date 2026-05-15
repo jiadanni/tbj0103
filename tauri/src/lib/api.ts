@@ -759,7 +759,7 @@ export const api = {
           source_path: string;
         }[];
         total: number;
-        projects: {
+        folders: {
           uuid: string;
           name: string;
           conversation_count: number;
@@ -809,46 +809,62 @@ export const api = {
         workspace_id: string;
         workspace_name: string;
       }>("import_gemini_takeout", { filePath, workspaceName: workspaceName ?? null }),
-    previewClaudeFiles: (paths: { conversationsPath?: string | null; projectsPath?: string | null; memoriesPath?: string | null }) =>
+    detectClaudeFormat: (folderPath: string) =>
       invoke<{
-        conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null }[];
-        total: number;
-        projects: { uuid: string; name: string; description: string; has_prompt: boolean; doc_count: number }[];
+        format: "legacy" | "v2";
+        files_found: { conversations: boolean; projects: boolean; memories: boolean };
+      }>("detect_claude_format", { folderPath }),
+    previewClaudeFiles: (args: {
+      folderPath: string;
+      includeConversations: boolean;
+      includeProjects: boolean;
+      includeMemories: boolean;
+    }) =>
+      invoke<{
+        format: "legacy" | "v2";
+        folders: {
+          uuid: string;
+          name: string;
+          description: string;
+          has_prompt: boolean;
+          doc_count: number;
+          conversation_count: number;
+          has_memory: boolean;
+        }[];
+        conversations_by_project: Record<string, { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null }[]>;
+        orphan_conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null }[];
+        orphan_count: number;
         memories: {
           conversations_memory: string;
           folder_memories: { project_uuid: string; folder_name: string; memory: string }[];
         } | null;
+        files_found: { conversations: boolean; projects: boolean; memories: boolean };
       }>("preview_claude_files", {
-        conversationsPath: paths.conversationsPath ?? null,
-        projectsPath: paths.projectsPath ?? null,
-        memoriesPath: paths.memoriesPath ?? null,
+        folderPath: args.folderPath,
+        includeConversations: args.includeConversations,
+        includeProjects: args.includeProjects,
+        includeMemories: args.includeMemories,
       }),
     importClaudeFiles: (args: {
-      workspaceName?: string;
-      conversationsPath?: string | null;
-      projectsPath?: string | null;
-      memoriesPath?: string | null;
-      selectedIds?: string[];
-      selectedFolderIds?: string[];
-      importMemories?: boolean;
+      folderPath: string;
+      folderMappings: Record<string, string>;
+      projectMemoryTargets: Record<string, string>;
+      orphansFolderId: string | null;
+      selectedConversationIds?: string[];
+      selectedProjectIds?: string[];
     }) =>
       invoke<{
         imported: number;
-        skipped: number;
-        workspace_id: string;
-        workspace_name: string;
-        folders_created: number;
         memories_imported: number;
         errors: number;
         error_messages: string[];
       }>("import_claude_files", {
-        workspaceName: args.workspaceName ?? null,
-        conversationsPath: args.conversationsPath ?? null,
-        projectsPath: args.projectsPath ?? null,
-        memoriesPath: args.memoriesPath ?? null,
-        selectedIds: args.selectedIds ?? null,
-        selectedFolderIds: args.selectedFolderIds ?? null,
-        importMemories: args.importMemories ?? false,
+        folderPath: args.folderPath,
+        folderMappings: args.folderMappings,
+        projectMemoryTargets: args.projectMemoryTargets,
+        orphansFolderId: args.orphansFolderId ?? null,
+        selectedConversationIds: args.selectedConversationIds ?? null,
+        selectedProjectIds: args.selectedProjectIds ?? null,
       }),
   },
 

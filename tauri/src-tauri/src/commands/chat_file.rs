@@ -1003,326 +1003,344 @@ pub fn import_gemini_takeout(
     }))
 }
 
-/// Preview Claude Desktop export files. Each path is optional and read independently —
-/// the user picks which combination of conversations.json / projects.json / memories.json
-/// they want to scan. Files may live in different folders.
+/// Detect the format of a Claude Desktop export folder.
+/// Returns "legacy" if `projects.json` is present, "v2" if `projects/` directory is present.
 #[tauri::command]
-pub fn preview_claude_files(
-    conversations_path: Option<String>,
-    projects_path: Option<String>,
-    memories_path: Option<String>,
-) -> Result<serde_json::Value, String> {
-    let read_optional = |path: Option<String>, label: &str| -> Result<Option<Vec<u8>>, String> {
-        match path {
-            None => Ok(None),
-            Some(p) => {
-                let resolved = validate_user_path(&p, true)?;
-                if !resolved.is_file() {
-                    return Err(format!("{} is not a file", p));
-                }
-                let bytes = std::fs::read(&resolved)
-                    .map_err(|e| format!("Failed to read {label}: {e}"))?;
-                Ok(Some(bytes))
-            }
-        }
+pub fn detect_claude_format(folder_path: String) -> Result<serde_json::Value, String> {
+    let folder = validate_user_path(&folder_path, true)?;
+    if !folder.is_dir() {
+        return Err("Selected path is not a folder.".to_string());
+    }
+    let has_projects_dir = folder.join("projects").is_dir();
+    let has_projects_json = folder.join("projects.json").is_file();
+    let has_conversations = folder.join("conversations.json").is_file();
+
+    let format = if has_projects_dir {
+        "v2"
+    } else if has_projects_json || has_conversations {
+        "legacy"
+    } else {
+        return Err(
+            "Selected folder is not a recognised Claude Desktop export. \
+             Looking for conversations.json and either projects.json or a projects/ directory."
+                .to_string(),
+        );
     };
 
-    let conv_bytes = read_optional(conversations_path, "conversations.json")?;
-    let proj_bytes = read_optional(projects_path, "projects.json")?;
-    let mem_bytes = read_optional(memories_path, "memories.json")?;
-
-    if conv_bytes.is_none() && proj_bytes.is_none() && mem_bytes.is_none() {
-        return Err("Provide at least one of conversations.json, projects.json, or memories.json.".to_string());
-    }
-
-    let conversations = conv_bytes
-        .as_deref()
-        .map(chat_file_store::preview_claude_conversations)
-        .transpose()?
-        .unwrap_or_default();
-
-    let claude_projects = proj_bytes
-        .as_deref()
-        .map(chat_file_store::preview_claude_projects)
-        .transpose()?
-        .unwrap_or_default();
-
-    let memories = mem_bytes
-        .as_deref()
-        .map(|b| chat_file_store::preview_claude_memories(b, proj_bytes.as_deref()))
-        .transpose()?;
-
     Ok(serde_json::json!({
-        "conversations": conversations,
-        "total": conversations.len(),
-        "folders": claude_projects,
-        "memories": memories,
+        "format": format,
+        "files_found": {
+            "conversations": has_conversations,
+            "projects": has_projects_json || has_projects_dir,
+            "memories": folder.join("memories.json").is_file(),
+        }
     }))
 }
 
-/// Resolve which Aetherium folder a Claude conversation should land in.
-///
-/// Inputs:
-///   - `conversation_project_uuid`: the `project_uuid` recorded on the conversation
-///     in conversations.json (None if the chat had no folder in the source export).
-///   - `folder_map`: UUID → Aetherium folder_id for folders that were created
-///     during this import (populated only if projects.json was supplied and the
-///     project was selected).
-///   - `workspace_id`: target workspace.
-///   - `unassigned_folder_id`: lazy-init slot for the placeholder
-///     "Unassigned Imports" folder. The first time orphan handling needs it, the
-///     closure should create the folder row and cache its id here.
-///
-/// Returns the folder_id string to write into chat_sessions.folder_id
-/// (empty string means "loose chat in workspace, no folder").
-fn resolve_folder_id_for_import(
-    conversation_project_uuid: Option<&str>,
-    folder_map: &std::collections::HashMap<String, String>,
-    workspace_id: &str,
-    unassigned_folder_id: &mut Option<String>,
-    conn: &rusqlite::Connection,
-    now: &str,
-) -> Result<String, String> {
-    let Some(uuid) = conversation_project_uuid else {
-        return Ok(String::new());
-    };
-    if let Some(mapped) = folder_map.get(uuid) {
-        return Ok(mapped.clone());
+/// Preview a Claude Desktop export folder. Auto-detects v2 vs legacy format.
+#[tauri::command]
+pub fn preview_claude_files(
+    folder_path: String,
+    include_conversations: bool,
+    include_projects: bool,
+    include_memories: bool,
+) -> Result<serde_json::Value, String> {
+    use chat_file_store::claude_v2;
+
+    let folder = validate_user_path(&folder_path, true)?;
+    if !folder.is_dir() {
+        return Err("Selected path is not a folder.".to_string());
     }
-    if let Some(id) = unassigned_folder_id.as_ref() {
-        return Ok(id.clone());
-    }
-    let existing = conn
-        .query_row(
-            "SELECT id FROM folders WHERE workspace_id = ?1 AND name = ?2 LIMIT 1",
-            rusqlite::params![workspace_id, "Unassigned Imports"],
-            |row| row.get::<_, String>(0),
-        )
-        .ok();
-    let id = if let Some(id) = existing {
-        id
+
+    let is_v2 = folder.join("projects").is_dir();
+
+    if is_v2 {
+        // ── v2 format ────────────────────────────────────────────────────────
+        // 1. Load project name map (needed for memory resolution)
+        let project_name_map = claude_v2::load_v2_project_name_map(&folder);
+
+        // 2. Preview design_chats grouped by project UUID
+        let convs_by_project = if include_conversations || include_projects {
+            claude_v2::preview_v2_design_chats(&folder)?
+        } else {
+            std::collections::HashMap::new()
+        };
+
+        // 3. Orphan conversations from conversations.json
+        let orphan_conversations = if include_conversations && folder.join("conversations.json").is_file() {
+            let bytes = std::fs::read(folder.join("conversations.json"))
+                .map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+            chat_file_store::preview_claude_conversations(&bytes)?
+        } else {
+            Vec::new()
+        };
+
+        // 4. Memories
+        let (memory_uuids, memories) = if include_memories {
+            claude_v2::parse_v2_memories(&folder, &project_name_map)?
+        } else {
+            (std::collections::HashSet::new(), chat_file_store::ClaudeMemoryPreview {
+                conversations_memory: String::new(),
+                folder_memories: Vec::new(),
+            })
+        };
+
+        // 5. Projects with conversation_count + has_memory populated
+        let projects = if include_projects {
+            claude_v2::preview_v2_projects(&folder, &memory_uuids, &convs_by_project)?
+        } else {
+            Vec::new()
+        };
+
+        let orphan_count = orphan_conversations.len();
+        Ok(serde_json::json!({
+            "format": "v2",
+            "folders": projects,
+            "conversations_by_project": convs_by_project,
+            "orphan_conversations": orphan_conversations,
+            "orphan_count": orphan_count,
+            "memories": if include_memories { Some(memories) } else { None },
+            "files_found": {
+                "conversations": folder.join("conversations.json").is_file(),
+                "projects": folder.join("projects").is_dir(),
+                "memories": folder.join("memories.json").is_file(),
+            }
+        }))
     } else {
-        let id = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO folders (id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at)
-             VALUES (?1, ?2, 'Unassigned Imports', '', '', '#8E8E93', 'inbox', ?3, ?3)",
-            rusqlite::params![id, workspace_id, now],
-        )
-        .map_err(|e| e.to_string())?;
-        id
-    };
-    *unassigned_folder_id = Some(id.clone());
-    Ok(id)
+        // ── legacy format ────────────────────────────────────────────────────
+        let read_file = |name: &str| -> Result<Option<Vec<u8>>, String> {
+            let p = folder.join(name);
+            if !p.is_file() { return Ok(None); }
+            std::fs::read(&p).map(Some).map_err(|e| format!("Failed to read {name}: {e}"))
+        };
+
+        let conv_bytes = if include_conversations { read_file("conversations.json")? } else { None };
+        let proj_bytes = if include_projects { read_file("projects.json")? } else { None };
+        let mem_bytes = if include_memories { read_file("memories.json")? } else { None };
+
+        let all_conversations = conv_bytes
+            .as_deref()
+            .map(chat_file_store::preview_claude_conversations)
+            .transpose()?
+            .unwrap_or_default();
+
+        let mut claude_projects = proj_bytes
+            .as_deref()
+            .map(chat_file_store::preview_claude_projects)
+            .transpose()?
+            .unwrap_or_default();
+
+        let memories = mem_bytes
+            .as_deref()
+            .map(|b| chat_file_store::preview_claude_memories(b, proj_bytes.as_deref()))
+            .transpose()?;
+
+        // Build conversations_by_project and enrich projects with counts + has_memory
+        let mut convs_by_project: std::collections::HashMap<String, Vec<_>> = std::collections::HashMap::new();
+        let mut orphan_conversations = Vec::new();
+        for conv in &all_conversations {
+            match &conv.project_uuid {
+                Some(uuid) => convs_by_project.entry(uuid.clone()).or_default().push(conv.clone()),
+                None => orphan_conversations.push(conv.clone()),
+            }
+        }
+
+        let memory_uuid_set: std::collections::HashSet<String> = memories
+            .as_ref()
+            .map(|m| m.folder_memories.iter().map(|fm| fm.project_uuid.clone()).collect())
+            .unwrap_or_default();
+
+        for p in &mut claude_projects {
+            p.conversation_count = convs_by_project.get(&p.uuid).map(|v| v.len()).unwrap_or(0);
+            p.has_memory = memory_uuid_set.contains(&p.uuid);
+        }
+
+        let orphan_count = orphan_conversations.len();
+        Ok(serde_json::json!({
+            "format": "legacy",
+            "folders": claude_projects,
+            "conversations_by_project": convs_by_project,
+            "orphan_conversations": orphan_conversations,
+            "orphan_count": orphan_count,
+            "memories": memories,
+            "files_found": {
+                "conversations": folder.join("conversations.json").is_file(),
+                "projects": folder.join("projects.json").is_file(),
+                "memories": folder.join("memories.json").is_file(),
+            }
+        }))
+    }
 }
 
-/// Import Claude Desktop data from any combination of conversations.json,
-/// projects.json, and memories.json. Files are independent — they can live in
-/// different folders. All selected files contribute to a single workspace.
+/// Import Claude Desktop conversations and memories from a folder.
+/// The frontend resolves destinations (creates workspaces/folders) before calling this —
+/// the backend is a pure inserter that accepts pre-resolved folder IDs.
 ///
-/// Linking: if both conversations.json and projects.json are imported, each
-/// conversation's `project_uuid` is used to attach it to the corresponding
-/// project. Conversations whose folder was not imported go to a placeholder
-/// folder per `resolve_folder_id_for_import`.
-///
-/// Use `preview_claude_files` first to populate the picker UI.
+/// - `folder_mappings`: claude project_uuid → aetherium folder_id
+/// - `project_memory_targets`: claude project_uuid → aetherium folder_id (subset of above)
+/// - `orphans_folder_id`: folder to place conversations that have no project mapping
+/// - `selected_conversation_ids`: only import these conversation UUIDs (empty = all)
+/// - `selected_project_ids`: only import project chats from these project UUIDs (empty = all in folder_mappings)
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn import_claude_files(
-    workspace_name: Option<String>,
-    conversations_path: Option<String>,
-    projects_path: Option<String>,
-    memories_path: Option<String>,
-    selected_ids: Option<Vec<String>>,
-    selected_folder_ids: Option<Vec<String>>,
-    import_memories: Option<bool>,
+    folder_path: String,
+    folder_mappings: std::collections::HashMap<String, String>,
+    project_memory_targets: std::collections::HashMap<String, String>,
+    orphans_folder_id: Option<String>,
+    selected_conversation_ids: Option<Vec<String>>,
+    selected_project_ids: Option<Vec<String>>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
+    use chat_file_store::claude_v2;
+
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
-
-    let read_optional = |path: Option<&String>, label: &str| -> Result<Option<Vec<u8>>, String> {
-        match path {
-            None => Ok(None),
-            Some(p) => {
-                let resolved = validate_user_path(p, true)?;
-                if !resolved.is_file() {
-                    return Err(format!("{} is not a file", p));
-                }
-                Ok(Some(
-                    std::fs::read(&resolved)
-                        .map_err(|e| format!("Failed to read {label}: {e}"))?,
-                ))
-            }
-        }
-    };
-
-    let conv_bytes = read_optional(conversations_path.as_ref(), "conversations.json")?;
-    let proj_bytes = read_optional(projects_path.as_ref(), "projects.json")?;
-    let mem_bytes = read_optional(memories_path.as_ref(), "memories.json")?;
-
-    if conv_bytes.is_none() && proj_bytes.is_none() && mem_bytes.is_none() {
-        return Err("Provide at least one of conversations.json, projects.json, or memories.json.".to_string());
+    let folder = validate_user_path(&folder_path, true)?;
+    if !folder.is_dir() {
+        return Err("Selected path is not a folder.".to_string());
     }
 
-    let chat_data_list: Vec<(chat_file_store::ChatFileData, Option<String>)> = match conv_bytes
-        .as_deref()
-    {
-        Some(bytes) => chat_file_store::parse_claude_conversations_filtered(
-            bytes,
-            selected_ids.as_deref().unwrap_or(&[]),
-        )?,
-        None => Vec::new(),
-    };
-
-    let workspace_name = workspace_name.unwrap_or_else(|| "Claude Desktop".to_string());
+    let is_v2 = folder.join("projects").is_dir();
     let now = chrono::Utc::now().to_rfc3339();
 
-    // Get or create workspace
-    let existing_workspace_id = conn
-        .query_row(
-            "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
-            rusqlite::params![workspace_name.trim()],
-            |row| row.get::<_, String>(0),
-        )
-        .ok();
-
-    let workspace_id = if let Some(id) = existing_workspace_id {
-        id
-    } else {
-        let new_id = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
-             VALUES (?1, ?2, '', '', '{}', ?3, ?3)",
-            rusqlite::params![new_id, workspace_name, now],
-        )
-        .map_err(|e| e.to_string())?;
-        new_id
-    };
-
-    // Create folders from projects.json (if supplied), filtered by selection.
-    let mut folders_created = 0usize;
-    let mut folder_map: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
-    let folder_id_filter: Option<std::collections::HashSet<&str>> = selected_folder_ids
-        .as_ref()
-        .map(|ids| ids.iter().map(|s| s.as_str()).collect());
-
-    if let Some(bytes) = proj_bytes.as_deref() {
-        let claude_projects = chat_file_store::parse_claude_projects(bytes)?;
-        for (proj_uuid, proj_name, proj_description, proj_prompt) in &claude_projects {
-            if let Some(ref filter) = folder_id_filter {
-                if !filter.contains(proj_uuid.as_str()) {
-                    continue;
-                }
-            }
-            let normalized = proj_name.trim();
-            let existing_folder_id = conn
-                .query_row(
-                    "SELECT id FROM folders WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) LIMIT 1",
-                    rusqlite::params![workspace_id, normalized],
-                    |row| row.get::<_, String>(0),
-                )
-                .ok();
-
-            let folder_id = if let Some(id) = existing_folder_id {
-                id
-            } else {
-                let id = uuid::Uuid::new_v4().to_string();
-                conn.execute(
-                    "INSERT INTO folders (id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, '#007AFF', 'folder', ?6, ?6)",
-                    rusqlite::params![id, workspace_id, proj_name, proj_description, proj_prompt, now],
-                )
-                .map_err(|e| e.to_string())?;
-                folders_created += 1;
-                id
-            };
-            folder_map.insert(proj_uuid.clone(), folder_id);
-        }
-    }
-
-    // Import conversations, routing each to a folder via resolve_folder_id_for_import.
     let mut session_ids = Vec::new();
     let mut errors = Vec::new();
-    let mut unassigned_folder_id: Option<String> = None;
 
-    for (data, conversation_project_uuid) in &chat_data_list {
-        let exists: bool = conn
-            .query_row(
-                "SELECT 1 FROM chat_sessions WHERE id = ?1",
-                rusqlite::params![data.id],
-                |_| Ok(true),
-            )
-            .unwrap_or(false);
-        if exists {
-            continue;
+    // Helper: insert one conversation
+    let mut insert_chat = |data: &chat_file_store::ChatFileData, project_uuid: Option<&str>| -> Result<(), String> {
+        let folder_id = match project_uuid {
+            Some(uuid) => folder_mappings.get(uuid).cloned().unwrap_or_default(),
+            None => orphans_folder_id.clone().unwrap_or_default(),
+        };
+        if folder_id.is_empty() {
+            return Ok(()); // no destination → skip
         }
+        // Look up workspace_id from folder
+        let workspace_id: String = conn.query_row(
+            "SELECT workspace_id FROM folders WHERE id = ?1",
+            rusqlite::params![folder_id],
+            |row| row.get(0),
+        ).map_err(|e| format!("Folder {} not found: {e}", folder_id))?;
 
-        let folder_id = resolve_folder_id_for_import(
-            conversation_project_uuid.as_deref(),
-            &folder_map,
-            &workspace_id,
-            &mut unassigned_folder_id,
-            &conn,
-            &now,
-        )?;
+        let exists: bool = conn.query_row(
+            "SELECT 1 FROM chat_sessions WHERE id = ?1",
+            rusqlite::params![data.id],
+            |_| Ok(true),
+        ).unwrap_or(false);
+        if exists { return Ok(()); }
 
         match chat_file_store::import_chat_data(&conn, data, &workspace_id, &folder_id) {
             Ok(sid) => session_ids.push(sid),
             Err(e) => errors.push(format!("{}: {e}", data.title)),
         }
+        Ok(())
+    };
+
+    if is_v2 {
+        // Import project chats from design_chats/
+        let proj_ids: Vec<String> = selected_project_ids
+            .unwrap_or_else(|| folder_mappings.keys().cloned().collect());
+        // All design_chats for selected projects
+        let design_chats = claude_v2::parse_v2_design_chats_filtered(&folder, &[])?;
+        for (data, project_uuid) in &design_chats {
+            if let Some(uuid) = project_uuid.as_deref() {
+                if !proj_ids.contains(&uuid.to_string()) { continue; }
+            }
+            insert_chat(data, project_uuid.as_deref())?;
+        }
+
+        // Import orphan conversations from conversations.json
+        let conv_path = folder.join("conversations.json");
+        if conv_path.is_file() && orphans_folder_id.is_some() {
+            let bytes = std::fs::read(&conv_path)
+                .map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+            let orphans = chat_file_store::parse_claude_conversations_filtered(
+                &bytes,
+                selected_conversation_ids.as_deref().unwrap_or(&[]),
+            )?;
+            for (data, _) in &orphans {
+                insert_chat(data, None)?;
+            }
+        }
+    } else {
+        // Legacy format: conversations.json with optional project_uuid on each
+        let conv_path = folder.join("conversations.json");
+        if conv_path.is_file() {
+            let bytes = std::fs::read(&conv_path)
+                .map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+            let convs = chat_file_store::parse_claude_conversations_filtered(
+                &bytes,
+                selected_conversation_ids.as_deref().unwrap_or(&[]),
+            )?;
+            for (data, project_uuid) in &convs {
+                insert_chat(data, project_uuid.as_deref())?;
+            }
+        }
     }
 
     let pass = crypto.0.lock().ok().and_then(|g| g.clone());
     for id in &session_ids {
-        let _ =
-            chat_file_store::write_session_file(&conn, &chats_dir_state.0, id, pass.as_deref());
+        let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, id, pass.as_deref());
     }
 
-    // Import memories from memories.json (if supplied and requested).
+    // Import per-project memories
     let mut memories_imported = 0usize;
-    if import_memories.unwrap_or(false) {
-        if let Some(bytes) = mem_bytes.as_deref() {
-            if let Ok(preview) =
-                chat_file_store::preview_claude_memories(bytes, proj_bytes.as_deref())
-            {
-                if !preview.conversations_memory.trim().is_empty() {
-                    let mem_id = uuid::Uuid::new_v4().to_string();
-                    conn.execute(
-                        "INSERT INTO memories (id, workspace_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
-                         VALUES (?1, ?2, ?3, 'context', 'workspace', 0, 1, ?4, ?4)",
-                        rusqlite::params![mem_id, workspace_id, preview.conversations_memory, now],
-                    ).map_err(|e| e.to_string())?;
-                    memories_imported += 1;
-                }
+    if !project_memory_targets.is_empty() {
+        let mem_path = folder.join("memories.json");
+        if mem_path.is_file() {
+            let mem_bytes = std::fs::read(&mem_path)
+                .map_err(|e| format!("Failed to read memories.json: {e}"))?;
+
+            // Determine which memory key to use based on format
+            if is_v2 {
+                let name_map = claude_v2::load_v2_project_name_map(&folder);
+                let (_, preview) = claude_v2::parse_v2_memories(&folder, &name_map)?;
                 for pm in &preview.folder_memories {
-                    if let Some(proj_id) = folder_map.get(&pm.project_uuid) {
+                    if let Some(folder_id) = project_memory_targets.get(&pm.project_uuid) {
+                        let workspace_id: String = conn.query_row(
+                            "SELECT workspace_id FROM folders WHERE id = ?1",
+                            rusqlite::params![folder_id],
+                            |row| row.get(0),
+                        ).map_err(|e| format!("Folder {folder_id} not found: {e}"))?;
                         let mem_id = uuid::Uuid::new_v4().to_string();
                         conn.execute(
                             "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
                              VALUES (?1, ?2, ?3, ?4, 'context', 'workspace', 0, 1, ?5, ?5)",
-                            rusqlite::params![mem_id, workspace_id, proj_id, pm.memory, now],
+                            rusqlite::params![mem_id, workspace_id, folder_id, pm.memory, now],
                         ).map_err(|e| e.to_string())?;
                         memories_imported += 1;
-                    } else {
-                        errors.push(format!(
-                            "Skipped memory for project '{}' (project not imported)",
-                            pm.folder_name
-                        ));
+                    }
+                }
+            } else {
+                let proj_bytes = folder.join("projects.json").is_file()
+                    .then(|| std::fs::read(folder.join("projects.json")).ok())
+                    .flatten();
+                if let Ok(preview) = chat_file_store::preview_claude_memories(&mem_bytes, proj_bytes.as_deref()) {
+                    for pm in &preview.folder_memories {
+                        if let Some(folder_id) = project_memory_targets.get(&pm.project_uuid) {
+                            let workspace_id: String = conn.query_row(
+                                "SELECT workspace_id FROM folders WHERE id = ?1",
+                                rusqlite::params![folder_id],
+                                |row| row.get(0),
+                            ).map_err(|e| format!("Folder {folder_id} not found: {e}"))?;
+                            let mem_id = uuid::Uuid::new_v4().to_string();
+                            conn.execute(
+                                "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
+                                 VALUES (?1, ?2, ?3, ?4, 'context', 'workspace', 0, 1, ?5, ?5)",
+                                rusqlite::params![mem_id, workspace_id, folder_id, pm.memory, now],
+                            ).map_err(|e| e.to_string())?;
+                            memories_imported += 1;
+                        }
                     }
                 }
             }
         }
     }
 
-    let total_attempted = chat_data_list.len();
     Ok(serde_json::json!({
         "imported": session_ids.len(),
-        "skipped": total_attempted.saturating_sub(session_ids.len() + errors.len()),
-        "workspace_id": workspace_id,
-        "workspace_name": workspace_name,
-        "folders_created": folders_created,
         "memories_imported": memories_imported,
         "errors": errors.len(),
         "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
