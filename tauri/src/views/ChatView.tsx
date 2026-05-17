@@ -189,6 +189,9 @@ interface SessionSidebarProps {
   saveSession: (session: ChatSession) => void;
   deleteSession: (id: string) => void;
   showAlertDialog: (title: string, description: string, tone?: ConfirmDialogState["tone"]) => void;
+  openConfirmDialog: (options: ConfirmDialogState) => Promise<boolean>;
+  setScopedWorkspaceId: (id: string | null) => void;
+  createSessionInWorkspace: (workspaceId: string) => Promise<void>;
   sidebarWidth: number;
   openSession: (session: ChatSession) => void;
 }
@@ -337,6 +340,9 @@ function SessionSidebar({
   saveSession,
   deleteSession,
   showAlertDialog,
+  openConfirmDialog,
+  setScopedWorkspaceId,
+  createSessionInWorkspace,
 }: SessionSidebarProps) {
   const isSplitPane = useWorkspacePane() !== null;
   const includeDescendants = useBubbleUpFlag();
@@ -375,8 +381,53 @@ function SessionSidebar({
   const [ctxMenu, setCtxMenu] = useState<
     | { type: "session"; x: number; y: number; session: ChatSession }
     | { type: "folder"; x: number; y: number; folder: Folder }
+    | { type: "workspace"; x: number; y: number; workspace: Workspace }
     | null
   >(null);
+  const [workspaceRenamingId, setWorkspaceRenamingId] = useState<string | null>(null);
+  const [workspaceRenameValue, setWorkspaceRenameValue] = useState("");
+
+  async function commitWorkspaceRename(workspace: Workspace) {
+    const nextName = workspaceRenameValue.trim();
+    setWorkspaceRenamingId(null);
+    setWorkspaceRenameValue("");
+    if (!nextName || nextName === workspace.name) { return; }
+    try {
+      await api.workspace.update(workspace.id, nextName, workspace.description, workspace.prompt_instructions);
+      const store = useWorkspaceStore.getState();
+      store.setWorkspaces(store.workspaces.map((w) => w.id === workspace.id ? { ...w, name: nextName } : w));
+    } catch (error) {
+      const description = error instanceof Error ? error.message : "Failed to rename sub-workspace.";
+      showAlertDialog("Rename failed", description, "danger");
+    }
+  }
+
+  async function confirmDeleteWorkspace(workspace: Workspace) {
+    if (workspaces.length <= 1) {
+      showAlertDialog(
+        "Cannot Delete Workspace",
+        "You need at least one workspace in Aetherium.",
+        "default",
+      );
+      return;
+    }
+    const confirmed = await openConfirmDialog({
+      title: "Confirm Sub-workspace Deletion",
+      description: `Delete "${workspace.name}" and all its folders, notes, and data? This cannot be undone.`,
+      confirmLabel: "Delete Workspace",
+      cancelLabel: "Cancel",
+      tone: "danger",
+    });
+    if (!confirmed) { return; }
+    try {
+      await api.workspace.delete(workspace.id);
+      const remaining = await api.workspace.list();
+      useWorkspaceStore.getState().setWorkspaces(remaining);
+    } catch (error) {
+      const description = error instanceof Error ? error.message : "Failed to delete sub-workspace.";
+      showAlertDialog("Delete failed", description, "danger");
+    }
+  }
   const menuRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -1493,15 +1544,46 @@ function SessionSidebar({
                 if (row.type === "workspace") {
                   const { workspace: wsItem, isOpen: wsOpen } = row;
                   const wsSessionCount = childWorkspaceSessionCounts[wsItem.id] ?? 0;
+                  const isRenaming = workspaceRenamingId === wsItem.id;
                   return (
                     <button
-                      onClick={() => setExpanded((prev) => ({ ...prev, [`ws-${wsItem.id}`]: !wsOpen }))}
+                      onClick={() => {
+                        if (isRenaming) { return; }
+                        setExpanded((prev) => ({ ...prev, [`ws-${wsItem.id}`]: !wsOpen }));
+                      }}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setCtxMenu({ type: "workspace", x: event.clientX, y: event.clientY, workspace: wsItem });
+                      }}
                       className={`w-full flex items-center gap-1.5 rounded-xl border px-3 py-2 text-left transition-colors ${
                         "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                       }`}
                     >
                       <FolderOpen size={isSplitPane ? 14 : 13} className="text-[var(--accent-color)] shrink-0" />
-                      <span className={`truncate font-medium flex-1 min-w-0 ${isSplitPane ? "text-xs" : "text-[11px]"}`}>{wsItem.name}</span>
+                      {isRenaming ? (
+                        <input
+                          autoFocus
+                          value={workspaceRenameValue}
+                          onChange={(event) => setWorkspaceRenameValue(event.target.value)}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void commitWorkspaceRename(wsItem);
+                            }
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setWorkspaceRenamingId(null);
+                              setWorkspaceRenameValue("");
+                            }
+                          }}
+                          onBlur={() => { void commitWorkspaceRename(wsItem); }}
+                          className={`flex-1 rounded border border-[var(--accent-color)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${isSplitPane ? "text-xs" : "text-[11px]"}`}
+                        />
+                      ) : (
+                        <span className={`truncate font-medium flex-1 min-w-0 ${isSplitPane ? "text-xs" : "text-[11px]"}`}>{wsItem.name}</span>
+                      )}
                       {wsSessionCount > 0 && (
                         <span className={`shrink-0 text-[var(--text-muted)] ${isSplitPane ? "text-[10px]" : "text-[9px]"}`}>{wsSessionCount}</span>
                       )}
@@ -1809,7 +1891,7 @@ function SessionSidebar({
                   <Trash2 size={11} /> Delete
                 </button>
               </>
-            ) : (
+            ) : ctxMenu.type === "folder" ? (
               <>
                 <button
                   onClick={() => {
@@ -1861,6 +1943,50 @@ function SessionSidebar({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
                 >
                   <Trash2 size={11} /> Delete folder
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    setScopedWorkspaceId(ctxMenu.workspace.id);
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <ExternalLink size={11} /> Open sub-workspace
+                </button>
+                <button
+                  onClick={() => {
+                    setWorkspaceRenamingId(ctxMenu.workspace.id);
+                    setWorkspaceRenameValue(ctxMenu.workspace.name);
+                    setExpanded((prev) => ({ ...prev, [`ws-${ctxMenu.workspace.id}`]: prev[`ws-${ctxMenu.workspace.id}`] ?? false }));
+                    setCtxMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <Pencil size={11} /> Rename sub-workspace
+                </button>
+                <button
+                  onClick={() => {
+                    const targetId = ctxMenu.workspace.id;
+                    setCtxMenu(null);
+                    void createSessionInWorkspace(targetId);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <Plus size={11} /> New chat here
+                </button>
+                <div className="my-1 border-t border-[var(--border-color)]" />
+                <button
+                  onClick={() => {
+                    const target = ctxMenu.workspace;
+                    setCtxMenu(null);
+                    void confirmDeleteWorkspace(target);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
+                >
+                  <Trash2 size={11} /> Delete sub-workspace
                 </button>
               </>
             )}
@@ -3418,6 +3544,18 @@ export default function ChatView() {
     });
   }, [effectiveWorkspaceId, sessions, effectiveFolderId, selectedModel]);
 
+  const createSessionInWorkspace = useCallback(async (targetWorkspaceId: string) => {
+    try {
+      const newSession = await api.chat.createSession(targetWorkspaceId, null, {
+        modelName: selectedModel,
+      });
+      activateSession(newSession);
+    } catch (error) {
+      const description = error instanceof Error ? error.message : "Failed to create chat.";
+      openAlertDialog("Create chat failed", description, "danger");
+    }
+  }, [selectedModel, activateSession, openAlertDialog]);
+
   const createNewSession = useCallback(async (options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) => {
     if (!effectiveWorkspaceId) { return; }
 
@@ -4555,6 +4693,9 @@ export default function ChatView() {
         saveSession={saveSession}
         deleteSession={deleteSession}
         showAlertDialog={openAlertDialog}
+        openConfirmDialog={openConfirmDialog}
+        setScopedWorkspaceId={setScopedWorkspaceId}
+        createSessionInWorkspace={createSessionInWorkspace}
         sidebarWidth={sidebarWidth}
         openSession={activateSession}
       />
