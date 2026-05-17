@@ -1479,6 +1479,24 @@ function pathToPaneView(pathname: string): import("../stores/workspaceStore").Pa
   }
 }
 
+function paneViewToPath(view: import("../stores/workspaceStore").PaneView, chatSessionId?: string | null): string {
+  switch (view) {
+    case "chat":
+      return chatSessionId ? `/chat/${chatSessionId}` : "/chat";
+    case "notes": return "/notes";
+    case "sources":
+    case "documents":
+    case "webcapture":
+      return "/sources";
+    case "graph": return "/graph";
+    case "flashcards": return "/flashcards";
+    case "settings": return "/preferences";
+    case "memory": return "/memory";
+    case "folder": return "/folder";
+    default: return "/folder";
+  }
+}
+
 export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const navigate = useNavigate();
@@ -1522,7 +1540,10 @@ export default function Layout() {
 
   const toggleSplitModeFromShell = React.useCallback(() => {
     if (splitMode) {
+      const primaryPane = useWorkspaceStore.getState().panes.primary;
+      const nextPath = paneViewToPath(primaryPane.view, primaryPane.chatSessionId);
       exitSplitMode();
+      navigate(nextPath);
       return;
     }
     if (workspaces.length < 2) {
@@ -1532,7 +1553,7 @@ export default function Layout() {
     const routeSessionId = location.pathname.startsWith("/chat/") ? location.pathname.split("/")[2] ?? null : null;
     setPaneChatSession("primary", routeSessionId ?? activeChatId);
     enterSplitMode();
-  }, [activeChatId, splitMode, location.pathname, workspaces.length, exitSplitMode, enterSplitMode, setPaneView, setPaneChatSession]);
+  }, [activeChatId, splitMode, location.pathname, workspaces.length, exitSplitMode, enterSplitMode, setPaneView, setPaneChatSession, navigate]);
 
   // Global Cmd+K shortcut
   useEffect(() => {
