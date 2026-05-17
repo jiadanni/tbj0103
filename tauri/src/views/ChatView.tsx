@@ -643,7 +643,6 @@ function SessionSidebar({
         );
         // Then folders
         for (const proj of wsFolders) {
-          if (!(wsByFolder[proj.id]?.length)) { continue; }
           const projKey = `ws-${ws.id}-folder-${proj.id}`;
           const projOpen = expanded[projKey] ?? true;
           wsRows.push({
@@ -676,7 +675,7 @@ function SessionSidebar({
       depth: 0,
       showFolderBorder: false,
     })),
-    ...folders.flatMap(( folder) => {
+    ...folders.filter((folder) => !scopedWsId || folder.workspace_id === scopedWsId).flatMap(( folder) => {
       const folderRows: SessionSidebarRow[] = [{
         type: "folder" as const,
         key: `folder-${folder.id}`,
