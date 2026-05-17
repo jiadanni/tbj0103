@@ -3999,7 +3999,14 @@ export default function ChatView() {
   async function moveSessionsToTarget(sessionIds: string[], workspaceId: string, folderId: string | null) {
     if (sessionIds.length === 0) { return; }
     const sessionIdSet = new Set(sessionIds);
-    const isCrossWorkspaceMove = workspaceId !== effectiveWorkspaceId;
+    // In bubble-up view, effectiveWorkspaceId is the parent scope but the affected
+    // sessions belong to descendants. Compare against the sessions' own workspace_id
+    // so a same-workspace folder change is not misclassified as cross-workspace.
+    const affectedSessions = sidebarSessions.filter((session) => sessionIdSet.has(session.id));
+    const allShareTargetWorkspace = affectedSessions.length > 0
+      && affectedSessions.every((session) => session.workspace_id === workspaceId);
+    const isCrossWorkspaceMove = !allShareTargetWorkspace
+      && workspaceId !== effectiveWorkspaceId;
     const shouldPreserveFolderStructure = isCrossWorkspaceMove && folderId === null;
 
     // Optimistic UI update: remove from source immediately
@@ -4019,8 +4026,13 @@ export default function ChatView() {
       setScopedWorkspaceId(workspaceId);
       setScopedFolderId(destinationFolderIdForView);
 
-      // Refresh only the destination workspace tree (source already updated optimistically)
+      // Refresh the destination workspace tree (source already updated optimistically)
       await refreshFolderTree(workspaceId);
+      // Also refresh the previously-scoped tree (e.g. parent in bubble-up view) so
+      // its sidebar reflects the move without requiring navigation away and back.
+      if (effectiveWorkspaceId && effectiveWorkspaceId !== workspaceId) {
+        await refreshFolderTree(effectiveWorkspaceId);
+      }
 
       if (activeChatId && sessionIds.includes(activeChatId)) {
         setActiveChatId(sessionIds.length === 1 ? activeChatId : null);
@@ -4032,8 +4044,12 @@ export default function ChatView() {
       setScopedWorkspaceId(workspaceId);
       setScopedFolderId(folderId);
 
-      // Refresh only the destination workspace tree
+      // Refresh the destination workspace tree
       await refreshFolderTree(workspaceId);
+      // Also refresh the previously-scoped tree (e.g. parent in bubble-up view).
+      if (effectiveWorkspaceId && effectiveWorkspaceId !== workspaceId) {
+        await refreshFolderTree(effectiveWorkspaceId);
+      }
 
       if (activeChatId && sessionIds.includes(activeChatId)) {
         setActiveChatId(sessionIds.length === 1 ? activeChatId : null);
