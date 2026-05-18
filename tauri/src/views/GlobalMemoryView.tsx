@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Brain, Globe, Pin, PinOff, Plus, RefreshCw, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { api, type Memory, type MemorySummary } from "../lib/api";
 import CompactMenuSelect from "../components/CompactMenuSelect";
 import Tooltip from "../components/Tooltip";
+import HoverDefinitionSurface from "../components/HoverDefinitionSurface";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 
 const MEMORY_TYPES: Memory["memory_type"][] = ["fact", "preference"];
 
 function formatTimestamp(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -18,6 +22,7 @@ function formatTimestamp(value: string) {
 }
 
 export default function GlobalMemoryView() {
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [summary, setSummary] = useState<MemorySummary | null>(null);
   const [summaryDraft, setSummaryDraft] = useState("");
@@ -36,7 +41,9 @@ export default function GlobalMemoryView() {
   const loadSummary = useCallback(async () => {
     const s = await api.memory.getSummary("global").catch(() => null);
     setSummary(s);
-    if (s) setSummaryDraft(s.content);
+    if (s) {
+      setSummaryDraft(s.content);
+    }
   }, []);
 
   useEffect(() => {
@@ -77,7 +84,9 @@ export default function GlobalMemoryView() {
   }
 
   async function createMemory() {
-    if (!newContent.trim()) return;
+    if (!newContent.trim()) {
+      return;
+    }
     setSubmitting(true);
     try {
       const created = await api.memory.create(newContent.trim(), "global", newType);
@@ -190,12 +199,14 @@ export default function GlobalMemoryView() {
                 </div>
               </div>
             ) : (
-              <p
+              <HoverDefinitionSurface
+                workspaceId={activeWorkspaceId}
+                as="p"
                 onClick={() => setSummaryEditing(true)}
-                className="cursor-pointer whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                className="cursor-pointer whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
               >
                 {summary?.content || "No summary yet. Add some facts and click regenerate, or click here to write one."}
-              </p>
+              </HoverDefinitionSurface>
             )}
           </div>
 
@@ -254,6 +265,7 @@ export default function GlobalMemoryView() {
             title="Facts"
             icon={<Brain size={14} />}
             items={facts}
+            workspaceId={activeWorkspaceId}
             emptyMessage="No facts yet. Facts are objective information about you."
             onUpdate={updateMemory}
             onDelete={deleteMemory}
@@ -264,6 +276,7 @@ export default function GlobalMemoryView() {
             title="Preferences"
             icon={<Globe size={14} />}
             items={preferences}
+            workspaceId={activeWorkspaceId}
             emptyMessage="No preferences yet. Preferences describe how you want to be communicated with."
             onUpdate={updateMemory}
             onDelete={deleteMemory}
@@ -278,6 +291,7 @@ function MemorySection({
   title,
   icon,
   items,
+  workspaceId,
   emptyMessage,
   onUpdate,
   onDelete,
@@ -285,6 +299,7 @@ function MemorySection({
   title: string;
   icon: React.ReactNode;
   items: Memory[];
+  workspaceId?: string | null;
   emptyMessage: string;
   onUpdate: (id: string, fields: { is_pinned?: boolean; is_active?: boolean }) => void;
   onDelete: (id: string) => void;
@@ -329,9 +344,9 @@ function MemorySection({
                     </span>
                   )}
                 </div>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-primary)]">
+                <HoverDefinitionSurface workspaceId={workspaceId} as="div" className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-primary)]">
                   {memory.content}
-                </p>
+                </HoverDefinitionSurface>
                 <p className="mt-2 text-[11px] text-[var(--text-muted)]">
                   Updated {formatTimestamp(memory.updated_at)}
                 </p>

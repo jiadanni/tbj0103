@@ -1915,6 +1915,54 @@ export default function PreferencesView() {
                       </div>
 
                       <div className="border-t border-[var(--border-color)] pt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">Workspace Glossary</p>
+                      </div>
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Glossary refresh interval (minutes)</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            How often the workspace glossary refresh runs before residual chat scanning
+                          </p>
+                        </div>
+                        <input
+                          type="number"
+                          min={5}
+                          max={240}
+                          value={dbSettings.workspace_glossary_refresh_interval_minutes}
+                          onChange={(e) => set("workspace_glossary_refresh_interval_minutes", Math.max(5, Math.min(240, Number(e.target.value) || 60)))}
+                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Chat definition scan</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Scan assistant replies for unresolved workspace terminology after glossary refresh
+                          </p>
+                        </div>
+                        <Toggle
+                          on={dbSettings.hover_definition_scan_enabled}
+                          onToggle={() => set("hover_definition_scan_enabled", !dbSettings.hover_definition_scan_enabled)}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between py-0.5">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Sessions per scan tick</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Max number of recent sessions scanned for missing definitions each scheduler cycle
+                          </p>
+                        </div>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={dbSettings.hover_definition_scan_max_sessions}
+                          onChange={(e) => set("hover_definition_scan_max_sessions", Math.max(1, Math.min(20, Number(e.target.value) || 3)))}
+                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                        />
+                      </div>
+
+                      <div className="border-t border-[var(--border-color)] pt-3">
                         <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">Git Sync</p>
                       </div>
                       <div className="flex items-center justify-between py-0.5">

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { isEditableElement, isMac } from "../lib/platform";
 
 interface NavigationHotkeysOptions {
   onBack?: () => void;
@@ -11,7 +12,8 @@ interface NavigationHotkeysOptions {
  * Hook for handling back/forward navigation hotkeys and gestures.
  * Supports:
  * - Escape key to go back
- * - Alt/Cmd+Left/Right Arrow for back/forward (macOS browser convention)
+ * - Alt/Cmd+Left/Right Arrow for back/forward
+ * - Cmd+[ / Cmd+] for back/forward on macOS
  * - Trackpad/touch swipe gestures
  *
  * Uses refs internally so event listeners are registered only once and
@@ -37,7 +39,7 @@ export function useNavigationHotkeys(options: NavigationHotkeysOptions) {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       // Don't interfere with text inputs
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      if (isEditableElement(e.target as Element | null)) {
         return;
       }
 
@@ -48,8 +50,36 @@ export function useNavigationHotkeys(options: NavigationHotkeysOptions) {
         return;
       }
 
+      // Cmd+[ for back on macOS (browser convention)
+      if (
+        isMac &&
+        e.metaKey &&
+        !e.altKey &&
+        (e.key === "[" || e.code === "BracketLeft") &&
+        canGoBackRef.current &&
+        onBackRef.current
+      ) {
+        e.preventDefault();
+        onBackRef.current();
+        return;
+      }
+
       // Alt+Right or Cmd+Right for forward
       if ((e.metaKey || e.altKey) && e.key === "ArrowRight" && canGoForwardRef.current && onForwardRef.current) {
+        e.preventDefault();
+        onForwardRef.current();
+        return;
+      }
+
+      // Cmd+] for forward on macOS (browser convention)
+      if (
+        isMac &&
+        e.metaKey &&
+        !e.altKey &&
+        (e.key === "]" || e.code === "BracketRight") &&
+        canGoForwardRef.current &&
+        onForwardRef.current
+      ) {
         e.preventDefault();
         onForwardRef.current();
       }

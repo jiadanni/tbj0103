@@ -56,6 +56,9 @@ pub struct Settings {
     pub topic_analysis_interval_minutes: u32,
     pub summarization_min_messages: u32,
     pub summarization_max_sessions: u32,
+    pub hover_definition_scan_enabled: bool,
+    pub hover_definition_scan_max_sessions: u32,
+    pub workspace_glossary_refresh_interval_minutes: u32,
     pub git_sync_interval_minutes: u32,
     pub menubar_icon_style: String,
 }
@@ -118,6 +121,9 @@ impl Default for Settings {
             topic_analysis_interval_minutes: 30,
             summarization_min_messages: 10,
             summarization_max_sessions: 5,
+            hover_definition_scan_enabled: true,
+            hover_definition_scan_max_sessions: 3,
+            workspace_glossary_refresh_interval_minutes: 60,
             git_sync_interval_minutes: 5,
             menubar_icon_style: "monochrome".to_string(),
         }
@@ -360,6 +366,15 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         summarization_max_sessions: get_setting(&conn, "summarization_max_sessions")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.summarization_max_sessions),
+        hover_definition_scan_enabled: get_setting(&conn, "hover_definition_scan_enabled")
+            .map(|v| v == "true")
+            .unwrap_or(def.hover_definition_scan_enabled),
+        hover_definition_scan_max_sessions: get_setting(&conn, "hover_definition_scan_max_sessions")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.hover_definition_scan_max_sessions),
+        workspace_glossary_refresh_interval_minutes: get_setting(&conn, "workspace_glossary_refresh_interval_minutes")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.workspace_glossary_refresh_interval_minutes),
         git_sync_interval_minutes: get_setting(&conn, "git_sync_interval_minutes")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.git_sync_interval_minutes),
@@ -623,6 +638,21 @@ pub fn update_settings(
     )?;
     set_setting(
         &conn,
+        "hover_definition_scan_enabled",
+        &settings.hover_definition_scan_enabled.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "hover_definition_scan_max_sessions",
+        &settings.hover_definition_scan_max_sessions.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "workspace_glossary_refresh_interval_minutes",
+        &settings.workspace_glossary_refresh_interval_minutes.to_string(),
+    )?;
+    set_setting(
+        &conn,
         "git_sync_interval_minutes",
         &settings.git_sync_interval_minutes.to_string(),
     )?;
@@ -731,4 +761,3 @@ pub fn reload_tray_icon(app: AppHandle) -> Result<(), String> {
     // Rebuild the tray icon with the new style
     crate::build_tray_icon(&app)
 }
-
