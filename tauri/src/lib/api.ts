@@ -328,6 +328,34 @@ export interface BackgroundTaskEvent {
   message: string;
 }
 
+export interface WorkspaceGlossaryTerm {
+  id: string;
+  workspace_id: string;
+  workspace_name?: string | null;
+  term: string;
+  normalized_term: string;
+  definition: string;
+  aliases: string[];
+  source_kind: "manual" | "glossary_seed" | "ai_scan" | string;
+  source_session_id?: string | null;
+  is_user_edited: boolean;
+  created_at: string;
+  updated_at: string;
+  is_inherited: boolean;
+  inherited_from_workspace_id?: string | null;
+  inherited_from_workspace_name?: string | null;
+}
+
+export interface ResolvedWorkspaceGlossaryTerm {
+  term: string;
+  normalized_term: string;
+  definition: string;
+  aliases: string[];
+  source_kind: "manual" | "glossary_seed" | "ai_scan" | string;
+  workspace_id: string;
+  workspace_name?: string | null;
+}
+
 export interface DescendantAnalysisProgress {
   workspace_id: string;
   workspace_name: string;
@@ -385,6 +413,9 @@ export interface AppSettings {
   topic_analysis_interval_minutes: number;
   summarization_min_messages: number;
   summarization_max_sessions: number;
+  hover_definition_scan_enabled: boolean;
+  hover_definition_scan_max_sessions: number;
+  workspace_glossary_refresh_interval_minutes: number;
   git_sync_interval_minutes: number;
   menubar_icon_style: "monochrome" | "white" | "black";
 }
@@ -673,6 +704,31 @@ export const api = {
     hide: (id: string) => invoke<void>("hide_workspace", { id }),
     unhide: (id: string) => invoke<void>("unhide_workspace", { id }),
     reorder: (ids: string[]) => invoke<void>("reorder_workspaces", { ids }),
+  },
+
+  workspaceGlossary: {
+    resolve: (workspaceId: string, candidates: string[]) =>
+      invoke<ResolvedWorkspaceGlossaryTerm | null>("resolve_workspace_glossary_term", {
+        workspaceId,
+        candidates,
+      }),
+    list: (workspaceId: string, includeInherited = false) =>
+      invoke<WorkspaceGlossaryTerm[]>("list_workspace_glossary_terms", {
+        workspaceId,
+        includeInherited,
+      }),
+    upsert: (req: {
+      id?: string | null;
+      workspace_id: string;
+      term: string;
+      definition: string;
+      aliases?: string[];
+      source_kind?: string;
+      source_session_id?: string | null;
+    }) => invoke<WorkspaceGlossaryTerm>("upsert_workspace_glossary_term", { req }),
+    delete: (id: string) => invoke<void>("delete_workspace_glossary_term", { id }),
+    refresh: (workspaceId: string) =>
+      invoke<WorkspaceGlossaryTerm[]>("refresh_workspace_glossary", { workspaceId }),
   },
 
   folder: {

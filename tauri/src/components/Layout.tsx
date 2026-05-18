@@ -446,18 +446,18 @@ function SubWorkspaceTabBar({
             {workspace.name}
           </button>
         ))}
+        {onAdd && (
+          <Tooltip content="New Sub-workspace" position="bottom">
+            <button
+              data-no-drag
+              onClick={onAdd}
+              className="ml-1 h-8 w-8 shrink-0 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+            >
+              <Plus size={14} />
+            </button>
+          </Tooltip>
+        )}
       </div>
-      {onAdd && (
-        <Tooltip content="New Sub-workspace" position="bottom">
-          <button
-            data-no-drag
-            onClick={onAdd}
-            className="ml-1 h-8 w-8 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-          >
-            <Plus size={14} />
-          </button>
-        </Tooltip>
-      )}
     </div>
   );
 }
@@ -608,7 +608,7 @@ function BackForwardNavigation() {
 
   return (
     <div className="flex items-center gap-1">
-      <Tooltip content="Go back (Alt+Left / Cmd+Left)" position="bottom">
+      <Tooltip content="Go back (Alt+Left / Cmd+Left / Cmd+[)" position="bottom">
         <button
           onClick={goBack}
           disabled={!canGoBack}
@@ -618,7 +618,7 @@ function BackForwardNavigation() {
           <ChevronLeft size={15} />
         </button>
       </Tooltip>
-      <Tooltip content="Go forward (Alt+Right / Cmd+Right)" position="bottom">
+      <Tooltip content="Go forward (Alt+Right / Cmd+Right / Cmd+])" position="bottom">
         <button
           onClick={goForward}
           disabled={!canGoForward}

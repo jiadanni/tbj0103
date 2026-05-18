@@ -4,6 +4,7 @@ import { api, type Memory } from "../lib/api";
 import { useScopedWorkspace } from "../lib/workspacePane";
 import CompactMenuSelect from "../components/CompactMenuSelect";
 import Tooltip from "../components/Tooltip";
+import HoverDefinitionSurface from "../components/HoverDefinitionSurface";
 
 const MEMORY_TYPES: Memory["memory_type"][] = ["fact", "preference", "context"];
 
@@ -230,75 +231,96 @@ export default function MemoryView() {
         ) : (
           <div className="mx-auto w-full max-w-7xl space-y-3 px-6 py-6">
             {memories.map((memory) => (
-              <div
+              <MemoryCard
                 key={memory.id}
-                className={`rounded-2xl border p-4 ${
-                  memory.is_active
-                    ? "border-[var(--border-color)] bg-[var(--bg-elevated)]"
-                    : "border-[var(--border-color)]/70 bg-[var(--bg-primary)] opacity-70"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-[var(--accent-color)]/12 px-2.5 py-1 text-[11px] font-medium capitalize text-[var(--accent-color)]">
-                        {memory.memory_type}
-                      </span>
-                      {memory.scope === "global" && (
-                        <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-400">
-                          Global
-                        </span>
-                      )}
-                      {memory.is_pinned && (
-                        <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-400">
-                          Pinned
-                        </span>
-                      )}
-                      {!memory.is_active && (
-                        <span className="rounded-full bg-[var(--bg-hover)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)]">
-                          Inactive
-                        </span>
-                      )}
-                    </div>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-primary)]">
-                      {memory.content}
-                    </p>
-                    <p className="mt-3 text-[11px] text-[var(--text-muted)]">
-                      Updated {formatTimestamp(memory.updated_at)}
-                    </p>
-                  </div>
-
-                   <div className="flex shrink-0 items-center gap-1">
-                    <Tooltip content={memory.is_pinned ? "Unpin memory" : "Pin memory"} position="top">
-                      <button
-                        onClick={() => updateMemory(memory.id, { is_pinned: !memory.is_pinned })}
-                        className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                      >
-                        {memory.is_pinned ? <PinOff size={14} /> : <Pin size={14} />}
-                      </button>
-                    </Tooltip>
-                    <Tooltip content={memory.is_active ? "Deactivate memory" : "Activate memory"} position="top">
-                      <button
-                        onClick={() => updateMemory(memory.id, { is_active: !memory.is_active })}
-                        className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                      >
-                        {memory.is_active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="Delete memory" position="top">
-                      <button
-                        onClick={() => deleteMemory(memory.id)}
-                        className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-400"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </Tooltip>
-                  </div>
-                </div>
-              </div>
+                memory={memory}
+                workspaceId={activeWorkspaceId}
+                onUpdate={updateMemory}
+                onDelete={deleteMemory}
+              />
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function MemoryCard({
+  memory,
+  workspaceId,
+  onUpdate,
+  onDelete,
+}: {
+  memory: Memory;
+  workspaceId?: string | null;
+  onUpdate: (id: string, fields: { is_pinned?: boolean; is_active?: boolean }) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border p-4 ${
+        memory.is_active
+          ? "border-[var(--border-color)] bg-[var(--bg-elevated)]"
+          : "border-[var(--border-color)]/70 bg-[var(--bg-primary)] opacity-70"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-[var(--accent-color)]/12 px-2.5 py-1 text-[11px] font-medium capitalize text-[var(--accent-color)]">
+              {memory.memory_type}
+            </span>
+            {memory.scope === "global" && (
+              <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-400">
+                Global
+              </span>
+            )}
+            {memory.is_pinned && (
+              <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-400">
+                Pinned
+              </span>
+            )}
+            {!memory.is_active && (
+              <span className="rounded-full bg-[var(--bg-hover)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)]">
+                Inactive
+              </span>
+            )}
+          </div>
+          <HoverDefinitionSurface workspaceId={workspaceId} as="div" className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-primary)]">
+            {memory.content}
+          </HoverDefinitionSurface>
+          <p className="mt-3 text-[11px] text-[var(--text-muted)]">
+            Updated {formatTimestamp(memory.updated_at)}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          <Tooltip content={memory.is_pinned ? "Unpin memory" : "Pin memory"} position="top">
+            <button
+              onClick={() => onUpdate(memory.id, { is_pinned: !memory.is_pinned })}
+              className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            >
+              {memory.is_pinned ? <PinOff size={14} /> : <Pin size={14} />}
+            </button>
+          </Tooltip>
+          <Tooltip content={memory.is_active ? "Deactivate memory" : "Activate memory"} position="top">
+            <button
+              onClick={() => onUpdate(memory.id, { is_active: !memory.is_active })}
+              className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            >
+              {memory.is_active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+            </button>
+          </Tooltip>
+          <Tooltip content="Delete memory" position="top">
+            <button
+              onClick={() => onDelete(memory.id)}
+              className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-400"
+            >
+              <Trash2 size={14} />
+            </button>
+          </Tooltip>
+        </div>
       </div>
     </div>
   );

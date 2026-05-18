@@ -452,6 +452,11 @@ pub fn run() {
             commands::workspace::hide_workspace,
             commands::workspace::unhide_workspace,
             commands::workspace::reorder_workspaces,
+            commands::workspace_glossary::resolve_workspace_glossary_term,
+            commands::workspace_glossary::list_workspace_glossary_terms,
+            commands::workspace_glossary::upsert_workspace_glossary_term,
+            commands::workspace_glossary::delete_workspace_glossary_term,
+            commands::workspace_glossary::refresh_workspace_glossary,
             // Folder commands
             commands::folder::create_folder,
             commands::folder::list_folders,
