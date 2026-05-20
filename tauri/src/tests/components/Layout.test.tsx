@@ -155,8 +155,8 @@ describe("Layout", () => {
   it("keeps the drag handle compact when single-pane workspace tabs are visible", () => {
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "ws-1", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "ws-2", name: "Linux", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "ws-2", name: "Linux", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "ws-1",
       splitMode: false,
@@ -249,8 +249,8 @@ describe("Layout", () => {
   it("renders workspace tabs and allows switching", () => {
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "ws-1",
     });
@@ -271,9 +271,9 @@ describe("Layout", () => {
   it("selecting a root workspace activates its first child workspace", () => {
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "root-1", name: "Parent One", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "child-1", name: "Child One", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "root-2", name: "Parent Two", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "root-1", name: "Parent One", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "child-1", name: "Child One", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "root-2", name: "Parent Two", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "root-2",
       activeParentWorkspaceId: "root-2",
@@ -295,9 +295,9 @@ describe("Layout", () => {
   it("renders child workspace tabs for the active parent and allows switching between them", () => {
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "root-1", name: "Parent", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "child-1", name: "Alpha", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "child-2", name: "Beta", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "root-1", name: "Parent", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "child-1", name: "Alpha", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "child-2", name: "Beta", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "child-1",
       activeParentWorkspaceId: "root-1",
@@ -329,13 +329,13 @@ describe("Layout", () => {
       created_at: "",
       updated_at: "",
       parent_workspace_id: "root-1",
-      icon: "", order_index: 0, last_message_at: null, survey_data: null,
+      icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false,
     });
 
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "root-1", name: "Parent", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "child-1", name: "Alpha", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "root-1", name: "Parent", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "child-1", name: "Alpha", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "child-1",
       activeParentWorkspaceId: "root-1",
@@ -418,8 +418,8 @@ describe("Layout", () => {
     useWorkspaceStore.setState({
       activeWorkspaceId: "ws-1",
       workspaces: [
-        { id: "ws-1", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "ws-2", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "ws-2", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
     });
 
@@ -469,8 +469,8 @@ describe("Layout", () => {
   it("renders a workspace selector in single-pane top-dropdown mode", () => {
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "ws-1-child", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "ws-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "ws-1-child", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "ws-1", icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "ws-1-child",
       activeParentWorkspaceId: "ws-1",
@@ -497,8 +497,8 @@ describe("Layout", () => {
     useWorkspaceStore.setState({
       workspaceNavigation: "top-tabs",
       workspaces: [
-        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "ws-1",
       splitMode: true,
@@ -525,8 +525,8 @@ describe("Layout", () => {
     useWorkspaceStore.setState({
       workspaceNavigation: "top-tabs",
       workspaces: [
-        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "ws-1",
       splitMode: true,
@@ -566,7 +566,7 @@ describe("Layout", () => {
         created_at: "",
         updated_at: "",
         parent_workspace_id: null,
-    icon: "", order_index: 0, last_message_at: null, survey_data: null
+    icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false,
       })),
       activeWorkspaceId: "ws-1",
       splitMode: true,
@@ -591,8 +591,8 @@ describe("Layout", () => {
   it("can still render dropdown workspace navigation for both split panes", () => {
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "ws-1", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "ws-2", name: "Linux", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "ws-2", name: "Linux", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "ws-1",
       workspaceNavigation: "top-dropdown",
@@ -617,8 +617,8 @@ describe("Layout", () => {
   it("reserves trailing titlebar space in split mode and renders an icon-only split toggle", () => {
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "ws-1", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "ws-2", name: "Linux", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Security", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "ws-2", name: "Linux", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "ws-1",
       workspaceNavigation: "top-dropdown",
@@ -650,8 +650,8 @@ describe("Layout", () => {
   it("hides the split toggle on single-pane routes like preferences", () => {
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "ws-1",
     });
@@ -668,8 +668,8 @@ describe("Layout", () => {
   it("shows the split toggle on split-capable routes", () => {
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "ws-1",
     });
@@ -687,8 +687,8 @@ describe("Layout", () => {
     useSettingsStore.setState({ switchWorkspaceSection: "/chat" });
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
-        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "ws-1",
     });
@@ -710,7 +710,7 @@ describe("Layout", () => {
   it("opens a custom context menu for workspace tabs", () => {
     useWorkspaceStore.setState({
       workspaces: [
-        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null, exclude_from_ai_analysis: false },
       ],
       activeWorkspaceId: "ws-1",
     });
