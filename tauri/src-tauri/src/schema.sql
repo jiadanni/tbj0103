@@ -348,6 +348,35 @@ CREATE TABLE IF NOT EXISTS memories (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS workspace_glossary_terms (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    term TEXT NOT NULL,
+    normalized_term TEXT NOT NULL,
+    definition TEXT NOT NULL,
+    aliases_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(aliases_json)),
+    source_kind TEXT NOT NULL DEFAULT 'manual'
+        CHECK(source_kind IN ('manual', 'glossary_seed', 'ai_scan')),
+    source_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
+    is_user_edited INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(workspace_id, normalized_term)
+);
+
+CREATE TABLE IF NOT EXISTS workspace_glossary_state (
+    workspace_id TEXT PRIMARY KEY NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    last_seeded_at TEXT,
+    assistant_message_count_at_seed INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS session_glossary_scan_state (
+    session_id TEXT PRIMARY KEY NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    last_scanned_assistant_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- AI memory summaries — one per (scope, workspace_id)
 CREATE TABLE IF NOT EXISTS memory_summaries (
     id TEXT PRIMARY KEY NOT NULL,
@@ -434,6 +463,9 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('memory_extraction_idle_minutes', '5'),
     ('summarization_min_messages', '10'),
     ('summarization_max_sessions', '5'),
+    ('hover_definition_scan_enabled', 'true'),
+    ('hover_definition_scan_max_sessions', '3'),
+    ('workspace_glossary_refresh_interval_minutes', '60'),
     ('git_sync_interval_minutes', '5');
 
 -- Conversation summaries
@@ -489,6 +521,11 @@ CREATE TABLE IF NOT EXISTS memory_embeddings (
     model TEXT NOT NULL DEFAULT 'nomic-embed-text',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_workspace_glossary_workspace
+    ON workspace_glossary_terms(workspace_id, normalized_term);
+CREATE INDEX IF NOT EXISTS idx_workspace_glossary_source_session
+    ON workspace_glossary_terms(source_session_id);
 
 -- Context assembly snapshots (debugging/replay)
 CREATE TABLE IF NOT EXISTS context_snapshots (

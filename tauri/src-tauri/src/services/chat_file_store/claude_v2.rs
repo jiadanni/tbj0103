@@ -179,14 +179,16 @@ pub fn preview_v2_projects(
             .map(|v| v.len())
             .unwrap_or(0);
 
+        let prompt = project.prompt_template.unwrap_or_default();
         previews.push(ClaudeProjectPreview {
             uuid: project.uuid.clone(),
             name: project.name,
             description: project.description.unwrap_or_default(),
-            has_prompt: project.prompt_template.as_ref().is_some_and(|s| !s.is_empty()),
+            has_prompt: !prompt.is_empty(),
             doc_count: project.docs.len(),
             conversation_count,
             has_memory: memory_uuids.contains(&project.uuid),
+            prompt_template: prompt,
         });
     }
 
@@ -220,6 +222,20 @@ pub fn preview_v2_design_chats(
             continue;
         }
 
+        let first_user_message = chat
+            .messages
+            .iter()
+            .find(|m| m.sender == "human")
+            .map(|m| {
+                let raw = extract_claude_message_content_v2(m);
+                let mut out = String::new();
+                for (i, ch) in raw.chars().enumerate() {
+                    if i >= 280 { break; }
+                    out.push(ch);
+                }
+                out
+            })
+            .unwrap_or_default();
         let preview = ClaudeConversationPreview {
             uuid: chat.uuid.clone(),
             name: chat.title.clone(),
@@ -227,6 +243,7 @@ pub fn preview_v2_design_chats(
             created_at: chat.created_at.clone(),
             updated_at: chat.updated_at.clone(),
             project_uuid: Some(chat.project.uuid.clone()),
+            first_user_message,
         };
         by_project.entry(chat.project.uuid).or_default().push(preview);
     }

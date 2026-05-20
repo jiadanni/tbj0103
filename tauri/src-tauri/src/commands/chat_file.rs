@@ -101,8 +101,14 @@ fn keyring_delete() {
 }
 
 #[cfg(target_os = "linux")]
-fn try_linux_file_selection(reveal_path: &Path) -> Result<(), String> {
-    let file_uri = format!("file://{}", reveal_path.to_string_lossy());
+fn try_linux_file_selection(reveal_path: &std::path::Path) -> Result<(), String> {
+    let abs_path = std::fs::canonicalize(reveal_path).map_err(|e| e.to_string())?;
+    let file_uri = reqwest::Url::from_file_path(abs_path)
+        .map_err(|_| "Failed to create file URI".to_string())?
+        .to_string();
+
+    // Escape for GVariant string literal: backslash and double quote
+    let escaped_uri = file_uri.replace('\\', "\\\\").replace('"', "\\\"");
 
     let gdbus_status = Command::new("gdbus")
         .args([
@@ -114,7 +120,7 @@ fn try_linux_file_selection(reveal_path: &Path) -> Result<(), String> {
             "/org/freedesktop/FileManager1",
             "--method",
             "org.freedesktop.FileManager1.ShowItems",
-            &format!("[\"{file_uri}\"]"),
+            &format!("[\"{escaped_uri}\"]"),
             "\"\"",
         ])
         .status();
@@ -1093,6 +1099,26 @@ pub fn preview_claude_files(
         };
 
         let orphan_count = orphan_conversations.len();
+
+        // Per-project memory map (uuid → memory text), used both by the matcher
+        // and by the UI's inline memory preview.
+        let memories_by_project: std::collections::HashMap<String, String> = memories
+            .folder_memories
+            .iter()
+            .map(|m| (m.project_uuid.clone(), m.memory.clone()))
+            .collect();
+
+        // Suggest a project for each orphan (matcher does not run when no projects exist).
+        let suggestions = if include_conversations && !projects.is_empty() {
+            chat_file_store::claude_v2_match::suggest_project_for_conversations(
+                &orphan_conversations,
+                &projects,
+                &memories_by_project,
+            )
+        } else {
+            Vec::new()
+        };
+
         Ok(serde_json::json!({
             "format": "v2",
             "folders": projects,
@@ -1100,6 +1126,8 @@ pub fn preview_claude_files(
             "orphan_conversations": orphan_conversations,
             "orphan_count": orphan_count,
             "memories": if include_memories { Some(memories) } else { None },
+            "memories_by_project": if include_memories { Some(memories_by_project) } else { None },
+            "suggestions": suggestions,
             "files_found": {
                 "conversations": folder.join("conversations.json").is_file(),
                 "projects": folder.join("projects").is_dir(),
@@ -1156,6 +1184,22 @@ pub fn preview_claude_files(
         }
 
         let orphan_count = orphan_conversations.len();
+
+        let memories_by_project: std::collections::HashMap<String, String> = memories
+            .as_ref()
+            .map(|m| m.folder_memories.iter().map(|fm| (fm.project_uuid.clone(), fm.memory.clone())).collect())
+            .unwrap_or_default();
+
+        let suggestions = if include_conversations && !claude_projects.is_empty() {
+            chat_file_store::claude_v2_match::suggest_project_for_conversations(
+                &orphan_conversations,
+                &claude_projects,
+                &memories_by_project,
+            )
+        } else {
+            Vec::new()
+        };
+
         Ok(serde_json::json!({
             "format": "legacy",
             "folders": claude_projects,
@@ -1163,6 +1207,8 @@ pub fn preview_claude_files(
             "orphan_conversations": orphan_conversations,
             "orphan_count": orphan_count,
             "memories": memories,
+            "memories_by_project": if include_memories { Some(memories_by_project) } else { None },
+            "suggestions": suggestions,
             "files_found": {
                 "conversations": folder.join("conversations.json").is_file(),
                 "projects": folder.join("projects.json").is_file(),
@@ -1190,6 +1236,9 @@ pub fn import_claude_files(
     orphans_folder_id: Option<String>,
     selected_conversation_ids: Option<Vec<String>>,
     selected_project_ids: Option<Vec<String>>,
+    // chat_uuid → claude project_uuid. Routes an otherwise-orphan chat into
+    // the folder mapped to that project (must also appear in folder_mappings).
+    chat_project_overrides: Option<std::collections::HashMap<String, String>>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
@@ -1208,11 +1257,19 @@ pub fn import_claude_files(
     let mut session_ids = Vec::new();
     let mut errors = Vec::new();
 
-    // Helper: insert one conversation
+    let overrides = chat_project_overrides.unwrap_or_default();
+
+    // Helper: insert one conversation. Routing precedence:
+    //   1. embedded project_uuid → folder_mappings
+    //   2. chat_project_overrides[chat.id] → folder_mappings
+    //   3. orphans_folder_id (fallback)
     let mut insert_chat = |data: &chat_file_store::ChatFileData, project_uuid: Option<&str>| -> Result<(), String> {
-        let folder_id = match project_uuid {
-            Some(uuid) => folder_mappings.get(uuid).cloned().unwrap_or_default(),
-            None => orphans_folder_id.clone().unwrap_or_default(),
+        let folder_id = if let Some(uuid) = project_uuid {
+            folder_mappings.get(uuid).cloned().unwrap_or_default()
+        } else if let Some(target_project) = overrides.get(&data.id) {
+            folder_mappings.get(target_project).cloned().unwrap_or_default()
+        } else {
+            orphans_folder_id.clone().unwrap_or_default()
         };
         if folder_id.is_empty() {
             return Ok(()); // no destination → skip
@@ -1402,5 +1459,23 @@ pub fn load_crypto_state_from_keyring(conn: &rusqlite::Connection) -> Option<Str
         keyring_load()
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_uri_escaping() {
+        // Test with actual characters that need escaping in GVariant string literals
+        let file_uri = "file:///tmp/test%20%22quote%22%20%5Cback.txt";
+        let escaped_uri = file_uri.replace('\\', "\\\\").replace('"', "\\\"");
+
+        assert_eq!(escaped_uri, "file:///tmp/test%20%22quote%22%20%5Cback.txt");
+
+        let file_uri_with_special = "file:///path/with\"quote\\backslash";
+        let escaped_uri = file_uri_with_special.replace('\\', "\\\\").replace('"', "\\\"");
+        assert_eq!(escaped_uri, "file:///path/with\\\"quote\\\\backslash");
     }
 }

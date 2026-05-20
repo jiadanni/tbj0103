@@ -15,6 +15,13 @@ const apiMocks = vi.hoisted(() => ({
   listWorkspaces: vi.fn(),
   getSummary: vi.fn(),
   listMemories: vi.fn(),
+  getMemorySummary: vi.fn(),
+  getTopicSignature: vi.fn(),
+  listGlossaryTerms: vi.fn(),
+  resolveGlossaryTerm: vi.fn(),
+  upsertGlossaryTerm: vi.fn(),
+  deleteGlossaryTerm: vi.fn(),
+  refreshGlossary: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -32,6 +39,17 @@ vi.mock("@/lib/api", () => ({
     },
     memory: {
       list: apiMocks.listMemories,
+      getSummary: apiMocks.getMemorySummary,
+    },
+    topicSignature: {
+      get: apiMocks.getTopicSignature,
+    },
+    workspaceGlossary: {
+      list: apiMocks.listGlossaryTerms,
+      resolve: apiMocks.resolveGlossaryTerm,
+      upsert: apiMocks.upsertGlossaryTerm,
+      delete: apiMocks.deleteGlossaryTerm,
+      refresh: apiMocks.refreshGlossary,
     },
   },
 }));
@@ -128,6 +146,9 @@ describe("WorkspaceSettingsView", () => {
     });
     apiMocks.listMemories.mockResolvedValue([]);
     apiMocks.listWorkspaces.mockResolvedValue([]);
+    apiMocks.getMemorySummary.mockResolvedValue(null);
+    apiMocks.getTopicSignature.mockResolvedValue(null);
+    apiMocks.listGlossaryTerms.mockResolvedValue([]);
   });
 
   it("renders parent and child workspaces and shows parent context for a selected child", async () => {

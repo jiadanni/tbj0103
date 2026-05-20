@@ -1,7 +1,7 @@
 /**
  * ImportSettingsSection — external conversation imports.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { Check, CheckSquare, ChevronDown, ChevronRight, FolderInput, RefreshCw, Square, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -26,6 +26,7 @@ interface ClaudeProjectPreview {
   doc_count: number;
   conversation_count: number;
   has_memory: boolean;
+  prompt_template?: string;
 }
 
 interface ClaudeConvPreview {
@@ -35,6 +36,14 @@ interface ClaudeConvPreview {
   created_at: string;
   updated_at: string;
   project_uuid: string | null;
+  first_user_message?: string;
+}
+
+interface ChatSuggestion {
+  conversation_uuid: string;
+  project_uuid: string | null;
+  score: number;
+  reason: "title" | "keywords" | "none";
 }
 
 /**
@@ -120,8 +129,14 @@ export default function ImportSettingsSection() {
   const [claudeSelectedFolders, setClaudeSelectedProjects] = useState<Set<string>>(new Set()); // project UUIDs
   const [projectDestinations, setProjectDestinations] = useState<Record<string, ProjectDestination>>({});
   const [projectMemoryEnabled, setProjectMemoryEnabled] = useState<Record<string, boolean>>({});
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [expandedMemories, setExpandedMemories] = useState<Set<string>>(new Set());
   const [orphansExpanded, setOrphansExpanded] = useState(false);
+  const [claudeSuggestions, setClaudeSuggestions] = useState<ChatSuggestion[]>([]);
+  const [claudeMemoriesByProject, setClaudeMemoriesByProject] = useState<Record<string, string>>({});
+  // chat_uuid → project_uuid (or null = unassigned). Initialised from server suggestions on scan.
+  const [chatAssignments, setChatAssignments] = useState<Record<string, string | null>>({});
+  // Focused project for the master/detail split view.
+  const [focusedProjectUuid, setFocusedProjectUuid] = useState<string | null>(null);
   const [bulkDestType, setBulkDestType] = useState<ProjectDestType>("new-workspace");
   const [bulkParentId, setBulkParentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -372,8 +387,12 @@ export default function ImportSettingsSection() {
     setClaudeSelectedProjects(new Set());
     setProjectDestinations({});
     setProjectMemoryEnabled({});
-    setExpandedProjects(new Set());
+    setExpandedMemories(new Set());
     setOrphansExpanded(false);
+    setClaudeSuggestions([]);
+    setClaudeMemoriesByProject({});
+    setChatAssignments({});
+    setFocusedProjectUuid(null);
   }
 
   async function pickClaudeFolder() {
@@ -384,10 +403,11 @@ export default function ImportSettingsSection() {
 
     try {
       const detected = await api.chatFile.detectClaudeFormat(folderPath);
+      resetClaudePreview();
       setClaudeFolderPath(folderPath);
       setClaudeDetectedFormat(detected.format);
       setClaudeFilesFound(detected.files_found);
-      resetClaudePreview();
+      // Auto-scan kicks in via the useEffect watching [claudeFolderPath + include flags]
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Could not detect Claude export format";
       setError(msg);
@@ -418,14 +438,33 @@ export default function ImportSettingsSection() {
       setClaudeProjects(result.folders);
       setClaudeConvsByProject(result.conversations_by_project);
       setClaudeOrphans(result.orphan_conversations);
+      setClaudeSuggestions(result.suggestions ?? []);
+      setClaudeMemoriesByProject(result.memories_by_project ?? {});
 
-      // Initialize per-project state
+      // Seed assignments from server suggestions (chat → suggested project_uuid).
+      // Chats with no suggestion stay unassigned (null).
+      const initialAssignments: Record<string, string | null> = {};
+      const suggestionByChat = new Map<string, string | null>();
+      for (const s of result.suggestions ?? []) {
+        suggestionByChat.set(s.conversation_uuid, s.project_uuid);
+      }
+      for (const c of result.orphan_conversations) {
+        initialAssignments[c.uuid] = suggestionByChat.get(c.uuid) ?? null;
+      }
+      setChatAssignments(initialAssignments);
+
+      // Initialize per-project state.
+      // Select a project for import if it has design_chats OR if any orphan is suggested to it.
+      const suggestedProjects = new Set<string>();
+      for (const v of suggestionByChat.values()) {
+        if (v) {suggestedProjects.add(v);}
+      }
       const selectedFolders = new Set<string>();
       const dests: Record<string, ProjectDestination> = {};
       const memEnabled: Record<string, boolean> = {};
 
       for (const proj of result.folders) {
-        if (proj.conversation_count > 0) {
+        if (proj.conversation_count > 0 || suggestedProjects.has(proj.uuid)) {
           selectedFolders.add(proj.uuid);
         }
         dests[proj.uuid] = { type: "new-workspace", parentId: null, subWorkspaceId: null, name: proj.name };
@@ -433,9 +472,15 @@ export default function ImportSettingsSection() {
       }
 
       setClaudeSelectedProjects(selectedFolders);
-      setClaudeSelected(new Set(result.orphan_conversations.map((c) => c.uuid)));
+      // Default orphan "selected for import" = chats that ended up Unassigned (no suggestion).
+      setClaudeSelected(new Set(
+        result.orphan_conversations
+          .filter((c) => !suggestionByChat.get(c.uuid))
+          .map((c) => c.uuid),
+      ));
       setProjectDestinations(dests);
       setProjectMemoryEnabled(memEnabled);
+      setFocusedProjectUuid(result.folders[0]?.uuid ?? null);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Claude scan failed";
       setError(msg);
@@ -444,6 +489,14 @@ export default function ImportSettingsSection() {
       setClaudeScanning(false);
     }
   }, [claudeFolderPath, claudeIncludeConversations, claudeIncludeProjects, claudeIncludeMemories]);
+
+  // Auto-scan whenever a folder is picked or the include toggles change.
+  // Replaces the old manual "Select" / "Scan" button in the picker card.
+  useEffect(() => {
+    if (claudeFolderPath) {
+      void scanClaudeFiles();
+    }
+  }, [claudeFolderPath, claudeIncludeConversations, claudeIncludeProjects, claudeIncludeMemories, scanClaudeFiles]);
 
   function applyBulkDestination() {
     setProjectDestinations((prev) => {
@@ -473,7 +526,14 @@ export default function ImportSettingsSection() {
       const folderMappings: Record<string, string> = {};
       const projectMemoryTargets: Record<string, string> = {};
 
-      for (const projUuid of claudeSelectedFolders) {
+      // Any project that has chats assigned to it must also have a folder created,
+      // even if the user didn't explicitly tick its checkbox.
+      const projectsToCreate = new Set(claudeSelectedFolders);
+      for (const projUuid of Object.values(chatAssignments)) {
+        if (projUuid) {projectsToCreate.add(projUuid);}
+      }
+
+      for (const projUuid of projectsToCreate) {
         const dest = projectDestinations[projUuid];
         if (!dest) { continue; }
 
@@ -498,9 +558,31 @@ export default function ImportSettingsSection() {
         }
       }
 
-      // Orphan workspace
+      // Build the override map: only chats whose assignment maps to a project
+      // that's actually being imported (folderMappings has an entry for it).
+      const chatProjectOverrides: Record<string, string> = {};
+      const assignedConversationIds: string[] = [];
+      for (const [chatId, projUuid] of Object.entries(chatAssignments)) {
+        if (projUuid && folderMappings[projUuid]) {
+          chatProjectOverrides[chatId] = projUuid;
+          assignedConversationIds.push(chatId);
+        }
+      }
+
+      // Conversations to send to the backend = explicitly-unassigned chats the
+      // user ticked + assigned chats. (If a chat is assigned but the project
+      // wasn't selected for import, it falls into Unassigned via the tick state.)
+      const conversationIdsToImport = new Set<string>([
+        ...assignedConversationIds,
+        ...claudeSelected,
+      ]);
+
+      // Orphan workspace — only created if any unassigned chats remain.
+      const unassignedCount = [...claudeSelected].filter(
+        (id) => !chatProjectOverrides[id],
+      ).length;
       let orphansFolderId: string | null = null;
-      if (claudeOrphans.length > 0 && claudeSelected.size > 0) {
+      if (unassignedCount > 0) {
         const existing = workspaces.find((w) => w.name === "Unassigned Imports" && !w.parent_workspace_id);
         const ws = existing ?? await api.workspace.create("Unassigned Imports");
         const stamp = new Date().toISOString().slice(0, 10);
@@ -516,8 +598,9 @@ export default function ImportSettingsSection() {
         folderMappings,
         projectMemoryTargets,
         orphansFolderId,
-        selectedConversationIds: claudeOrphans.length > 0 ? [...claudeSelected] : undefined,
+        selectedConversationIds: conversationIdsToImport.size > 0 ? [...conversationIdsToImport] : undefined,
         selectedProjectIds: [...claudeSelectedFolders],
+        chatProjectOverrides: Object.keys(chatProjectOverrides).length > 0 ? chatProjectOverrides : undefined,
       });
 
       const finalFreshWs = await api.workspace.list();
@@ -831,11 +914,14 @@ export default function ImportSettingsSection() {
 
               {claudeFolderPath && claudeFilesFound && (
                 <div className="flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="text-[11px] text-[var(--text-muted)] truncate max-w-[70%]">{claudeFolderPath}</div>
-                    <span className="text-[11px] font-medium text-[var(--accent-color)]">
-                      {claudeDetectedFormat === "v2" ? "v2 (2026+)" : "legacy"}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {claudeScanning && <RefreshCw size={12} className="animate-spin text-[var(--text-muted)]" />}
+                      <span className="text-[11px] font-medium text-[var(--accent-color)]">
+                        {claudeDetectedFormat === "v2" ? "v2 (2026+)" : "legacy"}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-3">
                     {(["conversations", "projects", "memories"] as const).map((k) => (
@@ -863,16 +949,6 @@ export default function ImportSettingsSection() {
                         </span>
                       </label>
                     ))}
-                  </div>
-                  <div className="flex justify-end mt-1">
-                    <button
-                      onClick={() => void scanClaudeFiles()}
-                      disabled={claudeScanning || importingClaude || !claudeFolderPath}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-                    >
-                      {claudeScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                      {claudeScanning ? "Scanning..." : "Select"}
-                    </button>
                   </div>
                 </div>
               )}
@@ -926,192 +1002,390 @@ export default function ImportSettingsSection() {
                   </button>
                 </div>
 
-                <div className="flex flex-col divide-y divide-[var(--border-color)] rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
-                  {claudeProjects.map((proj) => {
-                    const checked = claudeSelectedFolders.has(proj.uuid);
-                    const dest = projectDestinations[proj.uuid];
-                    const expanded = expandedProjects.has(proj.uuid);
-                    const convs = claudeConvsByProject[proj.uuid] ?? [];
-                    const subWsOptions = dest?.parentId
-                      ? workspaces.filter((w) => w.parent_workspace_id === dest.parentId)
-                      : [];
-
-                    return (
-                      <div key={proj.uuid} className="p-3">
-                        <div className="flex items-start gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setClaudeSelectedProjects((prev) => {
-                              const next = new Set(prev);
-                              if (checked) { next.delete(proj.uuid); } else { next.add(proj.uuid); }
-                              return next;
-                            })}
-                            className="mt-0.5 shrink-0 text-[var(--accent-color)]"
+                {/* Master / detail split: project list on the left, focused project's
+                    settings + conversations on the right. */}
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+                  {/* ── Master: project list ───────────────────────── */}
+                  <div className="flex max-h-[60vh] min-w-0 flex-col divide-y divide-[var(--border-color)] overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] lg:w-[40%] lg:max-w-md">
+                    {claudeProjects.map((proj) => {
+                      const checked = claudeSelectedFolders.has(proj.uuid);
+                      const assignedCount = Object.values(chatAssignments).filter((p) => p === proj.uuid).length;
+                      const totalChats = proj.conversation_count + assignedCount;
+                      const isFocused = focusedProjectUuid === proj.uuid;
+                      return (
+                        <button
+                          key={proj.uuid}
+                          type="button"
+                          onClick={() => setFocusedProjectUuid(proj.uuid)}
+                          className={`flex items-start gap-2 p-3 text-left transition-colors ${isFocused ? "bg-[var(--accent-color)]/10" : "hover:bg-[var(--bg-hover)]"}`}
+                        >
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setClaudeSelectedProjects((prev) => {
+                                const next = new Set(prev);
+                                if (checked) { next.delete(proj.uuid); } else { next.add(proj.uuid); }
+                                return next;
+                              });
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === " " || e.key === "Enter") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setClaudeSelectedProjects((prev) => {
+                                  const next = new Set(prev);
+                                  if (checked) { next.delete(proj.uuid); } else { next.add(proj.uuid); }
+                                  return next;
+                                });
+                              }
+                            }}
+                            className="mt-0.5 shrink-0 text-[var(--accent-color)] cursor-pointer"
                           >
                             {checked ? <CheckSquare size={16} /> : <Square size={16} className="text-[var(--text-muted)]" />}
-                          </button>
+                          </span>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
                               <span className="truncate text-xs font-medium text-[var(--text-primary)]">{proj.name}</span>
-                              {proj.conversation_count === 0 && (
+                              {totalChats === 0 && (
                                 <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400">no chats</span>
+                              )}
+                              {assignedCount > 0 && (
+                                <span className="shrink-0 rounded bg-[var(--accent-color)]/10 px-1.5 py-0.5 text-[10px] text-[var(--accent-color)]">
+                                  +{assignedCount}
+                                </span>
                               )}
                             </div>
                             <div className="text-[11px] text-[var(--text-muted)]">
                               {proj.has_prompt ? "Has instructions" : "No instructions"}
                               {proj.doc_count > 0 ? ` · ${proj.doc_count} doc${proj.doc_count === 1 ? "" : "s"}` : ""}
                               {" · "}
-                              {proj.conversation_count} chat{proj.conversation_count === 1 ? "" : "s"}
+                              {totalChats} chat{totalChats === 1 ? "" : "s"}
                             </div>
                           </div>
-                        </div>
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                        {checked && dest && (
-                          <div className="mt-2 ml-6 flex flex-col gap-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {([
-                                { v: "new-workspace" as const, label: "New workspace" },
-                                { v: "new-sub-workspace" as const, label: "New sub-workspace" },
-                                { v: "folder-in-sub" as const, label: "Folder in sub-workspace" },
-                              ]).map((opt) => (
-                                <button
-                                  key={opt.v}
-                                  type="button"
-                                  onClick={() => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, type: opt.v, subWorkspaceId: null } }))}
-                                  className={`rounded-md border px-2 py-0.5 text-[11px] ${dest.type === opt.v ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)]" : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
-                                >
-                                  {opt.label}
-                                </button>
-                              ))}
+                  {/* ── Detail: focused project ────────────────────── */}
+                  <div className="flex min-h-[40vh] min-w-0 flex-1 flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
+                    {(() => {
+                      const proj = claudeProjects.find((p) => p.uuid === focusedProjectUuid);
+                      if (!proj) {
+                        return <div className="m-auto text-[11px] text-[var(--text-muted)]">Select a project on the left.</div>;
+                      }
+                      const checked = claudeSelectedFolders.has(proj.uuid);
+                      const dest = projectDestinations[proj.uuid];
+                      const memoryExpanded = expandedMemories.has(proj.uuid);
+                      const memoryText = claudeMemoriesByProject[proj.uuid] ?? "";
+                      const subWsOptions = dest?.parentId
+                        ? workspaces.filter((w) => w.parent_workspace_id === dest.parentId)
+                        : [];
+                      const nativeConvs = claudeConvsByProject[proj.uuid] ?? [];
+                      const assignedConvs = claudeOrphans.filter((c) => chatAssignments[c.uuid] === proj.uuid);
+                      const allProjectConvs = [
+                        ...nativeConvs.map((c) => ({ ...c, _origin: "native" as const })),
+                        ...assignedConvs.map((c) => ({ ...c, _origin: "assigned" as const })),
+                      ];
+                      return (
+                        <>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-[var(--text-primary)]">{proj.name}</div>
+                              {proj.description && (
+                                <div className="mt-1 text-[11px] text-[var(--text-muted)] line-clamp-3">{proj.description}</div>
+                              )}
                             </div>
+                          </div>
 
-                            <div className="flex flex-wrap items-center gap-2">
-                              {(dest.type === "new-sub-workspace" || dest.type === "folder-in-sub") && (
-                                <select
-                                  value={dest.parentId ?? ""}
-                                  onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, parentId: e.target.value || null, subWorkspaceId: null } }))}
-                                  className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)]"
-                                >
-                                  <option value="">Select workspace…</option>
-                                  {rootWorkspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                                </select>
-                              )}
-                              {dest.type === "folder-in-sub" && (
-                                <select
-                                  value={dest.subWorkspaceId ?? ""}
-                                  disabled={!dest.parentId}
-                                  onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, subWorkspaceId: e.target.value || null } }))}
-                                  className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)] disabled:opacity-40"
-                                >
-                                  <option value="">{dest.parentId ? (subWsOptions.length ? "Select sub-workspace…" : "No sub-workspaces yet") : "Pick workspace first"}</option>
-                                  {subWsOptions.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                                </select>
-                              )}
-                              <div className="flex items-center gap-1">
-                                <span className="text-[11px] text-[var(--text-muted)]">Name:</span>
-                                <input
-                                  type="text"
-                                  value={dest.name}
-                                  onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, name: e.target.value } }))}
-                                  className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)] w-40"
-                                />
+                          {!checked && (
+                            <div className="rounded-md border border-dashed border-[var(--border-color)] p-2 text-[11px] text-[var(--text-muted)]">
+                              Not selected for import — tick the checkbox on the left to configure a destination. Conversations and memory are still shown below.
+                            </div>
+                          )}
+
+                          {dest && (
+                            <div className={`flex flex-col gap-2 ${checked ? "" : "opacity-50 pointer-events-none"}`}>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {([
+                                  { v: "new-workspace" as const, label: "New workspace" },
+                                  { v: "new-sub-workspace" as const, label: "New sub-workspace" },
+                                  { v: "folder-in-sub" as const, label: "Folder in sub-workspace" },
+                                ]).map((opt) => (
+                                  <button
+                                    key={opt.v}
+                                    type="button"
+                                    onClick={() => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, type: opt.v, subWorkspaceId: null } }))}
+                                    className={`rounded-md border px-2 py-0.5 text-[11px] ${dest.type === opt.v ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)]" : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
                               </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                {(dest.type === "new-sub-workspace" || dest.type === "folder-in-sub") && (
+                                  <select
+                                    value={dest.parentId ?? ""}
+                                    onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, parentId: e.target.value || null, subWorkspaceId: null } }))}
+                                    className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)]"
+                                  >
+                                    <option value="">Select workspace…</option>
+                                    {rootWorkspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                                  </select>
+                                )}
+                                {dest.type === "folder-in-sub" && (
+                                  <select
+                                    value={dest.subWorkspaceId ?? ""}
+                                    disabled={!dest.parentId}
+                                    onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, subWorkspaceId: e.target.value || null } }))}
+                                    className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)] disabled:opacity-40"
+                                  >
+                                    <option value="">{dest.parentId ? (subWsOptions.length ? "Select sub-workspace…" : "No sub-workspaces yet") : "Pick workspace first"}</option>
+                                    {subWsOptions.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                                  </select>
+                                )}
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[11px] text-[var(--text-muted)]">Name:</span>
+                                  <input
+                                    type="text"
+                                    value={dest.name}
+                                    onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, name: e.target.value } }))}
+                                    className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)] w-40"
+                                  />
+                                </div>
+                              </div>
+
+                              <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={!!projectMemoryEnabled[proj.uuid]}
+                                  disabled={!proj.has_memory}
+                                  onChange={(e) => setProjectMemoryEnabled((prev) => ({ ...prev, [proj.uuid]: e.target.checked }))}
+                                  className="rounded"
+                                />
+                                <span className={`text-[11px] ${proj.has_memory ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
+                                  Import project memory{!proj.has_memory ? " (none in export)" : ""}
+                                </span>
+                              </label>
+
+                              {projectMemoryEnabled[proj.uuid] && memoryText && (
+                                <div className="flex flex-col gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedMemories((prev) => {
+                                      const next = new Set(prev);
+                                      if (memoryExpanded) { next.delete(proj.uuid); } else { next.add(proj.uuid); }
+                                      return next;
+                                    })}
+                                    className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                                  >
+                                    {memoryExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                    Memory preview ({memoryText.length} char{memoryText.length === 1 ? "" : "s"})
+                                  </button>
+                                  {memoryExpanded && (
+                                    <pre className="whitespace-pre-wrap rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] p-2 text-[11px] text-[var(--text-secondary)] max-h-40 overflow-y-auto">
+                                      {memoryText}
+                                    </pre>
+                                  )}
+                                </div>
+                              )}
                             </div>
+                          )}
 
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={!!projectMemoryEnabled[proj.uuid]}
-                                disabled={!proj.has_memory}
-                                onChange={(e) => setProjectMemoryEnabled((prev) => ({ ...prev, [proj.uuid]: e.target.checked }))}
-                                className="rounded"
-                              />
-                              <span className={`text-[11px] ${proj.has_memory ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
-                                Import project memory{!proj.has_memory ? " (none in export)" : ""}
-                              </span>
-                            </label>
-
-                            {convs.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setExpandedProjects((prev) => {
-                                  const next = new Set(prev);
-                                  if (expanded) { next.delete(proj.uuid); } else { next.add(proj.uuid); }
-                                  return next;
-                                })}
-                                className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                              >
-                                {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                {convs.length} conversation{convs.length === 1 ? "" : "s"}
-                              </button>
-                            )}
-
-                            {expanded && convs.length > 0 && (
-                              <div className="max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)]">
-                                {convs.map((conv) => (
-                                  <div key={conv.uuid} className="border-b border-[var(--border-color)] px-3 py-1.5 last:border-b-0">
-                                    <div className="truncate text-[11px] text-[var(--text-primary)]">{conv.name || "Untitled"}</div>
-                                    <div className="text-[10px] text-[var(--text-muted)]">{conv.message_count} msg{conv.message_count === 1 ? "" : "s"}</div>
+                          {/* Conversations belonging to this project (native + assigned). */}
+                          <div className="mt-2 flex flex-col gap-1">
+                            <div className="text-[11px] font-medium text-[var(--text-primary)]">
+                              Conversations ({allProjectConvs.length})
+                            </div>
+                            {allProjectConvs.length === 0 ? (
+                              <div className="text-[11px] text-[var(--text-muted)]">
+                                No conversations linked to this project. Use the &ldquo;Unassigned&rdquo; panel below to assign chats here.
+                              </div>
+                            ) : (
+                              <div className="flex-1 max-h-[40vh] overflow-y-auto rounded-md border border-[var(--border-color)]">
+                                {allProjectConvs.map((conv) => (
+                                  <div key={conv.uuid} className="flex items-center gap-2 border-b border-[var(--border-color)] px-3 py-1.5 last:border-b-0">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="truncate text-[11px] text-[var(--text-primary)]">{conv.name || "Untitled"}</div>
+                                      <div className="text-[10px] text-[var(--text-muted)]">{conv.message_count} msg{conv.message_count === 1 ? "" : "s"}</div>
+                                    </div>
+                                    {conv._origin === "assigned" ? (
+                                      <>
+                                        <span className="shrink-0 rounded bg-[var(--accent-color)]/10 px-1.5 py-0.5 text-[10px] text-[var(--accent-color)]">assigned</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setChatAssignments((prev) => ({ ...prev, [conv.uuid]: null }));
+                                            setClaudeSelected((prev) => {
+                                              const next = new Set(prev);
+                                              next.add(conv.uuid);
+                                              return next;
+                                            });
+                                          }}
+                                          className="shrink-0 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:underline"
+                                        >
+                                          unassign
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <span className="shrink-0 rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">native</span>
+                                    )}
                                   </div>
                                 ))}
                               </div>
                             )}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* ── Orphan conversations ──────────────────────────── */}
+            {/* ── Conversation assignment table ─────────────────── */}
             {claudeOrphans.length > 0 && (
               <div className="mt-4 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-[var(--text-primary)]">
-                    Unassigned ({claudeSelected.size}/{claudeOrphans.length})
-                  </span>
-                  <div className="flex gap-2">
-                    <button onClick={() => setClaudeSelected(new Set(claudeOrphans.map((c) => c.uuid)))} className="text-xs text-[var(--accent-color)] hover:underline">All</button>
-                    <button onClick={() => setClaudeSelected(new Set())} className="text-xs text-[var(--text-muted)] hover:underline">None</button>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-[var(--text-muted)]">→ &ldquo;Unassigned Imports&rdquo; workspace (auto-created)</span>
-                    <button
-                      type="button"
-                      onClick={() => setOrphansExpanded((p) => !p)}
-                      className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                    >
-                      {orphansExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                      {claudeOrphans.length} conversation{claudeOrphans.length === 1 ? "" : "s"}
-                    </button>
-                  </div>
-                  {orphansExpanded && (
-                    <div className="mt-2 max-h-40 overflow-y-auto rounded-md border border-[var(--border-color)]">
-                      {claudeOrphans.map((conv) => {
-                        const checked = claudeSelected.has(conv.uuid);
-                        return (
-                          <label key={conv.uuid} className="flex cursor-pointer items-center gap-2 border-b border-[var(--border-color)] px-3 py-1.5 last:border-b-0 hover:bg-[var(--bg-hover)]">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => setClaudeSelected((prev) => {
-                                const next = new Set(prev);
-                                if (checked) { next.delete(conv.uuid); } else { next.add(conv.uuid); }
-                                return next;
-                              })}
-                            />
-                            <span className="truncate text-[11px] text-[var(--text-primary)]">{conv.name || "Untitled"}</span>
-                            <span className="ml-auto shrink-0 text-[10px] text-[var(--text-muted)]">{conv.message_count} msg{conv.message_count === 1 ? "" : "s"}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                {(() => {
+                  const assignedTotal = Object.values(chatAssignments).filter((p) => !!p).length;
+                  const unassignedTotal = claudeOrphans.length - assignedTotal;
+                  const suggestedTotal = claudeSuggestions.filter(
+                    (s) => s.project_uuid && chatAssignments[s.conversation_uuid] !== s.project_uuid,
+                  ).length;
+                  const projectsByUuid = new Map(claudeProjects.map((p) => [p.uuid, p] as const));
+                  // The right-hand detail pane already shows assigned chats under their project.
+                  // This panel lists only the *unassigned* remainder so the user can either
+                  // accept a suggestion or pick a project from the dropdown.
+                  const unassignedConvs = claudeOrphans.filter((c) => !chatAssignments[c.uuid]);
+                  return (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-[var(--text-primary)]">
+                          Unassigned conversations ({unassignedTotal} of {claudeOrphans.length} · {assignedTotal} already routed to projects)
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next: Record<string, string | null> = { ...chatAssignments };
+                              for (const s of claudeSuggestions) {
+                                if (s.project_uuid) { next[s.conversation_uuid] = s.project_uuid; }
+                              }
+                              setChatAssignments(next);
+                              // Drop newly-assigned chats from the unassigned-tick set.
+                              setClaudeSelected((prev) => {
+                                const out = new Set(prev);
+                                for (const s of claudeSuggestions) {
+                                  if (s.project_uuid) {out.delete(s.conversation_uuid);}
+                                }
+                                return out;
+                              });
+                            }}
+                            disabled={suggestedTotal === 0}
+                            className="text-xs text-[var(--accent-color)] hover:underline disabled:opacity-40 disabled:no-underline"
+                          >
+                            Accept {suggestedTotal} suggestion{suggestedTotal === 1 ? "" : "s"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cleared: Record<string, string | null> = {};
+                              for (const c of claudeOrphans) { cleared[c.uuid] = null; }
+                              setChatAssignments(cleared);
+                              setClaudeSelected(new Set(claudeOrphans.map((c) => c.uuid)));
+                            }}
+                            className="text-xs text-[var(--text-muted)] hover:underline"
+                          >
+                            Clear all
+                          </button>
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-[var(--text-muted)]">
+                            These chats had no confident project match. They go to &ldquo;Unassigned Imports&rdquo; unless you assign one here.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setOrphansExpanded((p) => !p)}
+                            className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                          >
+                            {orphansExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                            {unassignedConvs.length} conversation{unassignedConvs.length === 1 ? "" : "s"}
+                          </button>
+                        </div>
+                        {orphansExpanded && unassignedConvs.length > 0 && (
+                          <div className="mt-2 max-h-96 overflow-y-auto rounded-md border border-[var(--border-color)]">
+                            {unassignedConvs.map((conv) => {
+                              const assigned = chatAssignments[conv.uuid] ?? null;
+                              const ticked = claudeSelected.has(conv.uuid);
+                              const suggestion = claudeSuggestions.find((s) => s.conversation_uuid === conv.uuid);
+                              const suggestedProj = suggestion?.project_uuid ? projectsByUuid.get(suggestion.project_uuid) : null;
+                              return (
+                                <div key={conv.uuid} className="flex items-center gap-2 border-b border-[var(--border-color)] px-3 py-1.5 last:border-b-0 hover:bg-[var(--bg-hover)]">
+                                  <input
+                                    type="checkbox"
+                                    checked={assigned !== null || ticked}
+                                    onChange={(e) => {
+                                      if (assigned !== null) {
+                                        // Uncheck = clear the assignment back to null
+                                        setChatAssignments((prev) => ({ ...prev, [conv.uuid]: null }));
+                                        setClaudeSelected((prev) => {
+                                          const next = new Set(prev);
+                                          if (e.target.checked) {next.add(conv.uuid);} else {next.delete(conv.uuid);}
+                                          return next;
+                                        });
+                                      } else {
+                                        setClaudeSelected((prev) => {
+                                          const next = new Set(prev);
+                                          if (e.target.checked) {next.add(conv.uuid);} else {next.delete(conv.uuid);}
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                  />
+                                  <div className="flex min-w-0 flex-1 flex-col">
+                                    <span className="truncate text-[11px] text-[var(--text-primary)]">{conv.name || "Untitled"}</span>
+                                    {suggestedProj && assigned !== suggestion?.project_uuid && (
+                                      <span className="text-[10px] text-[var(--text-muted)]">
+                                        suggested: {suggestedProj.name} ({suggestion?.reason})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <select
+                                    value={assigned ?? ""}
+                                    onChange={(e) => {
+                                      const v = e.target.value || null;
+                                      setChatAssignments((prev) => ({ ...prev, [conv.uuid]: v }));
+                                      // If assigned to a project, untick from the "import as unassigned" set.
+                                      if (v) {
+                                        setClaudeSelected((prev) => {
+                                          const next = new Set(prev);
+                                          next.delete(conv.uuid);
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                    className="shrink-0 rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)] max-w-[180px]"
+                                  >
+                                    <option value="">— Unassigned —</option>
+                                    {claudeProjects.map((p) => (
+                                      <option key={p.uuid} value={p.uuid}>{p.name}</option>
+                                    ))}
+                                  </select>
+                                  <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{conv.message_count} msg{conv.message_count === 1 ? "" : "s"}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
 
@@ -1134,11 +1408,21 @@ export default function ImportSettingsSection() {
                   onClick={() => void doClaudeImport()}
                   disabled={
                     importingClaude
-                    || (claudeSelectedFolders.size === 0 && claudeSelected.size === 0)
-                    || [...claudeSelectedFolders].some((uuid) => {
-                      const d = projectDestinations[uuid];
-                      return !d || !destIsComplete(d);
-                    })
+                    || (
+                      claudeSelectedFolders.size === 0
+                      && claudeSelected.size === 0
+                      && Object.values(chatAssignments).every((p) => !p)
+                    )
+                    || (() => {
+                      const projectsToCheck = new Set<string>(claudeSelectedFolders);
+                      for (const p of Object.values(chatAssignments)) {
+                        if (p) {projectsToCheck.add(p);}
+                      }
+                      return [...projectsToCheck].some((uuid) => {
+                        const d = projectDestinations[uuid];
+                        return !d || !destIsComplete(d);
+                      });
+                    })()
                   }
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-2 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
                 >

@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Plus, Trash2, Pencil, Check, X, LayoutGrid, CornerDownRight,
   MessageSquare, FileText, Globe, Brain, CreditCard,
-  Database, Sparkles, Save, Loader2, ChevronRight, ChevronDown, ArrowUpDown
+  Database, Sparkles, Save, Loader2, ChevronRight, ChevronDown, ArrowUpDown, BookOpen
 } from "lucide-react";
 import { api } from "../lib/api";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -18,7 +18,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Tooltip } from "../components/Tooltip";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
-import type { DashboardSummary, TopicSignature } from "../lib/api";
+import type { DashboardSummary, TopicSignature, WorkspaceGlossaryTerm } from "../lib/api";
 
 type WorkspaceDialogState =
   | { kind: "last-workspace" }
@@ -110,6 +110,15 @@ export default function WorkspaceSettingsView() {
   const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
   const [topicSignaturesByWorkspace, setTopicSignaturesByWorkspace] = useState<Record<string, TopicSignature | null>>({});
+  const [glossaryTerms, setGlossaryTerms] = useState<WorkspaceGlossaryTerm[]>([]);
+  const [isLoadingGlossary, setIsLoadingGlossary] = useState(false);
+  const [isRefreshingGlossary, setIsRefreshingGlossary] = useState(false);
+  const [isSavingGlossary, setIsSavingGlossary] = useState(false);
+  const [deletingGlossaryId, setDeletingGlossaryId] = useState<string | null>(null);
+  const [editingGlossaryId, setEditingGlossaryId] = useState<string | null>(null);
+  const [glossaryDraftTerm, setGlossaryDraftTerm] = useState("");
+  const [glossaryDraftAliases, setGlossaryDraftAliases] = useState("");
+  const [glossaryDraftDefinition, setGlossaryDraftDefinition] = useState("");
 
   const selectedWorkspace = useMemo(() =>
     workspaces.find(w => w.id === selectedId),
@@ -140,6 +149,14 @@ export default function WorkspaceSettingsView() {
   }, [selectedWorkspace, workspaces]);
   const selectedWorkspaceType = selectedWorkspace?.parent_workspace_id ? "Child Workspace" : selectedWorkspace ? "Root Workspace" : null;
   const childCreateParentId = selectedWorkspace?.parent_workspace_id ?? selectedWorkspace?.id ?? null;
+  const localGlossaryTerms = useMemo(
+    () => glossaryTerms.filter((term) => !term.is_inherited),
+    [glossaryTerms],
+  );
+  const inheritedGlossaryTerms = useMemo(
+    () => glossaryTerms.filter((term) => term.is_inherited),
+    [glossaryTerms],
+  );
 
   useEffect(() => {
     setMoveToParentId("");
@@ -182,6 +199,113 @@ export default function WorkspaceSettingsView() {
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setGlossaryTerms([]);
+      return;
+    }
+
+    const workspaceId = selectedId;
+    let cancelled = false;
+    async function loadGlossary() {
+      setIsLoadingGlossary(true);
+      try {
+        const terms = await api.workspaceGlossary.list(workspaceId, true);
+        if (!cancelled) {
+          setGlossaryTerms(terms);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load workspace glossary:", err);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingGlossary(false);
+        }
+      }
+    }
+
+    loadGlossary();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
+  function resetGlossaryEditor() {
+    setEditingGlossaryId(null);
+    setGlossaryDraftTerm("");
+    setGlossaryDraftAliases("");
+    setGlossaryDraftDefinition("");
+  }
+
+  function startGlossaryEditor(term?: WorkspaceGlossaryTerm) {
+    setEditingGlossaryId(term && !term.is_inherited ? term.id : "new");
+    setGlossaryDraftTerm(term?.term ?? "");
+    setGlossaryDraftAliases(term?.aliases.join(", ") ?? "");
+    setGlossaryDraftDefinition(term?.definition ?? "");
+  }
+
+  async function reloadGlossary(workspaceId: string) {
+    const terms = await api.workspaceGlossary.list(workspaceId, true);
+    setGlossaryTerms(terms);
+  }
+
+  async function saveGlossaryTerm() {
+    if (!selectedId || !glossaryDraftTerm.trim() || !glossaryDraftDefinition.trim()) {
+      return;
+    }
+
+    setIsSavingGlossary(true);
+    try {
+      await api.workspaceGlossary.upsert({
+        id: editingGlossaryId && editingGlossaryId !== "new" ? editingGlossaryId : undefined,
+        workspace_id: selectedId,
+        term: glossaryDraftTerm.trim(),
+        definition: glossaryDraftDefinition.trim(),
+        aliases: parseAliasDraft(glossaryDraftAliases),
+        source_kind: "manual",
+      });
+      await reloadGlossary(selectedId);
+      resetGlossaryEditor();
+    } catch (err) {
+      console.error("Failed to save glossary term:", err);
+    } finally {
+      setIsSavingGlossary(false);
+    }
+  }
+
+  async function refreshGlossary() {
+    if (!selectedId) {
+      return;
+    }
+    setIsRefreshingGlossary(true);
+    try {
+      await api.workspaceGlossary.refresh(selectedId);
+      await reloadGlossary(selectedId);
+    } catch (err) {
+      console.error("Failed to refresh workspace glossary:", err);
+    } finally {
+      setIsRefreshingGlossary(false);
+    }
+  }
+
+  async function deleteGlossaryTerm(id: string) {
+    setDeletingGlossaryId(id);
+    try {
+      await api.workspaceGlossary.delete(id);
+      if (selectedId) {
+        await reloadGlossary(selectedId);
+      }
+      if (editingGlossaryId === id) {
+        resetGlossaryEditor();
+      }
+    } catch (err) {
+      console.error("Failed to delete glossary term:", err);
+    } finally {
+      setDeletingGlossaryId(null);
+    }
+  }
 
   async function savePrompt() {
     if (!selectedId || !selectedWorkspace) {return;}
@@ -535,6 +659,7 @@ export default function WorkspaceSettingsView() {
                             </Tooltip>
                             <Tooltip content="Rename">
                               <button
+                                title="Rename"
                                 onClick={() => { setEditingId(ws.id); setEditName(ws.name); setEditDescription(ws.description ?? ""); }}
                                 className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
                               >
@@ -623,6 +748,7 @@ export default function WorkspaceSettingsView() {
                                   )}
                                   <Tooltip content="Rename">
                                     <button
+                                      title="Rename"
                                       onClick={() => { setEditingId(child.id); setEditName(child.name); setEditDescription(child.description ?? ""); }}
                                       className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
                                     >
@@ -859,6 +985,96 @@ export default function WorkspaceSettingsView() {
                   }}
                 />
               </div>
+
+              <div className="space-y-4 pt-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+                    <BookOpen size={12} /> Workspace Glossary
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => startGlossaryEditor()}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
+                    >
+                      <Plus size={12} />
+                      Add Term
+                    </button>
+                    <button
+                      onClick={refreshGlossary}
+                      disabled={isRefreshingGlossary}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                    >
+                      {isRefreshingGlossary ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      Refresh Glossary
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Definitions here are checked before the built-in tech dictionary. Child workspaces can override inherited parent terms.
+                </p>
+
+                {editingGlossaryId && (
+                  <div className="space-y-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <input
+                        value={glossaryDraftTerm}
+                        onChange={(e) => setGlossaryDraftTerm(e.target.value)}
+                        placeholder="Term"
+                        className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                      />
+                      <input
+                        value={glossaryDraftAliases}
+                        onChange={(e) => setGlossaryDraftAliases(e.target.value)}
+                        placeholder="Aliases, comma separated"
+                        className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                      />
+                    </div>
+                    <textarea
+                      value={glossaryDraftDefinition}
+                      onChange={(e) => setGlossaryDraftDefinition(e.target.value)}
+                      placeholder="Definition"
+                      rows={4}
+                      className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={resetGlossaryEditor}
+                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={saveGlossaryTerm}
+                        disabled={isSavingGlossary || !glossaryDraftTerm.trim() || !glossaryDraftDefinition.trim()}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                      >
+                        {isSavingGlossary ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                        Save Term
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <GlossaryListSection
+                    title="Local Terms"
+                    terms={localGlossaryTerms}
+                    loading={isLoadingGlossary}
+                    emptyMessage="No local glossary terms yet."
+                    onEdit={startGlossaryEditor}
+                    onDelete={deleteGlossaryTerm}
+                    deletingId={deletingGlossaryId}
+                  />
+                  <GlossaryListSection
+                    title="Inherited Terms"
+                    terms={inheritedGlossaryTerms}
+                    loading={isLoadingGlossary}
+                    emptyMessage="No inherited glossary terms."
+                    overrideLabel="Override"
+                    onOverride={(term) => startGlossaryEditor(term)}
+                  />
+                </div>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-4 animate-in fade-in duration-700">
@@ -941,4 +1157,105 @@ function StatCard({ icon, label, value, loading, onClick }: { icon: React.ReactN
       <span className="text-[11px] font-medium text-[var(--text-muted)]">{label}</span>
     </div>
   );
+}
+
+function GlossaryListSection({
+  title,
+  terms,
+  loading,
+  emptyMessage,
+  deletingId,
+  overrideLabel,
+  onEdit,
+  onDelete,
+  onOverride,
+}: {
+  title: string;
+  terms: WorkspaceGlossaryTerm[];
+  loading: boolean;
+  emptyMessage: string;
+  deletingId?: string | null;
+  overrideLabel?: string;
+  onEdit?: (term: WorkspaceGlossaryTerm) => void;
+  onDelete?: (id: string) => void;
+  onOverride?: (term: WorkspaceGlossaryTerm) => void;
+}) {
+  return (
+    <div className="space-y-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h4>
+        <span className="text-xs text-[var(--text-muted)]">{terms.length}</span>
+      </div>
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+          <Loader2 size={14} className="animate-spin" />
+          Loading glossary terms…
+        </div>
+      ) : terms.length === 0 ? (
+        <p className="text-sm text-[var(--text-muted)]">{emptyMessage}</p>
+      ) : (
+        <div className="space-y-2">
+          {terms.map((term) => (
+            <div key={term.id} className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-[var(--text-primary)]">{term.term}</span>
+                    <span className="rounded-full bg-[var(--bg-hover)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+                      {term.source_kind === "glossary_seed" ? "AI Glossary" : term.source_kind === "ai_scan" ? "AI Scan" : "Manual"}
+                    </span>
+                    {term.is_inherited && term.inherited_from_workspace_name && (
+                      <span className="rounded-full bg-[var(--accent-color)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--accent-color)]">
+                        From {term.inherited_from_workspace_name}
+                      </span>
+                    )}
+                  </div>
+                  {term.aliases.length > 0 && (
+                    <p className="mb-1.5 text-[11px] text-[var(--text-muted)]">
+                      Aliases: {term.aliases.join(", ")}
+                    </p>
+                  )}
+                  <p className="text-sm leading-relaxed text-[var(--text-secondary)]">{term.definition}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {!term.is_inherited && onEdit && (
+                    <button
+                      onClick={() => onEdit(term)}
+                      className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
+                  {!term.is_inherited && onDelete && (
+                    <button
+                      onClick={() => onDelete(term.id)}
+                      disabled={deletingId === term.id}
+                      className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                    >
+                      {deletingId === term.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    </button>
+                  )}
+                  {term.is_inherited && onOverride && (
+                    <button
+                      onClick={() => onOverride(term)}
+                      className="rounded-lg border border-[var(--border-color)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
+                    >
+                      {overrideLabel ?? "Override"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function parseAliasDraft(value: string): string[] {
+  return value
+    .split(",")
+    .map((alias) => alias.trim())
+    .filter(Boolean);
 }

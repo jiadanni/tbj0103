@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { api } from "../lib/api";
 import { lookupTechTerm } from "../lib/techDictionary";
 import { useChatStore } from "../stores/chatStore";
 
@@ -7,7 +8,8 @@ export interface WordDefinition {
   phonetic?: string;
   partOfSpeech?: string;
   definition: string;
-  isTechTerm: boolean;
+  source: "workspace" | "tech" | "dictionary";
+  sourceDetail?: string;
   x: number;
   y: number;
 }
@@ -24,17 +26,86 @@ interface DictApiEntry {
 }
 
 const CACHE = new Map<string, Omit<WordDefinition, "x" | "y"> | "not_found">();
+const TOKEN_CHAR_RE = /[A-Za-z0-9.+#/_-]/;
 
 function hasActiveSelection() {
   const selection = window.getSelection();
   return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
 }
 
+function buildGlossaryCandidates(text: string, offset: number): string[] {
+  if (!text.trim()) {
+    return [];
+  }
+
+  let left = offset;
+  while (left > 0) {
+    const char = text[left - 1];
+    if (!TOKEN_CHAR_RE.test(char) && char !== " ") {
+      break;
+    }
+    left -= 1;
+  }
+
+  let right = offset;
+  while (right < text.length) {
+    const char = text[right];
+    if (!TOKEN_CHAR_RE.test(char) && char !== " ") {
+      break;
+    }
+    right += 1;
+  }
+
+  const segment = text.slice(left, right).replace(/\s+/g, " ").trim();
+  if (!segment) {
+    return [];
+  }
+
+  const parts = segment.split(" ").filter(Boolean);
+  if (parts.length === 0) {
+    return [];
+  }
+
+  const relativeOffset = offset - left;
+  let runningIndex = 0;
+  let hoveredWordIndex = 0;
+  for (let index = 0; index < parts.length; index += 1) {
+    const start = runningIndex;
+    const end = runningIndex + parts[index].length;
+    if (relativeOffset >= start && relativeOffset <= end) {
+      hoveredWordIndex = index;
+      break;
+    }
+    runningIndex = end + 1;
+  }
+
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  for (let length = Math.min(4, parts.length); length >= 1; length -= 1) {
+    for (let start = 0; start <= parts.length - length; start += 1) {
+      const end = start + length - 1;
+      if (hoveredWordIndex < start || hoveredWordIndex > end) {
+        continue;
+      }
+      const phrase = parts.slice(start, start + length).join(" ").toLowerCase();
+      if (!seen.has(phrase)) {
+        seen.add(phrase);
+        candidates.push(phrase);
+      }
+    }
+  }
+
+  return candidates;
+}
+
 /**
  * Hook that detects when the mouse hovers over a word for a certain period
  * and returns a definition from a tech dictionary or a public API.
  */
-export function useWordHover(containerRef: React.RefObject<HTMLDivElement | null>) {
+export function useWordHover(
+  containerRef: React.RefObject<HTMLElement | null>,
+  workspaceId?: string | null,
+) {
   const [definition, setDefinition] = useState<WordDefinition | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isStreaming = useChatStore((s) => s.streamingSessionId !== null);
@@ -75,29 +146,51 @@ export function useWordHover(containerRef: React.RefObject<HTMLDivElement | null
         parent = parent.parentElement;
       }
 
-      // Extract the word at the cursor position
-      const leftPart = text.slice(0, offset).match(/[\w-]+$/);
-      const rightPart = text.slice(offset).match(/^[\w-]+/);
-      
-      const word = ((leftPart ? leftPart[0] : "") + (rightPart ? rightPart[0] : "")).toLowerCase();
+      const candidates = buildGlossaryCandidates(text, offset).filter((candidate) => candidate.length >= 2);
+      if (candidates.length === 0) {return;}
 
-      // Minimum 2 characters for lookup
-      if (!word || word.length < 2) {return;}
+      if (workspaceId) {
+        const glossaryCacheKey = `${workspaceId}::${candidates[0]}`;
+        const cachedGlossary = CACHE.get(glossaryCacheKey);
+        if (cachedGlossary === "not_found") {return;}
+        if (cachedGlossary) {
+          setDefinition({ ...cachedGlossary, x, y });
+          return;
+        }
 
-      // 1. Check built-in Tech Dictionary first
+        try {
+          const glossaryMatch = await api.workspaceGlossary.resolve(workspaceId, candidates);
+          if (glossaryMatch) {
+            const result: Omit<WordDefinition, "x" | "y"> = {
+              word: glossaryMatch.term,
+              definition: glossaryMatch.definition,
+              source: "workspace",
+              sourceDetail: glossaryMatch.source_kind,
+            };
+            CACHE.set(glossaryCacheKey, result);
+            setDefinition({ ...result, x, y });
+            return;
+          }
+          CACHE.set(glossaryCacheKey, "not_found");
+        } catch (err) {
+          console.error("Workspace glossary lookup error:", err);
+        }
+      }
+
+      const word = candidates[candidates.length - 1];
       const tech = lookupTechTerm(word);
       if (tech) {
         setDefinition({
           word: tech.word,
           definition: tech.definition,
-          isTechTerm: true,
+          source: "tech",
           x,
           y,
         });
         return;
       }
 
-      // 2. Check local session cache
+      // 3. Check local session cache
       const cached = CACHE.get(word);
       if (cached === "not_found") {return;}
       if (cached) {
@@ -105,7 +198,13 @@ export function useWordHover(containerRef: React.RefObject<HTMLDivElement | null
         return;
       }
 
-      // 3. Fetch from public dictionary API
+      // Public dictionary fallback is single-word only.
+      if (word.includes(" ")) {
+        CACHE.set(word, "not_found");
+        return;
+      }
+
+      // 4. Fetch from public dictionary API
       try {
         const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
         if (!res.ok) {
@@ -126,7 +225,7 @@ export function useWordHover(containerRef: React.RefObject<HTMLDivElement | null
           phonetic: entry.phonetic,
           partOfSpeech: firstMeaning?.partOfSpeech,
           definition: firstMeaning?.definitions[0]?.definition || "No definition found.",
-          isTechTerm: false,
+          source: "dictionary",
         };
 
         CACHE.set(word, result);
@@ -136,7 +235,7 @@ export function useWordHover(containerRef: React.RefObject<HTMLDivElement | null
         CACHE.set(word, "not_found");
       }
     }, 800); // 800ms hover duration
-  }, [containerRef, isStreaming, clearTimer]);
+  }, [containerRef, isStreaming, clearTimer, workspaceId]);
 
   const handleMouseLeave = useCallback(() => {
     clearTimer();

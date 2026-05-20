@@ -14,18 +14,16 @@ export const WordDefinitionTooltip: React.FC<WordDefinitionTooltipProps> = ({
 }) => {
   return (
     <div
-      className="fixed z-[60] pointer-events-none -translate-x-1/2 -translate-y-[calc(100%+16px)] w-64 p-3 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl shadow-2xl animate-in fade-in slide-in-from-bottom-1 duration-200"
+      className="fixed z-[60] pointer-events-none -translate-x-1/2 -translate-y-[calc(100%+16px)] w-64 rounded-xl border border-[var(--tooltip-border)] bg-[var(--tooltip-bg)] p-3 shadow-2xl animate-in fade-in slide-in-from-bottom-1 duration-200"
       style={{ left: definition.x, top: definition.y }}
     >
       <div className="flex items-center justify-between mb-1">
         <span className="text-sm font-bold text-[var(--text-primary)]">
           {definition.word}
         </span>
-        {definition.isTechTerm && (
-          <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent rounded-md border border-accent/20">
-            Tech
-          </span>
-        )}
+        <span className="rounded-md border border-[var(--tooltip-border)] bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+          {definition.source === "workspace" ? "Workspace" : definition.source === "tech" ? "Tech" : "Dictionary"}
+        </span>
       </div>
 
       {(definition.phonetic || definition.partOfSpeech) && (
@@ -45,7 +43,7 @@ export const WordDefinitionTooltip: React.FC<WordDefinitionTooltipProps> = ({
 
       {/* Triangle pointer */}
       <div 
-        className="absolute left-1/2 -bottom-1.5 -translate-x-1/2 w-3 h-3 rotate-45 bg-[var(--bg-elevated)] border-r border-b border-[var(--border-color)]"
+        className="absolute left-1/2 -bottom-1.5 h-3 w-3 -translate-x-1/2 rotate-45 border-b border-r border-[var(--tooltip-border)] bg-[var(--tooltip-bg)]"
       />
     </div>
   );
