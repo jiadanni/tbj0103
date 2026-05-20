@@ -101,8 +101,14 @@ fn keyring_delete() {
 }
 
 #[cfg(target_os = "linux")]
-fn try_linux_file_selection(reveal_path: &Path) -> Result<(), String> {
-    let file_uri = format!("file://{}", reveal_path.to_string_lossy());
+fn try_linux_file_selection(reveal_path: &std::path::Path) -> Result<(), String> {
+    let abs_path = std::fs::canonicalize(reveal_path).map_err(|e| e.to_string())?;
+    let file_uri = reqwest::Url::from_file_path(abs_path)
+        .map_err(|_| "Failed to create file URI".to_string())?
+        .to_string();
+
+    // Escape for GVariant string literal: backslash and double quote
+    let escaped_uri = file_uri.replace('\\', "\\\\").replace('"', "\\\"");
 
     let gdbus_status = Command::new("gdbus")
         .args([
@@ -114,7 +120,7 @@ fn try_linux_file_selection(reveal_path: &Path) -> Result<(), String> {
             "/org/freedesktop/FileManager1",
             "--method",
             "org.freedesktop.FileManager1.ShowItems",
-            &format!("[\"{file_uri}\"]"),
+            &format!("[\"{escaped_uri}\"]"),
             "\"\"",
         ])
         .status();
@@ -1453,5 +1459,23 @@ pub fn load_crypto_state_from_keyring(conn: &rusqlite::Connection) -> Option<Str
         keyring_load()
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_uri_escaping() {
+        // Test with actual characters that need escaping in GVariant string literals
+        let file_uri = "file:///tmp/test%20%22quote%22%20%5Cback.txt";
+        let escaped_uri = file_uri.replace('\\', "\\\\").replace('"', "\\\"");
+
+        assert_eq!(escaped_uri, "file:///tmp/test%20%22quote%22%20%5Cback.txt");
+
+        let file_uri_with_special = "file:///path/with\"quote\\backslash";
+        let escaped_uri = file_uri_with_special.replace('\\', "\\\\").replace('"', "\\\"");
+        assert_eq!(escaped_uri, "file:///path/with\\\"quote\\\\backslash");
     }
 }
