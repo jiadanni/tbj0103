@@ -40,7 +40,6 @@ const PARENT_WS = {
   order_index: 0,
   last_message_at: null,
   survey_data: null,
-  exclude_from_ai_analysis: false,
 };
 
 const CHILD_WS = {
