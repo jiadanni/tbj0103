@@ -129,6 +129,9 @@ impl MlxClient {
         let abort_state = app.state::<StreamAbortState>();
         let mut abort_map = abort_state.0.lock().map_err(|e| e.to_string())?;
         abort_map.remove(session_id);
+        if abort_map.is_empty() {
+            crate::set_tray_ai_active(app, false);
+        }
         Ok(())
     }
 
@@ -138,6 +141,7 @@ impl MlxClient {
     ) -> Result<tokio::sync::oneshot::Receiver<()>, String> {
         let abort_state = app.state::<StreamAbortState>();
         let mut abort_map = abort_state.0.lock().map_err(|e| e.to_string())?;
+        let was_empty = abort_map.is_empty();
         let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
         let entry = abort_map
             .entry(session_id.to_string())
@@ -147,6 +151,9 @@ impl MlxClient {
             });
         entry.aborted = false;
         entry.cancel_tx = Some(cancel_tx);
+        if was_empty {
+            crate::set_tray_ai_active(app, true);
+        }
         Ok(cancel_rx)
     }
 
