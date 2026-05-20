@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub mod claude_v2;
+pub mod claude_v2_match;
 
 // ── Public file-data structs ──────────────────────────────────────────────────
 
@@ -1371,14 +1372,18 @@ pub fn preview_claude_projects(bytes: &[u8]) -> Result<Vec<ClaudeProjectPreview>
 
     Ok(folders
         .into_iter()
-        .map(|p| ClaudeProjectPreview {
-            uuid: p.uuid,
-            name: p.name,
-            description: p.description.unwrap_or_default(),
-            has_prompt: p.prompt_template.as_ref().is_some_and(|s| !s.is_empty()),
-            doc_count: p.docs.len(),
-            conversation_count: 0, // filled in by preview_claude_files for legacy format
-            has_memory: false,     // filled in by preview_claude_files for legacy format
+        .map(|p| {
+            let prompt = p.prompt_template.unwrap_or_default();
+            ClaudeProjectPreview {
+                uuid: p.uuid,
+                name: p.name,
+                description: p.description.unwrap_or_default(),
+                has_prompt: !prompt.is_empty(),
+                doc_count: p.docs.len(),
+                conversation_count: 0, // filled in by preview_claude_files for legacy format
+                has_memory: false,     // filled in by preview_claude_files for legacy format
+                prompt_template: prompt,
+            }
         })
         .collect())
 }
@@ -1445,6 +1450,10 @@ pub struct ClaudeConversationPreview {
     pub created_at: String,
     pub updated_at: String,
     pub project_uuid: Option<String>,
+    /// First user message text, truncated to ~280 chars. Used for matching
+    /// orphan conversations to projects when the title is generic ("Chat").
+    #[serde(default)]
+    pub first_user_message: String,
 }
 
 /// Lightweight preview of a Claude Desktop project for the UI picker.
@@ -1457,6 +1466,10 @@ pub struct ClaudeProjectPreview {
     pub doc_count: usize,
     pub conversation_count: usize,
     pub has_memory: bool,
+    /// Full prompt template text — used by the chat→project matcher to score
+    /// orphan chats by keyword overlap. Not displayed to the user.
+    #[serde(default)]
+    pub prompt_template: String,
 }
 
 /// Preview of Claude Desktop memories.
@@ -1484,6 +1497,15 @@ pub fn preview_claude_conversations(bytes: &[u8]) -> Result<Vec<ClaudeConversati
         .filter(|c| !c.chat_messages.is_empty())
         .map(|c| {
             let msg_count = c.chat_messages.len();
+            let first_user_message = c
+                .chat_messages
+                .iter()
+                .find(|m| m.sender == "human")
+                .map(|m| {
+                    let raw = extract_claude_message_content(m);
+                    truncate_chars(&raw, 280)
+                })
+                .unwrap_or_default();
             ClaudeConversationPreview {
                 uuid: c.uuid,
                 name: c.name,
@@ -1491,9 +1513,19 @@ pub fn preview_claude_conversations(bytes: &[u8]) -> Result<Vec<ClaudeConversati
                 created_at: c.created_at,
                 updated_at: c.updated_at,
                 project_uuid: c.project.map(|p| p.uuid),
+                first_user_message,
             }
         })
         .collect())
+}
+
+fn truncate_chars(s: &str, max_chars: usize) -> String {
+    let mut out = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        if i >= max_chars { break; }
+        out.push(ch);
+    }
+    out
 }
 
 /// Parse a Claude Desktop `conversations.json`, filtering to only the given UUIDs.
