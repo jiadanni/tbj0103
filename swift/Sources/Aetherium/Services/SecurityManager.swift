@@ -40,9 +40,9 @@ class SecurityManager: ObservableObject {
 
     private let context = LAContext()
     private let authenticationReason = "Authenticate to access your AI projects and conversations"
-    private var autoLockTimer: Timer?
-    private var resignObserver: Any?
-    private var becomeActiveObserver: Any?
+    var autoLockTimer: Timer?
+    var resignObserver: Any?
+    var becomeActiveObserver: Any?
 
     init() {
         checkBiometricType()
@@ -167,7 +167,7 @@ class SecurityManager: ObservableObject {
         }
     }
 
-    private func cancelAutoLockTimer() {
+    func cancelAutoLockTimer() {
         autoLockTimer?.invalidate()
         autoLockTimer = nil
     }
