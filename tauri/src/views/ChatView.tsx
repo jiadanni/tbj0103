@@ -4545,7 +4545,6 @@ export default function ChatView() {
   }
 
   const activeFolder = folders.find((p) => p.id === effectiveFolderId) ?? null;
-  const activeWorkspace = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId) ?? null;
 
   // Bucket enabled models into Fast / Balanced / Powerful tiers
   const enabledModels = aiModelList.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
@@ -4604,7 +4603,6 @@ export default function ChatView() {
 
   const composerSuggestionRows = useMemo(() => {
     const suggestionContext = {
-      workspaceName: activeWorkspace?.name ?? null,
       folderName: activeFolder?.name ?? null,
       topicSignature: activeTopicSignature,
       processedDocCount: attachedSources.length,
@@ -4617,7 +4615,6 @@ export default function ChatView() {
       showComposerChatFollowUps ? buildChatSuggestionRow(suggestionContext) : null,
     ].filter((row): row is NonNullable<typeof row> => row !== null);
   }, [
-    activeWorkspace,
     activeFolder,
     activeTopicSignature,
     attachedSources.length,

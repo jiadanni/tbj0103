@@ -8,7 +8,6 @@ import {
 describe("composerSuggestions", () => {
   it("builds workspace suggestions from folder and topic context", () => {
     const row = buildWorkspaceSuggestionRow({
-      workspaceName: "Frontend Lab",
       folderName: "Tauri App",
       topicSignature: {
         domain_tags: [
@@ -28,17 +27,19 @@ describe("composerSuggestions", () => {
     });
 
     expect(row?.label).toBe("Workspace");
+    // Workspace name ("Frontend Lab") is intentionally excluded from prompt
+    // generation — workspace names are often sentimental labels with no topical
+    // meaning, and including them produced suggestions like "What is Beach
+    // stage?" that polluted the chip list.
     expect(row?.suggestions.map((suggestion) => suggestion.prompt)).toEqual([
       "What is Tauri App?",
       "How do I install React?",
       "Show me an example of Ollama.",
-      "What do my documents say about Frontend Lab?",
     ]);
   });
 
   it("builds chat suggestions from binary assistant questions and follow ups", () => {
     const row = buildChatSuggestionRow({
-      workspaceName: "Workspace",
       folderName: null,
       topicSignature: null,
       processedDocCount: 0,
