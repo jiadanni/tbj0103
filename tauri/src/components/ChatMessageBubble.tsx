@@ -8,9 +8,9 @@ import { Check, Copy, Pencil, RotateCcw, ChevronDown, ChevronRight, ChevronUp, C
 import type { Message } from "../stores/chatStore";
 import type { AiModel, SearchResult } from "../lib/api";
 import ContextIndicator from "./ContextIndicator";
-import { useWordHover } from "../hooks/useWordHover";
-import { WordDefinitionTooltip } from "./WordDefinitionTooltip";
 import { Tooltip } from "./Tooltip";
+import HoverDefinitionSurface from "./HoverDefinitionSurface";
+import { useScopedWorkspace } from "../lib/workspacePane";
 
 type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
 
@@ -142,10 +142,9 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   const hasSources = sources && sources.length > 0;
   const isSourcesExpanded = expandedSources === msg.id;
 
-  const assistantProseRef = useRef<HTMLDivElement>(null);
-  const wordDefinition = useWordHover(assistantProseRef);
   const redoToggleRef = useRef<HTMLButtonElement>(null);
   const [redoPickerStyle, setRedoPickerStyle] = useState<{ bottom: number; right: number } | null>(null);
+  const { activeWorkspaceId } = useScopedWorkspace();
   useEffect(() => {
     if (redoPickerOpen && redoToggleRef.current) {
       const rect = redoToggleRef.current.getBoundingClientRect();
@@ -174,7 +173,6 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
       data-msg-id={msg.id}
       className={`group/msg flex w-full min-w-0 flex-col ${isMinimal ? "gap-2 items-start" : `gap-1 ${msg.role === "user" ? "items-end" : "items-center"}`}`}
     >
-      {wordDefinition && <WordDefinitionTooltip definition={wordDefinition} />}
       {isMinimal && (
         <div className="text-xs font-semibold text-[var(--text-muted)] tracking-wide">
           {msg.role === "user" ? "You" : "Assistant"}
@@ -247,11 +245,14 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                     )}
                   </div>
                 )}
-                <div className="prose prose-sm prose-invert min-w-0 max-w-none" ref={assistantProseRef}>
+                <HoverDefinitionSurface
+                  workspaceId={activeWorkspaceId}
+                  className="prose prose-sm prose-invert min-w-0 max-w-none"
+                >
                   <ReactMarkdown skipHtml remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>
                     {parts?.answer || displayMsg.content}
                   </ReactMarkdown>
-                </div>
+                </HoverDefinitionSurface>
                 {varCount > 1 && (
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border-color)]">
                     <Tooltip content="Previous variation">

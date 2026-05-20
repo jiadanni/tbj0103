@@ -328,6 +328,34 @@ export interface BackgroundTaskEvent {
   message: string;
 }
 
+export interface WorkspaceGlossaryTerm {
+  id: string;
+  workspace_id: string;
+  workspace_name?: string | null;
+  term: string;
+  normalized_term: string;
+  definition: string;
+  aliases: string[];
+  source_kind: "manual" | "glossary_seed" | "ai_scan" | string;
+  source_session_id?: string | null;
+  is_user_edited: boolean;
+  created_at: string;
+  updated_at: string;
+  is_inherited: boolean;
+  inherited_from_workspace_id?: string | null;
+  inherited_from_workspace_name?: string | null;
+}
+
+export interface ResolvedWorkspaceGlossaryTerm {
+  term: string;
+  normalized_term: string;
+  definition: string;
+  aliases: string[];
+  source_kind: "manual" | "glossary_seed" | "ai_scan" | string;
+  workspace_id: string;
+  workspace_name?: string | null;
+}
+
 export interface DescendantAnalysisProgress {
   workspace_id: string;
   workspace_name: string;
@@ -385,6 +413,9 @@ export interface AppSettings {
   topic_analysis_interval_minutes: number;
   summarization_min_messages: number;
   summarization_max_sessions: number;
+  hover_definition_scan_enabled: boolean;
+  hover_definition_scan_max_sessions: number;
+  workspace_glossary_refresh_interval_minutes: number;
   git_sync_interval_minutes: number;
   menubar_icon_style: "monochrome" | "white" | "black";
 }
@@ -664,7 +695,7 @@ export const api = {
     listChildren: (parentId: string) => invoke<Workspace[]>("list_child_workspaces", { parentId }),
     listHidden: () => invoke<Workspace[]>("list_hidden_workspaces"),
     get: (id: string) => invoke<Workspace | null>("get_workspace", { id }),
-    update: (id: string, name: string, description?: string, promptInstructions?: string, surveyData?: string) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions, survey_data: surveyData } }),
+    update: (id: string, name: string, description?: string, promptInstructions?: string, surveyData?: string, excludeFromAiAnalysis?: boolean) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions, survey_data: surveyData, exclude_from_ai_analysis: excludeFromAiAnalysis } }),
     setParent: (id: string, parentId: string | null) => invoke<void>("set_workspace_parent", { id, parentId }),
     delete: (id: string) => invoke<void>("delete_workspace", { id }),
     updateIcon: (id: string, icon: string) => invoke<void>("update_workspace_icon", { id, icon }),
@@ -673,6 +704,31 @@ export const api = {
     hide: (id: string) => invoke<void>("hide_workspace", { id }),
     unhide: (id: string) => invoke<void>("unhide_workspace", { id }),
     reorder: (ids: string[]) => invoke<void>("reorder_workspaces", { ids }),
+  },
+
+  workspaceGlossary: {
+    resolve: (workspaceId: string, candidates: string[]) =>
+      invoke<ResolvedWorkspaceGlossaryTerm | null>("resolve_workspace_glossary_term", {
+        workspaceId,
+        candidates,
+      }),
+    list: (workspaceId: string, includeInherited = false) =>
+      invoke<WorkspaceGlossaryTerm[]>("list_workspace_glossary_terms", {
+        workspaceId,
+        includeInherited,
+      }),
+    upsert: (req: {
+      id?: string | null;
+      workspace_id: string;
+      term: string;
+      definition: string;
+      aliases?: string[];
+      source_kind?: string;
+      source_session_id?: string | null;
+    }) => invoke<WorkspaceGlossaryTerm>("upsert_workspace_glossary_term", { req }),
+    delete: (id: string) => invoke<void>("delete_workspace_glossary_term", { id }),
+    refresh: (workspaceId: string) =>
+      invoke<WorkspaceGlossaryTerm[]>("refresh_workspace_glossary", { workspaceId }),
   },
 
   folder: {
@@ -830,14 +886,17 @@ export const api = {
           doc_count: number;
           conversation_count: number;
           has_memory: boolean;
+          prompt_template?: string;
         }[];
-        conversations_by_project: Record<string, { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null }[]>;
-        orphan_conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null }[];
+        conversations_by_project: Record<string, { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string }[]>;
+        orphan_conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string }[];
         orphan_count: number;
         memories: {
           conversations_memory: string;
           folder_memories: { project_uuid: string; folder_name: string; memory: string }[];
         } | null;
+        memories_by_project?: Record<string, string> | null;
+        suggestions: { conversation_uuid: string; project_uuid: string | null; score: number; reason: "title" | "keywords" | "none" }[];
         files_found: { conversations: boolean; projects: boolean; memories: boolean };
       }>("preview_claude_files", {
         folderPath: args.folderPath,
@@ -852,6 +911,7 @@ export const api = {
       orphansFolderId: string | null;
       selectedConversationIds?: string[];
       selectedProjectIds?: string[];
+      chatProjectOverrides?: Record<string, string>;
     }) =>
       invoke<{
         imported: number;
@@ -865,6 +925,7 @@ export const api = {
         orphansFolderId: args.orphansFolderId ?? null,
         selectedConversationIds: args.selectedConversationIds ?? null,
         selectedProjectIds: args.selectedProjectIds ?? null,
+        chatProjectOverrides: args.chatProjectOverrides ?? null,
       }),
   },
 

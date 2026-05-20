@@ -62,6 +62,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v48_memory_summaries",
     "v49_analyze_jobs",
     "v50_rename_projects_to_folders",
+    "v51_workspace_glossary",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1253,6 +1254,51 @@ fn run_migrations(conn: &Connection) -> Result<()> {
              ALTER TABLE memories RENAME COLUMN project_id TO folder_id;
              ALTER TABLE quick_search_documents RENAME COLUMN project_id TO folder_id;
              INSERT INTO _migrations(name) VALUES('v50_rename_projects_to_folders');",
+        )?;
+    }
+
+    let applied_v51: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v51_workspace_glossary'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v51 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS workspace_glossary_terms (
+                id TEXT PRIMARY KEY NOT NULL,
+                workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                term TEXT NOT NULL,
+                normalized_term TEXT NOT NULL,
+                definition TEXT NOT NULL,
+                aliases_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(aliases_json)),
+                source_kind TEXT NOT NULL DEFAULT 'manual'
+                    CHECK(source_kind IN ('manual', 'glossary_seed', 'ai_scan')),
+                source_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
+                is_user_edited INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(workspace_id, normalized_term)
+             );
+             CREATE TABLE IF NOT EXISTS workspace_glossary_state (
+                workspace_id TEXT PRIMARY KEY NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                last_seeded_at TEXT,
+                assistant_message_count_at_seed INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+             );
+             CREATE TABLE IF NOT EXISTS session_glossary_scan_state (
+                session_id TEXT PRIMARY KEY NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                last_scanned_assistant_count INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+             );
+             CREATE INDEX IF NOT EXISTS idx_workspace_glossary_workspace
+                ON workspace_glossary_terms(workspace_id, normalized_term);
+             CREATE INDEX IF NOT EXISTS idx_workspace_glossary_source_session
+                ON workspace_glossary_terms(source_session_id);
+             INSERT OR IGNORE INTO settings (key, value) VALUES
+                ('hover_definition_scan_enabled', 'true'),
+                ('hover_definition_scan_max_sessions', '3'),
+                ('workspace_glossary_refresh_interval_minutes', '60');
+             INSERT INTO _migrations(name) VALUES('v51_workspace_glossary');",
         )?;
     }
 

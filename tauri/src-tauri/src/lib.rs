@@ -452,6 +452,11 @@ pub fn run() {
             commands::workspace::hide_workspace,
             commands::workspace::unhide_workspace,
             commands::workspace::reorder_workspaces,
+            commands::workspace_glossary::resolve_workspace_glossary_term,
+            commands::workspace_glossary::list_workspace_glossary_terms,
+            commands::workspace_glossary::upsert_workspace_glossary_term,
+            commands::workspace_glossary::delete_workspace_glossary_term,
+            commands::workspace_glossary::refresh_workspace_glossary,
             // Folder commands
             commands::folder::create_folder,
             commands::folder::list_folders,
@@ -807,7 +812,7 @@ pub fn build_tray_icon(app: &AppHandle) -> Result<(), String> {
             ..
         } = event
         {
-            let _ = commands::quick_search::show_window(tray.app_handle());
+            let _ = commands::quick_search::toggle_window(tray.app_handle());
         }
     });
 
@@ -837,7 +842,7 @@ fn load_tray_icon(app: &AppHandle) -> Result<tauri::image::Image<'static>, Strin
         let icon_filename = match icon_style.as_str() {
             "white" => "icon-white.png",
             "black" => "icon-black.png",
-            "monochrome" | _ => "icon-monochrome.png",
+            _ => "icon-monochrome.png",
         };
         if let Ok(resource_path) = app.path().resource_dir() {
             let icon_path = resource_path.join(icon_filename);
@@ -859,7 +864,6 @@ fn load_tray_icon(app: &AppHandle) -> Result<tauri::image::Image<'static>, Strin
 
 fn create_monochrome_tray_icon(style: &str) -> Result<tauri::image::Image<'static>, String> {
     // Create a 22x22 PNG icon in memory
-    // For now, we'll use a simple RGB implementation
     const SIZE: usize = 22;
     const STRIDE: usize = SIZE * 4; // RGBA
     let mut rgba_data = vec![0u8; STRIDE * SIZE];
@@ -892,4 +896,64 @@ fn create_monochrome_tray_icon(style: &str) -> Result<tauri::image::Image<'stati
     }
 
     Ok(tauri::image::Image::new_owned(rgba_data, SIZE as u32, SIZE as u32))
+}
+
+/// Create a tray icon that signals an active AI task is running.
+/// Renders a filled outer ring + small filled centre dot so it is visually
+/// distinct from the normal monochrome circle.
+fn create_ai_active_tray_icon() -> Result<tauri::image::Image<'static>, String> {
+    const SIZE: usize = 22;
+    let mut rgba_data = vec![0u8; SIZE * SIZE * 4];
+
+    let center = SIZE as i32 / 2;
+    let outer_r: i32 = SIZE as i32 / 2 - 2; // ring outer radius
+    let inner_r: i32 = outer_r - 3;          // ring inner radius (ring width = 3px)
+    let dot_r: i32 = 2;                       // centre dot radius
+
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let dx = x as i32 - center;
+            let dy = y as i32 - center;
+            let d2 = dx * dx + dy * dy;
+
+            // Render outer ring OR centre dot
+            let in_ring = d2 <= outer_r * outer_r && d2 > inner_r * inner_r;
+            let in_dot  = d2 <= dot_r * dot_r;
+
+            if in_ring || in_dot {
+                let idx = (y * SIZE + x) * 4;
+                rgba_data[idx]     = 0;   // R (black — macOS will invert for dark menu bar)
+                rgba_data[idx + 1] = 0;   // G
+                rgba_data[idx + 2] = 0;   // B
+                rgba_data[idx + 3] = 255; // A
+            }
+        }
+    }
+
+    Ok(tauri::image::Image::new_owned(rgba_data, SIZE as u32, SIZE as u32))
+}
+
+/// Update the menu-bar / system-tray icon to indicate whether an AI task is
+/// currently running. Safe to call from any Tokio task.
+pub fn set_tray_ai_active(app: &AppHandle, active: bool) {
+    let Some(tray) = app.tray_by_id("aetherium-tray") else {
+        return;
+    };
+    let icon = if active {
+        create_ai_active_tray_icon()
+    } else {
+        // Restore the normal icon (respects user's icon-style preference)
+        load_tray_icon(app)
+            .or_else(|_| {
+                app.default_window_icon()
+                    .map(|i| {
+                        use tauri::image::Image;
+                        Image::new_owned(i.rgba().to_owned(), i.width(), i.height())
+                    })
+                    .ok_or_else(|| "No icon available".to_string())
+            })
+    };
+    if let Ok(icon) = icon {
+        let _ = tray.set_icon(Some(icon));
+    }
 }

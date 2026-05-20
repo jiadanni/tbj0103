@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyModelFit,
+  classifyModelFitWithAvailable,
+  estimateModelMemoryBytes,
   formatBytes,
   formatParams,
   inferHardwareModelGuidance,
@@ -103,6 +105,62 @@ describe("classifyModelFit", () => {
 
   it("marks much larger models as too large", () => {
     expect(classifyModelFit(32, 8)).toBe("too-large");
+  });
+});
+
+describe("classifyModelFitWithAvailable", () => {
+  it("returns baseline if baseline is 'unknown' or 'too-large'", () => {
+    expect(classifyModelFitWithAvailable(null, 8, 16 * 1024 ** 3)).toBe("unknown");
+    expect(classifyModelFitWithAvailable(32, 8, 16 * 1024 ** 3)).toBe("too-large");
+  });
+
+  it("returns baseline if available memory is missing or invalid", () => {
+    expect(classifyModelFitWithAvailable(7, 8, undefined)).toBe("good");
+    expect(classifyModelFitWithAvailable(7, 8, null)).toBe("good");
+    expect(classifyModelFitWithAvailable(7, 8, 0)).toBe("good");
+    expect(classifyModelFitWithAvailable(7, 8, -1)).toBe("good");
+  });
+
+  it("escalates to 'too-large' if footprint exceeds available memory", () => {
+    // 8B model -> 8.8 GB footprint. If only 8 GB available, too large.
+    expect(classifyModelFitWithAvailable(8, 8, 8 * 1024 ** 3)).toBe("too-large");
+  });
+
+  it("escalates 'good' to 'stretch' if footprint exceeds 80% of available memory", () => {
+    // 8B model -> 8.8 GB footprint. If 10 GB available, 8.8 > 8 (80%).
+    expect(classifyModelFitWithAvailable(8, 8, 10 * 1024 ** 3)).toBe("stretch");
+  });
+
+  it("preserves 'good' fit if there is enough headroom", () => {
+    // 8B model -> 8.8 GB footprint. If 12 GB available, 8.8 <= 9.6 (80%).
+    expect(classifyModelFitWithAvailable(8, 8, 12 * 1024 ** 3)).toBe("good");
+  });
+
+  it("preserves 'stretch' baseline if footprint fits within available memory", () => {
+    // 10B model, 8B recommended -> baseline "stretch".
+    // 11 GB footprint. 16 GB available -> footprint fits.
+    expect(classifyModelFitWithAvailable(10, 8, 16 * 1024 ** 3)).toBe("stretch");
+  });
+
+  it("escalates 'stretch' baseline to 'too-large' if footprint exceeds available memory", () => {
+    // 10B model, 8B recommended -> baseline "stretch".
+    // 11 GB footprint. 10 GB available -> exceeds.
+    expect(classifyModelFitWithAvailable(10, 8, 10 * 1024 ** 3)).toBe("too-large");
+  });
+});
+
+describe("estimateModelMemoryBytes", () => {
+  it("returns null for invalid inputs", () => {
+    expect(estimateModelMemoryBytes(null)).toBeNull();
+    expect(estimateModelMemoryBytes(NaN)).toBeNull();
+    expect(estimateModelMemoryBytes(0)).toBeNull();
+    expect(estimateModelMemoryBytes(-1)).toBeNull();
+  });
+
+  it("calculates roughly 1.1 GB per billion parameters", () => {
+    const tenB = 10;
+    const expected = 10 * 1.1 * 1024 ** 3;
+    expect(estimateModelMemoryBytes(tenB)).toBe(expected);
   });
 });
 

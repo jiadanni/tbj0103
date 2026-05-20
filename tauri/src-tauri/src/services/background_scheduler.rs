@@ -1,5 +1,5 @@
 use crate::db::DbState;
-use crate::services::{git_sync, memory_pipeline, summarization_service};
+use crate::services::{git_sync, memory_pipeline, summarization_service, workspace_glossary};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -97,6 +97,37 @@ pub fn start_scheduler(app: AppHandle) {
                     "memory_extraction",
                     if mem_result.is_ok() { "completed" } else { "failed" },
                     if mem_result.is_ok() { "Memory extraction done" } else { "Memory extraction failed" },
+                );
+
+                emit_task(&app, "workspace_glossary", "started", "Refreshing workspace glossary…");
+                let glossary_result = workspace_glossary::refresh_due_workspaces(&db).await;
+                emit_task(
+                    &app,
+                    "workspace_glossary",
+                    if glossary_result.is_ok() { "completed" } else { "failed" },
+                    if glossary_result.is_ok() {
+                        "Workspace glossary refreshed"
+                    } else {
+                        "Workspace glossary refresh failed"
+                    },
+                );
+
+                emit_task(
+                    &app,
+                    "hover_definition_scan",
+                    "started",
+                    "Scanning chats for missing definitions…",
+                );
+                let scan_result = workspace_glossary::scan_recent_sessions_for_missing_terms(&db).await;
+                emit_task(
+                    &app,
+                    "hover_definition_scan",
+                    if scan_result.is_ok() { "completed" } else { "failed" },
+                    if scan_result.is_ok() {
+                        "Hover definition scan done"
+                    } else {
+                        "Hover definition scan failed"
+                    },
                 );
 
                 // 2. Process summarization — only sessions with recent activity

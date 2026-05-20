@@ -20,6 +20,8 @@
   --text-secondary: #4b5563;
   --text-muted: #9ca3af;
   --bg-elevated: #fafafa;
+  --tooltip-bg: #fafafa;
+  --tooltip-border: #e5e7eb;
   --bg-hover: #efefef;
   --bg-input: #ffffff;
   --border-color: #e5e7eb;
@@ -49,6 +51,8 @@
     --text-secondary: #d4d4d8;
     --text-muted: #a1a1aa;
     --bg-elevated: rgba(39, 39, 42, 0.9);
+    --tooltip-bg: #27272a;
+    --tooltip-border: rgba(255, 255, 255, 0.1);
     --bg-hover: rgba(255, 255, 255, 0.06);
     --bg-input: rgba(24, 24, 27, 0.96);
     --border-color: rgba(255, 255, 255, 0.08);
@@ -70,6 +74,8 @@
   --text-secondary: #4b5563;
   --text-muted: #9ca3af;
   --bg-elevated: #fafafa;
+  --tooltip-bg: #fafafa;
+  --tooltip-border: #e5e7eb;
   --bg-hover: #efefef;
   --bg-input: #ffffff;
   --border-color: #e5e7eb;
@@ -85,6 +91,8 @@
   --text-secondary: #5a4830;
   --text-muted: #8b7355;
   --bg-elevated: #f9f3e6;
+  --tooltip-bg: #f9f3e6;
+  --tooltip-border: #d6c9a8;
   --bg-hover: #e0d7c3;
   --bg-input: #ffffff;
   --border-color: #d6c9a8;
@@ -99,6 +107,8 @@
   --text-secondary: #00d633;
   --text-muted: #008f11;
   --bg-elevated: #0f1a0f;
+  --tooltip-bg: #0f1a0f;
+  --tooltip-border: #003b00;
   --bg-hover: #112011;
   --bg-input: #050a05;
   --border-color: #003b00;
@@ -114,6 +124,8 @@
   --text-secondary: #a1a1aa;
   --text-muted: #71717a;
   --bg-elevated: rgba(30, 30, 30, 0.92);
+  --tooltip-bg: #1e1e1e;
+  --tooltip-border: rgba(255, 255, 255, 0.14);
   --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-input: rgba(0, 0, 0, 0.4);
   --border-color: rgba(255, 255, 255, 0.1);

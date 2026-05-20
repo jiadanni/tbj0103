@@ -5,6 +5,7 @@ pub mod backup;
 pub mod chat;
 pub mod context;
 pub mod dashboard;
+pub mod glossary;
 pub mod knowledge_graph;
 pub mod learning_card;
 pub mod learning_goal;
