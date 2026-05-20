@@ -695,7 +695,7 @@ export const api = {
     listChildren: (parentId: string) => invoke<Workspace[]>("list_child_workspaces", { parentId }),
     listHidden: () => invoke<Workspace[]>("list_hidden_workspaces"),
     get: (id: string) => invoke<Workspace | null>("get_workspace", { id }),
-    update: (id: string, name: string, description?: string, promptInstructions?: string, surveyData?: string) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions, survey_data: surveyData } }),
+    update: (id: string, name: string, description?: string, promptInstructions?: string, surveyData?: string, excludeFromAiAnalysis?: boolean) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions, survey_data: surveyData, exclude_from_ai_analysis: excludeFromAiAnalysis } }),
     setParent: (id: string, parentId: string | null) => invoke<void>("set_workspace_parent", { id, parentId }),
     delete: (id: string) => invoke<void>("delete_workspace", { id }),
     updateIcon: (id: string, icon: string) => invoke<void>("update_workspace_icon", { id, icon }),
@@ -886,14 +886,17 @@ export const api = {
           doc_count: number;
           conversation_count: number;
           has_memory: boolean;
+          prompt_template?: string;
         }[];
-        conversations_by_project: Record<string, { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null }[]>;
-        orphan_conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null }[];
+        conversations_by_project: Record<string, { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string }[]>;
+        orphan_conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string }[];
         orphan_count: number;
         memories: {
           conversations_memory: string;
           folder_memories: { project_uuid: string; folder_name: string; memory: string }[];
         } | null;
+        memories_by_project?: Record<string, string> | null;
+        suggestions: { conversation_uuid: string; project_uuid: string | null; score: number; reason: "title" | "keywords" | "none" }[];
         files_found: { conversations: boolean; projects: boolean; memories: boolean };
       }>("preview_claude_files", {
         folderPath: args.folderPath,
@@ -908,6 +911,7 @@ export const api = {
       orphansFolderId: string | null;
       selectedConversationIds?: string[];
       selectedProjectIds?: string[];
+      chatProjectOverrides?: Record<string, string>;
     }) =>
       invoke<{
         imported: number;
@@ -921,6 +925,7 @@ export const api = {
         orphansFolderId: args.orphansFolderId ?? null,
         selectedConversationIds: args.selectedConversationIds ?? null,
         selectedProjectIds: args.selectedProjectIds ?? null,
+        chatProjectOverrides: args.chatProjectOverrides ?? null,
       }),
   },
 
