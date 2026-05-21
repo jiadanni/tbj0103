@@ -380,29 +380,53 @@ function ContextSizeInput({ modelName, savedValue, onSave, onClear }: {
   }
 
   return (
-    <div className="flex items-center gap-1.5">
-      <input
-        type="number"
-        min={512}
-        step={512}
-        value={draft}
-        placeholder="default"
-        className="w-[72px] rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-center text-[10px] tabular-nums text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-        aria-label={`Context window for ${modelName}`}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
-      />
-      <span className="text-[9px] text-[var(--text-muted)] shrink-0">tok</span>
-      {savedValue !== null && (
-        <Tooltip content="Clear override — revert to Ollama's default context size for this model">
-          <button
-            onClick={async () => { await onClear(); setDraft(""); }}
-            className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors shrink-0"
-          >
-            <RefreshCw size={10} />
-          </button>
+    <div className="flex flex-col items-center">
+      <div className="flex items-center gap-1.5">
+        <Tooltip
+          content={
+            <div className="flex flex-col gap-1.5 w-48">
+              <div className="font-semibold text-xs">Context Window Size</div>
+              <div className="text-[11px] flex flex-col gap-0.5">
+                {savedValue !== null && (
+                  <div>Current: <span className="font-mono text-[var(--accent-color)]">{savedValue}</span> tok</div>
+                )}
+                <div>Default: <span className="font-mono">8192</span> tok</div>
+              </div>
+              <div className="mt-1 text-[11px] text-[var(--text-muted)] leading-snug">
+                Higher values allow the model to remember more context, but use significantly more memory and slow down generation. Recommended to use powers of 2 (e.g., 4096, 8192, 16384).
+              </div>
+            </div>
+          }
+        >
+          <input
+            type="number"
+            min={512}
+            step={512}
+            value={draft}
+            placeholder="8192"
+            className="w-[72px] rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-center text-[10px] tabular-nums text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            aria-label={`Context window for ${modelName}`}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+          />
         </Tooltip>
+        <span className="text-[9px] text-[var(--text-muted)] shrink-0">tok</span>
+        {savedValue !== null && (
+          <Tooltip content="Clear override — revert to Ollama's default context size for this model">
+            <button
+              onClick={async () => { await onClear(); setDraft(""); }}
+              className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors shrink-0"
+            >
+              <RefreshCw size={10} />
+            </button>
+          </Tooltip>
+        )}
+      </div>
+      {savedValue !== null && (
+        <div className="text-[9px] text-[var(--text-muted)] mt-1">
+          default: 8192
+        </div>
       )}
     </div>
   );
