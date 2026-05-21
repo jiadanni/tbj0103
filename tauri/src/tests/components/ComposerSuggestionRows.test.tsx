@@ -39,7 +39,7 @@ describe("ComposerSuggestionRows", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "What is Rust?" }));
 
-    expect(onSuggestionClick).toHaveBeenCalledWith(rows[0].suggestions[0]);
+    expect(onSuggestionClick).toHaveBeenCalledWith(rows[0].suggestions[0], false);
   });
 
   it("disables immediate-send suggestions when requested", () => {

@@ -71,6 +71,15 @@ function resolveWorkspaceSelection(workspaces: Workspace[], workspaceId: string 
     };
   }
 
+  // Root workspace: resolve to first child if one exists
+  const firstChild = workspaces.find((w) => w.parent_workspace_id === workspace.id);
+  if (firstChild) {
+    return {
+      workspaceId: firstChild.id,
+      parentWorkspaceId: workspace.id,
+    };
+  }
+
   return {
     workspaceId: workspace.id,
     parentWorkspaceId: workspace.id,
@@ -451,6 +460,7 @@ function SubWorkspaceTabBar({
             <button
               data-no-drag
               onClick={onAdd}
+              title="New Sub-workspace"
               className="ml-1 h-8 w-8 shrink-0 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
             >
               <Plus size={14} />
@@ -756,6 +766,7 @@ function TitlebarHistoryMenu() {
       <Tooltip content="History" position="bottom">
         <button
           onClick={toggleMenu}
+          title="History"
           aria-label="Open History"
           aria-haspopup="menu"
           aria-expanded={open}
@@ -1079,7 +1090,7 @@ function WorkspaceTabBar({
               ? "min-w-0 flex-1"
               : "min-w-0 flex-1 overflow-visible"
           }
-          {...(showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceDropdown ? { "data-workspace-tab-strip": "" } : {})}
+          {...(showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceDropdown ? { "data-workspace-tab-strip": "", "data-no-drag": "" } : {})}
         >
           {showSinglePaneWorkspaceDropdown ? (
             <div className="flex h-10 items-center">
@@ -1114,17 +1125,18 @@ function WorkspaceTabBar({
         <Tooltip content="Drag window" position="bottom">
           <div
             data-window-drag-handle
-            className="mx-2 hidden h-5 w-16 shrink-0 rounded-full border border-transparent bg-[var(--bg-hover)]/20 sm:block"
+            className={`mx-2 hidden h-5 shrink-0 rounded-full border border-transparent bg-[var(--bg-hover)]/20 sm:block ${showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation ? "flex-1 min-w-16" : "w-16"}`}
           />
         </Tooltip>
         <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
           <BackForwardNavigation />
           <TitlebarSortMenu />
           <TitlebarHistoryMenu />
-          {!showSplitTitlebarWorkspaceNavigation && (
+          {!showSplitTitlebarWorkspaceNavigation && !splitUnsupportedRoute && (
             <Tooltip content="Preferences" position="bottom">
               <button
                 onClick={() => navigate("/preferences")}
+                title="Preferences"
                 aria-label="Preferences"
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
               >
@@ -1137,6 +1149,7 @@ function WorkspaceTabBar({
               <button
                 onClick={onToggleSplit}
                 disabled={workspaces.length < 2}
+                title="Toggle Split View"
                 aria-label="Toggle Split View"
                 className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
                   splitMode
@@ -1615,7 +1628,7 @@ export default function Layout() {
         {showSplitPaneLayout ? (
           <SplitPaneLayout />
         ) : (
-          <div className="flex h-full min-h-0">
+          <div className="flex h-full overflow-hidden min-h-0">
             {showSectionSidebar && (
               <Sidebar
                 onOpenCommandPalette={() => setCommandPaletteOpen(true)}

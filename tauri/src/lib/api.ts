@@ -758,8 +758,8 @@ export const api = {
       invoke<ChatSession[]>("search_chat_sessions", { req: { workspace_id: workspaceId, query, folder_id: folderId ?? null, include_descendants: opts?.includeDescendants } }),
     getSession: (workspaceId: string, id: string) => invoke<ChatSession | null>("get_chat_session", { workspaceId, id }),
     deleteSession: (workspaceId: string, id: string) => invoke<void>("delete_chat_session", { workspaceId, id }),
-    updateSession: (workspaceId: string, id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string; model_name?: string; exclude_from_analytics?: boolean }) =>
-      invoke<void>("update_chat_session", { workspaceId, id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt, modelName: fields.model_name, excludeFromAnalytics: fields.exclude_from_analytics }),
+    updateSession: (workspaceId: string, id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string; model_name?: string; exclude_from_analytics?: boolean; is_unread?: boolean }) =>
+      invoke<void>("update_chat_session", { workspaceId, id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt, modelName: fields.model_name, excludeFromAnalytics: fields.exclude_from_analytics, isUnread: fields.is_unread }),
     moveSessions: (sessionIds: string[], targetWorkspaceId: string, targetFolderId?: string) =>
       invoke<void>("move_chat_sessions", { sessionIds, targetWorkspaceId, targetFolderId }),
     batchMoveSessions: (sessionIds: string[], targetWorkspaceId: string, preserveFolderStructure: boolean) =>

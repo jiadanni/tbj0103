@@ -68,6 +68,7 @@ vi.mock("@/views/FlashcardReviewView", () => ({ default: () => <div>Flashcards V
 vi.mock("@/views/FolderDashboardView", () => ({ default: () => <div>Project Dashboard</div> }));
 vi.mock("@/views/PreferencesView", () => ({ default: () => <div>Preferences View</div> }));
 vi.mock("@/views/DocumentBrowserView", () => ({ default: () => <div>Documents View</div> }));
+vi.mock("@/views/SourceBrowserView", () => ({ default: () => <div>Sources View</div> }));
 vi.mock("@/views/HistoryView", () => ({ default: () => <div>History View</div> }));
 vi.mock("@/views/LearningPathView", () => ({ default: () => <div>Learning Path View</div> }));
 vi.mock("@/views/GlobalMemoryView", () => ({ default: () => <div>Memory View</div> }));
@@ -317,7 +318,6 @@ describe("Layout", () => {
   });
 
   it("creates a child workspace from the sub-workspace tab bar", async () => {
-    vi.spyOn(window, "prompt").mockReturnValue("Gamma");
     const createChildSpy = vi.spyOn(api.workspace, "createChild").mockResolvedValue({
       id: "child-3",
       name: "Gamma",
@@ -348,6 +348,10 @@ describe("Layout", () => {
     );
 
     fireEvent.click(screen.getByTitle("New Sub-workspace"));
+
+    const input = await screen.findByPlaceholderText("Sub-workspace name");
+    fireEvent.change(input, { target: { value: "Gamma" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() => {
       expect(createChildSpy).toHaveBeenCalledWith("root-1", "Gamma");
@@ -694,12 +698,12 @@ describe("Layout", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/documents"]}>
+      <MemoryRouter initialEntries={["/sources"]}>
         <Layout />
       </MemoryRouter>
     );
 
-    expect(await screen.findByText("Documents View")).toBeInTheDocument();
+    expect(await screen.findByText("Sources View")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Rust"));
 
@@ -789,9 +793,9 @@ describe("Layout", () => {
     expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
 
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("option", { name: "Documents" }));
+    fireEvent.click(screen.getByRole("option", { name: "Sources" }));
 
-    expect(await screen.findByText("Documents View")).toBeInTheDocument();
+    expect(await screen.findByText("Sources View")).toBeInTheDocument();
   });
 
   it("does not show Preferences in the top-dropdown section options", () => {

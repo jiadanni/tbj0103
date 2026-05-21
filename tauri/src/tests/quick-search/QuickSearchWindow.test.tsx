@@ -25,6 +25,7 @@ vi.mock("@/lib/api", () => ({
       query: mocks.query,
       hide: mocks.hide,
       openResult: mocks.openResult,
+      getContext: vi.fn().mockResolvedValue({ preferred_workspace_id: null }),
     },
   },
 }));
@@ -103,6 +104,7 @@ describe("QuickSearchWindow", () => {
         limit: 10,
         workspaceId: null,
         kindFilters: null,
+        includeDescendants: false,
       });
     });
 
@@ -117,6 +119,7 @@ describe("QuickSearchWindow", () => {
         limit: 10,
         workspaceId: "ws-2",
         kindFilters: null,
+        includeDescendants: true,
       });
     });
 
@@ -129,6 +132,7 @@ describe("QuickSearchWindow", () => {
         limit: 10,
         workspaceId: "ws-2",
         kindFilters: ["conversation", "message", "artifact", "memory"],
+        includeDescendants: true,
       });
     });
 
@@ -138,6 +142,7 @@ describe("QuickSearchWindow", () => {
         limit: 24,
         workspaceId: "ws-2",
         kindFilters: ["conversation", "message", "artifact", "memory"],
+        includeDescendants: true,
       });
     });
 
@@ -151,6 +156,7 @@ describe("QuickSearchWindow", () => {
         limit: 10,
         workspaceId: "ws-2",
         kindFilters: ["conversation", "message", "artifact", "memory"],
+        includeDescendants: true,
       });
     });
   });

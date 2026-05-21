@@ -148,8 +148,14 @@ export default function HistoryView() {
                   >
                     <MessageSquare size={15} className="shrink-0 text-[var(--text-muted)]" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-[var(--text-primary)] truncate">
-                        {session.title || "Untitled"}
+                      <div className="text-sm font-medium text-[var(--text-primary)] truncate flex items-center gap-1.5">
+                        {session.is_unread && (
+                          <span
+                            className="w-1.5 h-1.5 rounded-full bg-[var(--accent-color)] shrink-0"
+                            title="Unread"
+                          />
+                        )}
+                        <span className={`truncate ${session.is_unread ? "font-semibold" : ""}`}>{session.title || "Untitled"}</span>
                       </div>
                       <div className="text-xs text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
                         <span>

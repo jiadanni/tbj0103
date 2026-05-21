@@ -254,9 +254,10 @@ pub fn update_chat_session(
     system_prompt: Option<String>,
     model_name: Option<String>,
     exclude_from_analytics: Option<bool>,
+    is_unread: Option<bool>,
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::update_session(&conn, &id, title, is_pinned, system_prompt, model_name, exclude_from_analytics)
+    chat_service::update_session(&conn, &id, title, is_pinned, system_prompt, model_name, exclude_from_analytics, is_unread)
 }
 
 #[tauri::command]

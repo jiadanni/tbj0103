@@ -540,7 +540,7 @@ describe("ChatView", () => {
     renderChatView();
 
     const composerShell = screen.getByTestId("composer-shell");
-    expect(composerShell.className).toContain("ring-white/[0.08]");
+    expect(composerShell.className).toContain("ring-[var(--border-color)]");
     expect(composerShell.className).toContain("bg-[var(--bg-elevated)]/70");
   });
 

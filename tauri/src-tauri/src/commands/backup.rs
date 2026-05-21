@@ -33,7 +33,7 @@ const BACKUP_TABLES: [(&str, &str); 17] = [
         "chat_sessions",
         "SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned, is_incognito,
                 exclude_from_analytics, is_deleted, deleted_at, last_accessed_at, last_processed_message_count,
-                is_imported, parent_session_id, branch_message_id, created_at, updated_at
+                is_imported, parent_session_id, branch_message_id, is_unread, created_at, updated_at
          FROM chat_sessions
          WHERE workspace_id = ?1
          ORDER BY created_at ASC",

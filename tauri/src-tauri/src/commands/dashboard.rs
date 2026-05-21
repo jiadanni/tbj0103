@@ -17,6 +17,7 @@ fn route(path: impl Into<String>, state: Option<serde_json::Value>) -> Dashboard
 }
 
 #[tauri::command]
+#[allow(clippy::type_complexity)]
 pub fn get_dashboard_summary(
     state: State<DbState>,
     workspace_id: String,

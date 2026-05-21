@@ -100,4 +100,5 @@ conversations-mac/
 .claude/settings.local.json
 .claude/worktrees/
 tauri/.claude/settings.local.json
+tauri/.antigravitycli/
 Samples/

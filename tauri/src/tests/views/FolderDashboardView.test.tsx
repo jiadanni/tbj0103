@@ -21,6 +21,7 @@ vi.mock("@/lib/workspacePane", () => ({
   useScopedWorkspace: () => ({
     activeWorkspaceId: "ws-1",
   }),
+  useBubbleUpFlag: () => false,
 }));
 
 describe("FolderDashboardView", () => {
@@ -137,7 +138,7 @@ describe("FolderDashboardView", () => {
     );
 
     await waitFor(() => {
-      expect(mocks.getSummary).toHaveBeenCalledWith("ws-1");
+      expect(mocks.getSummary).toHaveBeenCalledWith("ws-1", { includeDescendants: false });
     });
 
     expect(await screen.findByText("Continue Learning")).toBeInTheDocument();

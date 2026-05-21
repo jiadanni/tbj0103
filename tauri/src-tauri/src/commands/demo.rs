@@ -936,7 +936,7 @@ fn create_demo_chat(
     now: &str,
 ) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO chat_sessions (id, workspace_id, folder_id, title, model_name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6)",
+        "INSERT INTO chat_sessions (id, workspace_id, folder_id, title, model_name, is_unread, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, '', 0, ?5, ?6)",
         rusqlite::params![session_id, ws_id, folder_id, title, now, now],
     ).map_err(|e| e.to_string())?;
 
