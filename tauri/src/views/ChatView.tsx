@@ -4144,7 +4144,7 @@ export default function ChatView() {
       && affectedSessions.every((session) => session.workspace_id === workspaceId);
     const isCrossWorkspaceMove = !allShareTargetWorkspace
       && workspaceId !== effectiveWorkspaceId;
-    const shouldPreserveFolderStructure = isCrossWorkspaceMove && folderId === null;
+    const shouldPreserveFolderStructure = isCrossWorkspaceMove && folderId === null && sessionIds.length > 1;
 
     // Optimistic UI update: remove from source immediately
     if (isCrossWorkspaceMove) {
