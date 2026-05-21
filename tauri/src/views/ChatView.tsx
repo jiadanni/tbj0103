@@ -368,6 +368,7 @@ function SessionSidebar({
   const [folderRenameValue, setFolderRenameValue] = useState("");
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const dragSessionIdsRef = useRef<string[] | null>(null);
+  const dragFolderHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ctxMoveOpen, setCtxMoveOpen] = useState(false);
   const [ctxFolderMoveOpen, setCtxFolderMoveOpen] = useState(false);
   const [_ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
@@ -623,7 +624,15 @@ function SessionSidebar({
     return (
       <div
         className={showFolderBorder ? "ml-3 border-l border-[var(--border-color)]/70" : undefined}
-        onDragStart={() => { dragSessionIdsRef.current = [session.id]; }}
+        onDragStart={(e) => {
+          if (selectedIds.size > 0 && selectedIds.has(session.id)) {
+            dragSessionIdsRef.current = Array.from(selectedIds);
+            e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify(Array.from(selectedIds)));
+          } else {
+            dragSessionIdsRef.current = [session.id];
+            e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify([session.id]));
+          }
+        }}
         onDragEnd={() => { dragSessionIdsRef.current = null; setDragOverFolderId(null); }}
       >
         <div className="pb-[2px]">
@@ -1600,6 +1609,21 @@ function SessionSidebar({
                       event.stopPropagation();
                       setCtxMenu({ type: "folder", x: event.clientX, y: event.clientY, folder });
                     }}
+                    onDragEnter={(event) => {
+                      if (selectMode || !dragSessionIdsRef.current) {
+                        return;
+                      }
+                      event.preventDefault();
+                      setDragOverFolderId(folder.id);
+                      if (dragFolderHoverTimerRef.current) {
+                        clearTimeout(dragFolderHoverTimerRef.current);
+                      }
+                      if (!isOpen) {
+                        dragFolderHoverTimerRef.current = setTimeout(() => {
+                          setExpanded((prev) => ({ ...prev, [expandKey]: true }));
+                        }, 600);
+                      }
+                    }}
                     onDragOver={(event) => {
                       if (selectMode || !dragSessionIdsRef.current) {
                         return;
@@ -1614,8 +1638,16 @@ function SessionSidebar({
                         return;
                       }
                       setDragOverFolderId((current) => current === folder.id ? null : current);
+                      if (dragFolderHoverTimerRef.current) {
+                        clearTimeout(dragFolderHoverTimerRef.current);
+                        dragFolderHoverTimerRef.current = null;
+                      }
                     }}
                     onDrop={(event) => {
+                      if (dragFolderHoverTimerRef.current) {
+                        clearTimeout(dragFolderHoverTimerRef.current);
+                        dragFolderHoverTimerRef.current = null;
+                      }
                       void handleFolderDrop(event, folder);
                     }}
                     onClick={() => {
