@@ -523,8 +523,8 @@ export default function ImportSettingsSection() {
     setImportingClaude(true);
 
     try {
-      const folderMappings: Record<string, string> = {};
-      const projectMemoryTargets: Record<string, string> = {};
+      const folderMappings: Record<string, { workspace_id: string; folder_id: string }> = {};
+      const projectMemoryTargets: Record<string, { workspace_id: string; folder_id: string }> = {};
 
       // Any project that has chats assigned to it must also have a folder created,
       // even if the user didn't explicitly tick its checkbox.
@@ -537,24 +537,30 @@ export default function ImportSettingsSection() {
         const dest = projectDestinations[projUuid];
         if (!dest) { continue; }
 
-        let folderId: string;
+        let target: { workspace_id: string; folder_id: string };
         if (dest.type === "new-workspace") {
-          const ws = await api.workspace.create(dest.name.trim());
-          const folder = await api.folder.create(ws.id, dest.name.trim(), {});
-          folderId = folder.id;
+          const resolvedName = await resolveWorkspaceNameConflict(dest.name.trim(), workspaces, promptForName);
+          if (!resolvedName) {
+            setImportingClaude(false);
+            return;
+          }
+          const existingWs = workspaces.find((w) => w.name.toLowerCase() === resolvedName.toLowerCase());
+          const ws = existingWs ?? await api.workspace.create(resolvedName);
+          // For a new workspace, we just put chats in the workspace directly, no folder!
+          target = { workspace_id: ws.id, folder_id: "" };
         } else if (dest.type === "new-sub-workspace") {
           if (!dest.parentId) { throw new Error(`Missing parent for project "${dest.name}"`); }
           const ws = await api.workspace.createChild(dest.parentId, dest.name.trim());
-          const folder = await api.folder.create(ws.id, dest.name.trim(), {});
-          folderId = folder.id;
+          // Similar to new-workspace, for new child workspace, we just put chats in it directly.
+          target = { workspace_id: ws.id, folder_id: "" };
         } else {
           if (!dest.subWorkspaceId) { throw new Error(`Missing sub-workspace for project "${dest.name}"`); }
           const folder = await api.folder.create(dest.subWorkspaceId, dest.name.trim(), {});
-          folderId = folder.id;
+          target = { workspace_id: dest.subWorkspaceId, folder_id: folder.id };
         }
-        folderMappings[projUuid] = folderId;
+        folderMappings[projUuid] = target;
         if (projectMemoryEnabled[projUuid]) {
-          projectMemoryTargets[projUuid] = folderId;
+          projectMemoryTargets[projUuid] = target;
         }
       }
 
@@ -581,13 +587,13 @@ export default function ImportSettingsSection() {
       const unassignedCount = [...claudeSelected].filter(
         (id) => !chatProjectOverrides[id],
       ).length;
-      let orphansFolderId: string | null = null;
+      let orphansDestination: { workspace_id: string; folder_id: string } | null = null;
       if (unassignedCount > 0) {
         const existing = workspaces.find((w) => w.name === "Unassigned Imports" && !w.parent_workspace_id);
         const ws = existing ?? await api.workspace.create("Unassigned Imports");
         const stamp = new Date().toISOString().slice(0, 10);
         const folder = await api.folder.create(ws.id, `Claude Import ${stamp}`, {});
-        orphansFolderId = folder.id;
+        orphansDestination = { workspace_id: ws.id, folder_id: folder.id };
       }
 
       const freshWs = await api.workspace.list();
@@ -597,7 +603,7 @@ export default function ImportSettingsSection() {
         folderPath: claudeFolderPath,
         folderMappings,
         projectMemoryTargets,
-        orphansFolderId,
+        orphansDestination,
         selectedConversationIds: conversationIdsToImport.size > 0 ? [...conversationIdsToImport] : undefined,
         selectedProjectIds: [...claudeSelectedFolders],
         chatProjectOverrides: Object.keys(chatProjectOverrides).length > 0 ? chatProjectOverrides : undefined,
