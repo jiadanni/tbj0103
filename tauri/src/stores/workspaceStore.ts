@@ -188,6 +188,7 @@ function normalizeWorkspaceSelection(
   workspaces: Workspace[],
   preferredWorkspaceId: string | null,
   preferredParentWorkspaceId?: string | null,
+  { resolveRootToChild = true }: { resolveRootToChild?: boolean } = {},
 ): { workspaceId: string | null; parentWorkspaceId: string | null } {
   if (workspaces.length === 0) {
     return {
@@ -222,6 +223,17 @@ function normalizeWorkspaceSelection(
     };
   }
 
+  // Root workspace: resolve to first child if one exists
+  if (resolveRootToChild) {
+    const firstChild = workspaces.find((w) => w.parent_workspace_id === workspace.id);
+    if (firstChild) {
+      return {
+        workspaceId: firstChild.id,
+        parentWorkspaceId: workspace.id,
+      };
+    }
+  }
+
   return {
     workspaceId: workspace.id,
     parentWorkspaceId: workspace.id,
@@ -234,7 +246,7 @@ function normalizePaneWorkspaceId(
   excludeWorkspaceId?: string | null,
 ) {
   const fallbackWorkspaceId = findFallbackWorkspaceId(workspaces, preferredWorkspaceId, excludeWorkspaceId);
-  return normalizeWorkspaceSelection(workspaces, fallbackWorkspaceId).workspaceId;
+  return normalizeWorkspaceSelection(workspaces, fallbackWorkspaceId, undefined, { resolveRootToChild: false }).workspaceId;
 }
 
 function hasFolderId(folders: Folder[], folderId: string | null) {

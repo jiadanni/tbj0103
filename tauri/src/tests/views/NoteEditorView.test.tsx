@@ -28,6 +28,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 // Mock workspace hook
 vi.mock("../../lib/workspacePane", () => ({
   useScopedWorkspace: () => ({ activeWorkspaceId: "ws-1" }),
+  useBubbleUpFlag: () => false,
 }));
 
 // Mock SmartTextEditor

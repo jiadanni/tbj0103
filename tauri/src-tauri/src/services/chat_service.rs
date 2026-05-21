@@ -33,9 +33,10 @@ fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatSession> {
         is_imported: row.get::<_, i32>(13)? != 0,
         parent_session_id: row.get(14)?,
         branch_message_id: row.get(15)?,
-        created_at: row.get(16)?,
-        updated_at: row.get(17)?,
-        message_count: row.get(18)?,
+        is_unread: row.get::<_, i32>(16)? != 0,
+        created_at: row.get(17)?,
+        updated_at: row.get(18)?,
+        message_count: row.get(19)?,
     })
 }
 
@@ -94,8 +95,8 @@ pub fn create_session(
             id, workspace_id, folder_id, title, model_name, system_prompt,
             is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at,
             last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-            created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+            is_unread, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
         rusqlite::params![
             session.id,
             session.workspace_id,
@@ -113,6 +114,7 @@ pub fn create_session(
             session.is_imported as i32,
             session.parent_session_id,
             session.branch_message_id,
+            session.is_unread as i32,
             session.created_at,
             session.updated_at,
         ],
@@ -138,24 +140,24 @@ pub fn list_sessions(
             "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-                created_at, updated_at,
+                is_unread, created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
-         FROM chat_sessions
-         WHERE workspace_id {ws_cond} AND is_deleted = 0
-         ORDER BY is_pinned DESC, updated_at DESC
-         LIMIT ?2 OFFSET ?3"
+          FROM chat_sessions
+          WHERE workspace_id {ws_cond} AND is_deleted = 0
+          ORDER BY is_pinned DESC, updated_at DESC
+          LIMIT ?2 OFFSET ?3"
         )
     } else {
         format!(
             "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-                created_at, updated_at,
+                is_unread, created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
-         FROM chat_sessions
-         WHERE workspace_id {ws_cond} AND folder_id = ?2 AND is_deleted = 0
-         ORDER BY is_pinned DESC, updated_at DESC
-         LIMIT ?3 OFFSET ?4"
+          FROM chat_sessions
+          WHERE workspace_id {ws_cond} AND folder_id = ?2 AND is_deleted = 0
+          ORDER BY is_pinned DESC, updated_at DESC
+          LIMIT ?3 OFFSET ?4"
         )
     };
 
@@ -188,24 +190,24 @@ pub fn search_sessions(
             "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-                created_at, updated_at,
+                is_unread, created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
-         FROM chat_sessions
-         WHERE workspace_id {ws_cond} AND is_deleted = 0
-           AND (title LIKE ?2 OR model_name LIKE ?2)
-         ORDER BY is_pinned DESC, updated_at DESC"
+          FROM chat_sessions
+          WHERE workspace_id {ws_cond} AND is_deleted = 0
+            AND (title LIKE ?2 OR model_name LIKE ?2)
+          ORDER BY is_pinned DESC, updated_at DESC"
         )
     } else {
         format!(
             "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-                created_at, updated_at,
+                is_unread, created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
-         FROM chat_sessions
-         WHERE workspace_id {ws_cond} AND folder_id = ?2 AND is_deleted = 0
-           AND (title LIKE ?3 OR model_name LIKE ?3)
-         ORDER BY is_pinned DESC, updated_at DESC"
+          FROM chat_sessions
+          WHERE workspace_id {ws_cond} AND folder_id = ?2 AND is_deleted = 0
+            AND (title LIKE ?3 OR model_name LIKE ?3)
+          ORDER BY is_pinned DESC, updated_at DESC"
         )
     };
 
@@ -229,7 +231,7 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<ChatSession>, S
         "SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-                created_at, updated_at,
+                is_unread, created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions WHERE id = ?1",
         rusqlite::params![id],
@@ -274,7 +276,7 @@ pub fn list_deleted(
         "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-                created_at, updated_at,
+                is_unread, created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
          WHERE workspace_id {ws_cond} AND is_deleted = 1
@@ -575,9 +577,14 @@ pub fn add_message(conn: &Connection, req: AddMessageRequest) -> Result<Message,
     .map_err(|e| e.to_string())?;
 
     let now = chrono::Utc::now().to_rfc3339();
+    let is_unread_val = if message.role == MessageRole::Assistant { 1 } else { 0 };
     let _ = conn.execute(
-        "UPDATE chat_sessions SET updated_at = ?1, is_imported = 0 WHERE id = ?2",
-        rusqlite::params![now, req.session_id],
+        "UPDATE chat_sessions
+         SET updated_at = ?1,
+             is_imported = 0,
+             is_unread = ?2
+         WHERE id = ?3",
+        rusqlite::params![now, is_unread_val, req.session_id],
     );
 
     Ok(message)
@@ -613,6 +620,7 @@ pub fn update_session(
     system_prompt: Option<String>,
     model_name: Option<String>,
     exclude_from_analytics: Option<bool>,
+    is_unread: Option<bool>,
 ) -> Result<(), String> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
@@ -622,14 +630,16 @@ pub fn update_session(
             system_prompt = COALESCE(?3, system_prompt),
             model_name = COALESCE(?4, model_name),
             exclude_from_analytics = COALESCE(?5, exclude_from_analytics),
-            updated_at = ?6
-         WHERE id = ?7",
+            is_unread = COALESCE(?6, is_unread),
+            updated_at = ?7
+         WHERE id = ?8",
         rusqlite::params![
             title,
             is_pinned.map(|value| value as i32),
             system_prompt,
             model_name,
             exclude_from_analytics.map(|v| v as i32),
+            is_unread.map(|v| v as i32),
             now,
             id,
         ],
@@ -687,7 +697,7 @@ pub fn get_recent(
         "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-                created_at, updated_at,
+                is_unread, created_at, updated_at,
                 (SELECT COUNT(*) FROM messages WHERE session_id = chat_sessions.id) AS message_count
          FROM chat_sessions
          WHERE workspace_id {ws_cond} AND is_deleted = 0

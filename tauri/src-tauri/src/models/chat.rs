@@ -48,6 +48,7 @@ pub struct ChatSession {
     pub is_imported: bool,
     pub parent_session_id: Option<String>,
     pub branch_message_id: Option<String>,
+    pub is_unread: bool,
     pub created_at: String,
     pub updated_at: String,
     /// Total number of messages in the session, computed at query time.
@@ -132,6 +133,7 @@ impl ChatSession {
             is_imported: false,
             parent_session_id: None,
             branch_message_id: None,
+            is_unread: false,
             created_at: now.clone(),
             updated_at: now,
             message_count: 0,

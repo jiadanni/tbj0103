@@ -285,8 +285,14 @@ function SessionItem({
         />
       ) : (
         <div className="min-w-0 flex flex-1 items-center gap-1.5">
+          {session.is_unread && (
+            <span
+              className="w-1.5 h-1.5 rounded-full bg-[var(--accent-color)] shrink-0"
+              title="Unread"
+            />
+          )}
           <Tooltip content={session.title || "New Chat"} position="right">
-            <span className={`min-w-0 flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>
+            <span className={`min-w-0 flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"} ${session.is_unread ? "font-semibold text-[var(--text-primary)]" : ""}`}>
               {session.title || "New Chat"}
             </span>
           </Tooltip>
@@ -2484,6 +2490,23 @@ export default function ChatView() {
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
   const [messagesScrollerElement, setMessagesScrollerElement] = useState<HTMLDivElement | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  useEffect(() => {
+    if (effectiveWorkspaceId && currentSessionId && isAtBottom && !isStreaming) {
+      const session = sessions.find((s) => s.id === currentSessionId);
+      if (session?.is_unread) {
+        api.chat
+          .updateSession(effectiveWorkspaceId, currentSessionId, { is_unread: false })
+          .then(() => {
+            updateSessionInScope({ ...session, is_unread: false });
+          })
+          .catch((err) => {
+            console.error("Failed to mark session as read:", err);
+          });
+      }
+    }
+  }, [currentSessionId, isAtBottom, isStreaming, sessions, effectiveWorkspaceId, updateSessionInScope]);
 
   const openConfirmDialog = useCallback((options: ConfirmDialogState) => {
     setConfirmDialog(options);
@@ -4882,6 +4905,7 @@ export default function ChatView() {
                         scrollerRef={(element) => {
                           setMessagesScrollerElement(element instanceof HTMLDivElement ? element : null);
                         }}
+                        atBottomStateChange={setIsAtBottom}
                         data={activeMessages}
                         initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
                         followOutput={isCurrentlyStreaming ? "auto" : false}

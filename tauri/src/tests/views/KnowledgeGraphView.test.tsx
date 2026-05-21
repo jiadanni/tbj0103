@@ -21,30 +21,20 @@ const mocks = vi.hoisted(() => ({
   zoomToFit: vi.fn(),
 }));
 
-vi.mock("react-force-graph-2d", () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const MockForceGraph = React.forwardRef<any>((props: any, ref) => {
-    React.useImperativeHandle(ref, () => ({
-      d3Force: mocks.d3Force.mockReturnValue({ strength: mocks.d3ForceStrength }),
-      zoom: mocks.zoom,
-      centerAt: mocks.centerAt,
-      zoomToFit: mocks.zoomToFit,
-    }), []);
-    return (
-      <div data-testid="force-graph">
+vi.mock("@/components/RoadmapGraph", () => ({
+  default: (props: { nodes: { id: string }[]; onSelectConcept: (node: { id: string }) => void }) => (
+    <div data-testid="roadmap-graph">
+      {props.nodes.map((n) => (
         <button
+          key={n.id}
           type="button"
           aria-label="Select graph node"
-          onClick={() => props.onNodeClick?.({ id: "concept-1" })}
+          onClick={() => props.onSelectConcept(n)}
         />
-      </div>
-    );
-  });
-  MockForceGraph.displayName = "MockForceGraph";
-  return {
-    default: MockForceGraph,
-  };
-});
+      ))}
+    </div>
+  ),
+}));
 
 vi.mock("@/lib/api", () => ({
   api: {
@@ -78,6 +68,7 @@ vi.mock("@/lib/workspacePane", () => ({
   useScopedWorkspace: () => ({
     activeWorkspaceId: "ws-1",
   }),
+  useBubbleUpFlag: () => false,
 }));
 
 vi.mock("@/stores/settingsStore", () => ({
@@ -226,8 +217,7 @@ describe("KnowledgeGraphView", () => {
     expect(screen.queryByRole("button", { name: "Learning" })).not.toBeInTheDocument();
 
     await waitFor(() => {
-      expect(mocks.centerAt).toHaveBeenCalled();
-      expect(mocks.zoomToFit).toHaveBeenCalled();
+      expect(screen.getByTestId("roadmap-graph")).toBeInTheDocument();
     });
   });
 
@@ -265,7 +255,8 @@ describe("KnowledgeGraphView", () => {
     });
     expect(mocks.analyzeWorkspace).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Select graph node" }));
+    const graphNodeButton = await screen.findByRole("button", { name: "Select graph node" });
+    fireEvent.click(graphNodeButton);
 
     const cardsButton = await screen.findByRole("button", { name: "Simulate Cards" });
     fireEvent.click(cardsButton);

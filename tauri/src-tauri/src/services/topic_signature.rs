@@ -232,7 +232,7 @@ fn merge_topic_tags(primary: Vec<TopicTag>, secondary: Vec<TopicTag>, max: usize
     let mut merged = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    for tag in primary.into_iter().chain(secondary.into_iter()) {
+    for tag in primary.into_iter().chain(secondary) {
         let Some(normalized) = normalize_topic_label(&tag.tag) else {
             continue;
         };
@@ -718,10 +718,8 @@ fn tags_match_fuzzy(a: &str, b: &str) -> bool {
     }
 
     // Check if one tag contains the other (e.g. "react" matches "react native")
-    if a.len() >= 4 && b.len() >= 4 {
-        if a.contains(b) || b.contains(a) {
-            return true;
-        }
+    if a.len() >= 4 && b.len() >= 4 && (a.contains(b) || b.contains(a)) {
+        return true;
     }
 
     false

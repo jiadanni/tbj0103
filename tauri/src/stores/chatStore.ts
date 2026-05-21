@@ -28,6 +28,7 @@ export interface ChatSession {
   deleted_at?: string;
   last_accessed_at?: string;
   is_imported?: boolean;
+  is_unread?: boolean;
   created_at: string;
   updated_at: string;
   title_generated_at?: string;

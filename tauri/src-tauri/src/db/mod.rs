@@ -1302,6 +1302,18 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    let applied_v52: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v52_chat_sessions_unread'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v52 == 0 {
+        conn.execute_batch(
+            "ALTER TABLE chat_sessions ADD COLUMN is_unread INTEGER NOT NULL DEFAULT 0;
+             INSERT INTO _migrations(name) VALUES('v52_chat_sessions_unread');",
+        )?;
+    }
+
     Ok(())
 }
 

@@ -80,7 +80,7 @@ describe("useWordHover", () => {
     expect(result.current).toMatchObject({
       word: "rust",
       definition: "A systems programming language.",
-      isTechTerm: true,
+      source: "tech",
       x: 48,
       y: 32,
     });

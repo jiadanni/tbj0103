@@ -6,8 +6,6 @@ use crate::models::chat::ChatSession;
 use crate::services::chat_file_store;
 use serde::Serialize;
 use std::process::Command;
-#[cfg(target_os = "linux")]
-use std::path::Path;
 use tauri::State;
 
 /// In-memory passphrase state — populated at startup from keyring if
@@ -378,7 +376,7 @@ pub fn import_chat_from_json(
     );
 
     conn.query_row(
-        "SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id, created_at, updated_at
+        "SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id, is_unread, created_at, updated_at
          FROM chat_sessions WHERE id = ?1",
         rusqlite::params![session_id],
         |row| {
@@ -399,8 +397,9 @@ pub fn import_chat_from_json(
                 is_imported: row.get::<_, i32>(13)? != 0,
                 parent_session_id: row.get(14)?,
                 branch_message_id: row.get(15)?,
-                created_at: row.get(16)?,
-                updated_at: row.get(17)?,
+                is_unread: row.get::<_, i32>(16)? != 0,
+                created_at: row.get(17)?,
+                updated_at: row.get(18)?,
                 message_count: 0,
             })
         },
@@ -960,8 +959,8 @@ pub fn import_gemini_takeout(
             "INSERT INTO chat_sessions (
                 id, workspace_id, folder_id, title, model_name, system_prompt,
                 is_pinned, is_incognito, exclude_from_analytics, is_deleted,
-                is_imported, created_at, updated_at
-            ) VALUES (?1, ?2, '', ?3, ?4, ?5, 0, 0, 0, 0, 1, ?6, ?6)",
+                is_imported, is_unread, created_at, updated_at
+            ) VALUES (?1, ?2, '', ?3, ?4, ?5, 0, 0, 0, 0, 1, 0, ?6, ?6)",
             rusqlite::params![
                 data.id,
                 workspace_id,

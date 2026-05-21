@@ -114,7 +114,7 @@ vi.mock("@/lib/api", () => ({
           },
         ],
         total: 3,
-        projects: [
+        folders: [
           {
             uuid: "Project A",
             name: "Project A",
@@ -170,16 +170,10 @@ describe("ImportSettingsSection", () => {
 
     renderImportSettings();
 
-    expect(screen.getByText("Import LM Studio Conversations Folder")).toBeInTheDocument();
-    expect(screen.getByText(/Choose a folder that contains LM Studio/i)).toBeInTheDocument();
-    expect(screen.getByText("Import Claude Conversation Export File")).toBeInTheDocument();
-    expect(screen.getByText((content, element) => (
-      element?.tagName.toLowerCase() === "p"
-      && content.includes("Choose a Claude Desktop")
-      && content.includes("export file. We will scan the file")
-    ))).toBeInTheDocument();
+    expect(screen.getByText("LM Studio — Single Folder")).toBeInTheDocument();
+    expect(screen.getByText(/Select a folder containing/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Scan LM Studio Folder"));
+    fireEvent.click(screen.getAllByText("Select Folder")[0]);
 
     expect(await screen.findByText("Root Chat")).toBeInTheDocument();
     expect(screen.getByText("Project A Chat")).toBeInTheDocument();

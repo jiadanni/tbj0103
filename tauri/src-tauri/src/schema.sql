@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     is_imported INTEGER NOT NULL DEFAULT 0,
     parent_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
     branch_message_id TEXT,
+    is_unread INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
