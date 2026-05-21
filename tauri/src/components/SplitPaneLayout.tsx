@@ -1,3 +1,4 @@
+import { useState, useRef } from "react";
 import React, { Suspense, useMemo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { type PaneId, type PaneView, type Workspace, useWorkspaceStore } from "../stores/workspaceStore";
@@ -5,6 +6,7 @@ import { WorkspacePaneProvider, useScopedWorkspace } from "../lib/workspacePane"
 import { MessageSquare, FileText, BarChart2, LucideIcon, FileEdit, Network } from "lucide-react";
 import CompactMenuSelect from "./CompactMenuSelect";
 import { Tooltip } from "./Tooltip";
+import { api } from "../lib/api";
 
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
 const FolderDashboardView = React.lazy(() => import("../views/FolderDashboardView"));
@@ -42,6 +44,8 @@ function PaneWorkspaceSidebar({ paneId }: { paneId: PaneId }) {
   const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
   const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
   const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
+  const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
+  const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function selectWorkspace(workspaceId: string) {
     setActivePaneId(paneId);
@@ -60,10 +64,50 @@ function PaneWorkspaceSidebar({ paneId }: { paneId: PaneId }) {
         <button
           key={`${paneId}-ws-${ws.id}`}
           onClick={() => selectWorkspace(ws.id)}
+          onDragOver={(event) => {
+            if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            setDragOverWorkspaceId(ws.id);
+          }}
+          onDragEnter={(event) => {
+            if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+            event.preventDefault();
+            setDragOverWorkspaceId(ws.id);
+            if (dragHoverTimerRef.current) clearTimeout(dragHoverTimerRef.current);
+            dragHoverTimerRef.current = setTimeout(() => selectWorkspace(ws.id), 600);
+          }}
+          onDragLeave={(event) => {
+            const related = event.relatedTarget as Node | null;
+            if (related && event.currentTarget.contains(related)) return;
+            if (dragOverWorkspaceId === ws.id) setDragOverWorkspaceId(null);
+            if (dragHoverTimerRef.current) {
+              clearTimeout(dragHoverTimerRef.current);
+              dragHoverTimerRef.current = null;
+            }
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragOverWorkspaceId(null);
+            if (dragHoverTimerRef.current) {
+              clearTimeout(dragHoverTimerRef.current);
+              dragHoverTimerRef.current = null;
+            }
+            const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+            if (!raw) return;
+            try {
+              const sessionIds = JSON.parse(raw) as string[];
+              if (sessionIds.length > 0) {
+                void api.chat.moveSessions(sessionIds, ws.id).then(() => selectWorkspace(ws.id));
+              }
+            } catch { /* ignore malformed data */ }
+          }}
           className={`flex items-center rounded-md px-2 py-1.5 text-left text-xs whitespace-nowrap truncate transition-colors ${
-            paneWorkspaceId === ws.id || allWorkspaces.find((w) => w.id === paneWorkspaceId)?.parent_workspace_id === ws.id
-              ? "bg-[var(--accent-color)] text-white"
-              : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            dragOverWorkspaceId === ws.id
+              ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
+              : paneWorkspaceId === ws.id || allWorkspaces.find((w) => w.id === paneWorkspaceId)?.parent_workspace_id === ws.id
+                ? "bg-[var(--accent-color)] text-white"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           }`}
         >
           {ws.name}
@@ -141,6 +185,15 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
   const { parent, children } = usePaneSubWorkspaces(paneId);
   const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
   const setPaneWorkspace = useWorkspaceStore((s) => s.setPaneWorkspace);
+  const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
+  const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
+  const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function selectWorkspace(workspaceId: string) {
+    setActivePaneId(paneId);
+    setPaneWorkspace(paneId, workspaceId);
+  }
+
   if (!parent) {
     return <div className="h-8 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 shrink-0" />;
   }
@@ -152,11 +205,51 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
         <Tooltip content={parent.name} position="top">
           <button
             data-testid={`pane-pinned-tab-${paneId}`}
-            onClick={() => setPaneWorkspace(paneId, parent.id)}
+            onClick={() => selectWorkspace(parent.id)}
+            onDragOver={(event) => {
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              setDragOverWorkspaceId(parent.id);
+            }}
+            onDragEnter={(event) => {
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+              event.preventDefault();
+              setDragOverWorkspaceId(parent.id);
+              if (dragHoverTimerRef.current) clearTimeout(dragHoverTimerRef.current);
+              dragHoverTimerRef.current = setTimeout(() => selectWorkspace(parent.id), 600);
+            }}
+            onDragLeave={(event) => {
+              const related = event.relatedTarget as Node | null;
+              if (related && event.currentTarget.contains(related)) return;
+              if (dragOverWorkspaceId === parent.id) setDragOverWorkspaceId(null);
+              if (dragHoverTimerRef.current) {
+                clearTimeout(dragHoverTimerRef.current);
+                dragHoverTimerRef.current = null;
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragOverWorkspaceId(null);
+              if (dragHoverTimerRef.current) {
+                clearTimeout(dragHoverTimerRef.current);
+                dragHoverTimerRef.current = null;
+              }
+              const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+              if (!raw) return;
+              try {
+                const sessionIds = JSON.parse(raw) as string[];
+                if (sessionIds.length > 0) {
+                  void api.chat.moveSessions(sessionIds, parent.id).then(() => selectWorkspace(parent.id));
+                }
+              } catch { /* ignore malformed data */ }
+            }}
             className={`relative mt-0.5 flex h-[26px] w-[26px] items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
-              paneWorkspaceId === parent.id
-                ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
-                : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+              dragOverWorkspaceId === parent.id
+                ? "border-[var(--border-color)] bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
+                : paneWorkspaceId === parent.id
+                  ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
+                  : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
             }`}
           >
             <svg data-testid="pinned-dot" width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
@@ -165,11 +258,51 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
         {children.map((workspace) => (
           <button
             key={workspace.id}
-            onClick={() => setPaneWorkspace(paneId, workspace.id)}
+            onClick={() => selectWorkspace(workspace.id)}
+            onDragOver={(event) => {
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              setDragOverWorkspaceId(workspace.id);
+            }}
+            onDragEnter={(event) => {
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+              event.preventDefault();
+              setDragOverWorkspaceId(workspace.id);
+              if (dragHoverTimerRef.current) clearTimeout(dragHoverTimerRef.current);
+              dragHoverTimerRef.current = setTimeout(() => selectWorkspace(workspace.id), 600);
+            }}
+            onDragLeave={(event) => {
+              const related = event.relatedTarget as Node | null;
+              if (related && event.currentTarget.contains(related)) return;
+              if (dragOverWorkspaceId === workspace.id) setDragOverWorkspaceId(null);
+              if (dragHoverTimerRef.current) {
+                clearTimeout(dragHoverTimerRef.current);
+                dragHoverTimerRef.current = null;
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragOverWorkspaceId(null);
+              if (dragHoverTimerRef.current) {
+                clearTimeout(dragHoverTimerRef.current);
+                dragHoverTimerRef.current = null;
+              }
+              const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+              if (!raw) return;
+              try {
+                const sessionIds = JSON.parse(raw) as string[];
+                if (sessionIds.length > 0) {
+                  void api.chat.moveSessions(sessionIds, workspace.id).then(() => selectWorkspace(workspace.id));
+                }
+              } catch { /* ignore malformed data */ }
+            }}
             className={`relative mt-0.5 flex h-[26px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-3 text-xs font-medium whitespace-nowrap transition-all select-none ${
-              paneWorkspaceId === workspace.id
-                ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
-                : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+              dragOverWorkspaceId === workspace.id
+                ? "border-[var(--border-color)] bg-[var(--accent-color)]/20 text-[var(--text-primary)]"
+                : paneWorkspaceId === workspace.id
+                  ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
+                  : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
             }`}
           >
             {paneWorkspaceId === workspace.id && (
