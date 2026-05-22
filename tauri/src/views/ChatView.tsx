@@ -235,11 +235,6 @@ function SessionItem({
 
   return (
     <div
-      draggable={!selectMode}
-      onDragStart={(e) => {
-        e.dataTransfer.setData("text/plain", session.id);
-        e.dataTransfer.effectAllowed = "move";
-      }}
       onContextMenu={(e) => openContextMenu(e, session)}
       onClick={(e) => {
         if (e.shiftKey || e.metaKey || e.ctrlKey) {
@@ -629,8 +624,10 @@ function SessionSidebar({
   function renderSessionRow(session: ChatSession, depth = 0, showFolderBorder = false) {
     return (
       <div
+        draggable={!selectMode}
         className={showFolderBorder ? "ml-3 border-l border-[var(--border-color)]/70" : undefined}
         onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
           if (selectedIds.size > 0 && selectedIds.has(session.id)) {
             dragSessionIdsRef.current = Array.from(selectedIds);
             e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify(Array.from(selectedIds)));
