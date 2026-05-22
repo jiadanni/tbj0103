@@ -114,9 +114,63 @@ pub fn show_window(app: &AppHandle) -> Result<(), String> {
         .ok_or_else(|| "Quick search window is not available.".to_string())?;
 
     let _ = window.unminimize();
-    let _ = window.center();
+    center_on_cursor_monitor(&window);
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())
+}
+
+/// Center the window on whichever monitor the cursor is currently on.
+/// Falls back to the primary-monitor center if cursor position or monitor
+/// list cannot be determined.
+fn center_on_cursor_monitor(window: &tauri::WebviewWindow) {
+    let cursor = match window.cursor_position() {
+        Ok(pos) => pos,
+        Err(_) => {
+            let _ = window.center();
+            return;
+        }
+    };
+
+    let monitors = match window.available_monitors() {
+        Ok(m) => m,
+        Err(_) => {
+            let _ = window.center();
+            return;
+        }
+    };
+
+    // Find the monitor whose bounds contain the cursor.
+    let target = monitors.iter().find(|m| {
+        let pos = m.position();
+        let size = m.size();
+        cursor.x >= pos.x as f64
+            && cursor.x < (pos.x as f64 + size.width as f64)
+            && cursor.y >= pos.y as f64
+            && cursor.y < (pos.y as f64 + size.height as f64)
+    });
+
+    let monitor = match target {
+        Some(m) => m,
+        None => {
+            let _ = window.center();
+            return;
+        }
+    };
+
+    let win_size = match window.outer_size() {
+        Ok(s) => s,
+        Err(_) => {
+            let _ = window.center();
+            return;
+        }
+    };
+
+    // Use work_area so the window avoids the taskbar.
+    let work = monitor.work_area();
+    let x = work.position.x + ((work.size.width as i32 - win_size.width as i32) / 2);
+    let y = work.position.y + ((work.size.height as i32 - win_size.height as i32) / 2);
+
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
 pub fn hide_window(app: &AppHandle) -> Result<(), String> {

@@ -12,7 +12,6 @@ pub mod services;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-#[cfg(not(target_os = "linux"))]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 #[cfg(target_os = "linux")]
@@ -786,6 +785,11 @@ pub fn build_tray_icon(app: &AppHandle) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
 
+    // On Linux (libappindicator/GTK), show_menu_on_left_click(false) is a no-op —
+    // GTK shows the menu on every click regardless. The menu must still be attached
+    // so that libappindicator renders the tray icon at all (it won't appear without one).
+    // We attach the menu on all platforms; on non-Linux we additionally suppress it on
+    // left-click so that only on_tray_icon_event fires for left-click.
     let builder = TrayIconBuilder::with_id("aetherium-tray")
         .icon(icon)
         .tooltip("Aetherium")
@@ -804,7 +808,6 @@ pub fn build_tray_icon(app: &AppHandle) -> Result<(), String> {
             _ => {}
         });
 
-    #[cfg(not(target_os = "linux"))]
     let builder = builder.on_tray_icon_event(|tray, event| {
         if let TrayIconEvent::Click {
             button: MouseButton::Left,
