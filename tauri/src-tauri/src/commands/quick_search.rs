@@ -123,7 +123,9 @@ pub fn show_window(app: &AppHandle) -> Result<(), String> {
 /// Falls back to the primary-monitor center if cursor position or monitor
 /// list cannot be determined.
 fn center_on_cursor_monitor(window: &tauri::WebviewWindow) {
-    let cursor = match window.cursor_position() {
+    // Query cursor via AppHandle — the window may be hidden at this point and
+    // cannot reliably report cursor position on Linux.
+    let cursor = match window.app_handle().cursor_position() {
         Ok(pos) => pos,
         Err(_) => {
             let _ = window.center();
