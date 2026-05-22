@@ -59,6 +59,7 @@ async function main() {
   const child = spawn(command[0], command.slice(1), {
     stdio: "inherit",
     shell: process.platform === "win32",
+    env: { ...process.env, GTK_USE_PORTAL: "1" },
   });
 
   child.on("exit", (code, signal) => {

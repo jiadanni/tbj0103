@@ -211,9 +211,11 @@ export default function FolderDashboardView() {
               <h1 className="mt-2 text-3xl font-semibold text-[var(--text-primary)]">
                 {effectiveSummary.workspace_name || workspace?.name || "Learning workspace"}
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                {workspace?.description || "Search when you want answers quickly. Come back here to review, track progress, and see what to learn next."}
-              </p>
+              {workspace?.description && (
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
+                  {workspace.description}
+                </p>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2">
