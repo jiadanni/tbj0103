@@ -689,6 +689,7 @@ pub fn run() {
             commands::chat_file::import_gemini_takeout,
             commands::chat_file::import_claude_files,
             commands::chat_file::preview_claude_files,
+            commands::chat_file::match_claude_with_embeddings,
             commands::chat_file::detect_claude_format,
             // Web AI (Playwright bridge)
             commands::web_ai::send_web_message,
