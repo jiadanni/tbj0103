@@ -1454,6 +1454,15 @@ pub struct ClaudeConversationPreview {
     /// orphan conversations to projects when the title is generic ("Chat").
     #[serde(default)]
     pub first_user_message: String,
+    /// All messages for in-app preview (role + content).
+    #[serde(default)]
+    pub messages: Vec<ClaudeMessagePreview>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaudeMessagePreview {
+    pub role: String,
+    pub content: String,
 }
 
 /// Lightweight preview of a Claude Desktop project for the UI picker.
@@ -1506,6 +1515,11 @@ pub fn preview_claude_conversations(bytes: &[u8]) -> Result<Vec<ClaudeConversati
                     truncate_chars(&raw, 280)
                 })
                 .unwrap_or_default();
+            let messages = c.chat_messages.iter().map(|m| {
+                let role = if m.sender == "human" { "user" } else { "assistant" }.to_string();
+                let content = extract_claude_message_content(m);
+                ClaudeMessagePreview { role, content }
+            }).collect();
             ClaudeConversationPreview {
                 uuid: c.uuid,
                 name: c.name,
@@ -1514,6 +1528,7 @@ pub fn preview_claude_conversations(bytes: &[u8]) -> Result<Vec<ClaudeConversati
                 updated_at: c.updated_at,
                 project_uuid: c.project.map(|p| p.uuid),
                 first_user_message,
+                messages,
             }
         })
         .collect())

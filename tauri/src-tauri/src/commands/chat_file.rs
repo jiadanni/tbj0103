@@ -1043,12 +1043,53 @@ pub fn detect_claude_format(folder_path: String) -> Result<serde_json::Value, St
 }
 
 /// Preview a Claude Desktop export folder. Auto-detects v2 vs legacy format.
+/// Dispatch to the embedding matcher or keyword matcher depending on export
+/// size and Ollama availability.
+async fn suggest_projects_smart(
+    conversations: &[chat_file_store::ClaudeConversationPreview],
+    projects: &[chat_file_store::ClaudeProjectPreview],
+    memories_by_project: &std::collections::HashMap<String, String>,
+    db_state: &DbState,
+) -> Vec<chat_file_store::claude_v2_match::MatchSuggestion> {
+    if conversations.len() >= EMBED_THRESHOLD {
+        // Try to get the configured embedding model and a working Ollama client.
+        let embedding_model = {
+            let conn = db_state.0.get().ok();
+            conn.and_then(|c| crate::services::model_settings::get_embedding_model(&c))
+        };
+        if let Some(model) = embedding_model {
+            if let Ok(ollama) = crate::ollama::client::OllamaClient::new(None) {
+                return chat_file_store::claude_v2_match::suggest_project_with_embeddings(
+                    conversations,
+                    projects,
+                    memories_by_project,
+                    &ollama,
+                    &model,
+                )
+                .await;
+            }
+        }
+    }
+    // Keyword fallback (also used for small exports).
+    chat_file_store::claude_v2_match::suggest_project_for_conversations(
+        conversations,
+        projects,
+        memories_by_project,
+    )
+}
+
+/// Orphan count above this threshold triggers the embedding-based matcher
+/// (when an embedding model is available). Below it the keyword matcher is
+/// fast enough and avoids the overhead of embedding hundreds of short texts.
+const EMBED_THRESHOLD: usize = 50;
+
 #[tauri::command]
-pub fn preview_claude_files(
+pub async fn preview_claude_files(
     folder_path: String,
     include_conversations: bool,
     include_projects: bool,
     include_memories: bool,
+    db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
     use chat_file_store::claude_v2;
 
@@ -1107,13 +1148,17 @@ pub fn preview_claude_files(
             .map(|m| (m.project_uuid.clone(), m.memory.clone()))
             .collect();
 
-        // Suggest a project for each orphan (matcher does not run when no projects exist).
+        // Suggest a project for each orphan.
+        // Use embedding similarity for large exports when Ollama is available,
+        // fall back to keyword coverage otherwise.
         let suggestions = if include_conversations && !projects.is_empty() {
-            chat_file_store::claude_v2_match::suggest_project_for_conversations(
+            suggest_projects_smart(
                 &orphan_conversations,
                 &projects,
                 &memories_by_project,
+                &db_state,
             )
+            .await
         } else {
             Vec::new()
         };
@@ -1190,11 +1235,13 @@ pub fn preview_claude_files(
             .unwrap_or_default();
 
         let suggestions = if include_conversations && !claude_projects.is_empty() {
-            chat_file_store::claude_v2_match::suggest_project_for_conversations(
+            suggest_projects_smart(
                 &orphan_conversations,
                 &claude_projects,
                 &memories_by_project,
+                &db_state,
             )
+            .await
         } else {
             Vec::new()
         };

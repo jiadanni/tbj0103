@@ -4,8 +4,16 @@
 // (every chat has `project: null`). The only remaining signals are the chat's
 // title, its first user message, and the project's name + prompt_template.
 //
-// This module is a pure scoring function. The frontend shows suggestions and
-// the user confirms before import — we never auto-route.
+// Two strategies, selected at call time:
+//   - Keyword coverage (fast, no Ollama required): used for small exports or
+//     when no embedding model is configured / Ollama is unreachable.
+//   - Embedding cosine similarity (accurate): used for large exports when an
+//     embedding model is available. Project text = name + prompt + memory.
+//     Chat text = title + first user message. Best-match above a confidence
+//     threshold wins; ties below the gap threshold go unassigned.
+//
+// The frontend shows all suggestions and the user confirms before import —
+// we never auto-route.
 
 use std::collections::{HashMap, HashSet};
 
@@ -43,8 +51,12 @@ pub fn suggest_project_for_conversations(
         .map(|p| {
             let memory = memories_by_project.get(&p.uuid).map(String::as_str).unwrap_or("");
             let mut text = String::with_capacity(
-                p.prompt_template.len() + p.description.len() + memory.len() + 2,
+                p.name.len() + p.prompt_template.len() + p.description.len() + memory.len() + 3,
             );
+            // Include the project name so that projects with empty prompts still
+            // match conversations that mention the topic by name.
+            text.push_str(&p.name);
+            text.push(' ');
             text.push_str(&p.prompt_template);
             text.push(' ');
             text.push_str(&p.description);
@@ -146,6 +158,160 @@ fn score_conversation(
     }
 }
 
+// ── Embedding-based matcher ───────────────────────────────────────────────────
+
+/// Minimum cosine similarity for the winning project to be accepted.
+const EMBED_SIM_MIN: f32 = 0.50;
+/// The winner must beat the runner-up by at least this margin.
+const EMBED_MARGIN_MIN: f32 = 0.05;
+
+/// Suggest projects using embedding cosine similarity.
+///
+/// Each project is represented by: name + prompt_template + description + memory.
+/// Each conversation is represented by: title + first user message (up to 400 chars).
+///
+/// Falls back to the keyword matcher for conversations whose text is too short
+/// to produce a meaningful embedding.
+pub async fn suggest_project_with_embeddings(
+    conversations: &[ClaudeConversationPreview],
+    projects: &[ClaudeProjectPreview],
+    memories_by_project: &HashMap<String, String>,
+    ollama: &crate::ollama::client::OllamaClient,
+    model: &str,
+) -> Vec<MatchSuggestion> {
+    // Build project texts and embed them.
+    let mut project_embeddings: Vec<(String, Vec<f32>)> = Vec::new();
+    for proj in projects {
+        let memory = memories_by_project.get(&proj.uuid).map(String::as_str).unwrap_or("");
+        let text = format!(
+            "{} {} {} {}",
+            proj.name, proj.prompt_template, proj.description, memory
+        );
+        match ollama
+            .generate_embedding_with_options("claude_import_match", model, &text, Some("5m"))
+            .await
+        {
+            Ok(emb) => project_embeddings.push((proj.uuid.clone(), emb)),
+            Err(_) => {} // skip projects we can't embed; they won't match anything
+        }
+    }
+
+    if project_embeddings.is_empty() {
+        // Ollama failed for all projects — fall back to keyword matcher.
+        return suggest_project_for_conversations(conversations, projects, memories_by_project);
+    }
+
+    // Pre-normalise project embeddings.
+    let project_embeddings: Vec<(String, Vec<f32>)> = project_embeddings
+        .into_iter()
+        .map(|(uuid, emb)| (uuid, normalise(&emb)))
+        .collect();
+
+    // Title-match lookup (same as keyword path — fast and reliable).
+    let project_names_lower: Vec<(String, String)> = projects
+        .iter()
+        .map(|p| (p.uuid.clone(), p.name.trim().to_lowercase()))
+        .collect();
+
+    let mut results = Vec::with_capacity(conversations.len());
+
+    for conv in conversations {
+        // 1. Title substring match first (same as keyword path).
+        let title_lower = conv.name.trim().to_lowercase();
+        if !title_lower.is_empty() {
+            let mut title_hit = None;
+            for (uuid, name_lower) in &project_names_lower {
+                if !name_lower.is_empty() && contains_whole_word(&title_lower, name_lower) {
+                    title_hit = Some(uuid.clone());
+                    break;
+                }
+            }
+            if let Some(uuid) = title_hit {
+                results.push(MatchSuggestion {
+                    conversation_uuid: conv.uuid.clone(),
+                    project_uuid: Some(uuid),
+                    score: 0.9,
+                    reason: "title",
+                });
+                continue;
+            }
+        }
+
+        // 2. Embed the conversation.
+        let first_msg: String = conv.first_user_message.chars().take(400).collect();
+        let chat_text = format!("{} {}", conv.name, first_msg);
+        let chat_emb = match ollama
+            .generate_embedding_with_options("claude_import_match", model, &chat_text, Some("5m"))
+            .await
+        {
+            Ok(emb) => normalise(&emb),
+            Err(_) => {
+                // Embedding failed for this chat — emit a no-match.
+                results.push(MatchSuggestion {
+                    conversation_uuid: conv.uuid.clone(),
+                    project_uuid: None,
+                    score: 0.0,
+                    reason: "none",
+                });
+                continue;
+            }
+        };
+
+        // 3. Cosine similarity against each project (embeddings already normalised).
+        let mut top: Option<(String, f32)> = None;
+        let mut runner_up: f32 = 0.0;
+        for (uuid, proj_emb) in &project_embeddings {
+            let sim = dot(&chat_emb, proj_emb);
+            match &top {
+                Some((_, best)) if sim > *best => {
+                    runner_up = *best;
+                    top = Some((uuid.clone(), sim));
+                }
+                Some((_, best)) if sim > runner_up && sim <= *best => {
+                    runner_up = sim;
+                }
+                None => {
+                    top = Some((uuid.clone(), sim));
+                }
+                _ => {}
+            }
+        }
+
+        if let Some((uuid, score)) = top {
+            if score >= EMBED_SIM_MIN && (score - runner_up) >= EMBED_MARGIN_MIN {
+                results.push(MatchSuggestion {
+                    conversation_uuid: conv.uuid.clone(),
+                    project_uuid: Some(uuid),
+                    score,
+                    reason: "embedding",
+                });
+                continue;
+            }
+        }
+
+        results.push(MatchSuggestion {
+            conversation_uuid: conv.uuid.clone(),
+            project_uuid: None,
+            score: 0.0,
+            reason: "none",
+        });
+    }
+
+    results
+}
+
+fn dot(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+}
+
+fn normalise(v: &[f32]) -> Vec<f32> {
+    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm < 1e-9 {
+        return v.to_vec();
+    }
+    v.iter().map(|x| x / norm).collect()
+}
+
 fn contains_whole_word(haystack: &str, needle: &str) -> bool {
     if needle.is_empty() || needle.len() > haystack.len() { return false; }
     let mut start = 0;
@@ -215,6 +381,7 @@ mod tests {
             updated_at: String::new(),
             project_uuid: None,
             first_user_message: msg.to_string(),
+            messages: vec![],
         }
     }
 
