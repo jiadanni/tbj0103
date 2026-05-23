@@ -6,7 +6,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { readTextFile } from "@tauri-apps/plugin-fs";
-import { api, type AiModel, type OllamaModel, type SearchResult, type QuickSearchResult, type ThoughtItem, type AppSettings, type Memory } from "../lib/api";
+import { api, type AiModel, type OllamaModel, type SearchResult, type QuickSearchResult, type ThoughtItem, type AppSettings, type Memory, type TopicSignature } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Folder, type Workspace } from "../stores/workspaceStore";
@@ -114,6 +114,49 @@ function buildAttachmentContext(query: string, attachments: Array<{ title: strin
   ].join("\n");
 }
 
+function buildWorkspaceDomainContext(
+  workspace: Workspace | null,
+  folder: Folder | null,
+  topicSignature: TopicSignature | null,
+): string | null {
+  const parts: string[] = [];
+
+  // Use topic signature domain tags as the primary context signal (more
+  // reliable than workspace name which may be abbreviated, sentimental, or a
+  // misspelling).
+  if (topicSignature) {
+    const activeTags = topicSignature.domain_tags
+      .filter((t) => !topicSignature.ignored_tags.includes(t.tag))
+      .map((t) => t.tag);
+    for (const tag of topicSignature.manual_tags) {
+      if (!topicSignature.ignored_tags.includes(tag) && !activeTags.includes(tag)) {
+        activeTags.push(tag);
+      }
+    }
+    if (activeTags.length > 0) {
+      parts.push(`Domain context: ${activeTags.join(", ")}`);
+    }
+  }
+
+  // Workspace description provides additional semantic context
+  if (workspace?.description?.trim()) {
+    parts.push(workspace.description.trim());
+  }
+
+  // Workspace-level instructions
+  if (workspace?.prompt_instructions?.trim()) {
+    parts.push(workspace.prompt_instructions.trim());
+  }
+
+  // Folder-level instructions
+  if (folder?.custom_instructions?.trim()) {
+    parts.push(folder.custom_instructions.trim());
+  }
+
+  if (parts.length === 0) { return null; }
+  return parts.join("\n");
+}
+
 interface ConfirmDialogState {
   title: string;
   description: string;
@@ -189,9 +232,6 @@ interface SessionSidebarProps {
   saveSession: (session: ChatSession) => void;
   deleteSession: (id: string) => void;
   showAlertDialog: (title: string, description: string, tone?: ConfirmDialogState["tone"]) => void;
-  openConfirmDialog: (options: ConfirmDialogState) => Promise<boolean>;
-  setScopedWorkspaceId: (id: string | null) => void;
-  createSessionInWorkspace: (workspaceId: string) => Promise<void>;
   sidebarWidth: number;
   openSession: (session: ChatSession) => void;
 }
@@ -235,6 +275,11 @@ function SessionItem({
 
   return (
     <div
+      draggable={!selectMode}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", session.id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
       onContextMenu={(e) => openContextMenu(e, session)}
       onClick={(e) => {
         if (e.shiftKey || e.metaKey || e.ctrlKey) {
@@ -280,14 +325,8 @@ function SessionItem({
         />
       ) : (
         <div className="min-w-0 flex flex-1 items-center gap-1.5">
-          {session.is_unread && (
-            <span
-              className="w-1.5 h-1.5 rounded-full bg-[var(--accent-color)] shrink-0"
-              title="Unread"
-            />
-          )}
           <Tooltip content={session.title || "New Chat"} position="right">
-            <span className={`min-w-0 flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"} ${session.is_unread ? "font-semibold text-[var(--text-primary)]" : ""}`}>
+            <span className={`min-w-0 flex-1 truncate ${isSplitPane ? "text-sm" : "text-xs"}`}>
               {session.title || "New Chat"}
             </span>
           </Tooltip>
@@ -341,9 +380,6 @@ function SessionSidebar({
   saveSession,
   deleteSession,
   showAlertDialog,
-  openConfirmDialog,
-  setScopedWorkspaceId,
-  createSessionInWorkspace,
 }: SessionSidebarProps) {
   const isSplitPane = useWorkspacePane() !== null;
   const includeDescendants = useBubbleUpFlag();
@@ -369,7 +405,6 @@ function SessionSidebar({
   const [folderRenameValue, setFolderRenameValue] = useState("");
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const dragSessionIdsRef = useRef<string[] | null>(null);
-  const dragFolderHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ctxMoveOpen, setCtxMoveOpen] = useState(false);
   const [ctxFolderMoveOpen, setCtxFolderMoveOpen] = useState(false);
   const [_ctxMoveWorkspaceId, setCtxMoveWorkspaceId] = useState<string | null>(null);
@@ -383,53 +418,8 @@ function SessionSidebar({
   const [ctxMenu, setCtxMenu] = useState<
     | { type: "session"; x: number; y: number; session: ChatSession }
     | { type: "folder"; x: number; y: number; folder: Folder }
-    | { type: "workspace"; x: number; y: number; workspace: Workspace }
     | null
   >(null);
-  const [workspaceRenamingId, setWorkspaceRenamingId] = useState<string | null>(null);
-  const [workspaceRenameValue, setWorkspaceRenameValue] = useState("");
-
-  async function commitWorkspaceRename(workspace: Workspace) {
-    const nextName = workspaceRenameValue.trim();
-    setWorkspaceRenamingId(null);
-    setWorkspaceRenameValue("");
-    if (!nextName || nextName === workspace.name) { return; }
-    try {
-      await api.workspace.update(workspace.id, nextName, workspace.description, workspace.prompt_instructions);
-      const store = useWorkspaceStore.getState();
-      store.setWorkspaces(store.workspaces.map((w) => w.id === workspace.id ? { ...w, name: nextName } : w));
-    } catch (error) {
-      const description = error instanceof Error ? error.message : "Failed to rename sub-workspace.";
-      showAlertDialog("Rename failed", description, "danger");
-    }
-  }
-
-  async function confirmDeleteWorkspace(workspace: Workspace) {
-    if (workspaces.length <= 1) {
-      showAlertDialog(
-        "Cannot Delete Workspace",
-        "You need at least one workspace in Aetherium.",
-        "default",
-      );
-      return;
-    }
-    const confirmed = await openConfirmDialog({
-      title: "Confirm Sub-workspace Deletion",
-      description: `Delete "${workspace.name}" and all its folders, notes, and data? This cannot be undone.`,
-      confirmLabel: "Delete Workspace",
-      cancelLabel: "Cancel",
-      tone: "danger",
-    });
-    if (!confirmed) { return; }
-    try {
-      await api.workspace.delete(workspace.id);
-      const remaining = await api.workspace.list();
-      useWorkspaceStore.getState().setWorkspaces(remaining);
-    } catch (error) {
-      const description = error instanceof Error ? error.message : "Failed to delete sub-workspace.";
-      showAlertDialog("Delete failed", description, "danger");
-    }
-  }
   const menuRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -624,18 +614,8 @@ function SessionSidebar({
   function renderSessionRow(session: ChatSession, depth = 0, showFolderBorder = false) {
     return (
       <div
-        draggable={!selectMode}
         className={showFolderBorder ? "ml-3 border-l border-[var(--border-color)]/70" : undefined}
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "move";
-          if (selectedIds.size > 0 && selectedIds.has(session.id)) {
-            dragSessionIdsRef.current = Array.from(selectedIds);
-            e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify(Array.from(selectedIds)));
-          } else {
-            dragSessionIdsRef.current = [session.id];
-            e.dataTransfer.setData("application/x-chat-session-ids", JSON.stringify([session.id]));
-          }
-        }}
+        onDragStart={() => { dragSessionIdsRef.current = [session.id]; }}
         onDragEnd={() => { dragSessionIdsRef.current = null; setDragOverFolderId(null); }}
       >
         <div className="pb-[2px]">
@@ -706,6 +686,7 @@ function SessionSidebar({
         );
         // Then folders
         for (const proj of wsFolders) {
+          if (!(wsByFolder[proj.id]?.length)) { continue; }
           const projKey = `ws-${ws.id}-folder-${proj.id}`;
           const projOpen = expanded[projKey] ?? true;
           wsRows.push({
@@ -738,7 +719,7 @@ function SessionSidebar({
       depth: 0,
       showFolderBorder: false,
     })),
-    ...folders.filter((folder) => !scopedWsId || folder.workspace_id === scopedWsId).flatMap(( folder) => {
+    ...folders.flatMap(( folder) => {
       const folderRows: SessionSidebarRow[] = [{
         type: "folder" as const,
         key: `folder-${folder.id}`,
@@ -1556,46 +1537,15 @@ function SessionSidebar({
                 if (row.type === "workspace") {
                   const { workspace: wsItem, isOpen: wsOpen } = row;
                   const wsSessionCount = childWorkspaceSessionCounts[wsItem.id] ?? 0;
-                  const isRenaming = workspaceRenamingId === wsItem.id;
                   return (
                     <button
-                      onClick={() => {
-                        if (isRenaming) { return; }
-                        setExpanded((prev) => ({ ...prev, [`ws-${wsItem.id}`]: !wsOpen }));
-                      }}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setCtxMenu({ type: "workspace", x: event.clientX, y: event.clientY, workspace: wsItem });
-                      }}
+                      onClick={() => setExpanded((prev) => ({ ...prev, [`ws-${wsItem.id}`]: !wsOpen }))}
                       className={`w-full flex items-center gap-1.5 rounded-xl border px-3 py-2 text-left transition-colors ${
                         "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                       }`}
                     >
                       <FolderOpen size={isSplitPane ? 14 : 13} className="text-[var(--accent-color)] shrink-0" />
-                      {isRenaming ? (
-                        <input
-                          autoFocus
-                          value={workspaceRenameValue}
-                          onChange={(event) => setWorkspaceRenameValue(event.target.value)}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              void commitWorkspaceRename(wsItem);
-                            }
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              setWorkspaceRenamingId(null);
-                              setWorkspaceRenameValue("");
-                            }
-                          }}
-                          onBlur={() => { void commitWorkspaceRename(wsItem); }}
-                          className={`flex-1 rounded border border-[var(--accent-color)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[var(--text-primary)] outline-none ${isSplitPane ? "text-xs" : "text-[11px]"}`}
-                        />
-                      ) : (
-                        <span className={`truncate font-medium flex-1 min-w-0 ${isSplitPane ? "text-xs" : "text-[11px]"}`}>{wsItem.name}</span>
-                      )}
+                      <span className={`truncate font-medium flex-1 min-w-0 ${isSplitPane ? "text-xs" : "text-[11px]"}`}>{wsItem.name}</span>
                       {wsSessionCount > 0 && (
                         <span className={`shrink-0 text-[var(--text-muted)] ${isSplitPane ? "text-[10px]" : "text-[9px]"}`}>{wsSessionCount}</span>
                       )}
@@ -1612,21 +1562,6 @@ function SessionSidebar({
                       event.stopPropagation();
                       setCtxMenu({ type: "folder", x: event.clientX, y: event.clientY, folder });
                     }}
-                    onDragEnter={(event) => {
-                      if (selectMode || !dragSessionIdsRef.current) {
-                        return;
-                      }
-                      event.preventDefault();
-                      setDragOverFolderId(folder.id);
-                      if (dragFolderHoverTimerRef.current) {
-                        clearTimeout(dragFolderHoverTimerRef.current);
-                      }
-                      if (!isOpen) {
-                        dragFolderHoverTimerRef.current = setTimeout(() => {
-                          setExpanded((prev) => ({ ...prev, [expandKey]: true }));
-                        }, 600);
-                      }
-                    }}
                     onDragOver={(event) => {
                       if (selectMode || !dragSessionIdsRef.current) {
                         return;
@@ -1641,16 +1576,8 @@ function SessionSidebar({
                         return;
                       }
                       setDragOverFolderId((current) => current === folder.id ? null : current);
-                      if (dragFolderHoverTimerRef.current) {
-                        clearTimeout(dragFolderHoverTimerRef.current);
-                        dragFolderHoverTimerRef.current = null;
-                      }
                     }}
                     onDrop={(event) => {
-                      if (dragFolderHoverTimerRef.current) {
-                        clearTimeout(dragFolderHoverTimerRef.current);
-                        dragFolderHoverTimerRef.current = null;
-                      }
                       void handleFolderDrop(event, folder);
                     }}
                     onClick={() => {
@@ -1926,7 +1853,7 @@ function SessionSidebar({
                   <Trash2 size={11} /> Delete
                 </button>
               </>
-            ) : ctxMenu.type === "folder" ? (
+            ) : (
               <>
                 <button
                   onClick={() => {
@@ -1978,50 +1905,6 @@ function SessionSidebar({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
                 >
                   <Trash2 size={11} /> Delete folder
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => {
-                    setScopedWorkspaceId(ctxMenu.workspace.id);
-                    setCtxMenu(null);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                >
-                  <ExternalLink size={11} /> Open sub-workspace
-                </button>
-                <button
-                  onClick={() => {
-                    setWorkspaceRenamingId(ctxMenu.workspace.id);
-                    setWorkspaceRenameValue(ctxMenu.workspace.name);
-                    setExpanded((prev) => ({ ...prev, [`ws-${ctxMenu.workspace.id}`]: prev[`ws-${ctxMenu.workspace.id}`] ?? false }));
-                    setCtxMenu(null);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                >
-                  <Pencil size={11} /> Rename sub-workspace
-                </button>
-                <button
-                  onClick={() => {
-                    const targetId = ctxMenu.workspace.id;
-                    setCtxMenu(null);
-                    void createSessionInWorkspace(targetId);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                >
-                  <Plus size={11} /> New chat here
-                </button>
-                <div className="my-1 border-t border-[var(--border-color)]" />
-                <button
-                  onClick={() => {
-                    const target = ctxMenu.workspace;
-                    setCtxMenu(null);
-                    void confirmDeleteWorkspace(target);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-[var(--bg-hover)]"
-                >
-                  <Trash2 size={11} /> Delete sub-workspace
                 </button>
               </>
             )}
@@ -2519,23 +2402,6 @@ export default function ChatView() {
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
   const [messagesScrollerElement, setMessagesScrollerElement] = useState<HTMLDivElement | null>(null);
-  const [isAtBottom, setIsAtBottom] = useState(true);
-
-  useEffect(() => {
-    if (effectiveWorkspaceId && currentSessionId && isAtBottom && !isStreaming) {
-      const session = sessions.find((s) => s.id === currentSessionId);
-      if (session?.is_unread) {
-        api.chat
-          .updateSession(effectiveWorkspaceId, currentSessionId, { is_unread: false })
-          .then(() => {
-            updateSessionInScope({ ...session, is_unread: false });
-          })
-          .catch((err) => {
-            console.error("Failed to mark session as read:", err);
-          });
-      }
-    }
-  }, [currentSessionId, isAtBottom, isStreaming, sessions, effectiveWorkspaceId, updateSessionInScope]);
 
   const openConfirmDialog = useCallback((options: ConfirmDialogState) => {
     setConfirmDialog(options);
@@ -3596,18 +3462,6 @@ export default function ChatView() {
     });
   }, [effectiveWorkspaceId, sessions, effectiveFolderId, selectedModel]);
 
-  const createSessionInWorkspace = useCallback(async (targetWorkspaceId: string) => {
-    try {
-      const newSession = await api.chat.createSession(targetWorkspaceId, null, {
-        modelName: selectedModel,
-      });
-      activateSession(newSession);
-    } catch (error) {
-      const description = error instanceof Error ? error.message : "Failed to create chat.";
-      openAlertDialog("Create chat failed", description, "danger");
-    }
-  }, [selectedModel, activateSession, openAlertDialog]);
-
   const createNewSession = useCallback(async (options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) => {
     if (!effectiveWorkspaceId) { return; }
 
@@ -3944,6 +3798,15 @@ export default function ChatView() {
       content: m.content,
     }));
 
+    // Inject workspace domain context as a system message so the model
+    // understands the topic area without requiring explicit user clarification.
+    const activeWs = workspaces.find((w) => w.id === effectiveWorkspaceId) ?? null;
+    const activeFolderObj = folders.find((f) => f.id === effectiveFolderId) ?? null;
+    const domainContext = buildWorkspaceDomainContext(activeWs, activeFolderObj, activeTopicSignature);
+    if (domainContext && (history.length === 0 || history[0].role !== "system")) {
+      history.unshift({ role: "system", content: domainContext });
+    }
+
     let finalUserContent = userContent;
     const attachmentContext = buildAttachmentContext(userContent, attachedSources);
     if (attachmentContext) {
@@ -4188,15 +4051,8 @@ export default function ChatView() {
   async function moveSessionsToTarget(sessionIds: string[], workspaceId: string, folderId: string | null) {
     if (sessionIds.length === 0) { return; }
     const sessionIdSet = new Set(sessionIds);
-    // In bubble-up view, effectiveWorkspaceId is the parent scope but the affected
-    // sessions belong to descendants. Compare against the sessions' own workspace_id
-    // so a same-workspace folder change is not misclassified as cross-workspace.
-    const affectedSessions = sidebarSessions.filter((session) => sessionIdSet.has(session.id));
-    const allShareTargetWorkspace = affectedSessions.length > 0
-      && affectedSessions.every((session) => session.workspace_id === workspaceId);
-    const isCrossWorkspaceMove = !allShareTargetWorkspace
-      && workspaceId !== effectiveWorkspaceId;
-    const shouldPreserveFolderStructure = isCrossWorkspaceMove && folderId === null && sessionIds.length > 1;
+    const isCrossWorkspaceMove = workspaceId !== effectiveWorkspaceId;
+    const shouldPreserveFolderStructure = isCrossWorkspaceMove && folderId === null;
 
     // Optimistic UI update: remove from source immediately
     if (isCrossWorkspaceMove) {
@@ -4215,13 +4071,8 @@ export default function ChatView() {
       setScopedWorkspaceId(workspaceId);
       setScopedFolderId(destinationFolderIdForView);
 
-      // Refresh the destination workspace tree (source already updated optimistically)
+      // Refresh only the destination workspace tree (source already updated optimistically)
       await refreshFolderTree(workspaceId);
-      // Also refresh the previously-scoped tree (e.g. parent in bubble-up view) so
-      // its sidebar reflects the move without requiring navigation away and back.
-      if (effectiveWorkspaceId && effectiveWorkspaceId !== workspaceId) {
-        await refreshFolderTree(effectiveWorkspaceId);
-      }
 
       if (activeChatId && sessionIds.includes(activeChatId)) {
         setActiveChatId(sessionIds.length === 1 ? activeChatId : null);
@@ -4233,12 +4084,8 @@ export default function ChatView() {
       setScopedWorkspaceId(workspaceId);
       setScopedFolderId(folderId);
 
-      // Refresh the destination workspace tree
+      // Refresh only the destination workspace tree
       await refreshFolderTree(workspaceId);
-      // Also refresh the previously-scoped tree (e.g. parent in bubble-up view).
-      if (effectiveWorkspaceId && effectiveWorkspaceId !== workspaceId) {
-        await refreshFolderTree(effectiveWorkspaceId);
-      }
 
       if (activeChatId && sessionIds.includes(activeChatId)) {
         setActiveChatId(sessionIds.length === 1 ? activeChatId : null);
@@ -4597,6 +4444,7 @@ export default function ChatView() {
   }
 
   const activeFolder = folders.find((p) => p.id === effectiveFolderId) ?? null;
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId) ?? null;
 
   // Bucket enabled models into Fast / Balanced / Powerful tiers
   const enabledModels = aiModelList.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
@@ -4655,6 +4503,7 @@ export default function ChatView() {
 
   const composerSuggestionRows = useMemo(() => {
     const suggestionContext = {
+      workspaceName: activeWorkspace?.name ?? null,
       folderName: activeFolder?.name ?? null,
       topicSignature: activeTopicSignature,
       processedDocCount: attachedSources.length,
@@ -4667,6 +4516,7 @@ export default function ChatView() {
       showComposerChatFollowUps ? buildChatSuggestionRow(suggestionContext) : null,
     ].filter((row): row is NonNullable<typeof row> => row !== null);
   }, [
+    activeWorkspace,
     activeFolder,
     activeTopicSignature,
     attachedSources.length,
@@ -4742,9 +4592,6 @@ export default function ChatView() {
         saveSession={saveSession}
         deleteSession={deleteSession}
         showAlertDialog={openAlertDialog}
-        openConfirmDialog={openConfirmDialog}
-        setScopedWorkspaceId={setScopedWorkspaceId}
-        createSessionInWorkspace={createSessionInWorkspace}
         sidebarWidth={sidebarWidth}
         openSession={activateSession}
       />
@@ -4934,7 +4781,6 @@ export default function ChatView() {
                         scrollerRef={(element) => {
                           setMessagesScrollerElement(element instanceof HTMLDivElement ? element : null);
                         }}
-                        atBottomStateChange={setIsAtBottom}
                         data={activeMessages}
                         initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
                         followOutput={isCurrentlyStreaming ? "auto" : false}

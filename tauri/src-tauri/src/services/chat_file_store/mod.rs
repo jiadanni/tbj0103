@@ -911,15 +911,29 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
     let re_tags = regex::Regex::new(r"<[^>]+>").unwrap();
     let re_img = regex::Regex::new(r#"<img\s+[^>]*src="([^"]+)""#).unwrap();
 
-    // Split by the outer cell div
-    for part in html.split("<div class=\"outer-cell ") {
-        if !part.contains("Prompted") {
+    // Split by the outer cell div — handle both with and without trailing space
+    let parts: Vec<&str> = if html.contains("<div class=\"outer-cell \"") {
+        html.split("<div class=\"outer-cell \"").collect()
+    } else if html.contains("<div class=\"outer-cell\"") {
+        html.split("<div class=\"outer-cell\"").collect()
+    } else {
+        // Fallback: try splitting on content-cell which is another common Takeout wrapper
+        html.split("<div class=\"content-cell").collect()
+    };
+
+    for part in &parts {
+        // Accept both "Prompted" and "Prompted Gemini" markers
+        if !part.contains("Prompted") && !part.contains("prompted") {
             continue;
         }
 
-        let prompt_start = match part.find("Prompted") {
-            Some(i) => i + 8,
-            None => continue,
+        // Find "Prompted" (case-insensitive start)
+        let prompt_start = if let Some(i) = part.find("Prompted") {
+            i + 8
+        } else if let Some(i) = part.find("prompted") {
+            i + 8
+        } else {
+            continue;
         };
         let after_prompt = &part[prompt_start..];
 

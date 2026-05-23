@@ -916,7 +916,15 @@ pub fn import_gemini_takeout(
 
     let sessions = chat_file_store::parse_gemini_takeout(&html)?;
     if sessions.is_empty() {
-        return Err("No Gemini conversations found in the selected HTML file.".to_string());
+        let has_outer_cell = html.contains("outer-cell");
+        let has_prompted = html.contains("Prompted") || html.contains("prompted");
+        let has_content_cell = html.contains("content-cell");
+        let file_len = html.len();
+        return Err(format!(
+            "No Gemini conversations found in the selected HTML file. \
+             (file size: {} bytes, has outer-cell: {}, has content-cell: {}, has Prompted: {})",
+            file_len, has_outer_cell, has_content_cell, has_prompted
+        ));
     }
 
     let workspace_name = workspace_name.unwrap_or_else(|| "Gemini Apps".to_string());
