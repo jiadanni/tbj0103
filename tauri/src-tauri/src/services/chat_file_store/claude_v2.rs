@@ -236,6 +236,11 @@ pub fn preview_v2_design_chats(
                 out
             })
             .unwrap_or_default();
+        let messages = chat.messages.iter().map(|m| {
+            let role = if m.sender == "human" { "user" } else { "assistant" }.to_string();
+            let content = extract_claude_message_content_v2(m);
+            super::ClaudeMessagePreview { role, content }
+        }).collect();
         let preview = ClaudeConversationPreview {
             uuid: chat.uuid.clone(),
             name: chat.title.clone(),
@@ -244,6 +249,7 @@ pub fn preview_v2_design_chats(
             updated_at: chat.updated_at.clone(),
             project_uuid: Some(chat.project.uuid.clone()),
             first_user_message,
+            messages,
         };
         by_project.entry(chat.project.uuid).or_default().push(preview);
     }

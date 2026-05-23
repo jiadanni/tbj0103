@@ -3,11 +3,12 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ask, message, open } from "@tauri-apps/plugin-dialog";
-import { Check, CheckSquare, ChevronDown, ChevronRight, FolderInput, RefreshCw, Square, X } from "lucide-react";
+import { Check, CheckSquare, ChevronDown, ChevronRight, FolderInput, Info, RefreshCw, Square, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import PromptDialog from "../components/PromptDialog";
+import Tooltip from "../components/Tooltip";
 
 type ProjectDestType = "new-workspace" | "new-sub-workspace" | "folder-in-sub";
 
@@ -37,13 +38,14 @@ interface ClaudeConvPreview {
   updated_at: string;
   project_uuid: string | null;
   first_user_message?: string;
+  messages?: { role: string; content: string }[];
 }
 
 interface ChatSuggestion {
   conversation_uuid: string;
   project_uuid: string | null;
   score: number;
-  reason: "title" | "keywords" | "none";
+  reason: "title" | "keywords" | "embedding" | "none";
 }
 
 /**
@@ -129,7 +131,10 @@ export default function ImportSettingsSection() {
   const [claudeSelectedFolders, setClaudeSelectedProjects] = useState<Set<string>>(new Set()); // project UUIDs
   const [projectDestinations, setProjectDestinations] = useState<Record<string, ProjectDestination>>({});
   const [projectMemoryEnabled, setProjectMemoryEnabled] = useState<Record<string, boolean>>({});
+  const [projectInstructionsEnabled, setProjectInstructionsEnabled] = useState<Record<string, boolean>>({});
   const [expandedMemories, setExpandedMemories] = useState<Set<string>>(new Set());
+  const [expandedInstructions, setExpandedInstructions] = useState<Set<string>>(new Set());
+  const [focusedConvUuid, setFocusedConvUuid] = useState<string | null>(null);
   const [orphansExpanded, setOrphansExpanded] = useState(false);
   const [claudeSuggestions, setClaudeSuggestions] = useState<ChatSuggestion[]>([]);
   const [claudeMemoriesByProject, setClaudeMemoriesByProject] = useState<Record<string, string>>({});
@@ -387,6 +392,7 @@ export default function ImportSettingsSection() {
     setClaudeSelectedProjects(new Set());
     setProjectDestinations({});
     setProjectMemoryEnabled({});
+    setProjectInstructionsEnabled({});
     setExpandedMemories(new Set());
     setOrphansExpanded(false);
     setClaudeSuggestions([]);
@@ -462,6 +468,7 @@ export default function ImportSettingsSection() {
       const selectedFolders = new Set<string>();
       const dests: Record<string, ProjectDestination> = {};
       const memEnabled: Record<string, boolean> = {};
+      const instrEnabled: Record<string, boolean> = {};
 
       for (const proj of result.folders) {
         if (proj.conversation_count > 0 || suggestedProjects.has(proj.uuid)) {
@@ -469,6 +476,7 @@ export default function ImportSettingsSection() {
         }
         dests[proj.uuid] = { type: "new-workspace", parentId: null, subWorkspaceId: null, name: proj.name };
         memEnabled[proj.uuid] = proj.has_memory;
+        instrEnabled[proj.uuid] = proj.has_prompt;
       }
 
       setClaudeSelectedProjects(selectedFolders);
@@ -480,6 +488,7 @@ export default function ImportSettingsSection() {
       ));
       setProjectDestinations(dests);
       setProjectMemoryEnabled(memEnabled);
+      setProjectInstructionsEnabled(instrEnabled);
       setFocusedProjectUuid(result.folders[0]?.uuid ?? null);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Claude scan failed";
@@ -537,6 +546,10 @@ export default function ImportSettingsSection() {
         const dest = projectDestinations[projUuid];
         if (!dest) { continue; }
 
+        const proj = claudeProjects.find((p) => p.uuid === projUuid);
+        const instrEnabled = projectInstructionsEnabled[projUuid] && proj?.has_prompt;
+        const promptTemplate = instrEnabled ? (proj?.prompt_template ?? "") : "";
+
         let target: { workspace_id: string; folder_id: string };
         if (dest.type === "new-workspace") {
           const resolvedName = await resolveWorkspaceNameConflict(dest.name.trim(), workspaces, promptForName);
@@ -546,16 +559,24 @@ export default function ImportSettingsSection() {
           }
           const existingWs = workspaces.find((w) => w.name.toLowerCase() === resolvedName.toLowerCase());
           const ws = existingWs ?? await api.workspace.create(resolvedName);
+          if (promptTemplate) {
+            await api.workspace.update(ws.id, ws.name, ws.description, promptTemplate);
+          }
           // For a new workspace, we just put chats in the workspace directly, no folder!
           target = { workspace_id: ws.id, folder_id: "" };
         } else if (dest.type === "new-sub-workspace") {
           if (!dest.parentId) { throw new Error(`Missing parent for project "${dest.name}"`); }
           const ws = await api.workspace.createChild(dest.parentId, dest.name.trim());
+          if (promptTemplate) {
+            await api.workspace.update(ws.id, ws.name, ws.description, promptTemplate);
+          }
           // Similar to new-workspace, for new child workspace, we just put chats in it directly.
           target = { workspace_id: ws.id, folder_id: "" };
         } else {
           if (!dest.subWorkspaceId) { throw new Error(`Missing sub-workspace for project "${dest.name}"`); }
-          const folder = await api.folder.create(dest.subWorkspaceId, dest.name.trim(), {});
+          const folder = await api.folder.create(dest.subWorkspaceId, dest.name.trim(), {
+            ...(promptTemplate ? { custom_instructions: promptTemplate } : {}),
+          });
           target = { workspace_id: dest.subWorkspaceId, folder_id: folder.id };
         }
         folderMappings[projUuid] = target;
@@ -612,15 +633,13 @@ export default function ImportSettingsSection() {
       const finalFreshWs = await api.workspace.list();
       setWorkspaces(finalFreshWs);
 
-      // Try to navigate to the first imported session
+      // Try to navigate to the first imported session.
+      // Prefer orphans destination; fall back to first project mapping.
       let firstSession = null;
-      const firstFolderId = orphansFolderId ?? Object.values(folderMappings)[0];
-      if (firstFolderId) {
-        const wsId = finalFreshWs.find((w) => !w.parent_workspace_id)?.id;
-        if (wsId) {
-          const sessions = await api.chat.listSessions(wsId, firstFolderId, { limit: 1, offset: 0 });
-          firstSession = sessions[0] ?? null;
-        }
+      const firstTarget = orphansDestination ?? Object.values(folderMappings)[0] ?? null;
+      if (firstTarget) {
+        const sessions = await api.chat.listSessions(firstTarget.workspace_id, firstTarget.folder_id || null, { limit: 1, offset: 0 });
+        firstSession = sessions[0] ?? null;
       }
 
       // Reset state
@@ -903,6 +922,9 @@ export default function ImportSettingsSection() {
                   <div className="flex items-center gap-2">
                     <FolderInput size={16} className="text-[var(--accent-color)]" />
                     <h2 className="text-sm font-medium text-[var(--text-primary)]">Claude Desktop Export</h2>
+                    <Tooltip content="Conversations, projects, and memories are imported. Documents and files attached to projects are not supported and will be skipped." position="right">
+                      <Info size={13} className="text-[var(--text-muted)] cursor-default" />
+                    </Tooltip>
                   </div>
                   <p className="mt-2 text-xs text-[var(--text-muted)]">
                     Select your Claude export folder. Each project routes to its own workspace or sub-workspace.
@@ -1008,11 +1030,10 @@ export default function ImportSettingsSection() {
                   </button>
                 </div>
 
-                {/* Master / detail split: project list on the left, focused project's
-                    settings + conversations on the right. */}
+                {/* Master / detail / preview split */}
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
                   {/* ── Master: project list ───────────────────────── */}
-                  <div className="flex max-h-[60vh] min-w-0 flex-col divide-y divide-[var(--border-color)] overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] lg:w-[40%] lg:max-w-md">
+                  <div className="flex max-h-[60vh] min-w-0 flex-col divide-y divide-[var(--border-color)] overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] lg:w-[28%]">
                     {claudeProjects.map((proj) => {
                       const checked = claudeSelectedFolders.has(proj.uuid);
                       const assignedCount = Object.values(chatAssignments).filter((p) => p === proj.uuid).length;
@@ -1057,17 +1078,10 @@ export default function ImportSettingsSection() {
                               {totalChats === 0 && (
                                 <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400">no chats</span>
                               )}
-                              {assignedCount > 0 && (
-                                <span className="shrink-0 rounded bg-[var(--accent-color)]/10 px-1.5 py-0.5 text-[10px] text-[var(--accent-color)]">
-                                  +{assignedCount}
-                                </span>
-                              )}
                             </div>
                             <div className="text-[11px] text-[var(--text-muted)]">
-                              {proj.has_prompt ? "Has instructions" : "No instructions"}
-                              {proj.doc_count > 0 ? ` · ${proj.doc_count} doc${proj.doc_count === 1 ? "" : "s"}` : ""}
-                              {" · "}
                               {totalChats} chat{totalChats === 1 ? "" : "s"}
+                              {assignedCount > 0 && ` (+${assignedCount} assigned)`}
                             </div>
                           </div>
                         </button>
@@ -1076,7 +1090,7 @@ export default function ImportSettingsSection() {
                   </div>
 
                   {/* ── Detail: focused project ────────────────────── */}
-                  <div className="flex min-h-[40vh] min-w-0 flex-1 flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
+                  <div className="flex min-h-[40vh] min-w-0 flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 lg:w-[36%]">
                     {(() => {
                       const proj = claudeProjects.find((p) => p.uuid === focusedProjectUuid);
                       if (!proj) {
@@ -1091,9 +1105,14 @@ export default function ImportSettingsSection() {
                         : [];
                       const nativeConvs = claudeConvsByProject[proj.uuid] ?? [];
                       const assignedConvs = claudeOrphans.filter((c) => chatAssignments[c.uuid] === proj.uuid);
+                      const unassignedSuggestedConvs = claudeOrphans.filter(
+                        (c) => chatAssignments[c.uuid] === null &&
+                          claudeSuggestions.find((s) => s.conversation_uuid === c.uuid)?.project_uuid === proj.uuid,
+                      );
                       const allProjectConvs = [
                         ...nativeConvs.map((c) => ({ ...c, _origin: "native" as const })),
                         ...assignedConvs.map((c) => ({ ...c, _origin: "assigned" as const })),
+                        ...unassignedSuggestedConvs.map((c) => ({ ...c, _origin: "unassigned" as const })),
                       ];
                       return (
                         <>
@@ -1198,6 +1217,44 @@ export default function ImportSettingsSection() {
                                   )}
                                 </div>
                               )}
+
+                              <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={!!projectInstructionsEnabled[proj.uuid]}
+                                  disabled={!proj.has_prompt}
+                                  onChange={(e) => setProjectInstructionsEnabled((prev) => ({ ...prev, [proj.uuid]: e.target.checked }))}
+                                  className="rounded"
+                                />
+                                <span className={`text-[11px] ${proj.has_prompt ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
+                                  Import project instructions{!proj.has_prompt ? " (none in export)" : ""}
+                                </span>
+                              </label>
+
+                              {projectInstructionsEnabled[proj.uuid] && proj.prompt_template && (() => {
+                                const instrExpanded = expandedInstructions.has(proj.uuid);
+                                return (
+                                  <div className="flex flex-col gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedInstructions((prev) => {
+                                        const next = new Set(prev);
+                                        if (instrExpanded) { next.delete(proj.uuid); } else { next.add(proj.uuid); }
+                                        return next;
+                                      })}
+                                      className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                                    >
+                                      {instrExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                      Instructions preview ({proj.prompt_template.length} char{proj.prompt_template.length === 1 ? "" : "s"})
+                                    </button>
+                                    {instrExpanded && (
+                                      <pre className="whitespace-pre-wrap rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] p-2 text-[11px] text-[var(--text-secondary)] max-h-40 overflow-y-auto">
+                                        {proj.prompt_template}
+                                      </pre>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
 
@@ -1213,37 +1270,80 @@ export default function ImportSettingsSection() {
                             ) : (
                               <div className="flex-1 max-h-[40vh] overflow-y-auto rounded-md border border-[var(--border-color)]">
                                 {allProjectConvs.map((conv) => (
-                                  <div key={conv.uuid} className="flex items-center gap-2 border-b border-[var(--border-color)] px-3 py-1.5 last:border-b-0">
+                                  <div key={conv.uuid} onClick={() => setFocusedConvUuid(conv.uuid)} className={`flex cursor-pointer items-center gap-2 border-b border-[var(--border-color)] px-3 py-1.5 last:border-b-0 ${focusedConvUuid === conv.uuid ? "bg-[var(--accent-color)]/10" : "hover:bg-[var(--bg-hover)]"}`}>
                                     <div className="min-w-0 flex-1">
                                       <div className="truncate text-[11px] text-[var(--text-primary)]">{conv.name || "Untitled"}</div>
                                       <div className="text-[10px] text-[var(--text-muted)]">{conv.message_count} msg{conv.message_count === 1 ? "" : "s"}</div>
                                     </div>
-                                    {conv._origin === "assigned" ? (
-                                      <>
-                                        <span className="shrink-0 rounded bg-[var(--accent-color)]/10 px-1.5 py-0.5 text-[10px] text-[var(--accent-color)]">assigned</span>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
+                                    {conv._origin === "native" ? (
+                                      <span className="shrink-0 rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">native</span>
+                                    ) : (
+                                      <input
+                                        type="checkbox"
+                                        checked={conv._origin === "assigned"}
+                                        className="shrink-0 rounded cursor-pointer"
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            setChatAssignments((prev) => ({ ...prev, [conv.uuid]: proj.uuid }));
+                                            setClaudeSelected((prev) => {
+                                              const next = new Set(prev);
+                                              next.delete(conv.uuid);
+                                              return next;
+                                            });
+                                          } else {
                                             setChatAssignments((prev) => ({ ...prev, [conv.uuid]: null }));
                                             setClaudeSelected((prev) => {
                                               const next = new Set(prev);
                                               next.add(conv.uuid);
                                               return next;
                                             });
-                                          }}
-                                          className="shrink-0 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:underline"
-                                        >
-                                          unassign
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <span className="shrink-0 rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">native</span>
+                                          }
+                                        }}
+                                      />
                                     )}
                                   </div>
                                 ))}
                               </div>
                             )}
                           </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  {/* ── Preview: focused conversation ──────────────── */}
+                  <div className="flex min-h-[40vh] min-w-0 flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 lg:w-[36%]">
+                    {(() => {
+                      if (!focusedConvUuid) {
+                        return <div className="m-auto text-[11px] text-[var(--text-muted)]">Select a conversation to preview.</div>;
+                      }
+                      const allConvs = [
+                        ...Object.values(claudeConvsByProject).flat(),
+                        ...claudeOrphans,
+                      ];
+                      const conv = allConvs.find((c) => c.uuid === focusedConvUuid);
+                      if (!conv) {
+                        return <div className="m-auto text-[11px] text-[var(--text-muted)]">Conversation not found.</div>;
+                      }
+                      return (
+                        <>
+                          <div className="text-sm font-medium text-[var(--text-primary)] truncate">{conv.name || "Untitled"}</div>
+                          <div className="text-[11px] text-[var(--text-muted)]">
+                            {conv.message_count} message{conv.message_count === 1 ? "" : "s"}
+                            {conv.updated_at && ` · ${new Date(conv.updated_at).toLocaleDateString()}`}
+                          </div>
+                          {conv.messages && conv.messages.length > 0 ? (
+                            <div className="mt-1 flex-1 overflow-y-auto rounded-md border border-[var(--border-color)]">
+                              {conv.messages.map((msg, i) => (
+                                <div key={i} className={`flex flex-col gap-0.5 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 ${msg.role === "user" ? "bg-[var(--bg-elevated)]" : "bg-[var(--bg-primary)]"}`}>
+                                  <span className="text-[10px] font-medium text-[var(--text-muted)]">{msg.role === "user" ? "You" : "Claude"}</span>
+                                  <p className="whitespace-pre-wrap text-[11px] text-[var(--text-secondary)]">{msg.content}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-[11px] text-[var(--text-muted)]">No message preview available.</div>
+                          )}
                         </>
                       );
                     })()}

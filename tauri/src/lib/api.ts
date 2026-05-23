@@ -888,8 +888,8 @@ export const api = {
           has_memory: boolean;
           prompt_template?: string;
         }[];
-        conversations_by_project: Record<string, { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string }[]>;
-        orphan_conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string }[];
+        conversations_by_project: Record<string, { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string; messages?: { role: string; content: string }[] }[]>;
+        orphan_conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string; messages?: { role: string; content: string }[] }[];
         orphan_count: number;
         memories: {
           conversations_memory: string;
