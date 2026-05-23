@@ -862,8 +862,11 @@ export const api = {
       invoke<{
         imported_sessions: number;
         imported_messages: number;
+        skipped: number;
         workspace_id: string;
         workspace_name: string;
+        errors: number;
+        error_messages: string[];
       }>("import_gemini_takeout", { filePath, workspaceName: workspaceName ?? null }),
     detectClaudeFormat: (folderPath: string) =>
       invoke<{

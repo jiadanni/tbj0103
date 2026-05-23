@@ -951,55 +951,26 @@ pub fn import_gemini_takeout(
     };
 
     let mut session_ids = Vec::new();
-    let mut messages_count = 0;
+    let mut skipped = 0usize;
+    let mut errors = Vec::new();
 
-    for data in sessions {
-        // Check if session ID already exists to avoid duplicates if re-importing
-        let exists: bool = conn.query_row(
-            "SELECT 1 FROM chat_sessions WHERE id = ?1",
-            rusqlite::params![data.id],
-            |_| Ok(true)
+    for data in &sessions {
+        // Duplicate detection: same title + created_at in same workspace (like LM Studio)
+        let duplicate: bool = conn.query_row(
+            "SELECT 1 FROM chat_sessions WHERE workspace_id = ?1 AND title = ?2 AND created_at = ?3 AND is_imported = 1 LIMIT 1",
+            rusqlite::params![workspace_id, data.title, data.created_at],
+            |_| Ok(true),
         ).unwrap_or(false);
 
-        if exists { continue; }
-
-        conn.execute(
-            "INSERT INTO chat_sessions (
-                id, workspace_id, folder_id, title, model_name, system_prompt,
-                is_pinned, is_incognito, exclude_from_analytics, is_deleted,
-                is_imported, is_unread, created_at, updated_at
-            ) VALUES (?1, ?2, '', ?3, ?4, ?5, 0, 0, 0, 0, 1, 0, ?6, ?6)",
-            rusqlite::params![
-                data.id,
-                workspace_id,
-                data.title,
-                data.model,
-                data.system_prompt,
-                data.created_at
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-
-        for fmsg in &data.messages {
-            conn.execute(
-                "INSERT INTO chat_messages (
-                    id, session_id, role, content, model_name,
-                    tokens_used, is_deleted, created_at, updated_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?7)",
-                rusqlite::params![
-                    fmsg.id,
-                    data.id,
-                    fmsg.role,
-                    fmsg.content,
-                    fmsg.model,
-                    fmsg.tokens_used,
-                    fmsg.timestamp,
-                ],
-            )
-            .map_err(|e| e.to_string())?;
-            messages_count += 1;
+        if duplicate {
+            skipped += 1;
+            continue;
         }
-        session_ids.push(data.id.clone());
+
+        match chat_file_store::import_chat_data(&conn, data, &workspace_id, "") {
+            Ok(sid) => session_ids.push(sid),
+            Err(e) => errors.push(format!("{}: {e}", data.title)),
+        }
     }
 
     // Write to disk for file-based consistency
@@ -1010,9 +981,12 @@ pub fn import_gemini_takeout(
 
     Ok(serde_json::json!({
         "imported_sessions": session_ids.len(),
-        "imported_messages": messages_count,
+        "imported_messages": sessions.iter().map(|s| s.messages.len()).sum::<usize>(),
+        "skipped": skipped,
         "workspace_id": workspace_id,
         "workspace_name": workspace_name,
+        "errors": errors.len(),
+        "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
     }))
 }
 
