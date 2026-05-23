@@ -210,7 +210,7 @@ export default function ImportSettingsSection() {
         await message(lines.join("\n"), { title: "Multi-folder import complete", kind: result.total_errors > 0 ? "warning" : "info" });
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "LM Studio import failed";
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "LM Studio import failed";
       setError(msg);
       await message(msg, { title: "LM Studio import failed", kind: "error" });
     } finally {
@@ -292,7 +292,7 @@ export default function ImportSettingsSection() {
         kind: result.errors > 0 ? "warning" : "info",
       });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "LM Studio import failed";
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "LM Studio import failed";
       setError(msg);
       await message(msg, { title: "LM Studio import failed", kind: "error" });
     } finally {
@@ -351,7 +351,7 @@ export default function ImportSettingsSection() {
         kind: "info",
       });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Activity import failed";
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Activity import failed";
       setError(msg);
       await message(msg, { title: "Activity import failed", kind: "error" });
     } finally {
@@ -391,7 +391,7 @@ export default function ImportSettingsSection() {
       setClaudeFilesFound(detected.files_found);
       // Auto-scan kicks in via the useEffect watching [claudeFolderPath + include flags]
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Could not detect Claude export format";
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Could not detect Claude export format";
       setError(msg);
       setClaudeFolderPath(null);
       setClaudeDetectedFormat(null);
@@ -467,7 +467,7 @@ export default function ImportSettingsSection() {
       setProjectInstructionsEnabled(instrEnabled);
       setFocusedProjectUuid(result.folders[0]?.uuid ?? null);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Claude scan failed";
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Claude scan failed";
       setError(msg);
       await message(msg, { title: "Claude scan failed", kind: "error" });
     } finally {
@@ -523,7 +523,7 @@ export default function ImportSettingsSection() {
       setChatAssignments(newAssignments);
       setClaudeSuggestions(newSuggestions);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Embedding match failed";
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Embedding match failed";
       setError(msg);
     } finally {
       setClaudeEmbeddingMatching(false);
@@ -690,7 +690,7 @@ export default function ImportSettingsSection() {
         kind: result.errors > 0 ? "warning" : "info",
       });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Claude import failed";
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Claude import failed";
       setError(msg);
       await message(msg, { title: "Claude import failed", kind: "error" });
     } finally {
