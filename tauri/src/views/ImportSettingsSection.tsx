@@ -322,6 +322,13 @@ export default function ImportSettingsSection() {
         filePath,
         resolvedName !== defaultName ? resolvedName : undefined,
       );
+      if (result.imported_sessions < 1 && (result.skipped ?? 0) > 0) {
+        await message(`All ${result.skipped} conversation${result.skipped === 1 ? "" : "s"} already imported — nothing new to add.`, {
+          title: "Activity import",
+          kind: "info",
+        });
+        return;
+      }
       if (result.imported_sessions < 1) {
         throw new Error("The activity export completed without importing any conversations.");
       }
@@ -341,6 +348,12 @@ export default function ImportSettingsSection() {
         `${result.imported_sessions} conversation${result.imported_sessions === 1 ? "" : "s"} imported.`,
         `${result.imported_messages} total message${result.imported_messages === 1 ? "" : "s"} processed.`,
       ];
+      if (result.skipped > 0) {
+        lines.push(`${result.skipped} duplicate${result.skipped === 1 ? "" : "s"} skipped.`);
+      }
+      if (result.errors > 0) {
+        lines.push(`${result.errors} conversation${result.errors === 1 ? "" : "s"} had errors.`);
+      }
 
       if (firstSession.length > 0) {
         navigate(`/chat/${firstSession[0].id}`);
@@ -348,7 +361,7 @@ export default function ImportSettingsSection() {
 
       await message(lines.join("\n"), {
         title: "Activity import complete",
-        kind: "info",
+        kind: result.errors > 0 ? "warning" : "info",
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Activity import failed";
@@ -643,11 +656,20 @@ export default function ImportSettingsSection() {
       const freshWs = await api.workspace.list();
       setWorkspaces(freshWs);
 
+      const mappedFolderMappings: Record<string, string> = {};
+      for (const [uuid, target] of Object.entries(folderMappings)) {
+        mappedFolderMappings[uuid] = target.folder_id;
+      }
+      const mappedProjectMemoryTargets: Record<string, string> = {};
+      for (const [uuid, target] of Object.entries(projectMemoryTargets)) {
+        mappedProjectMemoryTargets[uuid] = target.folder_id;
+      }
+
       const result = await api.chatFile.importClaudeFiles({
         folderPath: claudeFolderPath,
-        folderMappings,
-        projectMemoryTargets,
-        orphansDestination,
+        folderMappings: mappedFolderMappings,
+        projectMemoryTargets: mappedProjectMemoryTargets,
+        orphansFolderId: orphansDestination?.folder_id ?? null,
         selectedConversationIds: conversationIdsToImport.size > 0 ? [...conversationIdsToImport] : undefined,
         selectedProjectIds: [...claudeSelectedFolders],
         chatProjectOverrides: Object.keys(chatProjectOverrides).length > 0 ? chatProjectOverrides : undefined,
