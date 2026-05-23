@@ -12,7 +12,10 @@ const mockNavigate = vi.fn();
 vi.mock("lucide-react", () => ({
   Check: () => <div data-testid="icon-check" />,
   CheckSquare: () => <div data-testid="icon-check-square" />,
+  ChevronDown: () => <div data-testid="icon-chevron-down" />,
+  ChevronRight: () => <div data-testid="icon-chevron-right" />,
   FolderInput: () => <div data-testid="icon-folder-input" />,
+  Info: () => <div data-testid="icon-info" />,
   RefreshCw: () => <div data-testid="icon-refresh-cw" />,
   Square: () => <div data-testid="icon-square" />,
   X: () => <div data-testid="icon-x" />,
@@ -170,10 +173,10 @@ describe("ImportSettingsSection", () => {
 
     renderImportSettings();
 
-    expect(screen.getByText("LM Studio — Single Folder")).toBeInTheDocument();
-    expect(screen.getByText(/Select a folder containing/i)).toBeInTheDocument();
+    expect(screen.getByText("LM Studio")).toBeInTheDocument();
+    expect(screen.getByText(/Select one folder to preview/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByText("Select Folder")[0]);
+    fireEvent.click(screen.getAllByText("Select")[0]);
 
     expect(await screen.findByText("Root Chat")).toBeInTheDocument();
     expect(screen.getByText("Project A Chat")).toBeInTheDocument();

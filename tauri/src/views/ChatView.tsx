@@ -2066,12 +2066,9 @@ function StreamingBubble({
   // Batched state updates via rAF — avoids thrashing React on every token.
   const [content, setContent] = useState("");
   const rafRef = useRef(0);
-  const visibleRef = useRef(false);
-  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (!isCurrentlyStreaming) {
-      visibleRef.current = false;
       // Defer the reset so it does not trigger a synchronous setState inside an effect.
       window.cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => { setContent(""); });
@@ -2083,22 +2080,16 @@ function StreamingBubble({
         window.cancelAnimationFrame(rafRef.current);
         rafRef.current = requestAnimationFrame(() => {
           setContent(streamingContent);
-          if (streamingContent && !visibleRef.current) {
-            visibleRef.current = true;
-            setVisible(true);
-          }
         });
       },
     );
     return () => {
       unsub();
       window.cancelAnimationFrame(rafRef.current);
-      setVisible(false);
-      visibleRef.current = false;
     };
   }, [isCurrentlyStreaming]);
 
-  if (!isCurrentlyStreaming || !visible) { return null; }
+  if (!isCurrentlyStreaming) { return null; }
 
   const isMinimal = chatMessageStyle === "minimal";
 
@@ -2112,9 +2103,16 @@ function StreamingBubble({
           ? "w-full break-words py-1 text-sm text-[var(--text-primary)]"
           : `${expandChatToWindowWidth ? "max-w-[90%]" : "max-w-[75%]"} break-words rounded-2xl px-4 py-2.5 text-sm message-assistant ${chatMessageStyle === "flat" ? "border border-[var(--border-color)] bg-[var(--bg-elevated)]" : ""}`
       }`}>
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown skipHtml remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>
-        </div>
+        {!content ? (
+          <span className="flex gap-1 items-center py-1">
+            <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80" style={{ animation: "thinking-dot 1.2s ease-in-out infinite" }} />
+            <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80" style={{ animation: "thinking-dot 1.2s ease-in-out 0.2s infinite" }} />
+          </span>
+        ) : (
+          <div className="prose prose-sm prose-invert max-w-none">
+            <ReactMarkdown skipHtml remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2137,6 +2135,7 @@ export default function ChatView() {
   const appendMessage = useChatStore((s) => s.appendMessage);
   const appendStreamChunk = useChatStore((s) => s.appendStreamChunk);
   const finalizeStream = useChatStore((s) => s.finalizeStream);
+  const setStreamingSession = useChatStore((s) => s.setStreamingSession);
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
   const streamingContentForMinimap = useChatStore((s) => s.streamingContent);
   const updateMessage = useChatStore((s) => s.updateMessage);
@@ -2772,20 +2771,8 @@ export default function ChatView() {
   // Stable Virtuoso Footer — lives inside the scroll area so growing content
   // doesn't resize the Virtuoso container (which causes layout thrashing).
   const VirtuosoFooter = useCallback(() => (
-    <>
-      {isStreaming && !isCurrentlyStreaming && (
-        <div className="flex flex-col gap-1 items-start px-4 pb-4">
-          <div className="flex items-center gap-2.5 max-w-[75%] overflow-hidden rounded-2xl px-4 py-3 text-sm message-assistant">
-            <span className="flex gap-1 items-center">
-              <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80" style={{ animation: "thinking-dot 1.2s ease-in-out infinite" }} />
-              <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] opacity-80" style={{ animation: "thinking-dot 1.2s ease-in-out 0.2s infinite" }} />
-            </span>
-          </div>
-        </div>
-      )}
-      <StreamingBubble activeChatId={activeChatId} chatMessageStyle={chatMessageStyle} expandChatToWindowWidth={expandChatToWindowWidth} />
-    </>
-  ), [isStreaming, isCurrentlyStreaming, activeChatId, chatMessageStyle, expandChatToWindowWidth]);
+    <StreamingBubble activeChatId={activeChatId} chatMessageStyle={chatMessageStyle} expandChatToWindowWidth={expandChatToWindowWidth} />
+  ), [activeChatId, chatMessageStyle, expandChatToWindowWidth]);
 
   const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), [VirtuosoFooter]);
 
@@ -3759,6 +3746,7 @@ export default function ChatView() {
       setInput("");
     }
     setIsStreaming(true);
+    setStreamingSession(sid);
     setLastUserMessage(userContent);
     setFollowUps([]);
 
@@ -4266,6 +4254,7 @@ export default function ChatView() {
     setMessages(activeChatId, trimmedMessages);
     setInput("");
     setIsStreaming(true);
+    setStreamingSession(activeChatId);
     setLastUserMessage(editContent.trim());
 
     const optimisticUserMsg: Message = {
@@ -4357,6 +4346,7 @@ export default function ChatView() {
     setMessages(activeChatId, trimmedMessages);
 
     setIsStreaming(true);
+    setStreamingSession(activeChatId);
     try {
       const sid = activeChatId;
       clearStreamListener();
