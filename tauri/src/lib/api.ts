@@ -904,6 +904,19 @@ export const api = {
         includeProjects: args.includeProjects,
         includeMemories: args.includeMemories,
       }),
+    matchClaudeWithEmbeddings: (args: {
+      conversations: { uuid: string; name: string; first_user_message: string }[];
+      projects: { uuid: string; name: string; prompt_template: string; description: string }[];
+      memoriesByProject: Record<string, string>;
+    }) =>
+      invoke<{ conversation_uuid: string; project_uuid: string | null; score: number; reason: string }[]>(
+        "match_claude_with_embeddings",
+        {
+          conversations: args.conversations,
+          projects: args.projects,
+          memoriesByProject: args.memoriesByProject,
+        },
+      ),
     importClaudeFiles: (args: {
       folderPath: string;
       folderMappings: Record<string, string>;

@@ -1043,53 +1043,12 @@ pub fn detect_claude_format(folder_path: String) -> Result<serde_json::Value, St
 }
 
 /// Preview a Claude Desktop export folder. Auto-detects v2 vs legacy format.
-/// Dispatch to the embedding matcher or keyword matcher depending on export
-/// size and Ollama availability.
-async fn suggest_projects_smart(
-    conversations: &[chat_file_store::ClaudeConversationPreview],
-    projects: &[chat_file_store::ClaudeProjectPreview],
-    memories_by_project: &std::collections::HashMap<String, String>,
-    db_state: &DbState,
-) -> Vec<chat_file_store::claude_v2_match::MatchSuggestion> {
-    if conversations.len() >= EMBED_THRESHOLD {
-        // Try to get the configured embedding model and a working Ollama client.
-        let embedding_model = {
-            let conn = db_state.0.get().ok();
-            conn.and_then(|c| crate::services::model_settings::get_embedding_model(&c))
-        };
-        if let Some(model) = embedding_model {
-            if let Ok(ollama) = crate::ollama::client::OllamaClient::new(None) {
-                return chat_file_store::claude_v2_match::suggest_project_with_embeddings(
-                    conversations,
-                    projects,
-                    memories_by_project,
-                    &ollama,
-                    &model,
-                )
-                .await;
-            }
-        }
-    }
-    // Keyword fallback (also used for small exports).
-    chat_file_store::claude_v2_match::suggest_project_for_conversations(
-        conversations,
-        projects,
-        memories_by_project,
-    )
-}
-
-/// Orphan count above this threshold triggers the embedding-based matcher
-/// (when an embedding model is available). Below it the keyword matcher is
-/// fast enough and avoids the overhead of embedding hundreds of short texts.
-const EMBED_THRESHOLD: usize = 50;
-
 #[tauri::command]
-pub async fn preview_claude_files(
+pub fn preview_claude_files(
     folder_path: String,
     include_conversations: bool,
     include_projects: bool,
     include_memories: bool,
-    db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
     use chat_file_store::claude_v2;
 
@@ -1148,17 +1107,14 @@ pub async fn preview_claude_files(
             .map(|m| (m.project_uuid.clone(), m.memory.clone()))
             .collect();
 
-        // Suggest a project for each orphan.
-        // Use embedding similarity for large exports when Ollama is available,
-        // fall back to keyword coverage otherwise.
+        // Suggest a project for each orphan (keyword matcher; user can request
+        // embedding-based matching separately via match_claude_with_embeddings).
         let suggestions = if include_conversations && !projects.is_empty() {
-            suggest_projects_smart(
+            chat_file_store::claude_v2_match::suggest_project_for_conversations(
                 &orphan_conversations,
                 &projects,
                 &memories_by_project,
-                &db_state,
             )
-            .await
         } else {
             Vec::new()
         };
@@ -1235,13 +1191,11 @@ pub async fn preview_claude_files(
             .unwrap_or_default();
 
         let suggestions = if include_conversations && !claude_projects.is_empty() {
-            suggest_projects_smart(
+            chat_file_store::claude_v2_match::suggest_project_for_conversations(
                 &orphan_conversations,
                 &claude_projects,
                 &memories_by_project,
-                &db_state,
             )
-            .await
         } else {
             Vec::new()
         };
@@ -1262,6 +1216,75 @@ pub async fn preview_claude_files(
             }
         }))
     }
+}
+
+/// Re-run project matching for a set of orphan conversations using Ollama
+/// embeddings. Called on demand from the import UI — the scan completes with
+/// keyword suggestions first; the user can then request a more accurate pass.
+///
+/// `conversations` is a list of `{ uuid, name, first_user_message }` objects.
+/// `projects` is a list of `{ uuid, name, prompt_template, description }` objects.
+/// `memories_by_project` maps project UUID → memory text.
+#[tauri::command]
+pub async fn match_claude_with_embeddings(
+    conversations: Vec<serde_json::Value>,
+    projects: Vec<serde_json::Value>,
+    memories_by_project: std::collections::HashMap<String, String>,
+    db_state: State<'_, DbState>,
+) -> Result<serde_json::Value, String> {
+    use crate::services::model_settings::get_embedding_model;
+    use chat_file_store::{ClaudeConversationPreview, ClaudeProjectPreview};
+
+    let embedding_model = {
+        let conn = db_state.0.get().map_err(|e| e.to_string())?;
+        get_embedding_model(&conn).ok_or("No embedding model configured. Set one in Settings → AI Models.")?
+    };
+
+    let ollama = crate::ollama::client::OllamaClient::new(None)?;
+
+    // Deserialise lightweight conversation and project summaries from the frontend.
+    let conv_previews: Vec<ClaudeConversationPreview> = conversations
+        .iter()
+        .filter_map(|v| {
+            Some(ClaudeConversationPreview {
+                uuid: v["uuid"].as_str()?.to_string(),
+                name: v["name"].as_str().unwrap_or("").to_string(),
+                message_count: 0,
+                created_at: String::new(),
+                updated_at: String::new(),
+                project_uuid: None,
+                first_user_message: v["first_user_message"].as_str().unwrap_or("").to_string(),
+                messages: Vec::new(),
+            })
+        })
+        .collect();
+
+    let proj_previews: Vec<ClaudeProjectPreview> = projects
+        .iter()
+        .filter_map(|v| {
+            Some(ClaudeProjectPreview {
+                uuid: v["uuid"].as_str()?.to_string(),
+                name: v["name"].as_str().unwrap_or("").to_string(),
+                description: v["description"].as_str().unwrap_or("").to_string(),
+                has_prompt: false,
+                doc_count: 0,
+                conversation_count: 0,
+                has_memory: false,
+                prompt_template: v["prompt_template"].as_str().unwrap_or("").to_string(),
+            })
+        })
+        .collect();
+
+    let suggestions = chat_file_store::claude_v2_match::suggest_project_with_embeddings(
+        &conv_previews,
+        &proj_previews,
+        &memories_by_project,
+        &ollama,
+        &embedding_model,
+    )
+    .await;
+
+    Ok(serde_json::json!(suggestions))
 }
 
 /// Import Claude Desktop conversations and memories from a folder.

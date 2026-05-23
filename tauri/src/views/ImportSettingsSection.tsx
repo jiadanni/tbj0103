@@ -118,6 +118,7 @@ export default function ImportSettingsSection() {
   const [importingGemini, setImportingGemini] = useState(false);
   const [importingClaude, setImportingClaude] = useState(false);
   const [claudeScanning, setClaudeScanning] = useState(false);
+  const [claudeEmbeddingMatching, setClaudeEmbeddingMatching] = useState(false);
   const [claudeIncludeConversations, setClaudeIncludeConversations] = useState(true);
   const [claudeIncludeProjects, setClaudeIncludeProjects] = useState(true);
   const [claudeIncludeMemories, setClaudeIncludeMemories] = useState(true);
@@ -399,6 +400,7 @@ export default function ImportSettingsSection() {
     setClaudeMemoriesByProject({});
     setChatAssignments({});
     setFocusedProjectUuid(null);
+    setClaudeEmbeddingMatching(false);
   }
 
   async function pickClaudeFolder() {
@@ -506,6 +508,53 @@ export default function ImportSettingsSection() {
       void scanClaudeFiles();
     }
   }, [claudeFolderPath, claudeIncludeConversations, claudeIncludeProjects, claudeIncludeMemories, scanClaudeFiles]);
+
+  async function runEmbeddingMatch() {
+    if (claudeOrphans.length === 0 || claudeProjects.length === 0) { return; }
+    setError(null);
+    setClaudeEmbeddingMatching(true);
+    try {
+      const unassigned = claudeOrphans.filter((c) => !chatAssignments[c.uuid]);
+      const suggestions = await api.chatFile.matchClaudeWithEmbeddings({
+        conversations: unassigned.map((c) => ({
+          uuid: c.uuid,
+          name: c.name,
+          first_user_message: c.first_user_message ?? "",
+        })),
+        projects: claudeProjects.map((p) => ({
+          uuid: p.uuid,
+          name: p.name,
+          prompt_template: p.prompt_template ?? "",
+          description: p.description,
+        })),
+        memoriesByProject: claudeMemoriesByProject,
+      });
+
+      // Merge returned suggestions into chatAssignments and claudeSuggestions.
+      const newAssignments = { ...chatAssignments };
+      const newSuggestions = claudeSuggestions.filter(
+        (s) => !suggestions.some((r) => r.conversation_uuid === s.conversation_uuid),
+      );
+      for (const s of suggestions) {
+        newSuggestions.push({ ...s, reason: s.reason as ChatSuggestion["reason"] });
+        if (s.project_uuid && !newAssignments[s.conversation_uuid]) {
+          newAssignments[s.conversation_uuid] = s.project_uuid;
+          setClaudeSelected((prev) => {
+            const next = new Set(prev);
+            next.delete(s.conversation_uuid);
+            return next;
+          });
+        }
+      }
+      setChatAssignments(newAssignments);
+      setClaudeSuggestions(newSuggestions);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Embedding match failed";
+      setError(msg);
+    } finally {
+      setClaudeEmbeddingMatching(false);
+    }
+  }
 
   function applyBulkDestination() {
     setProjectDestinations((prev) => {
@@ -1373,6 +1422,17 @@ export default function ImportSettingsSection() {
                           Unassigned conversations ({unassignedTotal} of {claudeOrphans.length} · {assignedTotal} already routed to projects)
                         </span>
                         <div className="flex gap-2">
+                          {claudeOrphans.length >= 50 && unassignedTotal > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => void runEmbeddingMatch()}
+                              disabled={claudeEmbeddingMatching || claudeScanning}
+                              className="inline-flex items-center gap-1 text-xs text-[var(--accent-color)] hover:underline disabled:opacity-40 disabled:no-underline"
+                            >
+                              {claudeEmbeddingMatching ? <RefreshCw size={11} className="animate-spin" /> : null}
+                              {claudeEmbeddingMatching ? "Matching…" : "Improve with AI matching"}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
