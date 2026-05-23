@@ -738,7 +738,7 @@ export default function ImportSettingsSection() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
-        <div className="flex flex-col gap-4 max-w-3xl">
+        <div className="flex flex-col gap-4">
           {error && (
             <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
               {error}
@@ -1361,7 +1361,7 @@ export default function ImportSettingsSection() {
                   </div>
 
                   {/* ── Preview: focused conversation ──────────────── */}
-                  <div className="flex min-h-[40vh] min-w-0 flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 lg:w-[36%]">
+                  <div className="flex max-h-[50vh] min-h-[20vh] min-w-0 flex-col gap-2 overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 lg:w-[36%]">
                     {(() => {
                       if (!focusedConvUuid) {
                         return <div className="m-auto text-[11px] text-[var(--text-muted)]">Select a conversation to preview.</div>;
@@ -1382,7 +1382,7 @@ export default function ImportSettingsSection() {
                             {conv.updated_at && ` · ${new Date(conv.updated_at).toLocaleDateString()}`}
                           </div>
                           {conv.messages && conv.messages.length > 0 ? (
-                            <div className="mt-1 flex-1 overflow-y-auto rounded-md border border-[var(--border-color)]">
+                            <div className="mt-1 max-h-[35vh] overflow-y-auto rounded-md border border-[var(--border-color)]">
                               {conv.messages.map((msg, i) => (
                                 <div key={i} className={`flex flex-col gap-0.5 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 ${msg.role === "user" ? "bg-[var(--bg-elevated)]" : "bg-[var(--bg-primary)]"}`}>
                                   <span className="text-[10px] font-medium text-[var(--text-muted)]">{msg.role === "user" ? "You" : "Claude"}</span>
