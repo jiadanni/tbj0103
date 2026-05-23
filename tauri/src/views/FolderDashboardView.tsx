@@ -95,6 +95,16 @@ export default function FolderDashboardView() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  function handleSearchSubmit() {
+    navigate("/chat", {
+      state: {
+        createNewChat: true,
+        searchQuery: searchQuery.trim(),
+      },
+    });
+  }
 
   const workspace = useMemo(
     () => workspaces.find((item) => item.id === activeWorkspaceId) ?? null,
@@ -218,30 +228,38 @@ export default function FolderDashboardView() {
               )}
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 focus-within:border-[var(--accent-color)] transition-colors">
+                <Search size={15} className="text-[var(--text-muted)]" />
+                <input
+                  id="dashboard-search-input"
+                  type="text"
+                  placeholder="Search or ask anything..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleSearchSubmit();
+                    }
+                  }}
+                  className="bg-transparent text-sm text-[var(--text-primary)] outline-none w-48 sm:w-64 placeholder-[var(--text-muted)]"
+                />
+              </div>
               <button
-                onClick={() => navigate("/chat")}
+                id="dashboard-search-button"
+                onClick={handleSearchSubmit}
                 className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
               >
-                <Search size={15} />
                 Search
               </button>
               <button
+                id="dashboard-review-button"
                 onClick={() => openRoute(effectiveSummary.review.route)}
                 className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
               >
                 <Clock3 size={15} />
                 Review
               </button>
-              {continueLearning && (
-                <button
-                  onClick={() => openRoute(continueLearning.route)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                >
-                  <ArrowRight size={15} />
-                  Continue
-                </button>
-              )}
             </div>
           </div>
         </header>
@@ -253,7 +271,7 @@ export default function FolderDashboardView() {
           <MetricCard label="Sources Captured" value={effectiveSummary.overview.sources} accent="bg-[var(--accent-color)]" />
         </div>
 
-        <Section title="Continue Learning" eyebrow="Low Friction">
+        <Section title="Continue Learning">
             {continueLearning ? (
               <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
                 <div className="flex items-start gap-3">
