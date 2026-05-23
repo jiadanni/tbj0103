@@ -114,7 +114,6 @@ export default function ImportSettingsSection() {
   const [lmStudioSelectedFolders, setLmStudioSelectedProjects] = useState<Set<string>>(new Set());
   const [lmStudioScanning, setLmStudioScanning] = useState(false);
   const [lmStudioScanErrors, setLmStudioScanErrors] = useState(0);
-  const [importingMultipleFolders, setImportingMultipleFolders] = useState(false);
   const [importingGemini, setImportingGemini] = useState(false);
   const [importingClaude, setImportingClaude] = useState(false);
   const [claudeScanning, setClaudeScanning] = useState(false);
@@ -165,7 +164,7 @@ export default function ImportSettingsSection() {
     setLmStudioScanErrors(0);
   }
 
-  async function scanLmStudioFolder() {
+  async function pickLmStudioFolders() {
     setError(null);
     setLmStudioScanning(true);
     resetLmStudioPreview();
@@ -173,29 +172,50 @@ export default function ImportSettingsSection() {
     try {
       const selected = await open({
         directory: true,
-        multiple: false,
-        title: "Select LM Studio conversations folder",
+        multiple: true,
+        title: "Select LM Studio conversations folder(s)",
       });
-      const folderPath = Array.isArray(selected) ? selected[0] : selected;
-      if (!folderPath) { return; }
+      const folderPaths = Array.isArray(selected) ? selected : (selected ? [selected] : []);
+      if (folderPaths.length === 0) { return; }
 
-      const result = await api.chatFile.previewLmStudioFolder(folderPath);
-      if (result.total < 1) {
-        throw new Error("No importable conversations were found in the selected folder.");
+      if (folderPaths.length === 1) {
+        // Single folder → preview + checkbox flow
+        const folderPath = folderPaths[0];
+        const result = await api.chatFile.previewLmStudioFolder(folderPath);
+        if (result.total < 1) {
+          throw new Error("No importable conversations were found in the selected folder.");
+        }
+        setLmStudioFolder(folderPath);
+        setLmStudioPreviews(result.conversations);
+        setLmStudioProjects(result.folders);
+        setLmStudioSelected(new Set(result.conversations.map((c) => c.uuid)));
+        setLmStudioSelectedProjects(new Set(result.folders.map((p) => p.uuid)));
+        setLmStudioScanErrors(result.errors);
+      } else {
+        // Multiple folders → import directly, no preview
+        setLmStudioScanning(false);
+        setImportingLmStudio(true);
+        const result = await api.chatFile.importMultipleFolders(folderPaths);
+        if (result.total_imported < 1) {
+          throw new Error("No conversations were imported from the selected folders.");
+        }
+        const freshWorkspaces = await api.workspace.list();
+        setWorkspaces(freshWorkspaces);
+        const lines = [
+          `${result.successful}/${result.total_folders} folders processed successfully.`,
+          `${result.total_imported} total conversation${result.total_imported === 1 ? "" : "s"} imported.`,
+        ];
+        if (result.total_skipped > 0) { lines.push(`${result.total_skipped} duplicate${result.total_skipped === 1 ? "" : "s"} skipped.`); }
+        if (result.total_errors > 0) { lines.push(`${result.total_errors} file${result.total_errors === 1 ? "" : "s"} had errors.`); }
+        await message(lines.join("\n"), { title: "Multi-folder import complete", kind: result.total_errors > 0 ? "warning" : "info" });
       }
-
-      setLmStudioFolder(folderPath);
-      setLmStudioPreviews(result.conversations);
-      setLmStudioProjects(result.folders);
-      setLmStudioSelected(new Set(result.conversations.map((conversation) => conversation.uuid)));
-      setLmStudioSelectedProjects(new Set(result.folders.map((project) => project.uuid)));
-      setLmStudioScanErrors(result.errors);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "LM Studio scan failed";
+      const msg = e instanceof Error ? e.message : "LM Studio import failed";
       setError(msg);
-      await message(msg, { title: "LM Studio scan failed", kind: "error" });
+      await message(msg, { title: "LM Studio import failed", kind: "error" });
     } finally {
       setLmStudioScanning(false);
+      setImportingLmStudio(false);
     }
   }
 
@@ -277,52 +297,6 @@ export default function ImportSettingsSection() {
       await message(msg, { title: "LM Studio import failed", kind: "error" });
     } finally {
       setImportingLmStudio(false);
-    }
-  }
-
-  async function importFromMultipleFolders() {
-    setError(null);
-    setImportingMultipleFolders(true);
-
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: true,
-        title: "Select folders to import as workspaces",
-      });
-      const folderPaths = Array.isArray(selected) ? selected : (selected ? [selected] : []);
-      if (!folderPaths || folderPaths.length === 0) { return; }
-
-      const result = await api.chatFile.importMultipleFolders(folderPaths);
-
-      if (result.total_imported < 1) {
-        throw new Error("No conversations were imported from the selected folders.");
-      }
-
-      const freshWorkspaces = await api.workspace.list();
-      setWorkspaces(freshWorkspaces);
-
-      const lines = [
-        `${result.successful}/${result.total_folders} folders processed successfully.`,
-        `${result.total_imported} total conversation${result.total_imported === 1 ? "" : "s"} imported.`,
-      ];
-      if (result.total_skipped > 0) {
-        lines.push(`${result.total_skipped} duplicate${result.total_skipped === 1 ? "" : "s"} skipped.`);
-      }
-      if (result.total_errors > 0) {
-        lines.push(`${result.total_errors} file${result.total_errors === 1 ? "" : "s"} had errors.`);
-      }
-
-      await message(lines.join("\n"), {
-        title: "Multi-folder import complete",
-        kind: result.total_errors > 0 ? "warning" : "info",
-      });
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Multi-folder import failed";
-      setError(msg);
-      await message(msg, { title: "Multi-folder import failed", kind: "error" });
-    } finally {
-      setImportingMultipleFolders(false);
     }
   }
 
@@ -737,37 +711,78 @@ export default function ImportSettingsSection() {
         <h1 className="text-sm font-semibold text-[var(--text-primary)]">Import</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        <div className="flex flex-col gap-4">
-          {error && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-<section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">LM Studio — Single Folder</h2>
-                </div>
-                <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Select a folder containing <code>.conversation.json</code> files and choose which to import.
-                </p>
-              </div>
+      <div className="flex-1 flex flex-col overflow-hidden px-5 py-4 gap-3">
+        {error && (
+          <div className="shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {error}
+          </div>
+        )}
 
+        {/* ── Import type cards ─────────────────────────────────────── */}
+        <div className="shrink-0 grid grid-cols-3 gap-3">
+          {/* LM Studio (single + multiple merged) */}
+          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
+                <h2 className="text-xs font-medium text-[var(--text-primary)] truncate">LM Studio</h2>
+              </div>
               <button
-                onClick={() => void scanLmStudioFolder()}
+                onClick={() => void pickLmStudioFolders()}
                 disabled={lmStudioScanning || importingLmStudio}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
               >
-                {lmStudioScanning ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {lmStudioScanning ? "Selecting..." : "Select Folder"}
+                {lmStudioScanning || importingLmStudio ? <RefreshCw size={11} className="animate-spin" /> : <FolderInput size={11} />}
+                {lmStudioScanning ? "Scanning…" : importingLmStudio ? "Importing…" : "Select"}
               </button>
             </div>
 
-            {lmStudioPreviews.length > 0 && (
-              <div className="mt-4 flex flex-col gap-4">
+          </section>
+
+          {/* Google Takeout */}
+          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
+                <h2 className="text-xs font-medium text-[var(--text-primary)] truncate">Google Takeout</h2>
+              </div>
+              <button
+                onClick={() => void importFromGeminiTakeout()}
+                disabled={importingGemini}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+              >
+                {importingGemini ? <RefreshCw size={11} className="animate-spin" /> : <FolderInput size={11} />}
+                {importingGemini ? "Importing…" : "Select File"}
+              </button>
+            </div>
+          </section>
+
+          {/* Claude Desktop Export */}
+          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
+                <h2 className="text-xs font-medium text-[var(--text-primary)] truncate">Claude Desktop Export</h2>
+                <Tooltip content="Conversations, projects, and memories are imported. Documents and files attached to projects are not supported." position="right">
+                  <Info size={12} className="shrink-0 text-[var(--text-muted)] cursor-default" />
+                </Tooltip>
+              </div>
+              <button
+                onClick={() => void pickClaudeFolder()}
+                disabled={claudeScanning || importingClaude}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+              >
+                <FolderInput size={11} />
+                {claudeFolderPath ? "Change" : "Select"}
+              </button>
+            </div>
+          </section>
+        </div>{/* end grid */}
+
+        {/* ── LM Studio preview (below grid, only when a single folder was scanned) ── */}
+        {lmStudioPreviews.length > 0 && (
+          <section className="shrink-0 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+            <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-[var(--text-primary)]">
@@ -914,126 +929,56 @@ export default function ImportSettingsSection() {
                     {importingLmStudio ? "Importing..." : `Import ${selectedLmStudioConversationCount} conversation${selectedLmStudioConversationCount !== 1 ? "s" : ""}`}
                   </button>
                 </div>
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">LM Studio — Multiple Folders</h2>
-                </div>
-                <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Select several folders at once, each becoming its own workspace.
-                </p>
-              </div>
-
-              <button
-                onClick={() => void importFromMultipleFolders()}
-                disabled={importingMultipleFolders}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-              >
-                {importingMultipleFolders ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {importingMultipleFolders ? "Importing..." : "Select Folders"}
-              </button>
             </div>
           </section>
+        )}
 
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
+        {/* ── Claude Desktop detail (below grid, flex-fill) ──────────────────── */}
+        {claudeFolderPath && claudeFilesFound && (
+          <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
+            {/* Folder info + toggles */}
+            <div className="shrink-0 flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-[var(--text-muted)] truncate max-w-[70%]">{claudeFolderPath}</div>
                 <div className="flex items-center gap-2">
-                  <FolderInput size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Google Takeout Browser History</h2>
+                  {claudeScanning && <RefreshCw size={12} className="animate-spin text-[var(--text-muted)]" />}
+                  <span className="text-[11px] font-medium text-[var(--accent-color)]">
+                    {claudeDetectedFormat === "v2" ? "v2 (2026+)" : "legacy"}
+                  </span>
                 </div>
-                <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Select a <code>My Activity.html</code> export to import supported conversation history.
-                </p>
               </div>
-
-              <button
-                onClick={() => void importFromGeminiTakeout()}
-                disabled={importingGemini}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-              >
-                {importingGemini ? <RefreshCw size={12} className="animate-spin" /> : <FolderInput size={12} />}
-                {importingGemini ? "Importing..." : "Select File"}
-              </button>
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <FolderInput size={16} className="text-[var(--accent-color)]" />
-                    <h2 className="text-sm font-medium text-[var(--text-primary)]">Claude Desktop Export</h2>
-                    <Tooltip content="Conversations, projects, and memories are imported. Documents and files attached to projects are not supported and will be skipped." position="right">
-                      <Info size={13} className="text-[var(--text-muted)] cursor-default" />
-                    </Tooltip>
-                  </div>
-                  <p className="mt-2 text-xs text-[var(--text-muted)]">
-                    Select your Claude export folder. Each project routes to its own workspace or sub-workspace.
-                  </p>
-                </div>
-                <button
-                  onClick={() => void pickClaudeFolder()}
-                  disabled={claudeScanning || importingClaude}
-                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-                >
-                  <FolderInput size={12} />
-                  {claudeFolderPath ? "Change Folder" : "Select Folder"}
-                </button>
+              <div className="flex flex-wrap gap-3">
+                {(["conversations", "projects", "memories"] as const).map((k) => (
+                  <span key={k} className={`text-[11px] ${claudeFilesFound[k] ? "text-green-400" : "text-[var(--text-muted)] line-through"}`}>
+                    {claudeFilesFound[k] ? "✓" : "✗"} {k}
+                  </span>
+                ))}
               </div>
-
-              {claudeFolderPath && claudeFilesFound && (
-                <div className="flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-[11px] text-[var(--text-muted)] truncate max-w-[70%]">{claudeFolderPath}</div>
-                    <div className="flex items-center gap-2">
-                      {claudeScanning && <RefreshCw size={12} className="animate-spin text-[var(--text-muted)]" />}
-                      <span className="text-[11px] font-medium text-[var(--accent-color)]">
-                        {claudeDetectedFormat === "v2" ? "v2 (2026+)" : "legacy"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    {(["conversations", "projects", "memories"] as const).map((k) => (
-                      <span key={k} className={`text-[11px] ${claudeFilesFound[k] ? "text-green-400" : "text-[var(--text-muted)] line-through"}`}>
-                        {claudeFilesFound[k] ? "✓" : "✗"} {k}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex flex-wrap gap-4 mt-1">
-                    {([
-                      { key: "conversations", label: "Conversations", enabled: claudeIncludeConversations, set: setClaudeIncludeConversations, available: claudeFilesFound.conversations },
-                      { key: "projects", label: "Projects", enabled: claudeIncludeProjects, set: setClaudeIncludeProjects, available: claudeFilesFound.projects },
-                      { key: "memories", label: "Memories", enabled: claudeIncludeMemories, set: setClaudeIncludeMemories, available: claudeFilesFound.memories },
-                    ] as const).map((item) => (
-                      <label key={item.key} className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={item.enabled && item.available}
-                          disabled={!item.available || claudeScanning || importingClaude}
-                          onChange={(e) => item.set(e.target.checked)}
-                          className="rounded"
-                        />
-                        <span className={`text-xs ${item.available ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
-                          {item.label}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div className="flex flex-wrap gap-4">
+                {([
+                  { key: "conversations", label: "Conversations", enabled: claudeIncludeConversations, set: setClaudeIncludeConversations, available: claudeFilesFound.conversations },
+                  { key: "projects", label: "Projects", enabled: claudeIncludeProjects, set: setClaudeIncludeProjects, available: claudeFilesFound.projects },
+                  { key: "memories", label: "Memories", enabled: claudeIncludeMemories, set: setClaudeIncludeMemories, available: claudeFilesFound.memories },
+                ] as const).map((item) => (
+                  <label key={item.key} className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={item.enabled && item.available}
+                      disabled={!item.available || claudeScanning || importingClaude}
+                      onChange={(e) => item.set(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span className={`text-xs ${item.available ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
+                      {item.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
 
             {/* ── Per-project rows ─────────────────────────────── */}
             {claudeProjects.length > 0 && (
-              <div className="mt-4 flex flex-col gap-2">
+              <div className="shrink-0 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-[var(--text-primary)]">
                     Projects ({claudeSelectedFolders.size}/{claudeProjects.length})
@@ -1080,9 +1025,9 @@ export default function ImportSettingsSection() {
                 </div>
 
                 {/* Master / detail / preview split */}
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+                <div className="flex-1 min-h-0 flex flex-row gap-3 items-stretch">
                   {/* ── Master: project list ───────────────────────── */}
-                  <div className="flex max-h-[60vh] min-w-0 flex-col divide-y divide-[var(--border-color)] overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] lg:w-[28%]">
+                  <div className="flex-1 min-h-0 min-w-0 flex flex-col divide-y divide-[var(--border-color)] overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] w-[28%] max-w-[28%]">
                     {claudeProjects.map((proj) => {
                       const checked = claudeSelectedFolders.has(proj.uuid);
                       const assignedCount = Object.values(chatAssignments).filter((p) => p === proj.uuid).length;
@@ -1139,7 +1084,7 @@ export default function ImportSettingsSection() {
                   </div>
 
                   {/* ── Detail: focused project ────────────────────── */}
-                  <div className="flex min-h-[40vh] min-w-0 flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 lg:w-[36%]">
+                  <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-2 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 w-[36%] max-w-[36%]">
                     {(() => {
                       const proj = claudeProjects.find((p) => p.uuid === focusedProjectUuid);
                       if (!proj) {
@@ -1317,7 +1262,7 @@ export default function ImportSettingsSection() {
                                 No conversations linked to this project. Use the &ldquo;Unassigned&rdquo; panel below to assign chats here.
                               </div>
                             ) : (
-                              <div className="flex-1 max-h-[40vh] overflow-y-auto rounded-md border border-[var(--border-color)]">
+                              <div className="flex-1 min-h-0 overflow-y-auto rounded-md border border-[var(--border-color)]">
                                 {allProjectConvs.map((conv) => (
                                   <div key={conv.uuid} onClick={() => setFocusedConvUuid(conv.uuid)} className={`flex cursor-pointer items-center gap-2 border-b border-[var(--border-color)] px-3 py-1.5 last:border-b-0 ${focusedConvUuid === conv.uuid ? "bg-[var(--accent-color)]/10" : "hover:bg-[var(--bg-hover)]"}`}>
                                     <div className="min-w-0 flex-1">
@@ -1361,7 +1306,7 @@ export default function ImportSettingsSection() {
                   </div>
 
                   {/* ── Preview: focused conversation ──────────────── */}
-                  <div className="flex max-h-[50vh] min-h-[20vh] min-w-0 flex-col gap-2 overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 lg:w-[36%]">
+                  <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-2 overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 w-[36%] max-w-[36%]">
                     {(() => {
                       if (!focusedConvUuid) {
                         return <div className="m-auto text-[11px] text-[var(--text-muted)]">Select a conversation to preview.</div>;
@@ -1382,7 +1327,7 @@ export default function ImportSettingsSection() {
                             {conv.updated_at && ` · ${new Date(conv.updated_at).toLocaleDateString()}`}
                           </div>
                           {conv.messages && conv.messages.length > 0 ? (
-                            <div className="mt-1 max-h-[35vh] overflow-y-auto rounded-md border border-[var(--border-color)]">
+                            <div className="mt-1 flex-1 min-h-0 overflow-y-auto rounded-md border border-[var(--border-color)]">
                               {conv.messages.map((msg, i) => (
                                 <div key={i} className={`flex flex-col gap-0.5 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 ${msg.role === "user" ? "bg-[var(--bg-elevated)]" : "bg-[var(--bg-primary)]"}`}>
                                   <span className="text-[10px] font-medium text-[var(--text-muted)]">{msg.role === "user" ? "You" : "Claude"}</span>
@@ -1597,8 +1542,8 @@ export default function ImportSettingsSection() {
                 </button>
               </div>
             )}
-          </section>
-        </div>
+          </div>
+        )}
       </div>
       {promptState && (
         <PromptDialog
