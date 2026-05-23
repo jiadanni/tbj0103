@@ -711,7 +711,7 @@ export default function ImportSettingsSection() {
         <h1 className="text-sm font-semibold text-[var(--text-primary)]">Import</h1>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden px-5 py-4 gap-3">
+      <div className={`${claudeFolderPath ? "flex-1 overflow-hidden" : ""} flex flex-col px-5 py-4 gap-3`}>
         {error && (
           <div className="shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
             {error}
@@ -719,13 +719,13 @@ export default function ImportSettingsSection() {
         )}
 
         {/* ── Import type cards ─────────────────────────────────────── */}
-        <div className="shrink-0 grid grid-cols-3 gap-3">
+        <div className="shrink-0 grid grid-cols-3 gap-3 max-w-3xl">
           {/* LM Studio (single + multiple merged) */}
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2">
                 <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
-                <h2 className="text-xs font-medium text-[var(--text-primary)] truncate">LM Studio</h2>
+                <h2 className="text-xs font-medium text-[var(--text-primary)]">LM Studio</h2>
               </div>
               <button
                 onClick={() => void pickLmStudioFolders()}
@@ -736,15 +736,15 @@ export default function ImportSettingsSection() {
                 {lmStudioScanning ? "Scanning…" : importingLmStudio ? "Importing…" : "Select"}
               </button>
             </div>
-
+            <p className="text-[11px] text-[var(--text-muted)]">Select one folder to preview conversations, or multiple folders to import directly.</p>
           </section>
 
           {/* Google Takeout */}
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2">
                 <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
-                <h2 className="text-xs font-medium text-[var(--text-primary)] truncate">Google Takeout</h2>
+                <h2 className="text-xs font-medium text-[var(--text-primary)]">Google Takeout</h2>
               </div>
               <button
                 onClick={() => void importFromGeminiTakeout()}
@@ -755,14 +755,15 @@ export default function ImportSettingsSection() {
                 {importingGemini ? "Importing…" : "Select File"}
               </button>
             </div>
+            <p className="text-[11px] text-[var(--text-muted)]">Import conversations from a Google Takeout HTML activity export.</p>
           </section>
 
           {/* Claude Desktop Export */}
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2">
                 <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
-                <h2 className="text-xs font-medium text-[var(--text-primary)] truncate">Claude Desktop Export</h2>
+                <h2 className="text-xs font-medium text-[var(--text-primary)]">Claude Desktop Export</h2>
                 <Tooltip content="Conversations, projects, and memories are imported. Documents and files attached to projects are not supported." position="right">
                   <Info size={12} className="shrink-0 text-[var(--text-muted)] cursor-default" />
                 </Tooltip>
@@ -776,12 +777,13 @@ export default function ImportSettingsSection() {
                 {claudeFolderPath ? "Change" : "Select"}
               </button>
             </div>
+            <p className="text-[11px] text-[var(--text-muted)]">Import conversations, projects, and memories from a Claude Desktop export folder.</p>
           </section>
         </div>{/* end grid */}
 
         {/* ── LM Studio preview (below grid, only when a single folder was scanned) ── */}
         {lmStudioPreviews.length > 0 && (
-          <section className="shrink-0 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+          <section className="shrink-0 max-w-3xl rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
             <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
