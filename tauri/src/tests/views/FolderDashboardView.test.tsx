@@ -1,6 +1,6 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import FolderDashboardView from "@/views/FolderDashboardView";
@@ -23,6 +23,16 @@ vi.mock("@/lib/workspacePane", () => ({
   }),
   useBubbleUpFlag: () => false,
 }));
+
+const mockNavigate = vi.fn();
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
 
 describe("FolderDashboardView", () => {
   beforeEach(() => {
@@ -147,5 +157,30 @@ describe("FolderDashboardView", () => {
     expect(screen.getAllByText("Linux").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Review" })).toBeInTheDocument();
+  });
+
+  it("navigates to /chat with createNewChat and searchQuery when search is executed", async () => {
+    render(
+      <MemoryRouter>
+        <FolderDashboardView />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(mocks.getSummary).toHaveBeenCalledWith("ws-1", { includeDescendants: false });
+    });
+
+    const searchInput = screen.getByPlaceholderText("Search or ask anything...");
+    fireEvent.change(searchInput, { target: { value: "hello local AI" } });
+
+    const searchButton = screen.getByRole("button", { name: "Search" });
+    fireEvent.click(searchButton);
+
+    expect(mockNavigate).toHaveBeenCalledWith("/chat", {
+      state: {
+        createNewChat: true,
+        searchQuery: "hello local AI",
+      },
+    });
   });
 });

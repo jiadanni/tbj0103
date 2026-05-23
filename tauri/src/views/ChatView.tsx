@@ -3474,7 +3474,7 @@ export default function ChatView() {
   }, [effectiveWorkspaceId, activateSession, findOrCreateEmptySession]);
 
   useEffect(() => {
-    const state = location.state as { createNewChat?: boolean } | null;
+    const state = location.state as { createNewChat?: boolean; searchQuery?: string } | null;
     if (!state?.createNewChat) {
       return;
     }
@@ -3488,9 +3488,36 @@ export default function ChatView() {
     }
 
     handledLocationActionKeyRef.current = location.key;
-    void createNewSession();
+    const query = state.searchQuery;
+
+    async function initSession() {
+      const session = await findOrCreateEmptySession();
+      if (session) {
+        activateSession(session);
+        if (query) {
+          setInput(query);
+          setTimeout(() => {
+            resizeAndFocusComposer(query.length);
+          }, 50);
+        }
+      }
+    }
+
+    void initSession();
     navigate(location.pathname, { replace: true, state: null });
-  }, [activePaneId, createNewSession, currentPaneId, isSplitPane, location.key, location.pathname, location.state, navigate]);
+  }, [
+    activePaneId,
+    currentPaneId,
+    isSplitPane,
+    location.key,
+    location.pathname,
+    location.state,
+    navigate,
+    findOrCreateEmptySession,
+    activateSession,
+    setInput,
+    resizeAndFocusComposer,
+  ]);
 
   async function ensureSessionForChat(modelId: string, options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) {
     if (!effectiveWorkspaceId) { return null; }
