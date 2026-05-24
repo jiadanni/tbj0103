@@ -1,5 +1,6 @@
 use crate::db::DbState;
 use crate::models::source::{CreateSourceRequest, Source};
+use crate::services::ai_content_generator::generate_summary;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
 use tauri::State;
 
@@ -47,6 +48,15 @@ pub fn create_source(state: State<DbState>, req: CreateSourceRequest) -> Result<
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let tokens = estimate_tokens(&req.content);
+
+    let summary = req.summary.or_else(|| {
+        if !req.content.is_empty() {
+            Some(generate_summary(&req.content, 200))
+        } else {
+            None
+        }
+    });
+
     let src = Source {
         id: uuid::Uuid::new_v4().to_string(),
         workspace_id: req.workspace_id,
@@ -57,7 +67,7 @@ pub fn create_source(state: State<DbState>, req: CreateSourceRequest) -> Result<
         file_size: req.file_size,
         url: req.url,
         content: req.content,
-        summary: req.summary,
+        summary,
         favicon_data: None,
         is_processed: false,
         folder: req.folder,

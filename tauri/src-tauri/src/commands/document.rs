@@ -1,5 +1,6 @@
 use crate::db::DbState;
 use crate::models::source::{ProcessDocumentRequest, UploadDocumentRequest, UploadedDocument};
+use crate::services::ai_content_generator::generate_summary;
 use crate::services::linking_engine;
 use tauri::State;
 
@@ -16,6 +17,13 @@ pub fn upload_document(
 
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
+
+    let summary = if !req.content.is_empty() {
+        Some(generate_summary(&req.content, 200))
+    } else {
+        None
+    };
+
     let doc = UploadedDocument {
         id: uuid::Uuid::new_v4().to_string(),
         workspace_id: req.workspace_id,
@@ -23,7 +31,7 @@ pub fn upload_document(
         file_type: req.file_type,
         file_size: req.file_size,
         content: req.content,
-        summary: None,
+        summary: summary.clone(),
         is_processed: false,
         chunk_count: None,
         created_at: now.clone(),
@@ -31,7 +39,7 @@ pub fn upload_document(
     };
     conn.execute(
         "INSERT INTO sources (id, workspace_id, source_type, title, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at)
-         VALUES (?1, ?2, 'document', ?3, ?4, ?5, ?6, ?7, NULL, 0, ?8, ?9)",
+         VALUES (?1, ?2, 'document', ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?10)",
         rusqlite::params![
             doc.id,
             doc.workspace_id,
@@ -40,6 +48,7 @@ pub fn upload_document(
             doc.file_type,
             doc.file_size,
             doc.content,
+            doc.summary,
             doc.created_at,
             doc.updated_at
         ],
