@@ -19,7 +19,7 @@ Aetherium combines conversational AI, source-grounded research, bidirectional kn
 | **Storage** | SwiftData (Core Data) | SQLite via `rusqlite` |
 | **Entry point** | `swift/Sources/Aetherium/` | `tauri/` |
 | **Backends** | Ollama | Ollama, MLX, Llama.cpp |
-| **Status** | Feature-complete | **Active production target** |
+| **Status** | Feature-complete (on hold) | **Active production target** |
 
 The Tauri port is the primary development target and receives all new features.
 
@@ -33,9 +33,14 @@ The Tauri port is the primary development target and receives all new features.
 - Converse with local Ollama, **MLX**, and **Llama.cpp** models
 - **Source-grounded responses** with automatic citations (RAG)
 - **Artifacts**: Side-by-side rendering of generated code, diagrams, and markdown documents
+- **LaTeX Math Rendering**: Inline and block math equations rendered via KaTeX
 - **Dual-model comparison**: Benchmark different models against the same prompt
 - **Multi-pane Workspaces**: Split-view support for working on different chats or documents side-by-side
+- **Sub-workspace support**: Hierarchical workspace nesting with right-click context menus and scoped AI containment
+- **Folder-based chat organization**: Group chat sessions into folders within a workspace
+- **Unread indicators**: Visual badges on chat sessions with messages received since last visit
 - **Contextual Navigation**: Link related conversations via "Related Chat Excerpts" that automatically surface past knowledge
+- **Workspace Domain Context**: Active workspace topics automatically injected as system context on each send
 - **Model Context Protocol (MCP)**: Dynamic tool and resource integration for AI models via external servers
 - **AI Models Registry**: Manage local models and web providers (ChatGPT, Claude, DeepSeek, Gemini); set a per-model context-window override (`num_ctx`) directly in Preferences
 - **Oversized-model guardrail**: Pre-send dialog warns when a model's estimated VRAM/RAM footprint exceeds available memory, with a per-model "don't ask again" option
@@ -43,9 +48,11 @@ The Tauri port is the primary development target and receives all new features.
 - **Chat-to-Note / Chat-to-Document conversion**: One-click export of a session to a summarized note or document, with LLM-based concept extraction that auto-populates the knowledge graph
 - Chat session history with rename / soft-delete; Recycle Bin for restoration
 - **History view**: Dedicated browser for all past sessions, grouped by date with instant search
+- **Dashboard search**: Quick search input on the dashboard with instant new-chat redirect
 - **Thought Queue**: Background AI processing for scheduled or deferred tasks
 - **Generation metrics**: Detailed inference logs and performance stats per message
-- **Status Bar Telemetry**: Real-time monitoring of background job states (Started, Processing, Completed)
+- **Status Bar Telemetry**: Real-time monitoring of background job states and active AI streams
+- **Tray icon streaming indicator**: System tray icon animates to signal an active AI generation
 
 ### Intelligent Memory
 - **Fact Extraction**: Automatically identifies and saves user facts and preferences from conversations
@@ -59,6 +66,7 @@ The Tauri port is the primary development target and receives all new features.
 - Multiple concept and link types (Topic, Person, Technology, Related, Prerequisite, etc.)
 - Backlinks panel showing where concepts are referenced
 - Concepts auto-populated from chat-to-note and document upload conversions
+- **Workspace Glossary**: Auto-extracted domain terms with inline hover definitions surfaced across notes and chat
 
 ### Data Synchronization & Resilience
 - **Git-based Sync**: Automatic background synchronization to private Git repositories via SSH
@@ -81,6 +89,13 @@ The Tauri port is the primary development target and receives all new features.
 - **SM-2 Algorithm**: Optimized review scheduling for long-term retention
 - Card generation from documents or concept nodes
 - Full keyboard-driven review interface
+
+### Learning Paths
+- Structured learning journeys with milestones linked to chat sessions and documents
+- Progress tracking per milestone; paths scoped to a workspace
+
+### Plugin Manager
+- In-app manager for enabling, disabling, and configuring extensible plugins
 
 ### Privacy & Security
 - **Local-first**: All data, embeddings, and inference remain on your machine
@@ -178,19 +193,27 @@ tauri/
 
 | Table | Purpose |
 |---|---|
-| `workspaces` | Isolation for different namespaces |
-| `projects` | Categorical organization within workspaces |
-| `memories` | Long-term facts and preferences with embeddings |
-| `artifacts` | Renderable documents and code generated in chat |
+| `workspaces` | Top-level workspace isolation |
+| `folders` | Hierarchical chat organization within workspaces |
 | `chat_sessions` | Conversational threads with RAG support |
-| `concept_nodes` | Nodes in the bidirectional knowledge graph |
-| `daily_notes` | Chronological learning logs |
-| `learning_cards` | Spaced-repetition items (SM-2) |
+| `messages` | Individual chat messages (role: user / assistant) |
 | `sources` | Unified storage for Documents and Web Captures |
-| `mcp_servers` | Configured AI Model Context Protocol servers |
-| `ai_models` | Local and Web AI provider registry with per-model context-size overrides |
+| `source_chunks` | Chunked source content for semantic retrieval |
+| `artifacts` | Renderable documents and code generated in chat |
+| `memories` | Long-term facts and preferences with embeddings |
+| `concept_nodes` | Nodes in the bidirectional knowledge graph |
+| `concept_links` | Directed edges between concept nodes |
+| `daily_notes` | Chronological learning logs |
+| `note_templates` | Markdown note templates with variable substitution |
+| `learning_cards` | Spaced-repetition items (SM-2) |
+| `learning_paths` | Structured learning journeys with milestones |
+| `learning_goals` | Milestone targets within a learning path |
+| `workspace_glossary_terms` | Auto-extracted domain terms and hover definitions |
 | `thought_queue` | Background task orchestration |
+| `calendar_alarms` | Scheduled AI-triggered reminders |
+| `ai_models` | Local and Web AI provider registry with per-model context-size overrides |
 | `settings` | Global application preferences |
+| `app_logs` | Application diagnostics and inference logs |
 
 ## Contributing
 

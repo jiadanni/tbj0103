@@ -9,6 +9,7 @@ import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import PromptDialog from "../components/PromptDialog";
 import Tooltip from "../components/Tooltip";
+import ImportConversationPreview, { type ImportConversation } from "../components/ImportConversationPreview";
 
 type ProjectDestType = "new-workspace" | "new-sub-workspace" | "folder-in-sub";
 
@@ -115,6 +116,11 @@ export default function ImportSettingsSection() {
   const [lmStudioScanning, setLmStudioScanning] = useState(false);
   const [lmStudioScanErrors, setLmStudioScanErrors] = useState(0);
   const [importingGemini, setImportingGemini] = useState(false);
+  const [geminiFilePath, setGeminiFilePath] = useState<string | null>(null);
+  const [geminiPreviews, setGeminiPreviews] = useState<ImportConversation[]>([]);
+  const [geminiSelected, setGeminiSelected] = useState<Set<string>>(new Set());
+  const [geminiScanning, setGeminiScanning] = useState(false);
+  const [focusedGeminiUuid, setFocusedGeminiUuid] = useState<string | null>(null);
   const [importingClaude, setImportingClaude] = useState(false);
   const [claudeScanning, setClaudeScanning] = useState(false);
   const [claudeEmbeddingMatching, setClaudeEmbeddingMatching] = useState(false);
@@ -300,9 +306,17 @@ export default function ImportSettingsSection() {
     }
   }
 
-  async function importFromGeminiTakeout() {
+  function resetGeminiPreview() {
+    setGeminiFilePath(null);
+    setGeminiPreviews([]);
+    setGeminiSelected(new Set());
+    setFocusedGeminiUuid(null);
+  }
+
+  async function pickGeminiFile() {
     setError(null);
-    setImportingGemini(true);
+    setGeminiScanning(true);
+    resetGeminiPreview();
 
     try {
       const selected = await open({
@@ -312,21 +326,50 @@ export default function ImportSettingsSection() {
         filters: [{ name: "HTML", extensions: ["html", "htm"] }],
       });
       const filePath = Array.isArray(selected) ? selected[0] : selected;
-      if (!filePath) {return;}
+      if (!filePath) { return; }
+
+      const result = await api.chatFile.previewGeminiTakeout(filePath);
+      if (result.total < 1) {
+        throw new Error("No importable conversations were found in the selected file.");
+      }
+      setGeminiFilePath(filePath);
+      setGeminiPreviews(result.conversations);
+      setGeminiSelected(new Set(result.conversations.map((c) => c.uuid)));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Activity scan failed";
+      setError(msg);
+      await message(msg, { title: "Activity scan failed", kind: "error" });
+    } finally {
+      setGeminiScanning(false);
+    }
+  }
+
+  async function importFromGeminiTakeout() {
+    if (!geminiFilePath) { return; }
+    setError(null);
+    setImportingGemini(true);
+
+    try {
+      const selectedIds = [...geminiSelected];
+      if (selectedIds.length < 1) {
+        throw new Error("Select at least one conversation to import.");
+      }
 
       const defaultName = "Imported Browser Chats";
       const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces, promptForName);
-      if (!resolvedName) {return;}
+      if (!resolvedName) { return; }
 
       const result = await api.chatFile.importGeminiTakeout(
-        filePath,
+        geminiFilePath,
         resolvedName !== defaultName ? resolvedName : undefined,
+        selectedIds,
       );
       if (result.imported_sessions < 1 && (result.skipped ?? 0) > 0) {
         await message(`All ${result.skipped} conversation${result.skipped === 1 ? "" : "s"} already imported — nothing new to add.`, {
           title: "Activity import",
           kind: "info",
         });
+        resetGeminiPreview();
         return;
       }
       if (result.imported_sessions < 1) {
@@ -354,6 +397,8 @@ export default function ImportSettingsSection() {
       if (result.errors > 0) {
         lines.push(`${result.errors} conversation${result.errors === 1 ? "" : "s"} had errors.`);
       }
+
+      resetGeminiPreview();
 
       if (firstSession.length > 0) {
         navigate(`/chat/${firstSession[0].id}`);
@@ -725,6 +770,12 @@ export default function ImportSettingsSection() {
     && (!conversation.folder_id || lmStudioSelectedFolders.has(conversation.folder_id))
   )).length;
 
+  // Which importer is actively showing a preview (only one at a time)
+  const activeLmStudio = lmStudioPreviews.length > 0;
+  const activeGemini = geminiPreviews.length > 0;
+  const activeClaude = !!claudeFolderPath;
+  const anyActive = activeLmStudio || activeGemini || activeClaude;
+
   const rootWorkspaces = workspaces.filter((w) => !w.parent_workspace_id);
 
   return (
@@ -743,7 +794,7 @@ export default function ImportSettingsSection() {
         {/* ── Import type cards ─────────────────────────────────────── */}
         <div className="shrink-0 grid grid-cols-3 gap-3 max-w-3xl">
           {/* LM Studio (single + multiple merged) */}
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2">
+          <section className={`rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2 transition-opacity ${anyActive && !activeLmStudio ? "opacity-40 pointer-events-none" : ""}`}>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
@@ -762,30 +813,30 @@ export default function ImportSettingsSection() {
           </section>
 
           {/* Google Takeout */}
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2">
+          <section className={`rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2 transition-opacity ${anyActive && !activeGemini ? "opacity-40 pointer-events-none" : ""}`}>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
-                <h2 className="text-xs font-medium text-[var(--text-primary)]">Google Takeout</h2>
+                <h2 className="text-xs font-medium text-[var(--text-primary)]">Google Gemini</h2>
               </div>
               <button
-                onClick={() => void importFromGeminiTakeout()}
-                disabled={importingGemini}
+                onClick={() => void pickGeminiFile()}
+                disabled={geminiScanning || importingGemini}
                 className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
               >
-                {importingGemini ? <RefreshCw size={11} className="animate-spin" /> : <FolderInput size={11} />}
-                {importingGemini ? "Importing…" : "Select File"}
+                {geminiScanning || importingGemini ? <RefreshCw size={11} className="animate-spin" /> : <FolderInput size={11} />}
+                {geminiScanning ? "Scanning…" : importingGemini ? "Importing…" : geminiFilePath ? "Change" : "Select"}
               </button>
             </div>
             <p className="text-[11px] text-[var(--text-muted)]">Import conversations from a Google Takeout HTML activity export.</p>
           </section>
 
           {/* Claude Desktop Export */}
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2">
+          <section className={`rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2 transition-opacity ${anyActive && !activeClaude ? "opacity-40 pointer-events-none" : ""}`}>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
-                <h2 className="text-xs font-medium text-[var(--text-primary)]">Claude Desktop Export</h2>
+                <h2 className="text-xs font-medium text-[var(--text-primary)]">Claude</h2>
                 <Tooltip content="Conversations, projects, and memories are imported. Documents and files attached to projects are not supported." position="right">
                   <Info size={12} className="shrink-0 text-[var(--text-muted)] cursor-default" />
                 </Tooltip>
@@ -953,6 +1004,36 @@ export default function ImportSettingsSection() {
                     {importingLmStudio ? "Importing..." : `Import ${selectedLmStudioConversationCount} conversation${selectedLmStudioConversationCount !== 1 ? "s" : ""}`}
                   </button>
                 </div>
+            </div>
+          </section>
+        )}
+
+        {/* ── Google Takeout preview (below grid, only when a file was scanned) ── */}
+        {geminiPreviews.length > 0 && (
+          <section className="flex-1 min-h-0 max-w-4xl rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-3 overflow-hidden">
+            <ImportConversationPreview
+              conversations={geminiPreviews}
+              selected={geminiSelected}
+              onSelectionChange={setGeminiSelected}
+              focusedUuid={focusedGeminiUuid}
+              onFocusChange={setFocusedGeminiUuid}
+              assistantLabel="Gemini"
+            />
+            <div className="shrink-0 flex items-center justify-end gap-2">
+              <button
+                onClick={() => resetGeminiPreview()}
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <X size={12} /> Cancel
+              </button>
+              <button
+                onClick={() => void importFromGeminiTakeout()}
+                disabled={geminiSelected.size === 0 || importingGemini}
+                className="inline-flex items-center gap-1 rounded-lg bg-[var(--accent-color)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+              >
+                {importingGemini ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                {importingGemini ? "Importing..." : `Import ${geminiSelected.size} conversation${geminiSelected.size !== 1 ? "s" : ""}`}
+              </button>
             </div>
           </section>
         )}

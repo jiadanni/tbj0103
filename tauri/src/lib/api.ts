@@ -858,7 +858,20 @@ export const api = {
           errors?: number;
         }>;
       }>("import_multiple_folders", { folderPaths }),
-    importGeminiTakeout: (filePath: string, workspaceName?: string) =>
+    previewGeminiTakeout: (filePath: string) =>
+      invoke<{
+        conversations: {
+          uuid: string;
+          name: string;
+          message_count: number;
+          created_at: string;
+          updated_at: string;
+          first_user_message: string;
+          messages: { role: string; content: string }[];
+        }[];
+        total: number;
+      }>("preview_gemini_takeout", { filePath }),
+    importGeminiTakeout: (filePath: string, workspaceName?: string, selectedIds?: string[]) =>
       invoke<{
         imported_sessions: number;
         imported_messages: number;
@@ -867,7 +880,7 @@ export const api = {
         workspace_name: string;
         errors: number;
         error_messages: string[];
-      }>("import_gemini_takeout", { filePath, workspaceName: workspaceName ?? null }),
+      }>("import_gemini_takeout", { filePath, workspaceName: workspaceName ?? null, selectedIds: selectedIds ?? null }),
     detectClaudeFormat: (folderPath: string) =>
       invoke<{
         format: "legacy" | "v2";

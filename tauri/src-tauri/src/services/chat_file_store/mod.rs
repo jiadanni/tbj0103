@@ -1074,16 +1074,18 @@ fn create_session_from_messages(messages: Vec<ChatFileMessage>) -> ChatFileData 
     let first_ts = messages.first().map(|m| m.timestamp.clone()).unwrap_or_default();
     let first_prompt = messages.first().map(|m| m.content.clone()).unwrap_or_default();
     
-    // Create a title from the first prompt (limit length)
-    let title = if first_prompt.len() > 40 {
-        format!("{}...", &first_prompt[..37].replace('\n', " "))
+    // Create a title from the first prompt (limit to ~120 chars, char-safe)
+    let flat_prompt = first_prompt.replace('\n', " ");
+    let title = if flat_prompt.chars().count() > 120 {
+        let truncated: String = flat_prompt.chars().take(117).collect();
+        format!("{truncated}...")
     } else {
-        first_prompt.replace('\n', " ")
+        flat_prompt
     };
 
     ChatFileData {
         id: uuid::Uuid::new_v4().to_string(),
-        title: format!("Gemini: {}", title),
+        title,
         model: "gemini".to_string(),
         system_prompt: "".to_string(),
         created_at: first_ts.clone(),
