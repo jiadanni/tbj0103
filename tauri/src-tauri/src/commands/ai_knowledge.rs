@@ -521,6 +521,30 @@ fn dedup_kinds(kinds: &[String]) -> String {
     labels.join("+")
 }
 
+#[derive(Serialize)]
+pub struct WorkspaceAnalyzableResult {
+    pub ready: bool,
+    pub item_count: usize,
+    pub char_count: usize,
+}
+
+#[tauri::command]
+pub async fn check_workspace_analyzable(
+    state: State<'_, DbState>,
+    workspace_id: String,
+) -> Result<WorkspaceAnalyzableResult, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let items = gather_workspace_items(&conn, &workspace_id);
+    let total_chars: usize = items.iter().map(|i| i.text.len()).sum();
+    let total_items = items.len();
+    let ready = total_items >= 6 && total_chars >= 1200;
+    Ok(WorkspaceAnalyzableResult {
+        ready,
+        item_count: total_items,
+        char_count: total_chars,
+    })
+}
+
 #[tauri::command]
 pub async fn analyze_workspace(
     app: AppHandle,

@@ -54,7 +54,11 @@ function getWorkspaceOptionLabel(workspace: Workspace, workspaces: Workspace[]) 
   return parentWorkspace ? `${parentWorkspace.name} / ${workspace.name}` : workspace.name;
 }
 
-function resolveWorkspaceSelection(workspaces: Workspace[], workspaceId: string | null) {
+function resolveWorkspaceSelection(
+  workspaces: Workspace[],
+  workspaceId: string | null,
+  { allowRoot = false }: { allowRoot?: boolean } = {},
+) {
   if (!workspaceId) {
     return { workspaceId: null, parentWorkspaceId: null };
   }
@@ -71,13 +75,15 @@ function resolveWorkspaceSelection(workspaces: Workspace[], workspaceId: string 
     };
   }
 
-  // Root workspace: resolve to first child if one exists
-  const firstChild = workspaces.find((w) => w.parent_workspace_id === workspace.id);
-  if (firstChild) {
-    return {
-      workspaceId: firstChild.id,
-      parentWorkspaceId: workspace.id,
-    };
+  // Root workspace: resolve to first child unless the caller explicitly wants the root (overview)
+  if (!allowRoot) {
+    const firstChild = workspaces.find((w) => w.parent_workspace_id === workspace.id);
+    if (firstChild) {
+      return {
+        workspaceId: firstChild.id,
+        parentWorkspaceId: workspace.id,
+      };
+    }
   }
 
   return {
@@ -384,12 +390,14 @@ function SubWorkspaceTabBar({
   parentWorkspaceId,
   activeWorkspaceId,
   onSelect,
+  onSelectOverview,
   onAdd,
   onContextMenu,
 }: {
   parentWorkspaceId: string | null;
   activeWorkspaceId: string | null;
   onSelect: (workspaceId: string) => void;
+  onSelectOverview?: (workspaceId: string) => void;
   onAdd?: () => void;
   onContextMenu?: (workspace: Workspace, x: number, y: number) => void;
 }) {
@@ -414,7 +422,7 @@ function SubWorkspaceTabBar({
         {parent && (
           <Tooltip content={parent.name} position="bottom">
             <button
-              onClick={() => onSelect(parent.id)}
+              onClick={() => (onSelectOverview ?? onSelect)(parent.id)}
               onContextMenu={(event) => {
                 if (onContextMenu) {
                   event.preventDefault();
@@ -958,8 +966,8 @@ function WorkspaceTabBar({
     setCreating(false);
   }
 
-  function activateWorkspace(workspaceId: string) {
-    const { workspaceId: nextWorkspaceId, parentWorkspaceId } = resolveWorkspaceSelection(workspaces, workspaceId);
+  function activateWorkspace(workspaceId: string, { allowRoot = false }: { allowRoot?: boolean } = {}) {
+    const { workspaceId: nextWorkspaceId, parentWorkspaceId } = resolveWorkspaceSelection(workspaces, workspaceId, { allowRoot });
     const isChanged = nextWorkspaceId !== activeWorkspaceId;
     setActiveParentWorkspaceId(parentWorkspaceId);
     setActiveWorkspaceId(nextWorkspaceId);
@@ -969,6 +977,10 @@ function WorkspaceTabBar({
 
   function activateSubWorkspace(workspaceId: string) {
     activateWorkspace(workspaceId);
+  }
+
+  function activateOverviewWorkspace(workspaceId: string) {
+    activateWorkspace(workspaceId, { allowRoot: true });
   }
 
   function createSubWorkspace() {
@@ -1174,6 +1186,7 @@ function WorkspaceTabBar({
           parentWorkspaceId={activeParentWorkspaceId}
           activeWorkspaceId={activeWorkspaceId}
           onSelect={activateSubWorkspace}
+          onSelectOverview={activateOverviewWorkspace}
           onAdd={createSubWorkspace}
           onContextMenu={(ws, x, y) => setContextMenu({ workspace: ws, x, y })}
         />

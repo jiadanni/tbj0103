@@ -247,6 +247,7 @@ export default function KnowledgeGraphView() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState("");
   const [analyzeResult, setAnalyzeResult] = useState<AnalysisResult | null>(null);
+  const [workspaceReady, setWorkspaceReady] = useState<boolean | null>(null);
   const [descendantProgress, setDescendantProgress] = useState<DescendantAnalysisProgress | null>(null);
   const [chunkProgress, setChunkProgress] = useState<WorkspaceAnalysisProgress | null>(null);
 
@@ -358,6 +359,16 @@ export default function KnowledgeGraphView() {
   useEffect(() => {
     void loadSummary();
   }, [loadSummary]);
+
+  useEffect(() => {
+    if (!activeWorkspaceId) {
+      setWorkspaceReady(null);
+      return;
+    }
+    api.knowledge.checkWorkspaceAnalyzable(activeWorkspaceId)
+      .then((result) => setWorkspaceReady(result.ready))
+      .catch(() => setWorkspaceReady(null));
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     if (!selectedConcept) {
@@ -527,6 +538,7 @@ export default function KnowledgeGraphView() {
   const hasModels = availableModels.length > 0;
   const isDemoWithoutModels = isDemoMode && !hasModels;
   const canRunAiActions = hasModels || isDemoWithoutModels;
+  const insufficientData = workspaceReady === false && !includeDescendants;
   const analyzeButtonLabel = isAnalyzing
     ? (descendantProgress
       ? `Analyzing ${descendantProgress.workspace_name} (${descendantProgress.index + 1}/${descendantProgress.total})…`
@@ -538,11 +550,13 @@ export default function KnowledgeGraphView() {
     : "Analyze Workspace";
   const analyzeHelpText = isDemoWithoutModels
     ? "Demo data is preloaded. No local models are installed on this machine, so AI actions use simulated demo output."
-    : includeDescendants
-      ? "Runs analysis on each sub-workspace sequentially. The merged graph updates as each workspace completes. Yields to active chat."
-      : hasModels
-        ? "Use this to extract concepts and links from what you have already read, asked, and captured."
-        : "No local AI models are available yet. Install or connect a model to analyze this workspace.";
+    : insufficientData
+      ? "Not enough workspace material yet to build a useful graph. Add more chat, notes, or documents first."
+      : includeDescendants
+        ? "Runs analysis on each sub-workspace sequentially. The merged graph updates as each workspace completes. Yields to active chat."
+        : hasModels
+          ? "Use this to extract concepts and links from what you have already read, asked, and captured."
+          : "No local AI models are available yet. Install or connect a model to analyze this workspace.";
   const cardHelpText = isDemoWithoutModels
     ? "Demo mode can generate sample flashcards locally for this concept."
     : hasModels
@@ -585,7 +599,7 @@ export default function KnowledgeGraphView() {
 
             <button
               onClick={handleAnalyze}
-              disabled={isAnalyzing || !canRunAiActions}
+              disabled={isAnalyzing || !canRunAiActions || insufficientData}
               className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[var(--accent-color)] px-3 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isAnalyzing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
