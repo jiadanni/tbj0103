@@ -194,6 +194,7 @@ impl MlxClient {
         let mut stream_done = false;
         let event_name = format!("ollama-stream-{session_id}");
         let mut cancel_rx = Self::register_abort_listener(app, session_id)?;
+        let mut byte_buf: Vec<u8> = Vec::new();
 
         loop {
             if Self::should_abort(app, session_id)? {
@@ -214,10 +215,13 @@ impl MlxClient {
                 break;
             };
             let chunk = chunk_result.map_err(|e| format!("Stream error: {e}"))?;
-            let text = std::str::from_utf8(&chunk).map_err(|e| format!("UTF-8 error: {e}"))?;
+            byte_buf.extend_from_slice(&chunk);
 
-            for line in text.lines() {
-                let line = line.trim();
+            while let Some(nl_pos) = byte_buf.iter().position(|&b| b == b'\n') {
+                let line_bytes: Vec<u8> = byte_buf.drain(..=nl_pos).collect();
+                let line_str = String::from_utf8_lossy(&line_bytes);
+                let line = line_str.trim();
+
                 if line.is_empty() {
                     continue;
                 }
