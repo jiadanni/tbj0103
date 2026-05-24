@@ -11,6 +11,7 @@ import ContextIndicator from "./ContextIndicator";
 import { Tooltip } from "./Tooltip";
 import HoverDefinitionSurface from "./HoverDefinitionSurface";
 import { useScopedWorkspace } from "../lib/workspacePane";
+import { useSettingsStore } from "../stores/settingsStore";
 
 type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
 
@@ -145,6 +146,8 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   const redoToggleRef = useRef<HTMLButtonElement>(null);
   const [redoPickerStyle, setRedoPickerStyle] = useState<{ bottom: number; right: number } | null>(null);
   const { activeWorkspaceId } = useScopedWorkspace();
+  const userChatLabel = useSettingsStore((s) => s.userChatLabel);
+  const assistantChatLabel = useSettingsStore((s) => s.assistantChatLabel);
   useEffect(() => {
     if (redoPickerOpen && redoToggleRef.current) {
       const rect = redoToggleRef.current.getBoundingClientRect();
@@ -175,7 +178,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
     >
       {isMinimal && (
         <div className="text-xs font-semibold text-[var(--text-muted)] tracking-wide">
-          {msg.role === "user" ? "You" : "Assistant"}
+          {msg.role === "user" ? userChatLabel : assistantChatLabel}
         </div>
       )}
       {editingMessageId === msg.id ? (

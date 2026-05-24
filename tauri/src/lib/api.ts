@@ -418,6 +418,8 @@ export interface AppSettings {
   workspace_glossary_refresh_interval_minutes: number;
   git_sync_interval_minutes: number;
   menubar_icon_style: "monochrome" | "white" | "black";
+  user_chat_label: string;
+  assistant_chat_label: string;
 }
 
 export interface GitSyncStatus {

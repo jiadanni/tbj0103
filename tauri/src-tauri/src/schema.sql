@@ -467,7 +467,10 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('hover_definition_scan_enabled', 'true'),
     ('hover_definition_scan_max_sessions', '3'),
     ('workspace_glossary_refresh_interval_minutes', '60'),
-    ('git_sync_interval_minutes', '5');
+    ('git_sync_interval_minutes', '5'),
+    ('user_chat_label', '"You"'),
+    ('assistant_chat_label', '"Assistant"');
+
 
 -- Conversation summaries
 CREATE TABLE IF NOT EXISTS conversation_summaries (

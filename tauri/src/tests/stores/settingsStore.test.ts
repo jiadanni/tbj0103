@@ -23,6 +23,8 @@ const SETTINGS_INITIAL = {
   skipLinkConfirm: false,
   immediateDelete: false,
   confirmMoveToTrash: true,
+  userChatLabel: "You",
+  assistantChatLabel: "Assistant",
 };
 
 beforeEach(() => {
@@ -68,6 +70,14 @@ describe("default values", () => {
 
   it("dualModelExecutionMode defaults to serial", () => {
     expect(useSettingsStore.getState().dualModelExecutionMode).toBe("serial");
+  });
+
+  it("userChatLabel defaults to 'You'", () => {
+    expect(useSettingsStore.getState().userChatLabel).toBe("You");
+  });
+
+  it("assistantChatLabel defaults to 'Assistant'", () => {
+    expect(useSettingsStore.getState().assistantChatLabel).toBe("Assistant");
   });
 });
 
@@ -149,6 +159,16 @@ describe("setters", () => {
   it("setDualModelExecutionMode updates the strategy", () => {
     useSettingsStore.getState().setDualModelExecutionMode("parallel");
     expect(useSettingsStore.getState().dualModelExecutionMode).toBe("parallel");
+  });
+
+  it("setUserChatLabel updates userChatLabel", () => {
+    useSettingsStore.getState().setUserChatLabel("Me");
+    expect(useSettingsStore.getState().userChatLabel).toBe("Me");
+  });
+
+  it("setAssistantChatLabel updates assistantChatLabel", () => {
+    useSettingsStore.getState().setAssistantChatLabel("Bot");
+    expect(useSettingsStore.getState().assistantChatLabel).toBe("Bot");
   });
 });
 
