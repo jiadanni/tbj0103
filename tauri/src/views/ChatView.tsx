@@ -2062,6 +2062,7 @@ function StreamingBubble({
 }) {
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
   const isCurrentlyStreaming = activeChatId ? streamingSessionId === activeChatId : false;
+  const assistantChatLabel = useSettingsStore((s) => s.assistantChatLabel);
 
   // Batched state updates via rAF — avoids thrashing React on every token.
   const [content, setContent] = useState("");
@@ -2096,7 +2097,7 @@ function StreamingBubble({
   return (
     <div className={`flex flex-col gap-1 items-start pb-4 ${isMinimal ? "px-8" : "px-4"}`}>
       {isMinimal && (
-        <div className="text-xs font-semibold text-[var(--text-muted)] tracking-wide">Assistant</div>
+        <div className="text-xs font-semibold text-[var(--text-muted)] tracking-wide">{assistantChatLabel}</div>
       )}
       <div className={`${
         isMinimal

@@ -63,6 +63,8 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v49_analyze_jobs",
     "v50_rename_projects_to_folders",
     "v51_workspace_glossary",
+    "v52_chat_sessions_unread",
+    "v53_chat_identifiers",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1311,6 +1313,20 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute_batch(
             "ALTER TABLE chat_sessions ADD COLUMN is_unread INTEGER NOT NULL DEFAULT 0;
              INSERT INTO _migrations(name) VALUES('v52_chat_sessions_unread');",
+        )?;
+    }
+
+    let applied_v53: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v53_chat_identifiers'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v53 == 0 {
+        conn.execute_batch(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES
+                ('user_chat_label', '\"You\"'),
+                ('assistant_chat_label', '\"Assistant\"');
+             INSERT INTO _migrations(name) VALUES('v53_chat_identifiers');",
         )?;
     }
 

@@ -1,4 +1,5 @@
 import { CheckSquare, Square } from "lucide-react";
+import { useSettingsStore } from "../stores/settingsStore";
 
 export interface ImportConversation {
   uuid: string;
@@ -26,8 +27,12 @@ export default function ImportConversationPreview({
   onSelectionChange,
   focusedUuid,
   onFocusChange,
-  assistantLabel = "Assistant",
+  assistantLabel,
 }: Props) {
+  const userChatLabel = useSettingsStore((s) => s.userChatLabel);
+  const assistantChatLabel = useSettingsStore((s) => s.assistantChatLabel);
+  const displayAssistantLabel = assistantLabel ?? assistantChatLabel;
+
   const focused = focusedUuid ? conversations.find((c) => c.uuid === focusedUuid) : null;
 
   return (
@@ -114,7 +119,7 @@ export default function ImportConversationPreview({
               <div className="mt-1 flex-1 min-h-0 overflow-y-auto rounded-md border border-[var(--border-color)]">
                 {focused.messages.map((msg, i) => (
                   <div key={i} className={`flex flex-col gap-0.5 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 ${msg.role === "user" ? "bg-[var(--bg-elevated)]" : "bg-[var(--bg-primary)]"}`}>
-                    <span className="text-[10px] font-medium text-[var(--text-muted)]">{msg.role === "user" ? "You" : assistantLabel}</span>
+                    <span className="text-[10px] font-medium text-[var(--text-muted)]">{msg.role === "user" ? userChatLabel : displayAssistantLabel}</span>
                     <p className="whitespace-pre-wrap text-[11px] text-[var(--text-secondary)]">{msg.content}</p>
                   </div>
                 ))}

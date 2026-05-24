@@ -7,7 +7,7 @@ import { useLocation } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -752,6 +752,7 @@ export default function PreferencesView() {
   const [confirmPin, setConfirmPin] = useState("");
   const [pinSaving, setPinSaving] = useState(false);
   const [pinMessage, setPinMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [showPinSetupModal, setShowPinSetupModal] = useState(false);
   const [isAddingGroup, setIsAddingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   useEffect(() => {
@@ -800,6 +801,8 @@ export default function PreferencesView() {
     settingsStore.setShowGenInfoSpeed(settings.show_gen_info_speed);
     settingsStore.setShowGenInfoModel(settings.show_gen_info_model);
     settingsStore.setQuickSearchShortcut(settings.quick_search_shortcut);
+    settingsStore.setUserChatLabel(settings.user_chat_label);
+    settingsStore.setAssistantChatLabel(settings.assistant_chat_label);
   }
 
   function scheduleSavedNoticeReset() {
@@ -1123,6 +1126,36 @@ export default function PreferencesView() {
       setPinSaving(false);
     }
   }
+
+  async function handleSetPinFromModal() {
+    if (!dbSettings) { return; }
+    setPinMessage(null);
+
+    if (!/^\d{4,8}$/.test(newPin)) {
+      setPinMessage({ type: "error", text: "PIN must be 4 to 8 digits." });
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setPinMessage({ type: "error", text: "PINs do not match." });
+      return;
+    }
+
+    setPinSaving(true);
+    try {
+      await api.security.setPin(newPin, undefined);
+      const refreshedStatus = await api.security.getStatus();
+      setSecurityStatus(refreshedStatus);
+      set("pin_lock_enabled", true);
+      resetPinForm();
+      setPinMessage(null);
+      setShowPinSetupModal(false);
+    } catch (err) {
+      setPinMessage({ type: "error", text: err instanceof Error ? err.message : "Unable to save PIN." });
+    } finally {
+      setPinSaving(false);
+    }
+  }
+
   async function handleRemovePin() {
     if (!dbSettings) { return; }
 
@@ -1157,7 +1190,6 @@ export default function PreferencesView() {
   const pinConfigured = securityStatus?.pin_enabled ?? false;
   const biometricAvailable = securityStatus?.biometric_available ?? false;
   const biometricLabel = securityStatus?.biometric_label ?? "Biometric authentication";
-  const anyLockEnabled = dbSettings.pin_lock_enabled || dbSettings.touch_id_enabled;
 
   const settingsTabButtons = (
     <div className={settingsNavLayout === "top-tabs" ? "flex gap-1.5 overflow-x-auto pb-0.5" : "flex flex-col gap-1.5"}>
@@ -2737,6 +2769,37 @@ export default function PreferencesView() {
                 {/* ── Chat ── */}
                 {activeTab === "chat" && (
                   <>
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Chat Identifiers</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                          Customize the display labels for you (the user) and the assistant in the chat.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-[var(--text-secondary)]">User Identifier</label>
+                          <input
+                            type="text"
+                            value={dbSettings.user_chat_label}
+                            onChange={(e) => set("user_chat_label", e.target.value)}
+                            placeholder="You"
+                            className="w-full text-sm bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-[var(--text-secondary)]">Assistant Identifier</label>
+                          <input
+                            type="text"
+                            value={dbSettings.assistant_chat_label}
+                            onChange={(e) => set("assistant_chat_label", e.target.value)}
+                            placeholder="Assistant"
+                            className="w-full text-sm bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-2">
                       <div className="flex items-center justify-between">
                         <div>
@@ -2958,7 +3021,7 @@ export default function PreferencesView() {
                           chatMessageStyle === "minimal" ? "items-start" : "items-end"
                         }`}>
                           {chatMessageStyle === "minimal" && (
-                            <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">You</span>
+                            <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">{dbSettings.user_chat_label || "You"}</span>
                           )}
                           <div className={`text-xs ${
                             chatMessageStyle === "minimal"
@@ -2975,7 +3038,7 @@ export default function PreferencesView() {
                           chatMessageStyle === "minimal" ? "items-start" : "items-start"
                         }`}>
                           {chatMessageStyle === "minimal" && (
-                            <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">llama3:8b</span>
+                            <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">{dbSettings.assistant_chat_label || "Assistant"}</span>
                           )}
                           <div className={`text-xs ${
                             chatMessageStyle === "minimal"
@@ -3166,187 +3229,263 @@ export default function PreferencesView() {
                 {/* ── Security ── */}
                 {activeTab === "security" && (
                   <>
-                    {/* ── App Lock ── */}
+                    {/* ── Require PIN on launch (primary toggle) ── */}
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] divide-y divide-[var(--border-color)]">
-                      <div className={`flex items-center justify-between px-4 py-2 transition-opacity ${!pinConfigured ? "opacity-40" : ""}`}>
+                      <div className="flex items-center justify-between px-4 py-2">
                         <div>
                           <p className="text-sm text-[var(--text-secondary)]">Require PIN on launch</p>
                           <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                            {pinConfigured ? "Lock the app at startup. Touch ID can be used as a shortcut when enabled below." : "Save a PIN first to enable app lock."}
+                            {dbSettings.pin_lock_enabled
+                              ? "The app will prompt for your PIN (or biometrics) at startup."
+                              : "Lock the app with a PIN passcode each time it starts."}
                           </p>
                         </div>
                         <Toggle
                           on={dbSettings.pin_lock_enabled}
-                          disabled={!pinConfigured}
                           onToggle={() => {
-                            if (!pinConfigured) { return; }
-                            const next = !dbSettings.pin_lock_enabled;
-                            set("pin_lock_enabled", next);
-                            // Touch ID requires PIN as its fallback — disable it together
-                            if (!next && dbSettings.touch_id_enabled) {
-                              set("touch_id_enabled", false);
+                            if (!dbSettings.pin_lock_enabled) {
+                              // Enabling — if no PIN exists, show the setup modal
+                              if (!pinConfigured) {
+                                resetPinForm();
+                                setPinMessage(null);
+                                setShowPinSetupModal(true);
+                              } else {
+                                set("pin_lock_enabled", true);
+                              }
+                            } else {
+                              // Disabling
+                              set("pin_lock_enabled", false);
+                              if (dbSettings.touch_id_enabled) {
+                                set("touch_id_enabled", false);
+                              }
                             }
                           }}
                         />
                       </div>
-                      {biometricAvailable && (
-                        <div className={`flex items-center justify-between px-4 py-2 transition-opacity ${!dbSettings.pin_lock_enabled ? "opacity-40" : ""}`}>
+                    </div>
+
+                    {/* ── Subordinate options (visible when PIN lock is on) ── */}
+                    {dbSettings.pin_lock_enabled && (
+                      <>
+                        {/* ── Biometric ── */}
+                        {biometricAvailable && (
+                          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm text-[var(--text-secondary)]">{biometricLabel}</p>
+                                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                                  Use {biometricLabel} as a quick unlock. PIN is always available as a fallback.
+                                </p>
+                              </div>
+                              <Toggle
+                                on={dbSettings.touch_id_enabled}
+                                onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── Auto-lock ── */}
+                        <div className="space-y-2">
                           <div>
-                            <p className="text-sm text-[var(--text-secondary)]">{biometricLabel}</p>
-                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                              {dbSettings.pin_lock_enabled
-                                ? `Use ${biometricLabel} as a quick unlock. PIN is always available as a fallback.`
-                                : `Enable PIN lock first to use ${biometricLabel}.`}
+                            <label className="text-xs text-[var(--text-secondary)] mb-2 block">Auto-lock</label>
+                            <p className="text-[11px] text-[var(--text-muted)] mb-2">Automatically lock the app after a period of inactivity.</p>
+                            <div className="flex flex-row flex-wrap gap-x-6 gap-y-2">
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="auto_lock"
+                                  checked={dbSettings.auto_lock_minutes === 0}
+                                  onChange={() => set("auto_lock_minutes", 0)}
+                                  className="accent-[var(--accent-color)]"
+                                />
+                                <span className="text-[var(--text-secondary)]">Off</span>
+                              </label>
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="auto_lock"
+                                  checked={dbSettings.auto_lock_minutes > 0}
+                                  onChange={() => set("auto_lock_minutes", dbSettings.auto_lock_minutes > 0 ? dbSettings.auto_lock_minutes : 5)}
+                                  className="accent-[var(--accent-color)]"
+                                />
+                                <span className="text-[var(--text-secondary)]">Lock after</span>
+                                {dbSettings.auto_lock_minutes > 0 && (
+                                  <span className="flex items-center gap-2">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={1440}
+                                      value={dbSettings.auto_lock_minutes}
+                                      onChange={(e) => {
+                                        const val = Number(e.target.value);
+                                        if (val > 0) { set("auto_lock_minutes", val); }
+                                      }}
+                                      className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                                    />
+                                    <span className="text-xs text-[var(--text-secondary)]">minutes</span>
+                                  </span>
+                                )}
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* ── PIN Management ── */}
+                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <p className="text-sm text-[var(--text-secondary)]">PIN passcode</p>
+                              <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-sm">
+                                4 to 8 digits. Stored as a hash, never plaintext.
+                              </p>
+                            </div>
+                            <span className="text-[11px] px-2 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                              Active
+                            </span>
+                          </div>
+
+                          <div>
+                            <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Current PIN</label>
+                            <input
+                              type="password"
+                              inputMode="numeric"
+                              autoComplete="one-time-code"
+                              value={currentPin}
+                              onChange={(e) => { setCurrentPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
+                              placeholder="Current PIN"
+                              className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                            />
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">New PIN</label>
+                              <input
+                                type="password"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                value={newPin}
+                                onChange={(e) => { setNewPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
+                                placeholder="4 to 8 digits"
+                                className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Confirm PIN</label>
+                              <input
+                                type="password"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                value={confirmPin}
+                                onChange={(e) => { setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
+                                placeholder="Repeat PIN"
+                                className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                              />
+                            </div>
+                          </div>
+
+                          {pinMessage && (
+                            <p className={`text-xs ${pinMessage.type === "success" ? "text-emerald-400" : "text-red-400"}`}>
+                              {pinMessage.text}
+                            </p>
+                          )}
+
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={handleSetPin}
+                              disabled={pinSaving}
+                              className="px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-60"
+                            >
+                              {pinSaving ? "Saving..." : "Update PIN"}
+                            </button>
+                            <button
+                              onClick={handleRemovePin}
+                              disabled={pinSaving}
+                              className="px-3.5 py-2 rounded-lg border border-[var(--border-color)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-60"
+                            >
+                              Remove PIN
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* ── PIN Setup Modal ── */}
+                    {showPinSetupModal && (
+                      <div
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+                        onClick={() => { setShowPinSetupModal(false); resetPinForm(); setPinMessage(null); }}
+                      >
+                        <div
+                          className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="w-10 h-10 rounded-xl bg-[var(--accent-color)]/20 flex items-center justify-center mb-1">
+                              <Lock size={18} className="text-[var(--accent-color)]" />
+                            </div>
+                            <h2 className="text-base font-semibold text-[var(--text-primary)]">Set a PIN</h2>
+                            <p className="text-xs text-[var(--text-muted)] text-center">
+                              Create a 4–8 digit PIN to lock the app on launch.
                             </p>
                           </div>
-                          <Toggle
-                            on={dbSettings.touch_id_enabled}
-                            disabled={!dbSettings.pin_lock_enabled}
-                            onToggle={() => {
-                              if (!dbSettings.pin_lock_enabled) { return; }
-                              set("touch_id_enabled", !dbSettings.touch_id_enabled);
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
 
-                    {/* ── PIN Passcode ── */}
-                    <div className={`rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3 transition-opacity ${pinConfigured && !dbSettings.pin_lock_enabled ? "opacity-40 pointer-events-none" : ""}`}>
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">PIN passcode</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-sm">
-                            4 to 8 digits. Stored as a hash, never plaintext.
-                          </p>
-                        </div>
-                        <span className={`text-[11px] px-2 py-1 rounded-full border ${dbSettings.pin_lock_enabled
-                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                          : pinConfigured
-                            ? "border-sky-500/30 bg-sky-500/10 text-sky-400"
-                            : "border-[var(--border-color)] text-[var(--text-muted)]"
-                          }`}>
-                          {dbSettings.pin_lock_enabled ? "Enabled" : pinConfigured ? "Saved" : "Not set"}
-                        </span>
-                      </div>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-xs text-[var(--text-secondary)] mb-1 block">PIN</label>
+                              <input
+                                type="password"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                value={newPin}
+                                onChange={(e) => { setNewPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
+                                placeholder="4 to 8 digits"
+                                autoFocus
+                                className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-secondary)] mb-1 block">Confirm PIN</label>
+                              <input
+                                type="password"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                value={confirmPin}
+                                onChange={(e) => { setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
+                                placeholder="Repeat PIN"
+                                className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                              />
+                            </div>
+                          </div>
 
-                      {pinConfigured && (
-                        <div>
-                          <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Current PIN</label>
-                          <input
-                            type="password"
-                            inputMode="numeric"
-                            autoComplete="one-time-code"
-                            value={currentPin}
-                            onChange={(e) => { setCurrentPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
-                            placeholder="Current PIN"
-                            className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                          />
-                        </div>
-                      )}
+                          {pinMessage && (
+                            <p className={`text-xs ${pinMessage.type === "success" ? "text-emerald-400" : "text-red-400"}`}>
+                              {pinMessage.text}
+                            </p>
+                          )}
 
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">{pinConfigured ? "New PIN" : "PIN"}</label>
-                          <input
-                            type="password"
-                            inputMode="numeric"
-                            autoComplete="one-time-code"
-                            value={newPin}
-                            onChange={(e) => { setNewPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
-                            placeholder="4 to 8 digits"
-                            className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Confirm PIN</label>
-                          <input
-                            type="password"
-                            inputMode="numeric"
-                            autoComplete="one-time-code"
-                            value={confirmPin}
-                            onChange={(e) => { setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setPinMessage(null); }}
-                            placeholder="Repeat PIN"
-                            className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                          />
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => { setShowPinSetupModal(false); resetPinForm(); setPinMessage(null); }}
+                              disabled={pinSaving}
+                              className="flex-1 py-2 rounded-lg border border-[var(--border-color)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-60"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSetPinFromModal}
+                              disabled={pinSaving}
+                              className="flex-1 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-60"
+                            >
+                              {pinSaving ? "Saving..." : "Enable Lock"}
+                            </button>
+                          </div>
                         </div>
                       </div>
-
-                      {pinMessage && (
-                        <p className={`text-xs ${pinMessage.type === "success" ? "text-emerald-400" : "text-red-400"
-                          }`}>
-                          {pinMessage.text}
-                        </p>
-                      )}
-
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={handleSetPin}
-                          disabled={pinSaving}
-                          className="px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-60"
-                        >
-                          {pinSaving ? "Saving..." : pinConfigured ? "Update PIN" : "Save PIN"}
-                        </button>
-                        {pinConfigured && (
-                          <button
-                            onClick={handleRemovePin}
-                            disabled={pinSaving}
-                            className="px-3.5 py-2 rounded-lg border border-[var(--border-color)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-60"
-                          >
-                            Remove PIN
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* ── Auto-lock ── */}
-                    <div className={`space-y-2 transition-opacity ${!anyLockEnabled ? "opacity-40 pointer-events-none" : ""}`}>
-                      <div>
-                        <label className="text-xs text-[var(--text-secondary)] mb-2 block">Auto-lock</label>
-                        <p className="text-[11px] text-[var(--text-muted)] mb-2">Auto-lock becomes active once a launch lock is enabled.</p>
-                        <div className="flex flex-row flex-wrap gap-x-6 gap-y-2">
-                          <label className="flex items-center gap-2 text-sm cursor-pointer">
-                            <input
-                              type="radio"
-                              name="auto_lock"
-                              checked={dbSettings.auto_lock_minutes === 0}
-                              onChange={() => set("auto_lock_minutes", 0)}
-                              disabled={!anyLockEnabled}
-                              className="accent-[var(--accent-color)]"
-                            />
-                            <span className="text-[var(--text-secondary)]">Off</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-sm cursor-pointer">
-                            <input
-                              type="radio"
-                              name="auto_lock"
-                              checked={dbSettings.auto_lock_minutes > 0}
-                              onChange={() => set("auto_lock_minutes", dbSettings.auto_lock_minutes > 0 ? dbSettings.auto_lock_minutes : 5)}
-                              disabled={!anyLockEnabled}
-                              className="accent-[var(--accent-color)]"
-                            />
-                            <span className="text-[var(--text-secondary)]">Lock after</span>
-                            {dbSettings.auto_lock_minutes > 0 && (
-                              <span className="flex items-center gap-2">
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={1440}
-                                  value={dbSettings.auto_lock_minutes}
-                                  disabled={!anyLockEnabled}
-                                  onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    if (val > 0) { set("auto_lock_minutes", val); }
-                                  }}
-                                  className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                                />
-                                <span className="text-xs text-[var(--text-secondary)]">minutes</span>
-                              </span>
-                            )}
-                          </label>
-                        </div>
-                      </div>
-                    </div>
+                    )}
                   </>
                 )}
 

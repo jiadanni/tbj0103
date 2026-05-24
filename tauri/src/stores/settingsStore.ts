@@ -52,6 +52,8 @@ interface AppSettings {
   quickSearchShortcut: string;
   suppressedOversizedModels: string[];
   showStatusBar: boolean;
+  userChatLabel: string;
+  assistantChatLabel: string;
 }
 
 interface SettingsStore extends AppSettings {
@@ -101,6 +103,8 @@ interface SettingsStore extends AppSettings {
   addSuppressedOversizedModel: (model: string) => void;
   clearSuppressedOversizedModels: () => void;
   setShowStatusBar: (v: boolean) => void;
+  setUserChatLabel: (v: string) => void;
+  setAssistantChatLabel: (v: string) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -150,6 +154,8 @@ export const useSettingsStore = create<SettingsStore>()(
       quickSearchShortcut: "CmdOrCtrl+Shift+K",
       suppressedOversizedModels: [],
       showStatusBar: true,
+      userChatLabel: "You",
+      assistantChatLabel: "Assistant",
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setQuickSearchWorkspaceScope: (quickSearchWorkspaceScope) => set({ quickSearchWorkspaceScope }),
@@ -209,6 +215,8 @@ export const useSettingsStore = create<SettingsStore>()(
       )),
       clearSuppressedOversizedModels: () => set({ suppressedOversizedModels: [] }),
       setShowStatusBar: (showStatusBar) => set({ showStatusBar }),
+      setUserChatLabel: (userChatLabel) => set({ userChatLabel }),
+      setAssistantChatLabel: (assistantChatLabel) => set({ assistantChatLabel }),
     }),
     {
       name: "aetherium-settings",

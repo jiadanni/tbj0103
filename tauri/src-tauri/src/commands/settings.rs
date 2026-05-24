@@ -61,6 +61,8 @@ pub struct Settings {
     pub workspace_glossary_refresh_interval_minutes: u32,
     pub git_sync_interval_minutes: u32,
     pub menubar_icon_style: String,
+    pub user_chat_label: String,
+    pub assistant_chat_label: String,
 }
 
 impl Default for Settings {
@@ -126,6 +128,8 @@ impl Default for Settings {
             workspace_glossary_refresh_interval_minutes: 60,
             git_sync_interval_minutes: 5,
             menubar_icon_style: "monochrome".to_string(),
+            user_chat_label: "You".to_string(),
+            assistant_chat_label: "Assistant".to_string(),
         }
     }
 }
@@ -380,6 +384,12 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
             .unwrap_or(def.git_sync_interval_minutes),
         menubar_icon_style: get_setting(&conn, "menubar_icon_style")
             .unwrap_or_else(|| def.menubar_icon_style.clone()),
+        user_chat_label: get_setting(&conn, "user_chat_label")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.user_chat_label),
+        assistant_chat_label: get_setting(&conn, "assistant_chat_label")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.assistant_chat_label),
     })
 }
 
@@ -665,6 +675,16 @@ pub fn update_settings(
         &conn,
         "menubar_icon_style",
         &serde_json::to_string(&settings.menubar_icon_style).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "user_chat_label",
+        &serde_json::to_string(&settings.user_chat_label).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "assistant_chat_label",
+        &serde_json::to_string(&settings.assistant_chat_label).unwrap(),
     )?;
 
     if settings.start_at_login {
