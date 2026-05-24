@@ -207,6 +207,10 @@ body {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.prose h1 { font-size: 1.15em; font-weight: 700; }
+.prose h2 { font-size: 1.1em; font-weight: 650; }
+.prose h3 { font-size: 1.05em; font-weight: 650; }
+.prose h4, .prose h5, .prose h6 { font-size: 1em; font-weight: 600; }
 .prose a {
   color: var(--link-color);
 }
