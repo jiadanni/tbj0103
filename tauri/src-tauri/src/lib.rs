@@ -667,6 +667,7 @@ pub fn run() {
             commands::ai_model::record_model_token_usage,
             commands::ai_model::list_model_speed_stats,
             // AI knowledge commands
+            commands::ai_knowledge::check_workspace_analyzable,
             commands::ai_knowledge::analyze_workspace,
             commands::ai_knowledge::analyze_workspace_chunked,
             commands::ai_knowledge::analyze_descendants,

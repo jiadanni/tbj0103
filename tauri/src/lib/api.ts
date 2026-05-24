@@ -1432,6 +1432,10 @@ export const api = {
           survey_context: opts?.surveyContext,
         },
       }),
+    checkWorkspaceAnalyzable: (workspaceId: string) =>
+      invoke<{ ready: boolean; item_count: number; char_count: number }>("check_workspace_analyzable", {
+        workspace_id: workspaceId,
+      }),
     suggestGoals: (workspaceId: string, model: string, ollamaUrl?: string, surveyContext?: string) =>
       invoke<SuggestedGoal[]>("suggest_learning_goals", {
         req: { workspace_id: workspaceId, model, ollama_url: ollamaUrl, survey_context: surveyContext },
