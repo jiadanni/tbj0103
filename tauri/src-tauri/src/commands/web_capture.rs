@@ -1,5 +1,6 @@
 use crate::db::DbState;
 use crate::models::source::WebCapture;
+use crate::services::ai_content_generator::generate_summary;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
 use tauri::State;
 
@@ -14,13 +15,22 @@ pub fn create_web_capture(
 ) -> Result<WebCapture, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
+
+    let summary_val = summary.or_else(|| {
+        if !content.is_empty() {
+            Some(generate_summary(&content, 200))
+        } else {
+            None
+        }
+    });
+
     let capture = WebCapture {
         id: uuid::Uuid::new_v4().to_string(),
         workspace_id,
         url,
         title,
         content,
-        summary,
+        summary: summary_val,
         favicon_data: None,
         is_processed: false,
         created_at: now.clone(),
