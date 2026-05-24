@@ -784,7 +784,7 @@ export default function ImportSettingsSection() {
         <h1 className="text-sm font-semibold text-[var(--text-primary)]">Import</h1>
       </div>
 
-      <div className={`${claudeFolderPath ? "flex-1 overflow-hidden" : ""} flex flex-col px-5 py-4 gap-3`}>
+      <div className={`${claudeFolderPath ? "flex-1 overflow-hidden" : "flex-1 overflow-y-auto"} flex flex-col px-5 py-4 gap-3`}>
         {error && (
           <div className="shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
             {error}
@@ -1010,7 +1010,7 @@ export default function ImportSettingsSection() {
 
         {/* ── Google Takeout preview (below grid, only when a file was scanned) ── */}
         {geminiPreviews.length > 0 && (
-          <section className="flex-1 min-h-0 max-w-4xl rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-3 overflow-hidden">
+          <section className="flex-1 min-h-[450px] max-w-4xl rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-3 overflow-hidden">
             <ImportConversationPreview
               conversations={geminiPreviews}
               selected={geminiSelected}
@@ -1040,7 +1040,7 @@ export default function ImportSettingsSection() {
 
         {/* ── Claude Desktop detail (below grid, flex-fill) ──────────────────── */}
         {claudeFolderPath && claudeFilesFound && (
-          <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto pr-1">
             {/* Folder info + toggles */}
             <div className="shrink-0 flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
               <div className="flex items-center justify-between gap-2">
@@ -1051,13 +1051,6 @@ export default function ImportSettingsSection() {
                     {claudeDetectedFormat === "v2" ? "v2 (2026+)" : "legacy"}
                   </span>
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {(["conversations", "projects", "memories"] as const).map((k) => (
-                  <span key={k} className={`text-[11px] ${claudeFilesFound[k] ? "text-green-400" : "text-[var(--text-muted)] line-through"}`}>
-                    {claudeFilesFound[k] ? "✓" : "✗"} {k}
-                  </span>
-                ))}
               </div>
               <div className="flex flex-wrap gap-4">
                 {([
@@ -1073,7 +1066,7 @@ export default function ImportSettingsSection() {
                       onChange={(e) => item.set(e.target.checked)}
                       className="rounded"
                     />
-                    <span className={`text-xs ${item.available ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
+                    <span className={`text-xs ${item.available ? "text-[var(--text-primary)]" : "text-[var(--text-muted)] line-through"}`}>
                       {item.label}
                     </span>
                   </label>
@@ -1083,7 +1076,7 @@ export default function ImportSettingsSection() {
 
             {/* ── Per-project rows ─────────────────────────────── */}
             {claudeProjects.length > 0 && (
-              <div className="shrink-0 flex flex-col gap-2">
+              <div className="flex-1 min-h-[400px] flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-[var(--text-primary)]">
                     Projects ({claudeSelectedFolders.size}/{claudeProjects.length})
