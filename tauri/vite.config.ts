@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve, dirname } from "path";
@@ -9,6 +10,9 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
   clearScreen: false,
+  resolve: {
+    alias: { "@": resolve(__dirname, "src") },
+  },
   optimizeDeps: {
     entries: [resolve(__dirname, "index.html"), resolve(__dirname, "quick-search.html"), resolve(__dirname, "preferences.html")],
   },
@@ -41,6 +45,16 @@ export default defineConfig(async () => ({
       : undefined,
     watch: {
       ignored: ["**/src-tauri/**"],
+    },
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/tests/setup.ts"],
+    include: ["src/tests/**/*.test.ts", "src/tests/**/*.test.tsx"],
+    coverage: {
+      provider: "v8",
+      include: ["src/stores/**", "src/hooks/**", "src/lib/platform.ts"],
     },
   },
 }));
