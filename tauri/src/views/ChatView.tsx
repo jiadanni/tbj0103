@@ -2328,8 +2328,8 @@ export default function ChatView() {
   }, [setPreferredModel]);
 
   // Persist other settings
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const persistSetting = useCallback(async (key: keyof AppSettings, value: any) => {
+
+  const persistSetting = useCallback(async (key: keyof AppSettings, value: unknown) => {
     try {
       const current = await api.settings.get();
       if (current[key] !== value) {
@@ -2565,8 +2565,8 @@ export default function ChatView() {
         {children}
       </a>
     ),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    code: ({ node: _node, inline, className, children, ...props }: any) => {
+
+    code: ({ node: _node, inline, className, children, ...props }: Record<string, unknown> & { inline?: boolean, className?: string, children?: React.ReactNode }) => {
       const match = /language-(\w+)/.exec(className || "");
       const lang = match ? match[1] : "";
       const content = String(children).replace(/\n$/, "");
@@ -4453,9 +4453,9 @@ export default function ChatView() {
       ]);
       setCompareResponseA(resA);
       setCompareResponseB(resB);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      setCompareError(err?.message ?? String(err));
+
+    } catch (err) {
+      setCompareError(err instanceof Error ? err.message : String(err));
     } finally {
       setCompareLoading(false);
     }

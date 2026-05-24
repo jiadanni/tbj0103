@@ -57,6 +57,7 @@ vi.mock("@/lib/api", () => ({
     },
     knowledge: {
       analyzeWorkspace: mocks.analyzeWorkspace,
+      checkWorkspaceAnalyzable: vi.fn().mockResolvedValue({ ready: true }),
     },
     ollama: {
       listModels: mocks.ollamaListModels,

@@ -69,8 +69,8 @@ export interface ChatMessageBubbleProps {
   messageSources: Record<string, SearchResult[]>;
   expandedSources: string | null;
   contextSources: ContextSources | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  markdownComponents: any;
+
+  markdownComponents: Record<string, React.ElementType>;
   variations?: Message[];
   currentVariationIndex?: number;
   redoPickerOpen?: boolean;
