@@ -7,7 +7,7 @@ import { useLocation } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -2127,19 +2127,22 @@ export default function PreferencesView() {
                             Auto-navigate to a section when switching workspaces, or stay on the current view.
                           </p>
                         </div>
-                        <select
-                          value={switchWorkspaceSection}
-                          onChange={(e) => set("switch_workspace_section", e.target.value)}
-                          className="text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        >
-                          <option value="">Stay on current</option>
-                          <option value="/folder">Dashboard</option>
-                          <option value="/chat">Chat</option>
-                          <option value="/notes">Notes</option>
-                          <option value="/sources">Sources</option>
-                          <option value="/graph">Knowledge</option>
-                          <option value="/history">History</option>
-                        </select>
+                        <div className="relative">
+                          <select
+                            value={switchWorkspaceSection}
+                            onChange={(e) => set("switch_workspace_section", e.target.value)}
+                            className="appearance-none cursor-pointer text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg pl-2 pr-7 py-1 text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                          >
+                            <option value="">Stay on current</option>
+                            <option value="/folder">Dashboard</option>
+                            <option value="/chat">Chat</option>
+                            <option value="/notes">Notes</option>
+                            <option value="/sources">Sources</option>
+                            <option value="/graph">Knowledge</option>
+                            <option value="/history">History</option>
+                          </select>
+                          <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                        </div>
                       </div>
 
                       <div>
