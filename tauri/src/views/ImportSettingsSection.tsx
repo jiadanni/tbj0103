@@ -1105,14 +1105,17 @@ export default function ImportSettingsSection() {
                     </button>
                   ))}
                   {(bulkDestType === "new-sub-workspace" || bulkDestType === "folder-in-sub") && (
-                    <select
-                      value={bulkParentId ?? ""}
-                      onChange={(e) => setBulkParentId(e.target.value || null)}
-                      className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-xs text-[var(--text-primary)]"
-                    >
-                      <option value="">Select workspace…</option>
-                      {rootWorkspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                    </select>
+                    <div className="relative">
+                      <select
+                        value={bulkParentId ?? ""}
+                        onChange={(e) => setBulkParentId(e.target.value || null)}
+                        className="appearance-none cursor-pointer rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-2 pr-7 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                      >
+                        <option value="">Select workspace…</option>
+                        {rootWorkspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                      </select>
+                      <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                    </div>
                   )}
                   <button
                     onClick={applyBulkDestination}
@@ -1244,25 +1247,31 @@ export default function ImportSettingsSection() {
 
                               <div className="flex flex-wrap items-center gap-2">
                                 {(dest.type === "new-sub-workspace" || dest.type === "folder-in-sub") && (
-                                  <select
-                                    value={dest.parentId ?? ""}
-                                    onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, parentId: e.target.value || null, subWorkspaceId: null } }))}
-                                    className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)]"
-                                  >
-                                    <option value="">Select workspace…</option>
-                                    {rootWorkspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                                  </select>
+                                  <div className="relative">
+                                    <select
+                                      value={dest.parentId ?? ""}
+                                      onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, parentId: e.target.value || null, subWorkspaceId: null } }))}
+                                      className="appearance-none cursor-pointer rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-2 pr-7 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                                    >
+                                      <option value="">Select workspace…</option>
+                                      {rootWorkspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                                    </select>
+                                    <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                  </div>
                                 )}
                                 {dest.type === "folder-in-sub" && (
-                                  <select
-                                    value={dest.subWorkspaceId ?? ""}
-                                    disabled={!dest.parentId}
-                                    onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, subWorkspaceId: e.target.value || null } }))}
-                                    className="rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)] disabled:opacity-40"
-                                  >
-                                    <option value="">{dest.parentId ? (subWsOptions.length ? "Select sub-workspace…" : "No sub-workspaces yet") : "Pick workspace first"}</option>
-                                    {subWsOptions.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                                  </select>
+                                  <div className="relative">
+                                    <select
+                                      value={dest.subWorkspaceId ?? ""}
+                                      disabled={!dest.parentId}
+                                      onChange={(e) => setProjectDestinations((prev) => ({ ...prev, [proj.uuid]: { ...dest, subWorkspaceId: e.target.value || null } }))}
+                                      className="appearance-none cursor-pointer rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-2 pr-7 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                      <option value="">{dest.parentId ? (subWsOptions.length ? "Select sub-workspace…" : "No sub-workspaces yet") : "Pick workspace first"}</option>
+                                      {subWsOptions.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                                    </select>
+                                    <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                  </div>
                                 )}
                                 <div className="flex items-center gap-1">
                                   <span className="text-[11px] text-[var(--text-muted)]">Name:</span>
@@ -1564,27 +1573,30 @@ export default function ImportSettingsSection() {
                                       </span>
                                     )}
                                   </div>
-                                  <select
-                                    value={assigned ?? ""}
-                                    onChange={(e) => {
-                                      const v = e.target.value || null;
-                                      setChatAssignments((prev) => ({ ...prev, [conv.uuid]: v }));
-                                      // If assigned to a project, untick from the "import as unassigned" set.
-                                      if (v) {
-                                        setClaudeSelected((prev) => {
-                                          const next = new Set(prev);
-                                          next.delete(conv.uuid);
-                                          return next;
-                                        });
-                                      }
-                                    }}
-                                    className="shrink-0 rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-primary)] max-w-[180px]"
-                                  >
-                                    <option value="">— Unassigned —</option>
-                                    {claudeProjects.map((p) => (
-                                      <option key={p.uuid} value={p.uuid}>{p.name}</option>
-                                    ))}
-                                  </select>
+                                  <div className="relative shrink-0 max-w-[180px]">
+                                    <select
+                                      value={assigned ?? ""}
+                                      onChange={(e) => {
+                                        const v = e.target.value || null;
+                                        setChatAssignments((prev) => ({ ...prev, [conv.uuid]: v }));
+                                        // If assigned to a project, untick from the "import as unassigned" set.
+                                        if (v) {
+                                          setClaudeSelected((prev) => {
+                                            const next = new Set(prev);
+                                            next.delete(conv.uuid);
+                                            return next;
+                                          });
+                                        }
+                                      }}
+                                      className="w-full appearance-none cursor-pointer rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-2 pr-7 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                                    >
+                                      <option value="">— Unassigned —</option>
+                                      {claudeProjects.map((p) => (
+                                        <option key={p.uuid} value={p.uuid}>{p.name}</option>
+                                      ))}
+                                    </select>
+                                    <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                  </div>
                                   <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{conv.message_count} msg{conv.message_count === 1 ? "" : "s"}</span>
                                 </div>
                               );
