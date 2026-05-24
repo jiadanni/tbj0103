@@ -895,12 +895,69 @@ pub fn import_multiple_folders(
     }))
 }
 
-/// Import a Gemini Takeout folder into a new or existing "Gemini Apps" workspace.
-/// Searches for `My Activity.html` within the folder.
+/// Preview a Gemini Takeout HTML file — returns conversation summaries for selection.
+#[tauri::command]
+pub fn preview_gemini_takeout(file_path: String) -> Result<serde_json::Value, String> {
+    let html_file = validate_user_path(&file_path, true)?;
+    if !html_file.is_file() {
+        return Err(format!("{} is not a file", file_path));
+    }
+
+    let html_bytes =
+        std::fs::read(&html_file).map_err(|e| format!("Failed to read file: {}", e))?;
+    let html = String::from_utf8_lossy(&html_bytes).to_string();
+
+    let sessions = chat_file_store::parse_gemini_takeout(&html)?;
+    if sessions.is_empty() {
+        let has_outer_cell = html.contains("outer-cell");
+        let has_prompted = html.contains("Prompted") || html.contains("prompted");
+        let has_content_cell = html.contains("content-cell");
+        let file_len = html.len();
+        return Err(format!(
+            "No conversations found in the selected HTML file. \
+             (file size: {} bytes, has outer-cell: {}, has content-cell: {}, has Prompted: {})",
+            file_len, has_outer_cell, has_content_cell, has_prompted
+        ));
+    }
+
+    let previews: Vec<serde_json::Value> = sessions
+        .iter()
+        .map(|s| {
+            let first_user = s.messages.iter()
+                .find(|m| m.role == "user")
+                .map(|m| {
+                    let chars: String = m.content.chars().take(280).collect();
+                    chars
+                })
+                .unwrap_or_default();
+            let messages: Vec<serde_json::Value> = s.messages.iter()
+                .map(|m| serde_json::json!({ "role": m.role, "content": m.content }))
+                .collect();
+            serde_json::json!({
+                "uuid": s.id,
+                "name": s.title,
+                "message_count": s.messages.len(),
+                "created_at": s.created_at,
+                "updated_at": s.updated_at,
+                "first_user_message": first_user,
+                "messages": messages,
+            })
+        })
+        .collect();
+
+    Ok(serde_json::json!({
+        "conversations": previews,
+        "total": previews.len(),
+    }))
+}
+
+/// Import a Gemini Takeout file into a new or existing workspace.
+/// Accepts optional `selected_ids` to import only chosen conversations.
 #[tauri::command]
 pub fn import_gemini_takeout(
     file_path: String,
     workspace_name: Option<String>,
+    selected_ids: Option<Vec<String>>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
@@ -926,6 +983,11 @@ pub fn import_gemini_takeout(
             file_len, has_outer_cell, has_content_cell, has_prompted
         ));
     }
+
+    // Filter to selected IDs if provided
+    let id_filter: Option<std::collections::HashSet<&str>> = selected_ids
+        .as_ref()
+        .map(|ids| ids.iter().map(|s| s.as_str()).collect());
 
     let workspace_name = workspace_name.unwrap_or_else(|| "Gemini Apps".to_string());
     let now = chrono::Utc::now().to_rfc3339();
@@ -955,6 +1017,13 @@ pub fn import_gemini_takeout(
     let mut errors = Vec::new();
 
     for data in &sessions {
+        // Skip if not in selection
+        if let Some(ref filter) = id_filter {
+            if !filter.contains(data.id.as_str()) {
+                continue;
+            }
+        }
+
         // Duplicate detection: same title + created_at in same workspace (like LM Studio)
         let duplicate: bool = conn.query_row(
             "SELECT 1 FROM chat_sessions WHERE workspace_id = ?1 AND title = ?2 AND created_at = ?3 AND is_imported = 1 LIMIT 1",

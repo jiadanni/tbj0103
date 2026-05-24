@@ -686,6 +686,7 @@ pub fn run() {
             commands::chat_file::preview_lmstudio_folder,
             commands::chat_file::import_lmstudio_folder,
             commands::chat_file::import_multiple_folders,
+            commands::chat_file::preview_gemini_takeout,
             commands::chat_file::import_gemini_takeout,
             commands::chat_file::import_claude_files,
             commands::chat_file::preview_claude_files,

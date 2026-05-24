@@ -287,7 +287,7 @@ The schema is defined in [src-tauri/src/schema.sql](src-tauri/src/schema.sql) an
 - **Quick Search** — dedicated search window with indexed documents
 - **Daily Notes** — date-stamped notes with templates
 - **Folders** — workspace sub-organization with custom instructions and colors
-- **Chat Import** — import conversations from Claude, LM Studio, and Google Gemini Takeout
+- **Chat Import** — import conversations from Claude, LM Studio, and Google Gemini (via Takeout)
 - **Git Sync** — version-controlled workspace sync
 - **Backups** — incremental snapshot system with global and per-workspace restore
 - **Recycle Bin** — soft-delete recovery
