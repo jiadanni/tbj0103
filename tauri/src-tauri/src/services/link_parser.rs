@@ -218,3 +218,31 @@ mod tests {
         assert_eq!(mentions.len(), 2);
     }
 }
+
+    #[test]
+    fn test_extract_wiki_links_edge_cases() {
+        let text = "Empty [[]] and whitespace [[ ]] and duplicate [[A]] [[A]].";
+        let links = extract_wiki_links(text);
+        assert_eq!(links.len(), 3); // Regex matches whitespace, need to trim
+        assert_eq!(links[0].name, "");
+        assert_eq!(links[1].name, "A");
+        assert_eq!(links[2].name, "A");
+    }
+
+    #[test]
+    fn test_parse_markdown_spans() {
+        let text = "Here is **bold** and *italic* and `code` and [[link]].\n# Header";
+        let spans = parse_markdown_spans(text);
+
+        let has_bold = spans.iter().any(|s| s.span_type == MarkdownSpanType::Bold);
+        let has_italic = spans.iter().any(|s| s.span_type == MarkdownSpanType::Italic);
+        let has_code = spans.iter().any(|s| s.span_type == MarkdownSpanType::Code);
+        let has_wiki = spans.iter().any(|s| s.span_type == MarkdownSpanType::WikiLink);
+        let has_header = spans.iter().any(|s| s.span_type == MarkdownSpanType::Header);
+
+        assert!(has_bold);
+        assert!(has_italic);
+        assert!(has_code);
+        assert!(has_wiki);
+        assert!(has_header);
+    }
