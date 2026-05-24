@@ -334,8 +334,16 @@ pub fn run() {
 
                 #[cfg(target_os = "linux")]
                 {
+                    use std::sync::{Arc, Mutex};
+
                     let app_handle = app.handle().clone();
                     let main_window = window.clone();
+                    // Holds the handle of the pending debounced save task so it can be
+                    // cancelled and rescheduled on every resize/move event, preventing
+                    // rapid-fire GTK API calls that corrupt glibc's allocator on X11.
+                    let pending: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>> =
+                        Arc::new(Mutex::new(None));
+
                     window.on_window_event(move |event| {
                         let should_persist = matches!(
                             event,
@@ -345,9 +353,29 @@ pub fn run() {
                             return;
                         }
 
-                        let db_state = app_handle.state::<db::DbState>();
-                        if let Ok(conn) = db_state.0.get() {
-                            let _ = save_main_window_state(&conn, &main_window);
+                        if let Ok(mut guard) = pending.lock() {
+                            if let Some(handle) = guard.take() {
+                                handle.abort();
+                            }
+                        }
+
+                        let app_handle2 = app_handle.clone();
+                        let main_window2 = main_window.clone();
+                        let pending2 = pending.clone();
+
+                        let handle = tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                            let db_state = app_handle2.state::<db::DbState>();
+                            if let Ok(conn) = db_state.0.get() {
+                                let _ = save_main_window_state(&conn, &main_window2);
+                            }
+                            if let Ok(mut guard) = pending2.lock() {
+                                *guard = None;
+                            }
+                        });
+
+                        if let Ok(mut guard) = pending.lock() {
+                            *guard = Some(handle);
                         }
                     });
                 }

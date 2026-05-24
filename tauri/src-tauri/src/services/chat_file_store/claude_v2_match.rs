@@ -187,12 +187,11 @@ pub async fn suggest_project_with_embeddings(
             "{} {} {} {}",
             proj.name, proj.prompt_template, proj.description, memory
         );
-        match ollama
+        if let Ok(emb) = ollama
             .generate_embedding_with_options("claude_import_match", model, &text, Some("5m"))
             .await
         {
-            Ok(emb) => project_embeddings.push((proj.uuid.clone(), emb)),
-            Err(_) => {} // skip projects we can't embed; they won't match anything
+            project_embeddings.push((proj.uuid.clone(), emb));
         }
     }
 
