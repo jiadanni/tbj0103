@@ -34,7 +34,7 @@
 }
 
 :root[data-platform="linux"] {
-  --app-font-family: system-ui, "Noto Sans", "Ubuntu", "Liberation Sans", sans-serif;
+  --app-font-family: "Noto Sans", system-ui, "Liberation Sans", sans-serif;
 }
 
 /* System theme (default) */
@@ -150,12 +150,14 @@ html, body, #root {
 body {
   font-family: var(--app-font-family);
   font-size: var(--font-size-base, 14px);
-  -webkit-font-smoothing: antialiased;
 }
 
 :root[data-platform="linux"] body {
-  text-rendering: optimizeLegibility;
   font-synthesis: none;
+}
+
+:root[data-platform="linux"] [data-virtuoso-scroller] {
+  will-change: transform;
 }
 
 /* =====================================================
@@ -218,12 +220,14 @@ body {
   color: var(--text-primary);
   max-width: 100%;
   overflow-x: auto;
+  font-family: "JetBrains Mono", "JetBrainsMono NF", monospace;
 }
 .prose code:not(pre code) {
   @apply px-1.5 py-0.5 rounded text-sm;
   background-color: var(--bg-secondary);
   color: var(--accent-color);
   font-weight: normal;
+  font-family: "JetBrains Mono", "JetBrainsMono NF", monospace;
 }
 .prose table {
   @apply my-3 w-full text-sm border-collapse;
