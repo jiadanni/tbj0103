@@ -42,10 +42,10 @@ function MetricCard({
   accent: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
-      <div className={`mb-3 h-2 w-2 rounded-full ${accent}`} />
-      <div className="text-3xl font-semibold text-[var(--text-primary)]">{value}</div>
-      <div className="mt-1 text-xs text-[var(--text-muted)]">{label}</div>
+    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+      <div className={`mb-2 h-1.5 w-1.5 rounded-full ${accent}`} />
+      <div className="text-2xl font-semibold text-[var(--text-primary)]">{value}</div>
+      <div className="mt-0.5 text-xs text-[var(--text-muted)]">{label}</div>
     </div>
   );
 }
@@ -60,14 +60,14 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5">
-      <div className="mb-4">
+    <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+      <div className="mb-3">
         {eyebrow && (
-          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
             {eyebrow}
           </div>
         )}
-        <h2 className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{title}</h2>
+        <h2 className="mt-0.5 text-base font-semibold text-[var(--text-primary)]">{title}</h2>
       </div>
       {children}
     </section>
@@ -211,18 +211,18 @@ export default function FolderDashboardView() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-6">
-        <header className="rounded-[28px] border border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(255,255,255,0)_50%),var(--bg-elevated)] p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-4">
+        <header className="rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(255,255,255,0)_50%),var(--bg-elevated)] p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-3xl">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                 Dashboard
               </div>
-              <h1 className="mt-2 text-3xl font-semibold text-[var(--text-primary)]">
+              <h1 className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
                 {effectiveSummary.workspace_name || workspace?.name || "Learning workspace"}
               </h1>
               {workspace?.description && (
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
+                <p className="mt-1.5 max-w-2xl text-sm leading-5 text-[var(--text-secondary)]">
                   {workspace.description}
                 </p>
               )}
@@ -264,7 +264,7 @@ export default function FolderDashboardView() {
           </div>
         </header>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard label="Due Review" value={effectiveSummary.review.due_today} accent="bg-[var(--accent-color)]" />
           <MetricCard label="Active Goals" value={effectiveSummary.overview.active_goals} accent="bg-[var(--accent-color)]" />
           <MetricCard label="Concepts Tracked" value={effectiveSummary.overview.concepts} accent="bg-[var(--accent-color)]" />
@@ -273,44 +273,45 @@ export default function FolderDashboardView() {
 
         <Section title="Continue Learning">
             {continueLearning ? (
-              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
-                    <MessageSquare size={18} />
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
+                    <MessageSquare size={15} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-[var(--text-primary)]">
                       {continueLearning.title}
                     </div>
-                    <div className="mt-1 text-sm text-[var(--text-secondary)]">
-                      {continueLearning.folder_name || "Workspace thread"}
-                    </div>
-                    <div className="mt-3 text-xs text-[var(--text-muted)]">
-                      Last touched {timeAgo(continueLearning.updated_at)}
+                    <div className="text-xs text-[var(--text-secondary)]">
+                      {continueLearning.folder_name || "Workspace thread"} · {timeAgo(continueLearning.updated_at)}
                     </div>
                   </div>
+                  <button
+                    onClick={() => openRoute(continueLearning.route)}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                  >
+                    Open
+                    <ArrowRight size={12} />
+                  </button>
                 </div>
-                <button
-                  onClick={() => openRoute(continueLearning.route)}
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                >
-                  Open thread
-                  <ArrowRight size={14} />
-                </button>
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4">
-                <div className="text-sm font-medium text-[var(--text-primary)]">Nothing to resume yet</div>
-                <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                  Start with search or chat. The dashboard will begin surfacing continuation and review opportunities automatically.
+              <div className="rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-[var(--text-primary)]">Nothing to resume yet</div>
+                    <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                      Start with search or chat — the dashboard will surface continuations automatically.
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate("/chat")}
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-2.5 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+                  >
+                    <Search size={12} />
+                    Open search
+                  </button>
                 </div>
-                <button
-                  onClick={() => navigate("/chat")}
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-                >
-                  <Search size={14} />
-                  Open search
-                </button>
               </div>
             )}
           </Section>
@@ -351,23 +352,27 @@ export default function FolderDashboardView() {
                 ))}
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4">
-                <div className="text-sm font-medium text-[var(--text-primary)]">No goals yet</div>
-                <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                  Use search naturally first. When you are ready, capture a goal so the dashboard can show momentum and gaps.
+              <div className="rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-[var(--text-primary)]">No goals yet</div>
+                    <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                      Use search naturally first. Capture a goal when you&apos;re ready.
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate("/graph")}
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                  >
+                    <Target size={12} />
+                    Open knowledge
+                  </button>
                 </div>
-                <button
-                  onClick={() => navigate("/graph")}
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                >
-                  <Target size={14} />
-                  Open knowledge
-                </button>
               </div>
             )}
           </Section>
 
-        <footer className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+        <footer className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-secondary)]">
           <BarChart2 size={15} className="text-[var(--text-muted)]" />
           <span>{effectiveSummary.overview.chat_sessions} learning thread{effectiveSummary.overview.chat_sessions === 1 ? "" : "s"}</span>
           <span className="text-[var(--text-muted)]">•</span>
