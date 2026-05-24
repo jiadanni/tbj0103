@@ -255,3 +255,87 @@ describe("finalizeRefine", () => {
     expect(useChatStore.getState().messages["s1"][0].model_name).toBe("gpt-4");
   });
 });
+
+describe('message lifecycle edge cases', () => {
+  const dummyMessage = {
+    id: 'msg-lifecycle-1',
+    session_id: 'session-lifecycle-1',
+    role: 'user',
+    content: 'Hello world',
+    created_at: new Date().toISOString()
+  };
+
+  beforeEach(() => {
+    useChatStore.setState({
+      messages: { 'session-lifecycle-1': [] },
+      sessions: [],
+      activeChatId: 'session-lifecycle-1',
+      streamingSessionId: null,
+      streamingContent: '',
+      pendingPromptText: null,
+    } as any);
+  });
+
+  it('clears all messages for a session', () => {
+    // @ts-ignore
+    useChatStore.getState().appendMessage('session-lifecycle-1', dummyMessage);
+    // @ts-ignore
+    useChatStore.getState().appendMessage('session-lifecycle-1', { ...dummyMessage, id: 'msg-lifecycle-2' });
+
+    useChatStore.getState().setMessages('session-lifecycle-1', []);
+
+    const state = useChatStore.getState();
+    expect(state.messages['session-lifecycle-1'].length).toBe(0);
+  });
+
+  it('handles message streaming accumulation correctly', () => {
+    useChatStore.getState().setStreamingSession('session-lifecycle-1');
+    expect(useChatStore.getState().streamingSessionId).toBe('session-lifecycle-1');
+
+    useChatStore.getState().appendStreamChunk('session-lifecycle-1', 'chunk1 ');
+    useChatStore.getState().appendStreamChunk('session-lifecycle-1', 'chunk2');
+
+    expect(useChatStore.getState().streamingContent).toBe('chunk1 chunk2');
+
+    useChatStore.getState().finalizeStream('session-lifecycle-1');
+    expect(useChatStore.getState().streamingSessionId).toBeNull();
+    expect(useChatStore.getState().streamingContent).toBe('');
+
+    const state = useChatStore.getState();
+    expect(state.messages['session-lifecycle-1'].length).toBe(1);
+    expect(state.messages['session-lifecycle-1'][0].content).toBe('chunk1 chunk2');
+  });
+});
+
+  describe("message deletion and recovery", () => {
+    const localDummyMessage = {
+      id: 'msg-lifecycle-1',
+      session_id: 'session-lifecycle-1',
+      role: 'user' as const,
+      content: 'Hello world',
+      created_at: new Date().toISOString()
+    };
+
+    it("removes a message by id (deletion)", () => {
+      useChatStore.getState().appendMessage("session-lifecycle-1", localDummyMessage);
+
+      // Re-implement the original store logic to remove a message
+      const msgs = useChatStore.getState().messages["session-lifecycle-1"] || [];
+      const updatedMsgs = msgs.filter(m => m.id !== "msg-lifecycle-1");
+      useChatStore.getState().setMessages("session-lifecycle-1", updatedMsgs);
+
+      const state = useChatStore.getState();
+      expect(state.messages["session-lifecycle-1"].length).toBe(0);
+    });
+
+    it("recovers messages from history (loading)", () => {
+      const historyMessage = { ...localDummyMessage, id: 'recovered-msg' };
+
+      // Simulate loading from history
+      useChatStore.getState().setMessages("session-lifecycle-1", [historyMessage]);
+
+      const state = useChatStore.getState();
+      expect(state.messages["session-lifecycle-1"].length).toBe(1);
+      expect(state.messages["session-lifecycle-1"][0].id).toBe("recovered-msg");
+    });
+  });

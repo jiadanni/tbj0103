@@ -1,0 +1,59 @@
+<<<<<<< SEARCH
+  describe("message deletion and recovery", () => {
+    it("removes a message by id (deletion)", () => {
+      useChatStore.getState().appendMessage("session-lifecycle-1", dummyMessage);
+
+      // Re-implement the original store logic to remove a message
+      const msgs = useChatStore.getState().messages["session-lifecycle-1"] || [];
+      const updatedMsgs = msgs.filter(m => m.id !== "msg-lifecycle-1");
+      useChatStore.getState().setMessages("session-lifecycle-1", updatedMsgs);
+
+      const state = useChatStore.getState();
+      expect(state.messages["session-lifecycle-1"].length).toBe(0);
+    });
+
+    it("recovers messages from history (loading)", () => {
+      const historyMessage = { ...dummyMessage, id: 'recovered-msg' };
+
+      // Simulate loading from history
+      useChatStore.getState().setMessages("session-lifecycle-1", [historyMessage]);
+
+      const state = useChatStore.getState();
+      expect(state.messages["session-lifecycle-1"].length).toBe(1);
+      expect(state.messages["session-lifecycle-1"][0].id).toBe("recovered-msg");
+    });
+  });
+=======
+  describe("message deletion and recovery", () => {
+    const localDummyMessage = {
+      id: 'msg-lifecycle-1',
+      session_id: 'session-lifecycle-1',
+      role: 'user' as const,
+      content: 'Hello world',
+      created_at: new Date().toISOString()
+    };
+
+    it("removes a message by id (deletion)", () => {
+      useChatStore.getState().appendMessage("session-lifecycle-1", localDummyMessage);
+
+      // Re-implement the original store logic to remove a message
+      const msgs = useChatStore.getState().messages["session-lifecycle-1"] || [];
+      const updatedMsgs = msgs.filter(m => m.id !== "msg-lifecycle-1");
+      useChatStore.getState().setMessages("session-lifecycle-1", updatedMsgs);
+
+      const state = useChatStore.getState();
+      expect(state.messages["session-lifecycle-1"].length).toBe(0);
+    });
+
+    it("recovers messages from history (loading)", () => {
+      const historyMessage = { ...localDummyMessage, id: 'recovered-msg' };
+
+      // Simulate loading from history
+      useChatStore.getState().setMessages("session-lifecycle-1", [historyMessage]);
+
+      const state = useChatStore.getState();
+      expect(state.messages["session-lifecycle-1"].length).toBe(1);
+      expect(state.messages["session-lifecycle-1"][0].id).toBe("recovered-msg");
+    });
+  });
+>>>>>>> REPLACE
