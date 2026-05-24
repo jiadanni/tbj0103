@@ -8,11 +8,11 @@ describe('modelFamilyGrouping', () => {
       model_id: 'llama-3:8b',
       name: 'Llama 3 8B',
       provider: 'ollama',
-      description: null,
-      context_length: 4096,
-      size_bytes: null,
-      parameter_size: null,
-      quantization_level: null,
+      id: "", is_paid: false, is_hidden: false, tokens_used_total: 0, created_at: "",
+      context_size: 4096,
+
+
+
       enabled: true,
       role_tags: [],
       priority: 1
@@ -21,11 +21,11 @@ describe('modelFamilyGrouping', () => {
       model_id: 'llama-3:70b',
       name: 'Llama 3 70B',
       provider: 'ollama',
-      description: null,
-      context_length: 4096,
-      size_bytes: null,
-      parameter_size: null,
-      quantization_level: null,
+      id: "", is_paid: false, is_hidden: false, tokens_used_total: 0, created_at: "",
+      context_size: 4096,
+
+
+
       enabled: true,
       role_tags: [],
       priority: 1
@@ -34,11 +34,11 @@ describe('modelFamilyGrouping', () => {
       model_id: 'qwen2:7b',
       name: 'Qwen 2 7B',
       provider: 'ollama',
-      description: null,
-      context_length: 4096,
-      size_bytes: null,
-      parameter_size: null,
-      quantization_level: null,
+      id: "", is_paid: false, is_hidden: false, tokens_used_total: 0, created_at: "",
+      context_size: 4096,
+
+
+
       enabled: true,
       role_tags: [],
       priority: 1
@@ -47,11 +47,11 @@ describe('modelFamilyGrouping', () => {
       model_id: 'custom-model',
       name: 'Custom',
       provider: 'other',
-      description: null,
-      context_length: 4096,
-      size_bytes: null,
-      parameter_size: null,
-      quantization_level: null,
+      id: "", is_paid: false, is_hidden: false, tokens_used_total: 0, created_at: "",
+      context_size: 4096,
+
+
+
       enabled: true,
       role_tags: [],
       priority: 1

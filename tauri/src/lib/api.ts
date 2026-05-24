@@ -1103,13 +1103,13 @@ export const api = {
   },
 
   context: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    assembleAndSend: (sessionId: string, workspaceId: string, modelName: string, options?: Record<string, any>) =>
+
+    assembleAndSend: (sessionId: string, workspaceId: string, modelName: string, options?: Record<string, unknown>) =>
       invoke<string>("assemble_and_send", { req: { session_id: sessionId, workspace_id: workspaceId, model_name: modelName, options: options || {} } }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    listenContextSources: (sessionId: string, onSources: (sources: any) => void): Promise<UnlistenFn> =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      listen<any>(`context-sources-${sessionId}`, (event) => onSources(event.payload)),
+
+    listenContextSources: (sessionId: string, onSources: (sources: unknown) => void): Promise<UnlistenFn> =>
+
+      listen<unknown>(`context-sources-${sessionId}`, (event) => onSources(event.payload)),
   },
 
   artifact: {
@@ -1344,8 +1344,8 @@ export const api = {
 
   backup: {
     create: (workspaceId: string) => invoke<string>("create_backup", { workspaceId }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    list: () => invoke<any[]>("list_backups"),
+
+    list: () => invoke<{ id: string; name: string; created_at: string; size: number }[]>("list_backups"),
     restore: (backupJson: string) => invoke<string>("restore_backup", { backupJson }),
     delete: (id: string) => invoke<void>("delete_backup", { id }),
     createGlobal: () => invoke<string>("create_global_backup"),
@@ -1360,14 +1360,14 @@ export const api = {
 
   graphAlgo: {
     pagerank: (workspaceId: string, damping?: number, iterations?: number) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      invoke<any[]>("compute_pagerank", { workspaceId, damping, iterations }),
+
+      invoke<Array<{ node_id: string; score: number }>>("compute_pagerank", { workspaceId, damping, iterations }),
     communities: (workspaceId: string) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      invoke<any[]>("detect_communities", { workspaceId }),
+
+      invoke<Array<{ node_id: string; community_id: number }>>("detect_communities", { workspaceId }),
     shortestPath: (workspaceId: string, sourceId: string, targetId: string) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      invoke<any>("find_shortest_path", { workspaceId, sourceId, targetId }),
+
+      invoke<Array<{ node_id: string }>>("find_shortest_path", { workspaceId, sourceId, targetId }),
   },
 
   demo: {

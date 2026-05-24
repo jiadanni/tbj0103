@@ -524,7 +524,14 @@ describe("integration edge cases", () => {
           chatSessionId: null,
           view: "chat",
           noteSelection: null,
-        } as any
+        },
+        secondary: {
+          workspaceId: null,
+          folderId: null,
+          chatSessionId: null,
+          view: "folder",
+          noteSelection: null,
+        }
       }
     });
 

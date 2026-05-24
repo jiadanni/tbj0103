@@ -11,11 +11,11 @@ describe('modelDisplayName', () => {
       model_id: 'llama-3:8b',
       name: 'llama-3:8b',
       provider: 'ollama',
-      description: null,
-      context_length: 4096,
-      size_bytes: null,
-      parameter_size: null,
-      quantization_level: null,
+      id: "", is_paid: false, is_hidden: false, tokens_used_total: 0, created_at: "",
+      context_size: 4096,
+
+
+
       enabled: true,
       role_tags: [],
       priority: 1
@@ -24,11 +24,11 @@ describe('modelDisplayName', () => {
       model_id: 'chatgpt-web',
       name: 'chatgpt-web',
       provider: 'web_openai',
-      description: null,
-      context_length: 4096,
-      size_bytes: null,
-      parameter_size: null,
-      quantization_level: null,
+      id: "", is_paid: false, is_hidden: false, tokens_used_total: 0, created_at: "",
+      context_size: 4096,
+
+
+
       enabled: true,
       role_tags: [],
       priority: 1
@@ -37,11 +37,11 @@ describe('modelDisplayName', () => {
       model_id: 'unknown-web',
       name: 'unknown-web',
       provider: 'web_unknown',
-      description: null,
-      context_length: 4096,
-      size_bytes: null,
-      parameter_size: null,
-      quantization_level: null,
+      id: "", is_paid: false, is_hidden: false, tokens_used_total: 0, created_at: "",
+      context_size: 4096,
+
+
+
       enabled: true,
       role_tags: [],
       priority: 1
@@ -50,11 +50,11 @@ describe('modelDisplayName', () => {
       model_id: 'custom-model',
       name: 'My Custom Model',
       provider: 'other',
-      description: null,
-      context_length: 4096,
-      size_bytes: null,
-      parameter_size: null,
-      quantization_level: null,
+      id: "", is_paid: false, is_hidden: false, tokens_used_total: 0, created_at: "",
+      context_size: 4096,
+
+
+
       enabled: true,
       role_tags: [],
       priority: 1

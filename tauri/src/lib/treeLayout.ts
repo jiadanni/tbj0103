@@ -1,3 +1,4 @@
+import type { ConceptNode, ConceptLink } from "./api";
 import * as d3 from 'd3';
 
 export interface TreeNode {
@@ -21,10 +22,10 @@ export interface PositionedNode {
  * which means: target is a child of source in the concept hierarchy
  */
 export function buildTreeFromLinks(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  nodes: any[],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  links: any[],
+
+  nodes: Pick<ConceptNode, "id" | "hierarchy_level" | "name">[],
+
+  links: Pick<ConceptLink, "source_id" | "target_id" | "link_type">[],
   rootId: string
 ): TreeNode {
   const nodeMap = new Map<string, TreeNode>(
@@ -97,8 +98,8 @@ export function computeRadialTreeLayout(
 
   const positions = new Map<string, PositionedNode>();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  root.descendants().forEach((node: any) => {
+
+  root.descendants().forEach((node) => {
     const angle = (node.x ?? 0) + angleStartOffset;
     const r = node.y ?? 0;
 
@@ -147,8 +148,8 @@ export function computeRectangularTreeLayout(
 
   const positions = new Map<string, PositionedNode>();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  root.descendants().forEach((node: any) => {
+
+  root.descendants().forEach((node) => {
     const x = node.x ?? 0;
     const y = node.y ?? 0;
     positions.set(node.data.id, {
@@ -171,8 +172,8 @@ export function computeRectangularTreeLayout(
  * 3. Fallback to first top-level node with no parent
  * 4. Last resort: first node in the list
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function selectRootNode(nodes: any[], links: any[], overrideRootId?: string): string {
+
+export function selectRootNode(nodes: Pick<ConceptNode, "id" | "hierarchy_level">[], links: Pick<ConceptLink, "source_id" | "target_id" | "link_type">[], overrideRootId?: string): string {
   if (overrideRootId && nodes.some((n) => n.id === overrideRootId)) {
     return overrideRootId;
   }
@@ -203,8 +204,8 @@ export function selectRootNode(nodes: any[], links: any[], overrideRootId?: stri
  * Checks if a link represents a tree relationship (parent-child via 'part_of')
  * These should be respected in the tree layout
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function isTreeLink(link: any): boolean {
+
+export function isTreeLink(link: Pick<ConceptLink, "link_type">): boolean {
   return link.link_type === 'part_of';
 }
 
@@ -212,8 +213,8 @@ export function isTreeLink(link: any): boolean {
  * Filters additional non-tree links (related, prerequisite, etc.)
  * Useful for toggling tree-only links vs all graph edges
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function filterAdditionalLinks(links: any[]): any[] {
+
+export function filterAdditionalLinks(links: Pick<ConceptLink, "source_id" | "target_id" | "link_type">[]): Pick<ConceptLink, "source_id" | "target_id" | "link_type">[] {
   return links.filter((link) => !isTreeLink(link));
 }
 
