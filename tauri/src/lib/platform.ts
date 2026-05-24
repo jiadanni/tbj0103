@@ -2,9 +2,28 @@
  * Platform detection and DOM utilities for keyboard handling.
  */
 
-export const isMac = typeof window !== "undefined" && window.navigator.platform.toUpperCase().includes("MAC");
-export const isLinux = typeof window !== "undefined" && window.navigator.platform.toUpperCase().includes("LINUX");
-export const isWindows = typeof window !== "undefined" && window.navigator.platform.toUpperCase().includes("WIN");
+const getUA = () => {
+  if (typeof window === "undefined" || !window.navigator) { return ""; }
+  return window.navigator.userAgent || "";
+};
+
+const userAgent = getUA();
+const isJSDOM = userAgent.includes("jsdom");
+
+export const isMac =
+  typeof window !== "undefined" &&
+  (window.navigator.platform?.toUpperCase().includes("MAC") ||
+   (!isJSDOM && userAgent.toUpperCase().includes("MAC")));
+
+export const isLinux =
+  typeof window !== "undefined" &&
+  (window.navigator.platform?.toUpperCase().includes("LINUX") ||
+   (!isJSDOM && userAgent.toUpperCase().includes("LINUX")));
+
+export const isWindows =
+  typeof window !== "undefined" &&
+  (window.navigator.platform?.toUpperCase().includes("WIN") ||
+   (!isJSDOM && userAgent.toUpperCase().includes("WIN")));
 export const MOD_KEY = isMac ? "⌘" : "Ctrl";
 export const CTRL_KEY = isMac ? "⌃" : "Ctrl";
 

@@ -98,11 +98,23 @@ function CoreBars({ cores, aggregate }: { cores: number[]; aggregate: number }) 
 // ── Job pill ─────────────────────────────────────────────────────────────────
 
 const JOB_LABELS: Record<string, string> = {
-  memory_extraction: "Memory",
-  summarization: "Summary",
+  memory_extraction: "Memory Extraction",
+  summarization: "Summarization",
   git_sync: "Git Sync",
   ai_generating: "Generating…",
+  workspace_glossary: "Glossary Refresh",
+  hover_definition_scan: "Definition Scan",
 };
+
+function formatTaskName(taskType: string): string {
+  if (JOB_LABELS[taskType]) {
+    return JOB_LABELS[taskType];
+  }
+  return taskType
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 function JobPill({ taskType }: { taskType: string }) {
   return (
@@ -113,7 +125,7 @@ function JobPill({ taskType }: { taskType: string }) {
         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
       </span>
       <span className="text-xs text-emerald-400 leading-none font-medium">
-        {JOB_LABELS[taskType] ?? taskType}
+        {formatTaskName(taskType)}
       </span>
     </div>
   );
@@ -225,7 +237,7 @@ export default function StatusBar() {
   // the continuously-updating metrics are not announced.
   const allActiveTypes = [...(isAiStreaming ? ["ai_generating"] : []), ...jobList];
   const jobAnnouncement = allActiveTypes.length > 0
-    ? allActiveTypes.map((t) => JOB_LABELS[t] ?? t).join(", ") + " running"
+    ? allActiveTypes.map((t) => formatTaskName(t)).join(", ") + " running"
     : "";
 
   return (
