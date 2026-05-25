@@ -74,9 +74,9 @@ pub fn stop_llamacpp_stream(session_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn list_llamacpp_models(model_paths: Vec<String>) -> Vec<String> {
-    model_paths
+pub fn list_llamacpp_models(model_paths: Vec<String>) -> Result<Vec<String>, String> {
+    Ok(model_paths
         .into_iter()
         .filter(|p| std::path::Path::new(p).exists())
-        .collect()
+        .collect())
 }
