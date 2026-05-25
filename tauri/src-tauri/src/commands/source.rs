@@ -1,5 +1,6 @@
 use crate::db::DbState;
 use crate::models::source::{CreateSourceRequest, Source};
+use crate::services::ai_content_generator::generate_summary;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
 use tauri::State;
 
@@ -34,7 +35,7 @@ fn estimate_tokens(text: &str) -> i64 {
 }
 
 #[tauri::command]
-pub fn create_source(state: State<DbState>, req: CreateSourceRequest) -> Result<Source, String> {
+pub async fn create_source(state: State<'_, DbState>, req: CreateSourceRequest) -> Result<Source, String> {
     if let Some(size) = req.file_size {
         if size > MAX_UPLOAD_FILE_SIZE_BYTES {
             return Err("File exceeds 50MB limit".to_string());
@@ -44,37 +45,52 @@ pub fn create_source(state: State<DbState>, req: CreateSourceRequest) -> Result<
         return Err("source_type must be 'document' or 'web_capture'".to_string());
     }
 
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    let now = chrono::Utc::now().to_rfc3339();
-    let tokens = estimate_tokens(&req.content);
-    let src = Source {
-        id: uuid::Uuid::new_v4().to_string(),
-        workspace_id: req.workspace_id,
-        source_type: req.source_type,
-        title: req.title,
-        filename: req.filename,
-        file_type: req.file_type,
-        file_size: req.file_size,
-        url: req.url,
-        content: req.content,
-        summary: req.summary,
-        favicon_data: None,
-        is_processed: false,
-        folder: req.folder,
-        token_count: Some(tokens),
-        chunk_count: None,
-        created_at: now.clone(),
-        updated_at: now,
-    };
-    conn.execute(
-        "INSERT INTO sources (id, workspace_id, source_type, title, filename, file_type, file_size, url, content, summary, is_processed, folder, token_count, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, ?11, ?12, ?13, ?14)",
-        rusqlite::params![
-            src.id, src.workspace_id, src.source_type, src.title, src.filename,
-            src.file_type, src.file_size, src.url, src.content, src.summary,
-            src.folder, src.token_count, src.created_at, src.updated_at
-        ],
-    ).map_err(|e| e.to_string())?;
+    let pool = state.0.clone();
+
+    let src = tokio::task::spawn_blocking(move || -> Result<Source, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let tokens = estimate_tokens(&req.content);
+
+        let summary = req.summary.or_else(|| {
+            if !req.content.is_empty() {
+                Some(generate_summary(&req.content, 200))
+            } else {
+                None
+            }
+        });
+
+        let src = Source {
+            id: uuid::Uuid::new_v4().to_string(),
+            workspace_id: req.workspace_id,
+            source_type: req.source_type,
+            title: req.title,
+            filename: req.filename,
+            file_type: req.file_type,
+            file_size: req.file_size,
+            url: req.url,
+            content: req.content,
+            summary,
+            favicon_data: None,
+            is_processed: false,
+            folder: req.folder,
+            token_count: Some(tokens),
+            chunk_count: None,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        conn.execute(
+            "INSERT INTO sources (id, workspace_id, source_type, title, filename, file_type, file_size, url, content, summary, is_processed, folder, token_count, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, ?11, ?12, ?13, ?14)",
+            rusqlite::params![
+                src.id, src.workspace_id, src.source_type, src.title, src.filename,
+                src.file_type, src.file_size, src.url, src.content, src.summary,
+                src.folder, src.token_count, src.created_at, src.updated_at
+            ],
+        ).map_err(|e| e.to_string())?;
+        Ok(src)
+    }).await.map_err(|e| e.to_string())??;
+
     Ok(src)
 }
 
