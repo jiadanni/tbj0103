@@ -32,9 +32,7 @@
   "bundle": {
     "active": true,
     "targets": ["app", "dmg", "appimage", "deb", "rpm", "msi", "nsis"],
-    "resources": [
-      "resources/playwright-runner.js"
-    ],
+    "resources": [],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -2,10 +2,10 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { normalizeTheme, type Theme } from "../lib/theme";
 
-export type DualModelExecutionMode = "serial" | "parallel";
-export type SettingsNavigationLayout = "top-tabs" | "side-tabs";
+type DualModelExecutionMode = "serial" | "parallel";
+type SettingsNavigationLayout = "top-tabs" | "side-tabs";
 export type ChatMessageStyle = "bubble" | "flat" | "minimal";
-export type ComposerMode = "normal" | "family";
+type ComposerMode = "normal" | "family";
 
 interface AppSettings {
   preferredModel: string;

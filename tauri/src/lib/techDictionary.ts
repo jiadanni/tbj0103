@@ -3,7 +3,7 @@ export interface TechDefinition {
   definition: string;
 }
 
-export const TECH_DICTIONARY: Record<string, TechDefinition> = {
+const TECH_DICTIONARY: Record<string, TechDefinition> = {
   llm: {
     word: "LLM",
     definition: "Large Language Model. A type of AI trained on vast amounts of text to understand and generate human-like language.",
