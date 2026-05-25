@@ -7,7 +7,7 @@ import {
   X, Pin, PinOff, Copy, Check, Trash2, 
   History, Code, FileText
 } from 'lucide-react';
-import Tooltip from './Tooltip';
+import { Tooltip } from './Tooltip';
 
 export default function ArtifactPanel() {
   const { 

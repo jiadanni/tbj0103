@@ -524,7 +524,8 @@ describe("integration edge cases", () => {
           chatSessionId: null,
           view: "chat",
           noteSelection: null,
-        } as any
+        } as any,
+        secondary: null as any
       }
     });
 

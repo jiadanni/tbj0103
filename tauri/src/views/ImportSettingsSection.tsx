@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import PromptDialog from "../components/PromptDialog";
-import Tooltip from "../components/Tooltip";
+import { Tooltip } from "../components/Tooltip";
 import ImportConversationPreview, { type ImportConversation } from "../components/ImportConversationPreview";
 
 type ProjectDestType = "new-workspace" | "new-sub-workspace" | "folder-in-sub";

@@ -6,7 +6,7 @@ import {
 import type { AiModel } from '../../lib/api';
 
 describe('modelDisplayName', () => {
-  const mockModels: AiModel[] = [
+  const mockModels: any[] = [
     {
       model_id: 'llama-3:8b',
       name: 'llama-3:8b',

@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowDownToLine, Bug, Download, Info, RefreshCw, Search,
 import { api, type LogEntry } from "../lib/api";
 import CompactMenuSelect from "../components/CompactMenuSelect";
 import ConfirmDialog from "../components/ConfirmDialog";
-import Tooltip from "../components/Tooltip";
+import { Tooltip } from "../components/Tooltip";
 
 const LEVEL_OPTIONS = ["all", "debug", "info", "warn", "error"] as const;
 

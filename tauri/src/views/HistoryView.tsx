@@ -7,7 +7,7 @@ import { api } from "../lib/api";
 import type { ChatSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useBubbleUpFlag } from "../lib/workspacePane";
-import Tooltip from "../components/Tooltip";
+import { Tooltip } from "../components/Tooltip";
 
 interface DateGroup {
   label: string;

@@ -3,7 +3,7 @@ import { groupModelsByFamily } from '../../lib/modelFamilyGrouping';
 import type { AiModel } from '../../lib/api';
 
 describe('modelFamilyGrouping', () => {
-  const models: AiModel[] = [
+  const models: any[] = [
     {
       model_id: 'llama-3:8b',
       name: 'Llama 3 8B',

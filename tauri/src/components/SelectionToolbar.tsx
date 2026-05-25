@@ -1,7 +1,7 @@
 import React from "react";
 import { MessageSquare, Copy } from "lucide-react";
 import { useChatStore } from "../stores/chatStore";
-import Tooltip from "./Tooltip";
+import { Tooltip } from "./Tooltip";
 
 interface SelectionToolbarProps {
   x: number;
