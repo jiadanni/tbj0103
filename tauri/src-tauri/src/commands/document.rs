@@ -7,64 +7,71 @@ use tauri::State;
 const MAX_UPLOAD_FILE_SIZE_BYTES: i64 = 50 * 1024 * 1024;
 
 #[tauri::command]
-pub fn upload_document(
-    state: State<DbState>,
+pub async fn upload_document(
+    state: State<'_, DbState>,
     req: UploadDocumentRequest,
 ) -> Result<UploadedDocument, String> {
     if req.file_size > MAX_UPLOAD_FILE_SIZE_BYTES {
         return Err("File exceeds 50MB limit".to_string());
     }
 
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    let now = chrono::Utc::now().to_rfc3339();
+    let pool = state.0.clone();
 
-    let summary = if !req.content.is_empty() {
-        Some(generate_summary(&req.content, 200))
-    } else {
-        None
-    };
+    let doc = tokio::task::spawn_blocking(move || -> Result<UploadedDocument, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().to_rfc3339();
 
-    let doc = UploadedDocument {
-        id: uuid::Uuid::new_v4().to_string(),
-        workspace_id: req.workspace_id,
-        filename: req.filename,
-        file_type: req.file_type,
-        file_size: req.file_size,
-        content: req.content,
-        summary: summary.clone(),
-        is_processed: false,
-        chunk_count: None,
-        created_at: now.clone(),
-        updated_at: now,
-    };
-    conn.execute(
-        "INSERT INTO sources (id, workspace_id, source_type, title, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at)
-         VALUES (?1, ?2, 'document', ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?10)",
-        rusqlite::params![
-            doc.id,
-            doc.workspace_id,
-            doc.filename,
-            doc.filename,
-            doc.file_type,
-            doc.file_size,
-            doc.content,
-            doc.summary,
-            doc.created_at,
-            doc.updated_at
-        ],
-    ).map_err(|e| e.to_string())?;
+        let summary = if !req.content.is_empty() {
+            Some(generate_summary(&req.content, 200))
+        } else {
+            None
+        };
 
-    // Index any [[wiki-links]] present in the uploaded document so documents
-    // participate in the knowledge graph (mirrors the pattern in commands::note::create_note).
-    if !doc.content.is_empty() {
-        let _ = linking_engine::index_note_links(
-            &conn,
-            "document",
-            &doc.id,
-            &doc.workspace_id,
-            &doc.content,
-        );
-    }
+        let doc = UploadedDocument {
+            id: uuid::Uuid::new_v4().to_string(),
+            workspace_id: req.workspace_id.clone(),
+            filename: req.filename.clone(),
+            file_type: req.file_type.clone(),
+            file_size: req.file_size,
+            content: req.content.clone(),
+            summary: summary.clone(),
+            is_processed: false,
+            chunk_count: None,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+
+        conn.execute(
+            "INSERT INTO sources (id, workspace_id, source_type, title, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at)
+             VALUES (?1, ?2, 'document', ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?10)",
+            rusqlite::params![
+                doc.id,
+                doc.workspace_id,
+                doc.filename,
+                doc.filename,
+                doc.file_type,
+                doc.file_size,
+                doc.content,
+                doc.summary,
+                doc.created_at,
+                doc.updated_at
+            ],
+        ).map_err(|e| e.to_string())?;
+
+        // Index any [[wiki-links]] present in the uploaded document so documents
+        // participate in the knowledge graph (mirrors the pattern in commands::note::create_note).
+        if !doc.content.is_empty() {
+            let _ = linking_engine::index_note_links(
+                &conn,
+                "document",
+                &doc.id,
+                &doc.workspace_id,
+                &doc.content,
+            );
+        }
+
+        Ok(doc)
+    }).await.map_err(|e| e.to_string())??;
 
     Ok(doc)
 }
