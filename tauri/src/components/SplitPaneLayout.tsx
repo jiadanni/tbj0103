@@ -65,22 +65,22 @@ function PaneWorkspaceSidebar({ paneId }: { paneId: PaneId }) {
           key={`${paneId}-ws-${ws.id}`}
           onClick={() => selectWorkspace(ws.id)}
           onDragOver={(event) => {
-            if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+            if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
             event.preventDefault();
             event.dataTransfer.dropEffect = "move";
             setDragOverWorkspaceId(ws.id);
           }}
           onDragEnter={(event) => {
-            if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+            if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
             event.preventDefault();
             setDragOverWorkspaceId(ws.id);
-            if (dragHoverTimerRef.current) clearTimeout(dragHoverTimerRef.current);
+            if (dragHoverTimerRef.current) {clearTimeout(dragHoverTimerRef.current);}
             dragHoverTimerRef.current = setTimeout(() => selectWorkspace(ws.id), 600);
           }}
           onDragLeave={(event) => {
             const related = event.relatedTarget as Node | null;
-            if (related && event.currentTarget.contains(related)) return;
-            if (dragOverWorkspaceId === ws.id) setDragOverWorkspaceId(null);
+            if (related && event.currentTarget.contains(related)) {return;}
+            if (dragOverWorkspaceId === ws.id) {setDragOverWorkspaceId(null);}
             if (dragHoverTimerRef.current) {
               clearTimeout(dragHoverTimerRef.current);
               dragHoverTimerRef.current = null;
@@ -94,7 +94,7 @@ function PaneWorkspaceSidebar({ paneId }: { paneId: PaneId }) {
               dragHoverTimerRef.current = null;
             }
             const raw = event.dataTransfer.getData("application/x-chat-session-ids");
-            if (!raw) return;
+            if (!raw) {return;}
             try {
               const sessionIds = JSON.parse(raw) as string[];
               if (sessionIds.length > 0) {
@@ -207,22 +207,22 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
             data-testid={`pane-pinned-tab-${paneId}`}
             onClick={() => selectWorkspace(parent.id)}
             onDragOver={(event) => {
-              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
               event.preventDefault();
               event.dataTransfer.dropEffect = "move";
               setDragOverWorkspaceId(parent.id);
             }}
             onDragEnter={(event) => {
-              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
               event.preventDefault();
               setDragOverWorkspaceId(parent.id);
-              if (dragHoverTimerRef.current) clearTimeout(dragHoverTimerRef.current);
+              if (dragHoverTimerRef.current) {clearTimeout(dragHoverTimerRef.current);}
               dragHoverTimerRef.current = setTimeout(() => selectWorkspace(parent.id), 600);
             }}
             onDragLeave={(event) => {
               const related = event.relatedTarget as Node | null;
-              if (related && event.currentTarget.contains(related)) return;
-              if (dragOverWorkspaceId === parent.id) setDragOverWorkspaceId(null);
+              if (related && event.currentTarget.contains(related)) {return;}
+              if (dragOverWorkspaceId === parent.id) {setDragOverWorkspaceId(null);}
               if (dragHoverTimerRef.current) {
                 clearTimeout(dragHoverTimerRef.current);
                 dragHoverTimerRef.current = null;
@@ -236,7 +236,7 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
                 dragHoverTimerRef.current = null;
               }
               const raw = event.dataTransfer.getData("application/x-chat-session-ids");
-              if (!raw) return;
+              if (!raw) {return;}
               try {
                 const sessionIds = JSON.parse(raw) as string[];
                 if (sessionIds.length > 0) {
@@ -260,22 +260,22 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
             key={workspace.id}
             onClick={() => selectWorkspace(workspace.id)}
             onDragOver={(event) => {
-              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
               event.preventDefault();
               event.dataTransfer.dropEffect = "move";
               setDragOverWorkspaceId(workspace.id);
             }}
             onDragEnter={(event) => {
-              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) return;
+              if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
               event.preventDefault();
               setDragOverWorkspaceId(workspace.id);
-              if (dragHoverTimerRef.current) clearTimeout(dragHoverTimerRef.current);
+              if (dragHoverTimerRef.current) {clearTimeout(dragHoverTimerRef.current);}
               dragHoverTimerRef.current = setTimeout(() => selectWorkspace(workspace.id), 600);
             }}
             onDragLeave={(event) => {
               const related = event.relatedTarget as Node | null;
-              if (related && event.currentTarget.contains(related)) return;
-              if (dragOverWorkspaceId === workspace.id) setDragOverWorkspaceId(null);
+              if (related && event.currentTarget.contains(related)) {return;}
+              if (dragOverWorkspaceId === workspace.id) {setDragOverWorkspaceId(null);}
               if (dragHoverTimerRef.current) {
                 clearTimeout(dragHoverTimerRef.current);
                 dragHoverTimerRef.current = null;
@@ -289,7 +289,7 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
                 dragHoverTimerRef.current = null;
               }
               const raw = event.dataTransfer.getData("application/x-chat-session-ids");
-              if (!raw) return;
+              if (!raw) {return;}
               try {
                 const sessionIds = JSON.parse(raw) as string[];
                 if (sessionIds.length > 0) {

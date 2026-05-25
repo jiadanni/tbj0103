@@ -118,7 +118,7 @@ export interface TopicSignature {
   suggested_prompts?: string[];
 }
 
-export interface WorkspaceSuggestion {
+interface WorkspaceSuggestion {
   workspace_id: string;
   workspace_name: string;
   score: number;
@@ -217,7 +217,7 @@ export interface QuickSearchContext {
   preferred_workspace_id?: string | null;
 }
 
-export interface OllamaModelDetails { parameter_size?: string; }
+interface OllamaModelDetails { parameter_size?: string; }
 export interface OllamaModel { name: string; size?: number; modified_at?: string; details?: OllamaModelDetails; capabilities?: string[]; }
 export interface OllamaRuntimeStatus {
   available: boolean;
@@ -450,7 +450,8 @@ export interface BacklinkEntry {
   source_type: string; source_id: string; context: string; concept_name: string;
 }
 
-export interface RetrievedChunk {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+interface RetrievedChunk {
   chunk_id: string; document_id: string; filename: string;
   content: string; score: number; chunk_index: number;
 }
@@ -592,7 +593,7 @@ export interface DashboardRoute {
   state?: Record<string, unknown> | null;
 }
 
-export interface DashboardOverview {
+interface DashboardOverview {
   chat_sessions: number;
   notes: number;
   sources: number;
@@ -602,7 +603,7 @@ export interface DashboardOverview {
   completed_goals: number;
 }
 
-export interface DashboardContinueLearning {
+interface DashboardContinueLearning {
   session_id: string;
   title: string;
   folder_id?: string | null;
@@ -611,7 +612,7 @@ export interface DashboardContinueLearning {
   route: DashboardRoute;
 }
 
-export interface DashboardConceptFocus {
+interface DashboardConceptFocus {
   concept_id: string;
   name: string;
   review_count: number;
@@ -619,7 +620,7 @@ export interface DashboardConceptFocus {
   route: DashboardRoute;
 }
 
-export interface DashboardReviewSummary {
+interface DashboardReviewSummary {
   due_today: number;
   total_cards: number;
   learned: number;
@@ -629,7 +630,7 @@ export interface DashboardReviewSummary {
   route: DashboardRoute;
 }
 
-export interface DashboardGoalSummary {
+interface DashboardGoalSummary {
   id: string;
   title: string;
   progress: number;
@@ -639,7 +640,7 @@ export interface DashboardGoalSummary {
   route: DashboardRoute;
 }
 
-export interface DashboardSuggestion {
+interface DashboardSuggestion {
   id: string;
   kind: string;
   title: string;
@@ -647,7 +648,7 @@ export interface DashboardSuggestion {
   route: DashboardRoute;
 }
 
-export interface DashboardKnowledgeHealth {
+interface DashboardKnowledgeHealth {
   stalled_goals: number;
   unprocessed_sources: number;
   isolated_concepts: number;
@@ -1610,29 +1611,3 @@ export interface MCPResourceTemplate {
   mime_type?: string;
 }
 
-export const mcp = {
-  // Server management
-  listServers: () => invoke<MCPServerConfig[]>("list_mcp_servers", {}),
-  addServer: (name: string, command: string, args: string[], workspaceId: string) =>
-    invoke<MCPServerConfig>("add_mcp_server", { name, command, args, workspaceId }),
-  updateServer: (name: string, command: string, args: string[], enabled: boolean) =>
-    invoke<void>("update_mcp_server", { name, command, args, enabled }),
-  deleteServer: (name: string) =>
-    invoke<void>("delete_mcp_server", { name }),
-  connectServer: (serverName: string) =>
-    invoke<void>("mcp_connect_server", { serverName }),
-  disconnectServer: (serverName: string) =>
-    invoke<void>("mcp_disconnect_server", { serverName }),
-
-  // Tool discovery and invocation
-  listTools: (serverName: string) =>
-    invoke<MCPTool[]>("mcp_list_tools", { serverName }),
-  callTool: (serverName: string, toolName: string, toolArguments: Record<string, unknown>) =>
-    invoke<string>("mcp_call_tool", { serverName, toolName, arguments: toolArguments }),
-
-  // Resource discovery and access
-  listResources: (serverName: string) =>
-    invoke<[MCPResource[], MCPResourceTemplate[]]>("mcp_list_resources", { serverName }),
-  readResource: (serverName: string, uri: string) =>
-    invoke<string>("mcp_read_resource", { serverName, uri }),
-};

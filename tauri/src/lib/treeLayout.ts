@@ -7,7 +7,7 @@ export interface TreeNode {
   children?: TreeNode[];
 }
 
-export interface PositionedNode {
+interface PositionedNode {
   id: string;
   x: number;
   y: number;
@@ -76,7 +76,8 @@ export function buildTreeFromLinks(
  * @param config - Optional layout parameters
  * @returns Map of node IDs to positions with fixed x/y
  */
-export function computeRadialTreeLayout(
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function computeRadialTreeLayout(
   treeRoot: TreeNode,
   config?: {
     radius?: number;
@@ -125,7 +126,8 @@ export function computeRadialTreeLayout(
  * - leafMargin: horizontal spacing between leaf nodes (default 50)
  * - levelHeight: vertical space per tree level (default 120)
  */
-export function computeRectangularTreeLayout(
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function computeRectangularTreeLayout(
   treeRoot: TreeNode,
   config?: {
     leafMargin?: number;
