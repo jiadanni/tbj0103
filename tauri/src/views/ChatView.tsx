@@ -31,6 +31,8 @@ import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
 import { resolveChatTitle } from "../lib/chatTitles";
 import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
 import { SelectionToolbar } from "../components/SelectionToolbar";
+import { ContextWindowBar } from "../components/ContextWindowBar";
+import { useUIStore } from "../stores/uiStore";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -2767,7 +2769,11 @@ export default function ChatView() {
     [groupedModelPickerOptions, alternateSendModels]
   );
   // uses granular selector from above
-  const _sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
+  const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
+  const setTitlebarTokenCount = useUIStore((s) => s.setTitlebarTokenCount);
+  useEffect(() => {
+    setTitlebarTokenCount(sessionTokensUsed);
+  }, [sessionTokensUsed, setTitlebarTokenCount]);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
 
   // Stable Virtuoso Footer — lives inside the scroll area so growing content
@@ -2789,6 +2795,7 @@ export default function ChatView() {
 
   // Web AI provider detection
   const selectedModelMeta = aiModelList.find((m) => m.model_id === selectedModel);
+  const effectiveContextSize = selectedModelMeta?.context_size ?? 8192;
   const isWebProvider = selectedModelMeta?.provider.startsWith("web_") ?? false;
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const webProviderKey = isWebProvider ? selectedModelMeta!.provider.replace("web_", "") : "";
@@ -4736,6 +4743,9 @@ export default function ChatView() {
                         )}
                       </span>
                     </div>
+                    {activeChatId && sessionTokensUsed > 0 && (
+                      <ContextWindowBar tokensUsed={sessionTokensUsed} contextSize={effectiveContextSize} />
+                    )}
                     {activeSession && (
                       <Tooltip content={canRefreshActiveSessionTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"} position="bottom">
                         <button
