@@ -1367,7 +1367,7 @@ export const api = {
       invoke<Array<{ node_id: string; community_id: number }>>("detect_communities", { workspaceId }),
     shortestPath: (workspaceId: string, sourceId: string, targetId: string) =>
 
-      invoke<Array<{ node_id: string }>>("find_shortest_path", { workspaceId, sourceId, targetId }),
+      invoke<{ path: string[]; total_weight: number; found: boolean }>("find_shortest_path", { workspaceId, sourceId, targetId }),
   },
 
   demo: {
