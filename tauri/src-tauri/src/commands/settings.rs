@@ -63,6 +63,7 @@ pub struct Settings {
     pub menubar_icon_style: String,
     pub user_chat_label: String,
     pub assistant_chat_label: String,
+    pub background_inference_enabled: bool,
 }
 
 impl Default for Settings {
@@ -130,6 +131,7 @@ impl Default for Settings {
             menubar_icon_style: "monochrome".to_string(),
             user_chat_label: "You".to_string(),
             assistant_chat_label: "Assistant".to_string(),
+            background_inference_enabled: true,
         }
     }
 }
@@ -390,6 +392,9 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         assistant_chat_label: get_setting(&conn, "assistant_chat_label")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.assistant_chat_label),
+        background_inference_enabled: get_setting(&conn, "background_inference_enabled")
+            .map(|v| v == "true")
+            .unwrap_or(def.background_inference_enabled),
     })
 }
 
@@ -685,6 +690,11 @@ pub fn update_settings(
         &conn,
         "assistant_chat_label",
         &serde_json::to_string(&settings.assistant_chat_label).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "background_inference_enabled",
+        &settings.background_inference_enabled.to_string(),
     )?;
 
     if settings.start_at_login {

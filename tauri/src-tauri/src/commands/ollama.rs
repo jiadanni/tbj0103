@@ -574,12 +574,32 @@ fn runtime_status(models: Vec<ModelInfo>, launched: bool) -> OllamaRuntimeStatus
 }
 
 fn launch_ollama_process() -> Result<(), String> {
-    Command::new("ollama")
+    // OLLAMA_NUM_PARALLEL=1 and OLLAMA_MAX_LOADED_MODELS=1 cap concurrent
+    // inference and VRAM usage so the process yields under system memory pressure.
+    #[cfg(not(target_os = "windows"))]
+    let result = Command::new("nice")
+        .arg("-n")
+        .arg("10")
+        .arg("ollama")
         .arg("serve")
+        .env("OLLAMA_NUM_PARALLEL", "1")
+        .env("OLLAMA_MAX_LOADED_MODELS", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn()
+        .spawn();
+
+    #[cfg(target_os = "windows")]
+    let result = Command::new("ollama")
+        .arg("serve")
+        .env("OLLAMA_NUM_PARALLEL", "1")
+        .env("OLLAMA_MAX_LOADED_MODELS", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+
+    result
         .map(|_| ())
         .map_err(|e| format!("Failed to launch `ollama serve`: {e}"))
 }
