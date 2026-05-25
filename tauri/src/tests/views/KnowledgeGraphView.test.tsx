@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   zoom: vi.fn(),
   centerAt: vi.fn(),
   zoomToFit: vi.fn(),
+  checkWorkspaceAnalyzable: vi.fn().mockResolvedValue({ ready: true, item_count: 5, char_count: 500 }),
 }));
 
 vi.mock("@/components/RoadmapGraph", () => ({
@@ -57,7 +58,7 @@ vi.mock("@/lib/api", () => ({
     },
     knowledge: {
       analyzeWorkspace: mocks.analyzeWorkspace,
-      checkWorkspaceAnalyzable: vi.fn().mockResolvedValue({ ready: true }),
+      checkWorkspaceAnalyzable: mocks.checkWorkspaceAnalyzable,
     },
     ollama: {
       listModels: mocks.ollamaListModels,

@@ -991,3 +991,6 @@ pub fn set_tray_ai_active(app: &AppHandle, active: bool) {
         let _ = tray.set_icon(Some(icon));
     }
 }
+
+#[cfg(test)]
+pub mod tests;

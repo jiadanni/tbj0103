@@ -361,12 +361,14 @@ pub async fn authenticate_biometric() -> Result<bool, String> {
 /// Called by the frontend after successful PIN or biometric authentication.
 /// Sets the backend auth state to unlocked so that protected commands work.
 #[tauri::command]
-pub fn unlock_app(auth: State<AuthState>) {
+pub fn unlock_app(auth: State<AuthState>) -> Result<(), String> {
     auth.0.store(true, Ordering::Release);
+    Ok(())
 }
 
 /// Called by the frontend when the user locks the app or on session timeout.
 #[tauri::command]
-pub fn lock_app(auth: State<AuthState>) {
+pub fn lock_app(auth: State<AuthState>) -> Result<(), String> {
     auth.0.store(false, Ordering::Release);
+    Ok(())
 }

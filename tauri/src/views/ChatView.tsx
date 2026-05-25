@@ -1,5 +1,5 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, memo, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder as FolderIcon, FolderOpen, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -358,7 +358,7 @@ function SessionItem({
   );
 }
 
-function SessionSidebar({
+const SessionSidebar = memo(function SessionSidebar({
   sidebarSessions, workspaces, foldersByWorkspace, folders, activeFolderId: _activeFolderId, setActiveFolderId,
   activeFolder: _activeFolder, moveSessionsToTarget, bulkDeleteSessions, renameFolder, deleteFolder, moveFolderToWorkspace, createWorkspaceForMove, sessionQuery, setSessionQuery,
   creatingFolder, setCreatingFolder, newFolderName, setNewFolderName,
@@ -2003,7 +2003,8 @@ function SessionSidebar({
       )}
     </>
   );
-}
+});
+
 
 function _formatMessageTimestamp(value: string) {
   const date = new Date(value);
@@ -2426,7 +2427,7 @@ export default function ChatView() {
     setConfirmDialog(null);
   }, []);
 
-  async function handleCreateFolder(nameOverride?: string) {
+  const handleCreateFolder = useCallback(async (nameOverride?: string) => {
     if (creatingFolderRequestRef.current) { return; }
     const folderName = (nameOverride ?? newFolderName).trim();
     const previousFolderId = effectiveFolderId;
@@ -2450,7 +2451,7 @@ export default function ChatView() {
       setCreatingFolder(false);
       setNewFolderName("");
     }
-  }
+  }, [newFolderName, effectiveFolderId, effectiveWorkspaceId, includeDescendants, setScopedFolderId, setFoldersForWorkspace]);
 
   useEffect(() => {
     if (!creatingFolder || !folderInputRef.current) { return; }
@@ -2997,7 +2998,7 @@ export default function ChatView() {
     replaceSessions(refreshedSessions);
   }
 
-  async function bulkDeleteSessions(sessionIds: string[], folderIds: string[] = []) {
+  const bulkDeleteSessions = useCallback(async (sessionIds: string[], folderIds: string[] = []) => {
     if (isDemoMode) {
       await message("Session deletion is not available in Demo Mode.", { title: "Demo Mode" });
       return;
@@ -3044,7 +3045,8 @@ export default function ChatView() {
     if (activeChatId && sessionIds.includes(activeChatId)) {
       setActiveChatId(null);
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDemoMode, effectiveWorkspaceId, openConfirmDialog, refreshFolderTree, refreshScopedSessions, replaceSessions, activeChatId, setActiveChatId, setScopedFolderId]);
 
   useEffect(() => {
     setAttachedSources([]);
@@ -3978,7 +3980,7 @@ export default function ChatView() {
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
-  async function deleteSession(id: string) {
+  const deleteSession = useCallback(async (id: string) => {
     if (!effectiveWorkspaceId) { return; }
     const settings = useSettingsStore.getState();
     const isImmediate = settings.immediateDelete;
@@ -4001,9 +4003,9 @@ export default function ChatView() {
     removeSessionFromScope(id);
     setSidebarSessions((prev) => prev.filter((session) => session.id !== id));
     if (activeChatId === id) { setActiveChatId(null); }
-  }
+  }, [effectiveWorkspaceId, openConfirmDialog, removeSessionFromScope, activeChatId, setActiveChatId]);
 
-  async function togglePin(session: ChatSession) {
+  const togglePin = useCallback(async (session: ChatSession) => {
     if (!effectiveWorkspaceId) { return; }
     await api.chat.updateSession(effectiveWorkspaceId, session.id, { is_pinned: !session.is_pinned });
     replaceSessions(
@@ -4012,25 +4014,25 @@ export default function ChatView() {
       )
     );
     setSidebarSessions((prev) => prev.map((item) => item.id === session.id ? { ...item, is_pinned: !item.is_pinned } : item));
-  }
+  }, [effectiveWorkspaceId, sessions, replaceSessions]);
 
-  async function toggleExcludeFromAnalytics(session: ChatSession) {
+  const toggleExcludeFromAnalytics = useCallback(async (session: ChatSession) => {
     if (!effectiveWorkspaceId) { return; }
     const next = !session.exclude_from_analytics;
     await api.chat.updateSession(effectiveWorkspaceId, session.id, { exclude_from_analytics: next });
     replaceSessions(sessions.map((s) => s.id === session.id ? { ...s, exclude_from_analytics: next } : s));
     setSidebarSessions((prev) => prev.map((item) => item.id === session.id ? { ...item, exclude_from_analytics: next } : item));
-  }
+  }, [effectiveWorkspaceId, sessions, replaceSessions]);
 
-  async function renameSession(id: string) {
+  const renameSession = useCallback(async (id: string) => {
     if (!renameTitle.trim() || !effectiveWorkspaceId) { setRenamingId(null); return; }
     await api.chat.updateSession(effectiveWorkspaceId, id, { title: renameTitle });
     replaceSessions(sessions.map((s) => s.id === id ? { ...s, title: renameTitle } : s));
     setSidebarSessions((prev) => prev.map((session) => session.id === id ? { ...session, title: renameTitle } : session));
     setRenamingId(null);
-  }
+  }, [effectiveWorkspaceId, renameTitle, sessions, replaceSessions]);
 
-  async function refreshSessionTitle(session: ChatSession) {
+  const refreshSessionTitle = useCallback(async (session: ChatSession) => {
     if (!effectiveWorkspaceId) { return; }
 
     const sessionMessages = (useChatStore.getState().messages[session.id] ?? [])
@@ -4062,9 +4064,10 @@ export default function ChatView() {
     } catch {
       // Leave the current title in place if refresh fails.
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveWorkspaceId, selectedModel]);
 
-  async function moveSessionsToTarget(sessionIds: string[], workspaceId: string, folderId: string | null) {
+  const moveSessionsToTarget = useCallback(async (sessionIds: string[], workspaceId: string, folderId: string | null) => {
     if (sessionIds.length === 0) { return; }
     const sessionIdSet = new Set(sessionIds);
     const isCrossWorkspaceMove = workspaceId !== effectiveWorkspaceId;
@@ -4129,15 +4132,17 @@ export default function ChatView() {
         setFoldersForWorkspace(effectiveWorkspaceId, refreshedFolders);
       }
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveWorkspaceId, sessions, sidebarSessions, activeChatId, includeDescendants, setScopedWorkspaceId, setScopedFolderId, setFoldersForWorkspace]);
 
-  async function renameFolder(folderId: string, name: string) {
+  const renameFolder = useCallback(async (folderId: string, name: string) => {
     if (!effectiveWorkspaceId || !name.trim()) { return; }
     await api.folder.update(folderId, { name: name.trim() });
     await refreshFolderTree(effectiveWorkspaceId);
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveWorkspaceId]);
 
-  async function moveFolderToWorkspace(folder: Folder, targetWorkspaceId: string) {
+  const moveFolderToWorkspace = useCallback(async (folder: Folder, targetWorkspaceId: string) => {
     if (folder.workspace_id === targetWorkspaceId) { return; }
 
     const folderSessionIds = sidebarSessions
@@ -4190,9 +4195,10 @@ export default function ChatView() {
           : "Failed to move folder.";
       openAlertDialog("Move failed", description, "danger");
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidebarSessions, sessions, activeChatId, effectiveFolderId, openAlertDialog, setScopedWorkspaceId, setScopedFolderId, setFoldersForWorkspace]);
 
-  async function deleteFolder(folderId: string) {
+  const deleteFolder = useCallback(async (folderId: string) => {
     if (!effectiveWorkspaceId) { return; }
     const projectSessions = sidebarSessions.filter((session) => session.folder_id === folderId).map((session) => session.id);
     const confirmMsg = projectSessions.length > 0
@@ -4217,9 +4223,10 @@ export default function ChatView() {
       refreshFolderTree(effectiveWorkspaceId),
       refreshScopedSessions(effectiveWorkspaceId, effectiveFolderId === folderId ? null : effectiveFolderId),
     ]);
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveWorkspaceId, sidebarSessions, effectiveFolderId, openConfirmDialog, setScopedFolderId]);
 
-  async function createWorkspaceForMove(name: string) {
+  const createWorkspaceForMove = useCallback(async (name: string) => {
     const trimmedName = name.trim();
     if (!trimmedName) {
       throw new Error("Workspace name cannot be empty.");
@@ -4228,9 +4235,9 @@ export default function ChatView() {
     const workspace = await api.workspace.create(trimmedName);
     addWorkspace(workspace);
     return workspace;
-  }
+  }, [addWorkspace]);
 
-  async function saveSession(session: ChatSession) {
+  const saveSession = useCallback(async (session: ChatSession) => {
     try {
       const destPath = await saveDialog({
         defaultPath: chatExportFilename(session.title || "chat"),
@@ -4247,7 +4254,7 @@ export default function ChatView() {
       console.error("Failed to save chat:", err);
       openAlertDialog("Save failed", description, "danger");
     }
-  }
+  }, [openAlertDialog]);
 
   function _copyMessage(msgId: string, content: string) {
     window.navigator.clipboard.writeText(content);

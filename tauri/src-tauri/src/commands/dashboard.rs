@@ -46,22 +46,45 @@ pub fn get_dashboard_summary(
     // ── Batch all simple COUNT / aggregate queries into one statement ──
     let counts_sql = format!(
         "{cte}SELECT
-           (SELECT COUNT(*) FROM chat_sessions
-            WHERE workspace_id {ws_cond} AND is_deleted = 0 AND is_incognito = 0 AND exclude_from_analytics = 0),
-           (SELECT COUNT(*) FROM project_notes WHERE workspace_id {ws_cond}),
-           (SELECT COUNT(*) FROM sources WHERE workspace_id {ws_cond}),
-           (SELECT COUNT(*) FROM concept_nodes WHERE workspace_id {ws_cond}),
-           (SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond}),
-           (SELECT COUNT(*) FROM learning_goals WHERE workspace_id {ws_cond} AND is_completed = 0),
-           (SELECT COUNT(*) FROM learning_goals WHERE workspace_id {ws_cond} AND is_completed = 1),
-           (SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond}),
-           (SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond} AND next_review_date <= date('now')),
-           (SELECT COUNT(*) FROM learning_cards WHERE workspace_id {ws_cond} AND repetitions > 0),
-           (SELECT COALESCE(AVG(ease_factor), 2.5) FROM learning_cards WHERE workspace_id {ws_cond}),
-           (SELECT COUNT(*) FROM concept_nodes WHERE workspace_id {ws_cond} AND review_count <= 1),
-           (SELECT COUNT(*) FROM learning_goals WHERE workspace_id {ws_cond} AND is_completed = 0 AND substr(updated_at, 1, 10) <= date('now', '-14 days')),
-           (SELECT COUNT(*) FROM sources WHERE workspace_id {ws_cond} AND is_processed = 0),
-           (SELECT COUNT(*) FROM concept_nodes c WHERE c.workspace_id {ws_cond} AND NOT EXISTS (SELECT 1 FROM concept_links l WHERE l.source_id = c.id OR l.target_id = c.id))"
+            cs.chat_sessions,
+            pn.notes,
+            s.sources,
+            cn.concepts,
+            lc.flashcards,
+            lg.active_goals,
+            lg.completed_goals,
+            lc.total_cards,
+            lc.due_today,
+            lc.learned,
+            lc.avg_ease,
+            cn.under_reviewed_concepts,
+            lg.stalled_goals,
+            s.unprocessed_sources,
+            cn.isolated_concepts
+        FROM
+            (SELECT COUNT(*) AS chat_sessions FROM chat_sessions WHERE workspace_id {ws_cond} AND is_deleted = 0 AND is_incognito = 0 AND exclude_from_analytics = 0) cs,
+            (SELECT COUNT(*) AS notes FROM project_notes WHERE workspace_id {ws_cond}) pn,
+            (SELECT
+                COUNT(*) AS sources,
+                COALESCE(SUM(CASE WHEN is_processed = 0 THEN 1 ELSE 0 END), 0) AS unprocessed_sources
+             FROM sources WHERE workspace_id {ws_cond}) s,
+            (SELECT
+                COUNT(*) AS concepts,
+                COALESCE(SUM(CASE WHEN review_count <= 1 THEN 1 ELSE 0 END), 0) AS under_reviewed_concepts,
+                COALESCE(SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM concept_links l WHERE l.source_id = c.id OR l.target_id = c.id) THEN 1 ELSE 0 END), 0) AS isolated_concepts
+             FROM concept_nodes c WHERE workspace_id {ws_cond}) cn,
+            (SELECT
+                COUNT(*) AS flashcards,
+                COUNT(*) AS total_cards,
+                COALESCE(SUM(CASE WHEN next_review_date <= date('now') THEN 1 ELSE 0 END), 0) AS due_today,
+                COALESCE(SUM(CASE WHEN repetitions > 0 THEN 1 ELSE 0 END), 0) AS learned,
+                COALESCE(AVG(ease_factor), 2.5) AS avg_ease
+             FROM learning_cards WHERE workspace_id {ws_cond}) lc,
+            (SELECT
+                COALESCE(SUM(CASE WHEN is_completed = 0 THEN 1 ELSE 0 END), 0) AS active_goals,
+                COALESCE(SUM(CASE WHEN is_completed = 1 THEN 1 ELSE 0 END), 0) AS completed_goals,
+                COALESCE(SUM(CASE WHEN is_completed = 0 AND substr(updated_at, 1, 10) <= date('now', '-14 days') THEN 1 ELSE 0 END), 0) AS stalled_goals
+             FROM learning_goals WHERE workspace_id {ws_cond}) lg"
     );
 
     let (

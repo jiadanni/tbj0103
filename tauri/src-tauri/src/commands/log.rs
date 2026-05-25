@@ -152,8 +152,8 @@ pub fn set_log_level(level: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_log_level() -> String {
-    crate::logging::get_min_log_level()
+pub fn get_log_level() -> Result<String, String> {
+    Ok(crate::logging::get_min_log_level())
 }
 
 #[tauri::command]
