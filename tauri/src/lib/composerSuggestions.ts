@@ -1,7 +1,7 @@
 import type { TopicSignature } from "./api";
 import type { Message } from "../stores/chatStore";
 
-export type ComposerSuggestionAction = "append" | "send_immediately";
+type ComposerSuggestionAction = "append" | "send_immediately";
 
 export interface ComposerSuggestion {
   id: string;

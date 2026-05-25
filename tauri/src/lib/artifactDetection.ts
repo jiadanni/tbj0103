@@ -2,7 +2,7 @@
  * Detects potential artifacts in markdown content from the assistant.
  */
 
-export type ArtifactType = 'code' | 'document' | 'diagram' | 'config' | 'data' | 'other';
+type ArtifactType = 'code' | 'document' | 'diagram' | 'config' | 'data' | 'other';
 
 export interface DetectedArtifact {
   title: string;

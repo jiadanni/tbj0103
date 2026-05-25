@@ -1,6 +1,7 @@
 import type { AiModel } from "./api";
 
-export const MODEL_ROLE_OPTIONS = ["chat", "background", "reasoning", "vision"] as const;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const MODEL_ROLE_OPTIONS = ["chat", "background", "reasoning", "vision"] as const;
 
 export type ModelRole = (typeof MODEL_ROLE_OPTIONS)[number];
 

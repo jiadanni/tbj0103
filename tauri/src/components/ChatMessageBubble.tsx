@@ -51,7 +51,7 @@ function formatMessageTimestamp(value: string) {
   }).format(date);
 }
 
-export interface ChatMessageBubbleProps {
+interface ChatMessageBubbleProps {
   msg: Message;
   isLastMessage: boolean;
   isStreaming: boolean;

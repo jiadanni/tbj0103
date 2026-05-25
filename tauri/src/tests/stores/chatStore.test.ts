@@ -277,9 +277,9 @@ describe('message lifecycle edge cases', () => {
   });
 
   it('clears all messages for a session', () => {
-    // @ts-ignore
+    // @ts-expect-error test override
     useChatStore.getState().appendMessage('session-lifecycle-1', dummyMessage);
-    // @ts-ignore
+    // @ts-expect-error test override
     useChatStore.getState().appendMessage('session-lifecycle-1', { ...dummyMessage, id: 'msg-lifecycle-2' });
 
     useChatStore.getState().setMessages('session-lifecycle-1', []);
