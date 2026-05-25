@@ -2424,9 +2424,9 @@ export default function PreferencesView() {
                       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-4">
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <p className="text-sm text-[var(--text-secondary)]">Local server</p>
+                            <p className="text-sm text-[var(--text-secondary)]">Auto-start Ollama</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                              Manage the local server, discover installed models, and power the default local chat flow.
+                              Automatically start the Ollama server when the app launches.
                             </p>
                           </div>
                           <Toggle
