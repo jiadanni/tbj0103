@@ -28,7 +28,7 @@ fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str) {
 
 pub fn start_scheduler(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(30));
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
         let mut git_sync_tick: u32 = 0;
 
         loop {
@@ -86,8 +86,18 @@ pub fn start_scheduler(app: AppHandle) {
                 }
             };
 
-            // If user is NOT chatting, run AI tasks
-            if !is_streaming && !is_active_chatting {
+            let background_inference_enabled = {
+                if let Ok(conn) = db.0.get() {
+                    crate::commands::settings::get_setting(&conn, "background_inference_enabled")
+                        .map(|v| v == "true")
+                        .unwrap_or(true)
+                } else {
+                    true
+                }
+            };
+
+            // If user is NOT chatting and background inference is enabled, run AI tasks
+            if !is_streaming && !is_active_chatting && background_inference_enabled {
                 // 1. Process memory extraction
                 emit_task(&app, "memory_extraction", "started", "Extracting memories…");
                 let mem_result =

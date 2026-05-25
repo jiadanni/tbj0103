@@ -1881,6 +1881,19 @@ export default function PreferencesView() {
                         </p>
                       </div>
 
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Enable background inference</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Run memory extraction, summarization, and glossary jobs automatically. Disable to reduce GPU/RAM usage when the app is idle.
+                          </p>
+                        </div>
+                        <Toggle
+                          on={dbSettings.background_inference_enabled}
+                          onToggle={() => set("background_inference_enabled", !dbSettings.background_inference_enabled)}
+                        />
+                      </div>
+
                       <div className="flex items-center justify-between py-0.5">
                         <div>
                           <p className="text-sm text-[var(--text-secondary)]">Memory extraction threshold</p>

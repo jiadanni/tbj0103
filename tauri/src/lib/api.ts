@@ -420,6 +420,7 @@ export interface AppSettings {
   menubar_icon_style: "monochrome" | "white" | "black";
   user_chat_label: string;
   assistant_chat_label: string;
+  background_inference_enabled: boolean;
 }
 
 export interface GitSyncStatus {
