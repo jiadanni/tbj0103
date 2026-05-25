@@ -3515,8 +3515,8 @@ export default function PreferencesView() {
                           try {
                             await api.gitSync.configure(gitSyncUrl, next);
                             setGitSync((s) => s ? { ...s, enabled: next } : s);
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          } catch (e: any) {
+
+                          } catch (e: unknown) {
                             setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
                           } finally {
                             setGitSyncSaving(false);
@@ -3541,8 +3541,8 @@ export default function PreferencesView() {
                             try {
                               await api.gitSync.configure(gitSyncUrl, gitSync?.enabled ?? false);
                               setGitSync((s) => s ? { ...s, remote_url: gitSyncUrl, last_error: "" } : s);
-                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            } catch (e: any) {
+
+                            } catch (e: unknown) {
                               setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
                             } finally {
                               setGitSyncSaving(false);
@@ -3577,8 +3577,8 @@ export default function PreferencesView() {
                           try {
                             const s = await api.gitSync.triggerSync();
                             setGitSync(s);
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          } catch (e: any) {
+
+                          } catch (e: unknown) {
                             setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
                           } finally {
                             setGitSyncing(false);
