@@ -37,62 +37,24 @@ fn workspace_has_enriched_context(
 
     if query_exists(
         conn,
-        "SELECT EXISTS(SELECT 1 FROM workspaces WHERE id = ?1 AND TRIM(prompt_instructions) != '')",
-        rusqlite::params![workspace_id],
-    )? {
-        return Ok(true);
-    }
-
-    if query_exists(
-        conn,
         "SELECT EXISTS(
-            SELECT 1
-            FROM chat_sessions cs
-            LEFT JOIN folders p ON p.id = cs.folder_id
-            WHERE cs.id = ?1
-              AND (
-                TRIM(COALESCE(cs.system_prompt, '')) != ''
-                OR TRIM(COALESCE(p.custom_instructions, '')) != ''
-              )
-        )",
-        rusqlite::params![session_id],
-    )? {
-        return Ok(true);
-    }
-
-    if query_exists(
-        conn,
-        "SELECT EXISTS(
-            SELECT 1
-            FROM memories
-            WHERE is_active = 1
-              AND ((workspace_id = ?1 AND scope = 'workspace') OR scope = 'global')
-        )",
-        rusqlite::params![workspace_id],
-    )? {
-        return Ok(true);
-    }
-
-    if query_exists(
-        conn,
-        "SELECT EXISTS(
-            SELECT 1
-            FROM conversation_summaries
-            WHERE workspace_id = ?1 AND session_id != ?2
+            SELECT 1 FROM workspaces WHERE id = ?1 AND TRIM(prompt_instructions) != ''
+            UNION ALL
+            SELECT 1 FROM chat_sessions cs LEFT JOIN folders p ON p.id = cs.folder_id
+                WHERE cs.id = ?2
+                  AND (
+                    TRIM(COALESCE(cs.system_prompt, '')) != ''
+                    OR TRIM(COALESCE(p.custom_instructions, '')) != ''
+                  )
+            UNION ALL
+            SELECT 1 FROM memories WHERE is_active = 1
+                  AND ((workspace_id = ?1 AND scope = 'workspace') OR scope = 'global')
+            UNION ALL
+            SELECT 1 FROM conversation_summaries WHERE workspace_id = ?1 AND session_id != ?2
+            UNION ALL
+            SELECT 1 FROM artifacts WHERE workspace_id = ?1 AND is_pinned = 1
         )",
         rusqlite::params![workspace_id, session_id],
-    )? {
-        return Ok(true);
-    }
-
-    if query_exists(
-        conn,
-        "SELECT EXISTS(
-            SELECT 1
-            FROM artifacts
-            WHERE workspace_id = ?1 AND is_pinned = 1
-        )",
-        rusqlite::params![workspace_id],
     )? {
         return Ok(true);
     }
