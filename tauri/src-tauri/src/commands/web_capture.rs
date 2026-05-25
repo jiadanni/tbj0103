@@ -5,51 +5,57 @@ use crate::services::workspace_hierarchy::workspace_filter_sql;
 use tauri::State;
 
 #[tauri::command]
-pub fn create_web_capture(
-    state: State<DbState>,
+pub async fn create_web_capture(
+    state: State<'_, DbState>,
     workspace_id: String,
     url: String,
     title: String,
     content: String,
     summary: Option<String>,
 ) -> Result<WebCapture, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    let now = chrono::Utc::now().to_rfc3339();
+    let pool = state.0.clone();
 
-    let summary_val = summary.or_else(|| {
-        if !content.is_empty() {
-            Some(generate_summary(&content, 200))
-        } else {
-            None
-        }
-    });
+    let capture = tokio::task::spawn_blocking(move || -> Result<WebCapture, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().to_rfc3339();
 
-    let capture = WebCapture {
-        id: uuid::Uuid::new_v4().to_string(),
-        workspace_id,
-        url,
-        title,
-        content,
-        summary: summary_val,
-        favicon_data: None,
-        is_processed: false,
-        created_at: now.clone(),
-    };
-    conn.execute(
-        "INSERT INTO sources (id, workspace_id, source_type, title, url, content, summary, favicon_data, is_processed, created_at, updated_at)
-         VALUES (?1, ?2, 'web_capture', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
-        rusqlite::params![
-            capture.id,
-            capture.workspace_id,
-            capture.title,
-            capture.url,
-            capture.content,
-            capture.summary,
-            capture.favicon_data,
-            capture.is_processed as i32,
-            capture.created_at
-        ],
-    ).map_err(|e| e.to_string())?;
+        let summary_val = summary.or_else(|| {
+            if !content.is_empty() {
+                Some(generate_summary(&content, 200))
+            } else {
+                None
+            }
+        });
+
+        let capture = WebCapture {
+            id: uuid::Uuid::new_v4().to_string(),
+            workspace_id,
+            url,
+            title,
+            content,
+            summary: summary_val,
+            favicon_data: None,
+            is_processed: false,
+            created_at: now.clone(),
+        };
+        conn.execute(
+            "INSERT INTO sources (id, workspace_id, source_type, title, url, content, summary, favicon_data, is_processed, created_at, updated_at)
+             VALUES (?1, ?2, 'web_capture', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
+            rusqlite::params![
+                capture.id,
+                capture.workspace_id,
+                capture.title,
+                capture.url,
+                capture.content,
+                capture.summary,
+                capture.favicon_data,
+                capture.is_processed as i32,
+                capture.created_at
+            ],
+        ).map_err(|e| e.to_string())?;
+        Ok(capture)
+    }).await.map_err(|e| e.to_string())??;
+
     Ok(capture)
 }
 
