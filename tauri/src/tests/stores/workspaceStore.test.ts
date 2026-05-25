@@ -516,7 +516,7 @@ describe("integration edge cases", () => {
 
   it("setPaneWorkspace sets the workspace id for a specific pane", () => {
     useWorkspaceStore.setState({
-      workspaces: [{ id: "ws-1" } as any],
+      workspaces: [{ id: "ws-1" } as unknown as Workspace],
       panes: {
         primary: {
           workspaceId: null,
