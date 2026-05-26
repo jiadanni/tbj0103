@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, type PerformanceStats, type BackgroundTaskEvent } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 import { Tooltip } from "./Tooltip";
@@ -57,40 +58,115 @@ function MiniBar({ percent, label, sublabel }: { percent: number; label: string;
   );
 }
 
+/** Floating mini bar-chart popup shown when hovering the CPU solid bar. */
+function CoreGraphPopup({ cores, anchorRect }: { cores: number[]; anchorRect: DOMRect }) {
+  const POPUP_BAR_MAX_H = 40;
+  const POPUP_BAR_W = 10;
+  const GAP = 4;
+  const PADDING = 10;
+  const ROW_SIZE = 8;
+  const rows: number[][] = [];
+  for (let i = 0; i < cores.length; i += ROW_SIZE) {
+    rows.push(cores.slice(i, i + ROW_SIZE));
+  }
+
+  const rowCount = rows.length;
+  const maxRowLen = Math.max(...rows.map((r) => r.length));
+  const popupW = PADDING * 2 + maxRowLen * (POPUP_BAR_W + GAP) - GAP;
+  const popupH = 24 + rowCount * (POPUP_BAR_MAX_H + 18) + PADDING * 2;
+  const left = anchorRect.left + anchorRect.width / 2 - popupW / 2;
+  const top = anchorRect.top - popupH - 8;
+
+  return createPortal(
+    <div
+      style={{
+        position: "fixed",
+        left: `${Math.max(4, left)}px`,
+        top: `${Math.max(4, top)}px`,
+        width: `${popupW}px`,
+        zIndex: 9999,
+        padding: `${PADDING}px`,
+        pointerEvents: "none",
+        animation: "tooltip-fade-in-top 0.15s cubic-bezier(0.16,1,0.3,1) both",
+      }}
+      className="rounded-md border border-[var(--border-color)] bg-[var(--bg-sidebar)] backdrop-blur-sm shadow-lg"
+    >
+      <div className="text-[11px] text-[var(--text-secondary)] font-medium mb-2 leading-none">
+        {cores.length} cores
+      </div>
+      {rows.map((row, ri) => (
+        <div key={ri} className="flex items-end mb-2 last:mb-0" style={{ gap: `${GAP}px` }}>
+          {row.map((v, ci) => {
+            const rounded = Math.round(v);
+            return (
+              <div key={ci} className="flex flex-col items-center" style={{ width: `${POPUP_BAR_W}px` }}>
+                <div
+                  className={`rounded-[1px] transition-none ${barColor(rounded)}`}
+                  style={{
+                    width: `${POPUP_BAR_W}px`,
+                    height: `${Math.max(3, Math.round((v / 100) * POPUP_BAR_MAX_H))}px`,
+                  }}
+                />
+                <span
+                  className="text-[var(--text-secondary)] tabular-nums leading-none mt-1"
+                  style={{ fontSize: "9px" }}
+                >
+                  {rounded}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
 /**
- * CPU:  [core bars]  N%
- * One vertical bar per logical core; bars grouped in sets of 2 for readability.
- * Caps at 32 cores. Aggregate % shown after the bars.
+ * CPU:  [solid bar]  N%
+ * Solid aggregate bar matching RAM/VRAM style. Hovering shows CoreGraphPopup
+ * with per-core breakdown.
  */
 function CoreBars({ cores, aggregate }: { cores: number[]; aggregate: number }) {
   const displayed = cores.slice(0, 32);
-  const barW = displayed.length > 16 ? 2 : 3;
-  const tooltipText = `${displayed.length} cores — ${displayed.map((v) => Math.round(v) + "%").join(" · ")}`;
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+
+  const showPopup = useCallback(() => {
+    timerRef.current = setTimeout(() => {
+      if (barRef.current) {
+        setAnchorRect(barRef.current.getBoundingClientRect());
+      }
+    }, 200);
+  }, []);
+
+  const hidePopup = useCallback(() => {
+    if (timerRef.current) { clearTimeout(timerRef.current); }
+    setAnchorRect(null);
+  }, []);
+
+  useEffect(() => () => { if (timerRef.current) { clearTimeout(timerRef.current); } }, []);
+
   return (
-    <div className="flex items-center gap-1.5">
+    <div
+      className="flex items-center gap-1.5"
+      ref={barRef}
+      onMouseEnter={showPopup}
+      onMouseLeave={hidePopup}
+    >
       <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">CPU:</span>
-      {/* Core columns */}
-      <Tooltip content={tooltipText} position="top">
+      <div className="relative h-1.5 w-16 rounded-full overflow-hidden bg-[color-mix(in_srgb,var(--border-color),transparent_50%)]">
         <div
-          className="flex items-end gap-px"
-          style={{ height: "14px" }}
-        >
-          {displayed.map((v, i) => (
-            <div
-              key={i}
-              className={`rounded-[1px] transition-all duration-700 ${barColor(Math.round(v))}`}
-              style={{
-                width: `${barW}px`,
-                // Increased minimum height to 3px to ensure visibility even at < 1% usage
-                height: `${Math.max(3, Math.round((v / 100) * 14))}px`,
-              }}
-            />
-          ))}
-        </div>
-      </Tooltip>
+          className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ${barColor(aggregate)}`}
+          style={{ width: `${aggregate}%` }}
+        />
+      </div>
       <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none">
         {aggregate}%
       </span>
+      {anchorRect && <CoreGraphPopup cores={displayed} anchorRect={anchorRect} />}
     </div>
   );
 }
