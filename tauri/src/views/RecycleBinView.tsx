@@ -8,7 +8,7 @@ import { useChatStore, type ChatSession } from "../stores/chatStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
-import Tooltip from "../components/Tooltip";
+import { Tooltip } from "../components/Tooltip";
 
 export default function RecycleBinView() {
   const navigate = useNavigate();

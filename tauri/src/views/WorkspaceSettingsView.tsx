@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import ConfirmDialog from "../components/ConfirmDialog";
-import CompactMenuSelect from "../components/CompactMenuSelect";
+import { CompactMenuSelect } from "../components/CompactMenuSelect";
 import { TopicsSection } from "../components/TopicsSection";
 import WorkspaceMemoryPanel from "./WorkspaceMemoryPanel";
 import { useWorkspaceStore } from "../stores/workspaceStore";

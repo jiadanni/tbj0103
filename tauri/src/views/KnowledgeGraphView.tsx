@@ -40,7 +40,7 @@ import {
 import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
-import CompactMenuSelect from "../components/CompactMenuSelect";
+import { CompactMenuSelect } from "../components/CompactMenuSelect";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
 

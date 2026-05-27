@@ -22,7 +22,7 @@ import GlobalBackupSection from "./GlobalBackupSection";
 import ImportSettingsSection from "./ImportSettingsSection";
 import GlobalMemoryView from "./GlobalMemoryView";
 const LogsView = React.lazy(() => import("./LogsView"));
-import CompactMenuSelect from "../components/CompactMenuSelect";
+import { CompactMenuSelect } from "../components/CompactMenuSelect";
 import { Tooltip } from "../components/Tooltip";
 import { MOD_KEY, isLinux, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";

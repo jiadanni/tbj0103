@@ -8,7 +8,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useBubbleUpFlag } from "../lib/workspacePane";
-import Tooltip from "../components/Tooltip";
+import { Tooltip } from "../components/Tooltip";
 
 interface WebCapture {
   id: string;
