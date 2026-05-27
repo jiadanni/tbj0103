@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Brain, Globe, Pin, PinOff, Plus, RefreshCw, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { api, type Memory, type MemorySummary } from "../lib/api";
-import CompactMenuSelect from "../components/CompactMenuSelect";
-import Tooltip from "../components/Tooltip";
+import { CompactMenuSelect } from "../components/CompactMenuSelect";
+import { Tooltip } from "../components/Tooltip";
 import HoverDefinitionSurface from "../components/HoverDefinitionSurface";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 

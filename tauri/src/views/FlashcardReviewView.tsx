@@ -8,7 +8,7 @@ import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2 } from "lucide-react";
 import { api, type LearningCard, type ReviewStats } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
-import CompactMenuSelect from "../components/CompactMenuSelect";
+import { CompactMenuSelect } from "../components/CompactMenuSelect";
 import { Tooltip } from "../components/Tooltip";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";

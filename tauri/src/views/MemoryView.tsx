@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { Brain, Globe, Layers, Pin, PinOff, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { api, type Memory } from "../lib/api";
 import { useScopedWorkspace } from "../lib/workspacePane";
-import CompactMenuSelect from "../components/CompactMenuSelect";
-import Tooltip from "../components/Tooltip";
+import { CompactMenuSelect } from "../components/CompactMenuSelect";
+import { Tooltip } from "../components/Tooltip";
 import HoverDefinitionSurface from "../components/HoverDefinitionSurface";
 
 const MEMORY_TYPES: Memory["memory_type"][] = ["fact", "preference", "context"];

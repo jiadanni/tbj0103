@@ -36,7 +36,7 @@ interface CompactMenuSelectProps {
 const defaultButtonClassName = "flex h-8 w-full items-center justify-between gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus-visible:border-[var(--accent-color)]";
 const defaultMenuClassName = "absolute left-0 top-full z-40 mt-2 w-full overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-xl backdrop-blur-xl";
 
-export default function CompactMenuSelect({
+export function CompactMenuSelect({
   label,
   value,
   options,

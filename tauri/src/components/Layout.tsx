@@ -24,7 +24,7 @@ import SplitPaneLayout from "./SplitPaneLayout";
 import ChatView from "../views/ChatView";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useChatStore } from "../stores/chatStore";
-import CompactMenuSelect from "./CompactMenuSelect";
+import { CompactMenuSelect } from "./CompactMenuSelect";
 import StatusBar from "./StatusBar";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 
