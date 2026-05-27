@@ -324,7 +324,6 @@ impl OllamaClient {
         parts
     }
 
-    #[cfg(debug_assertions)]
     fn log_http_success(
         &self,
         method: &str,
@@ -336,16 +335,10 @@ impl OllamaClient {
     ) {
         let severity = Self::severity(path, duration, false, false, ctx);
         let fields = Self::summary_fields(ctx, method, path, Some(duration), Some(status), extras);
-        let message = format!(
-            "[{}] {}",
-            severity,
-            fields.join(" ")
-        );
-        // Route non-critical successes through the buffered logger at debug level.
-        crate::logging::log_buffered("debug", "ollama", &message, "{}");
+        let message = format!("[{}] {}", severity, fields.join(" "));
+        crate::logging::log_buffered("info", "ollama", &message, "{}");
     }
 
-    #[cfg(debug_assertions)]
     fn log_http_error(
         &self,
         method: &str,
@@ -358,7 +351,6 @@ impl OllamaClient {
         let mut extra_parts = extras.to_vec();
         extra_parts.push(("error", error.to_string()));
         let fields = Self::summary_fields(ctx, method, path, Some(duration), None, &extra_parts);
-        // Errors persist immediately (log_buffered short-circuits for "error" level).
         crate::logging::log_buffered("error", "ollama", &format!("[ERR] {}", fields.join(" ")), "{}");
     }
 
@@ -366,38 +358,12 @@ impl OllamaClient {
     fn log_cache_event(&self, path: &str, ctx: &RequestContext, cache_status: &str) {
         let extras = [("cache", cache_status.to_string())];
         let fields = Self::summary_fields(ctx, "GET", path, None, None, &extras);
-        // Cache hits are the noisiest — aggregate them so repeated identical
-        // messages collapse into a single DB row with a count.
         crate::logging::log_buffered_aggregated(
             "debug",
             "ollama",
             &format!("[CACHE] {}", fields.join(" ")),
             "{}",
         );
-    }
-
-    #[cfg(not(debug_assertions))]
-    fn log_http_success(
-        &self,
-        _method: &str,
-        _path: &str,
-        _status: u16,
-        _duration: Duration,
-        _ctx: &RequestContext,
-        _extras: &[(&str, String)],
-    ) {
-    }
-
-    #[cfg(not(debug_assertions))]
-    fn log_http_error(
-        &self,
-        _method: &str,
-        _path: &str,
-        _duration: Duration,
-        _ctx: &RequestContext,
-        _error: &str,
-        _extras: &[(&str, String)],
-    ) {
     }
 
     #[cfg(not(debug_assertions))]
