@@ -469,7 +469,11 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('workspace_glossary_refresh_interval_minutes', '60'),
     ('git_sync_interval_minutes', '5'),
     ('user_chat_label', '"You"'),
-    ('assistant_chat_label', '"Assistant"');
+    ('assistant_chat_label', '"Assistant"'),
+    ('vram_headroom_gb', '0'),
+    ('vram_headroom_percent', '10'),
+    ('ram_headroom_gb', '0'),
+    ('ram_headroom_percent', '10');
 
 
 -- Conversation summaries

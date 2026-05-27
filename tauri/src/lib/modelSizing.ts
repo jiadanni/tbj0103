@@ -8,6 +8,35 @@ export interface ModelSizingSystemInfo {
   gpu_name?: string | null;
   gpu_memory_bytes?: number | null;
   gpu_detection_source?: string | null;
+  vram_headroom_gb?: number | null;
+  vram_headroom_percent?: number | null;
+  ram_headroom_gb?: number | null;
+  ram_headroom_percent?: number | null;
+}
+
+export interface HeadroomResult {
+  effectiveBytes: number;
+  reservedBytes: number;
+}
+
+const GB = 1024 ** 3;
+
+export function applyHeadroom(
+  totalBytes: number,
+  headroomGb: number | null | undefined,
+  headroomPercent: number | null | undefined,
+): HeadroomResult {
+  if (!Number.isFinite(totalBytes) || totalBytes <= 0) {
+    return { effectiveBytes: 0, reservedBytes: 0 };
+  }
+  const gb = Number.isFinite(headroomGb ?? NaN) ? Math.max(0, headroomGb as number) : 0;
+  const pct = Number.isFinite(headroomPercent ?? NaN)
+    ? Math.min(90, Math.max(0, headroomPercent as number))
+    : 0;
+  const reservedFromGb = gb * GB;
+  const reservedFromPct = (totalBytes * pct) / 100;
+  const reservedBytes = Math.min(totalBytes, Math.max(reservedFromGb, reservedFromPct));
+  return { effectiveBytes: Math.max(0, totalBytes - reservedBytes), reservedBytes };
 }
 
 export interface HardwareModelGuidance {
@@ -60,11 +89,22 @@ function isAppleSiliconMac(system: ModelSizingSystemInfo): boolean {
 }
 
 export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): HardwareModelGuidance {
-  const totalMemoryGb = system.total_memory_bytes / (1024 ** 3);
-  const gpuMemoryGb = (system.gpu_memory_bytes ?? 0) / (1024 ** 3);
+  const ramHeadroom = applyHeadroom(
+    system.total_memory_bytes,
+    system.ram_headroom_gb,
+    system.ram_headroom_percent,
+  );
+  const gpuHeadroom = applyHeadroom(
+    system.gpu_memory_bytes ?? 0,
+    system.vram_headroom_gb,
+    system.vram_headroom_percent,
+  );
+  const totalMemoryGb = ramHeadroom.effectiveBytes / GB;
+  const gpuMemoryGb = gpuHeadroom.effectiveBytes / GB;
   const physicalCores = system.physical_cores ?? 0;
   const appleSiliconMac = isAppleSiliconMac(system);
-  const hasDetectedGpuMemory = Number.isFinite(gpuMemoryGb) && gpuMemoryGb > 0;
+  const hasDetectedGpuMemory =
+    (system.gpu_memory_bytes ?? 0) > 0 && Number.isFinite(gpuMemoryGb) && gpuMemoryGb > 0;
   let recommendedMaxParamsB = 3;
 
   if (appleSiliconMac) {
@@ -105,9 +145,18 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
     recommendedMaxParamsB = Math.min(recommendedMaxParamsB, 8);
   }
 
+  const vramReservedNote =
+    gpuHeadroom.reservedBytes > 0 && (system.gpu_memory_bytes ?? 0) > 0
+      ? ` (${formatBytes(gpuHeadroom.reservedBytes)} reserved, ${formatBytes(gpuHeadroom.effectiveBytes)} effective)`
+      : "";
+  const ramReservedNote =
+    ramHeadroom.reservedBytes > 0
+      ? ` (${formatBytes(ramHeadroom.reservedBytes)} reserved, ${formatBytes(ramHeadroom.effectiveBytes)} effective)`
+      : "";
   const gpuBasis = system.gpu_name
-    ? `${system.gpu_memory_bytes ? `${formatBytes(system.gpu_memory_bytes)} VRAM` : "Detected GPU memory"}${system.gpu_name ? ` on ${system.gpu_name}` : ""}${system.gpu_detection_source ? ` via ${system.gpu_detection_source}` : ""}.`
-    : "Estimated from system RAM and CPU cores.";
+    ? `${system.gpu_memory_bytes ? `${formatBytes(system.gpu_memory_bytes)} VRAM` : "Detected GPU memory"}${vramReservedNote}${system.gpu_name ? ` on ${system.gpu_name}` : ""}${system.gpu_detection_source ? ` via ${system.gpu_detection_source}` : ""}.`
+    : `Estimated from system RAM${ramReservedNote} and CPU cores.`;
+  const appleBasis = `Estimated from unified memory${ramReservedNote} and CPU cores.`;
 
   if (recommendedMaxParamsB <= 3) {
     return {
@@ -119,7 +168,7 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
       caution: appleSiliconMac
         ? "7B+ models may run, but will usually feel heavier."
         : "7B+ models may still run, but performance is less predictable.",
-      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
+      basis: appleSiliconMac ? appleBasis : gpuBasis,
     };
   }
 
@@ -133,7 +182,7 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
       caution: appleSiliconMac
         ? "14B-class models may work, but usually feel heavier."
         : "14B-class models may fit, but can still run slowly.",
-      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
+      basis: appleSiliconMac ? appleBasis : gpuBasis,
     };
   }
 
@@ -147,7 +196,7 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
       caution: appleSiliconMac
         ? "30B+ models may work only with aggressive quantization."
         : "30B+ models are still more situational.",
-      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
+      basis: appleSiliconMac ? appleBasis : gpuBasis,
     };
   }
 
@@ -163,7 +212,7 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
       caution: appleSiliconMac
         ? "Very large models can still be slow."
         : "30B+ models are still runtime-dependent.",
-      basis: appleSiliconMac ? "Estimated from unified memory and CPU cores." : gpuBasis,
+      basis: appleSiliconMac ? appleBasis : gpuBasis,
     };
   }
 
@@ -172,7 +221,7 @@ export function inferHardwareModelGuidance(system: ModelSizingSystemInfo): Hardw
     headline: "Large local models look realistic here",
     summary: "This system has unusually strong memory headroom for local inference.",
     caution: "Even when they fit, 70B-class models can still be slow.",
-    basis: "Estimated from unified memory and CPU cores.",
+    basis: appleSiliconMac ? appleBasis : gpuBasis,
   };
 }
 
