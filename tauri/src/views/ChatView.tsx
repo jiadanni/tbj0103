@@ -2364,7 +2364,19 @@ export default function ChatView() {
   useEffect(() => {
     let active = true;
     const fetchRelated = async () => {
-      const tags = activeTopicSignature?.domain_tags.map(t => t.tag) || [];
+      const tags = (() => {
+        if (!activeTopicSignature) { return []; }
+        const ignored = new Set(activeTopicSignature.ignored_tags);
+        const active = activeTopicSignature.domain_tags
+          .filter(t => !ignored.has(t.tag) && t.weight >= 0.4)
+          .map(t => t.tag);
+        for (const tag of activeTopicSignature.manual_tags) {
+          if (!ignored.has(tag) && !active.includes(tag)) {
+            active.push(tag);
+          }
+        }
+        return active;
+      })();
       if (tags.length === 0 || !effectiveWorkspaceId) {
         setRelatedChats([]);
         return;
