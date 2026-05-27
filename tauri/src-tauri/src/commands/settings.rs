@@ -64,6 +64,10 @@ pub struct Settings {
     pub user_chat_label: String,
     pub assistant_chat_label: String,
     pub background_inference_enabled: bool,
+    pub vram_headroom_gb: f64,
+    pub vram_headroom_percent: u32,
+    pub ram_headroom_gb: f64,
+    pub ram_headroom_percent: u32,
 }
 
 impl Default for Settings {
@@ -132,6 +136,10 @@ impl Default for Settings {
             user_chat_label: "You".to_string(),
             assistant_chat_label: "Assistant".to_string(),
             background_inference_enabled: true,
+            vram_headroom_gb: 0.0,
+            vram_headroom_percent: 10,
+            ram_headroom_gb: 0.0,
+            ram_headroom_percent: 10,
         }
     }
 }
@@ -395,6 +403,18 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         background_inference_enabled: get_setting(&conn, "background_inference_enabled")
             .map(|v| v == "true")
             .unwrap_or(def.background_inference_enabled),
+        vram_headroom_gb: get_setting(&conn, "vram_headroom_gb")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.vram_headroom_gb),
+        vram_headroom_percent: get_setting(&conn, "vram_headroom_percent")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.vram_headroom_percent),
+        ram_headroom_gb: get_setting(&conn, "ram_headroom_gb")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.ram_headroom_gb),
+        ram_headroom_percent: get_setting(&conn, "ram_headroom_percent")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.ram_headroom_percent),
     })
 }
 
@@ -695,6 +715,22 @@ pub fn update_settings(
         &conn,
         "background_inference_enabled",
         &settings.background_inference_enabled.to_string(),
+    )?;
+    let vram_headroom_gb = settings.vram_headroom_gb.max(0.0);
+    let ram_headroom_gb = settings.ram_headroom_gb.max(0.0);
+    let vram_headroom_percent = settings.vram_headroom_percent.min(90);
+    let ram_headroom_percent = settings.ram_headroom_percent.min(90);
+    set_setting(&conn, "vram_headroom_gb", &vram_headroom_gb.to_string())?;
+    set_setting(
+        &conn,
+        "vram_headroom_percent",
+        &vram_headroom_percent.to_string(),
+    )?;
+    set_setting(&conn, "ram_headroom_gb", &ram_headroom_gb.to_string())?;
+    set_setting(
+        &conn,
+        "ram_headroom_percent",
+        &ram_headroom_percent.to_string(),
     )?;
 
     if settings.start_at_login {
