@@ -145,14 +145,17 @@ export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext):
   const topicTerms = context.topicSignature?.domain_tags
     .slice(0, 4)
     .map((tag) => tag.tag) ?? [];
+
+  // Only generate suggestions when there is real content — folder name alone is
+  // not enough context for meaningful suggestions.
+  if (topicTerms.length === 0) {
+    return null;
+  }
+
   const terms = uniqueTerms([
     context.folderName,
     ...topicTerms,
   ]).slice(0, 4);
-
-  if (terms.length === 0) {
-    return null;
-  }
 
   const hasDocs = context.processedDocCount > 0;
   return {
