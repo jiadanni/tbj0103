@@ -457,6 +457,18 @@ fn insert_json_rows(
     Ok(())
 }
 
+fn get_table_columns(conn: &Connection, table_name: &str) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table_name})"))
+        .map_err(|e| format!("Failed to inspect table '{table_name}': {e}"))?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| format!("Failed to read columns for '{table_name}': {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect columns for '{table_name}': {e}"))?;
+    Ok(columns)
+}
+
 fn insert_value_object(
     conn: &Connection,
     table_name: &str,
@@ -470,7 +482,20 @@ fn insert_value_object(
         return Ok(());
     }
 
-    let columns: Vec<&str> = object.keys().map(String::as_str).collect();
+    let valid_columns = get_table_columns(conn, table_name)?;
+
+    // Only include keys that correspond to real columns, preventing SQL injection
+    // via crafted JSON keys in a backup file.
+    let columns: Vec<&str> = object
+        .keys()
+        .map(String::as_str)
+        .filter(|k| valid_columns.iter().any(|c| c == k))
+        .collect();
+
+    if columns.is_empty() {
+        return Ok(());
+    }
+
     let placeholders = vec!["?"; columns.len()].join(", ");
     let sql = format!(
         "INSERT OR REPLACE INTO {table_name} ({}) VALUES ({placeholders})",
