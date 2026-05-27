@@ -421,6 +421,10 @@ export interface AppSettings {
   user_chat_label: string;
   assistant_chat_label: string;
   background_inference_enabled: boolean;
+  vram_headroom_gb: number;
+  vram_headroom_percent: number;
+  ram_headroom_gb: number;
+  ram_headroom_percent: number;
 }
 
 export interface GitSyncStatus {

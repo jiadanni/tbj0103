@@ -12,7 +12,7 @@ import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSync
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
-import { classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB, type ModelFit } from "../lib/modelSizing";
+import { applyHeadroom, classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB, type ModelFit } from "../lib/modelSizing";
 import { ACCENT_COLORS, THEMES, THEME_DEFAULT_ACCENTS, normalizeTheme } from "../lib/theme";
 import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore";
 import { type NavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
@@ -625,7 +625,13 @@ export default function PreferencesView() {
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const systemGuidance = systemSpecs
-    ? inferHardwareModelGuidance(systemSpecs)
+    ? inferHardwareModelGuidance({
+        ...systemSpecs,
+        vram_headroom_gb: dbSettings?.vram_headroom_gb ?? 0,
+        vram_headroom_percent: dbSettings?.vram_headroom_percent ?? 0,
+        ram_headroom_gb: dbSettings?.ram_headroom_gb ?? 0,
+        ram_headroom_percent: dbSettings?.ram_headroom_percent ?? 0,
+      })
     : null;
   const nonEmbeddingOllamaModels = ollamaModels.filter((model) => !model.name.toLowerCase().includes("embed"));
   const groupedAiModels = useMemo(() => {
@@ -2414,6 +2420,100 @@ export default function PreferencesView() {
                           {systemGuidance?.caution && (
                             <p className="text-[10px] text-[var(--text-secondary)]">{systemGuidance.caution}</p>
                           )}
+
+                          <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5 space-y-3">
+                            <div>
+                              <p className="text-[11px] font-semibold text-[var(--text-primary)]">Reserved memory</p>
+                              <p className="mt-0.5 text-[10px] text-[var(--text-secondary)]">
+                                Tell Aetherium how much memory the desktop and other apps already hold so model-fit suggestions reflect what is actually usable. The larger of GB and % is applied.
+                              </p>
+                              <p className="mt-1 text-[10px] text-[var(--text-secondary)]">
+                                Check current usage: macOS — Activity Monitor (Memory / GPU History) · Linux NVIDIA — <code>nvidia-smi</code> or <code>nvtop</code> · Linux AMD — <code>radeontop</code>, <code>rocm-smi</code>, or Mission Center · Linux Intel — <code>intel_gpu_top</code> · Windows — Task Manager → Performance → GPU.
+                              </p>
+                            </div>
+
+                            {(systemSpecs.gpu_memory_bytes ?? 0) > 0 && (
+                              <div className="space-y-1">
+                                <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">VRAM headroom</p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <label className="flex items-center gap-1 text-[11px] text-[var(--text-secondary)]">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={1024}
+                                      step={0.1}
+                                      value={dbSettings.vram_headroom_gb}
+                                      onChange={(e) => set("vram_headroom_gb", Math.max(0, Number(e.target.value) || 0))}
+                                      className="w-20 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)]"
+                                    />
+                                    GB
+                                  </label>
+                                  <label className="flex items-center gap-1 text-[11px] text-[var(--text-secondary)]">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={90}
+                                      step={1}
+                                      value={dbSettings.vram_headroom_percent}
+                                      onChange={(e) => set("vram_headroom_percent", Math.min(90, Math.max(0, Math.round(Number(e.target.value) || 0))))}
+                                      className="w-16 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)]"
+                                    />
+                                    %
+                                  </label>
+                                  <span className="text-[10px] text-[var(--text-secondary)]">
+                                    {(() => {
+                                      const r = applyHeadroom(
+                                        systemSpecs.gpu_memory_bytes ?? 0,
+                                        dbSettings.vram_headroom_gb,
+                                        dbSettings.vram_headroom_percent,
+                                      );
+                                      return `Effective: ${formatBytes(r.effectiveBytes)} of ${formatBytes(systemSpecs.gpu_memory_bytes ?? 0)}${r.reservedBytes > 0 ? ` (${formatBytes(r.reservedBytes)} reserved)` : ""}`;
+                                    })()}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="space-y-1">
+                              <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">RAM headroom</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <label className="flex items-center gap-1 text-[11px] text-[var(--text-secondary)]">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={1024}
+                                    step={0.1}
+                                    value={dbSettings.ram_headroom_gb}
+                                    onChange={(e) => set("ram_headroom_gb", Math.max(0, Number(e.target.value) || 0))}
+                                    className="w-20 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)]"
+                                  />
+                                  GB
+                                </label>
+                                <label className="flex items-center gap-1 text-[11px] text-[var(--text-secondary)]">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={90}
+                                    step={1}
+                                    value={dbSettings.ram_headroom_percent}
+                                    onChange={(e) => set("ram_headroom_percent", Math.min(90, Math.max(0, Math.round(Number(e.target.value) || 0))))}
+                                    className="w-16 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)]"
+                                  />
+                                  %
+                                </label>
+                                <span className="text-[10px] text-[var(--text-secondary)]">
+                                  {(() => {
+                                    const r = applyHeadroom(
+                                      systemSpecs.total_memory_bytes,
+                                      dbSettings.ram_headroom_gb,
+                                      dbSettings.ram_headroom_percent,
+                                    );
+                                    return `Effective: ${formatBytes(r.effectiveBytes)} of ${formatBytes(systemSpecs.total_memory_bytes)}${r.reservedBytes > 0 ? ` (${formatBytes(r.reservedBytes)} reserved)` : ""}`;
+                                  })()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
                         </>
                       ) : (
                         <p className="text-[11px] text-[var(--text-secondary)]">
