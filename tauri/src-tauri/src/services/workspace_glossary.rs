@@ -412,14 +412,14 @@ fn load_workspace_topic_seed_terms(conn: &Connection, workspace_id: &str) -> Res
 
     let signature = serde_json::from_str::<TopicSignature>(&raw).unwrap_or_default();
     let mut terms = Vec::new();
-    for tag in signature.manual_tags {
+    for tag in signature.custom_tags {
         if let Some(normalized) = normalize_term(&tag) {
             if looks_like_domain_term(&normalized) {
                 terms.push(normalized);
             }
         }
     }
-    for tag in signature.domain_tags {
+    for tag in signature.auto_detected_tags {
         if let Some(normalized) = normalize_term(&tag.tag) {
             if looks_like_domain_term(&normalized) {
                 terms.push(normalized);

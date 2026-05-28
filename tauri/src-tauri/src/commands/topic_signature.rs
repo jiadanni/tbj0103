@@ -58,8 +58,8 @@ pub fn update_topic_signature(
     app: AppHandle,
     state: State<DbState>,
     workspace_id: String,
-    manual_tags: Vec<String>,
-    ignored_tags: Vec<String>,
+    custom_tags: Vec<String>,
+    excluded_tags: Vec<String>,
 ) -> Result<TopicSignature, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
 
@@ -72,9 +72,9 @@ pub fn update_topic_signature(
         .map_err(|e| e.to_string())?;
 
     let mut sig: TopicSignature = serde_json::from_str(&sig_json).unwrap_or_default();
-    sig.manual_tags = manual_tags;
-    sig.ignored_tags = ignored_tags.clone();
-    sig.domain_tags.retain(|t| !ignored_tags.contains(&t.tag));
+    sig.custom_tags = custom_tags;
+    sig.excluded_tags = excluded_tags.clone();
+    sig.auto_detected_tags.retain(|t| !excluded_tags.contains(&t.tag));
 
     let updated_json = serde_json::to_string(&sig).map_err(|e| e.to_string())?;
     conn.execute(
@@ -104,7 +104,7 @@ pub fn check_workspace_match(
         .map_err(|e| e.to_string())?;
 
     let sig = serde_json::from_str::<TopicSignature>(&sig_json).unwrap_or_default();
-    if sig.domain_tags.is_empty() {
+    if sig.auto_detected_tags.is_empty() {
         return Ok(WorkspaceMatchResult {
             current_score: 1.0,
             is_match: true,

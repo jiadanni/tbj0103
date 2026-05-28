@@ -10,12 +10,12 @@ describe("composerSuggestions", () => {
     const row = buildWorkspaceSuggestionRow({
       folderName: "Tauri App",
       topicSignature: {
-        domain_tags: [
+        auto_detected_tags: [
           { tag: "React", weight: 0.8, source: "auto" },
           { tag: "Ollama", weight: 0.7, source: "auto" },
         ],
-        manual_tags: [],
-        ignored_tags: [],
+        custom_tags: [],
+        excluded_tags: [],
         intent_patterns: [],
         generated_at: null,
         message_count_at_gen: null,

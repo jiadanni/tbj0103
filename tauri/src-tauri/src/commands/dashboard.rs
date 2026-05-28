@@ -37,7 +37,7 @@ pub fn get_dashboard_summary(
     let topic_signature: TopicSignature =
         serde_json::from_str(&topic_signature_json).unwrap_or_default();
     let active_topic_tags = topic_signature
-        .domain_tags
+        .auto_detected_tags
         .iter()
         .take(6)
         .map(|tag| tag.tag.clone())
