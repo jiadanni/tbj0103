@@ -179,6 +179,68 @@ function canRefreshSessionTitle(
   return (session.message_count_at_title_gen ?? 0) > 0;
 }
 
+// ── Family picker submenu ─────────────────────────────────────────────────────
+interface FamilyPickerMenuProps {
+  modelFamilies: Array<{ prefix: string; label: string; models: AiModel[] }>;
+  selectedFamily: string | null;
+  selectedModel: string | null;
+  onSelect: (familyPrefix: string, modelId: string) => void;
+}
+
+function FamilyPickerMenu({ modelFamilies, selectedFamily, selectedModel, onSelect }: FamilyPickerMenuProps) {
+  const [hoveredFamilyPrefix, setHoveredFamilyPrefix] = useState<string | null>(selectedFamily);
+  const hoveredFamily = modelFamilies.find((f) => f.prefix === hoveredFamilyPrefix) ?? null;
+  return (
+    <div className="absolute right-0 bottom-full z-20 mb-2 flex shadow-2xl">
+      <div className="w-[180px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-sidebar)] p-1.5">
+        {modelFamilies.map((family) => {
+          const isSel = family.prefix === selectedFamily;
+          const isHov = family.prefix === hoveredFamilyPrefix;
+          return (
+            <button
+              type="button"
+              key={family.prefix}
+              onMouseEnter={() => setHoveredFamilyPrefix(family.prefix)}
+              onClick={() => setHoveredFamilyPrefix(family.prefix)}
+              className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                isHov || isSel
+                  ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <div className="min-w-0 truncate">{family.label}</div>
+              <ChevronRight size={13} className="shrink-0 text-[var(--text-muted)]" />
+            </button>
+          );
+        })}
+      </div>
+      {hoveredFamily && hoveredFamily.models.length > 0 && (
+        <div className="ml-1.5 w-[180px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-sidebar)] p-1.5">
+          {hoveredFamily.models.map((m) => {
+            const tag = m.model_id.includes(":") ? m.model_id.split(":")[1] : m.model_id;
+            const isModelSel = m.model_id === selectedModel;
+            return (
+              <button
+                type="button"
+                key={m.model_id}
+                onClick={() => onSelect(hoveredFamily.prefix, m.model_id)}
+                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                  isModelSel
+                    ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                <div className="min-w-0 truncate">{tag}</div>
+                {isModelSel && <Check size={13} className="shrink-0 text-[var(--accent-color)]" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Session sidebar types ─────────────────────────────────────────────────────
 interface SessionItemProps {
   session: ChatSession;
@@ -4559,13 +4621,13 @@ export default function ChatView() {
   }, [enabledModels, modelFamilyLabels]);
 
   const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
-  const [showFamilyVariant, setShowFamilyVariant] = useState(false);
+  const [_showFamilyVariant, _setShowFamilyVariant] = useState(false);
 
   // Revert the family picker label back to family-level once generation ends
   const prevIsStreamingRef = useRef(false);
   useEffect(() => {
     if (prevIsStreamingRef.current && !isStreaming && composerMode === "family") {
-      setShowFamilyVariant(false);
+      _setShowFamilyVariant(false);
     }
     prevIsStreamingRef.current = isStreaming;
   }, [isStreaming, composerMode]);
@@ -4621,7 +4683,7 @@ export default function ChatView() {
   const modelPickerLabel = (modelId: string) => {
     return modelDisplayName(modelId);
   };
-  const activeFamilyDefaultModelLabel = activeFamilyDefaultModelId
+  const _activeFamilyDefaultModelLabel = activeFamilyDefaultModelId
     ? modelPickerLabel(activeFamilyDefaultModelId)
     : null;
 
@@ -4976,61 +5038,9 @@ export default function ChatView() {
 
                         {/* Tool buttons row */}
                         <div className={`flex flex-wrap items-center gap-1.5 px-1 ${showComposerHeader ? "pt-2" : ""}`}>
-                              {/* Active model / family picker */}
+                              {/* Normal mode model picker stays in tool row */}
                               <div className="relative" data-active-model-menu>
-                                {composerMode === "family" ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => setIsFamilyPickerOpen((open) => !open)}
-                                      disabled={isStreaming}
-                                      className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl bg-[var(--bg-hover)] border border-[var(--border-color)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-secondary)] transition-all duration-200 hover:border-[var(--accent-color)]/50 hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                                      aria-haspopup="menu"
-                                      aria-expanded={isFamilyPickerOpen}
-                                    >
-                                      <span className="min-w-0 truncate">
-                                        {selectedFamily
-                                          ? `${modelFamilyLabels[selectedFamily] ?? selectedFamily}${showFamilyVariant && selectedModel && selectedModel.startsWith(selectedFamily) ? ` · ${modelPickerLabel(selectedModel)}` : activeFamilyDefaultModelLabel ? ` · Default ${activeFamilyDefaultModelLabel}` : ""}`
-                                          : "Select family"}
-                                      </span>
-                                      <ChevronDown size={14} strokeWidth={2.2} />
-                                    </button>
-                                    {isFamilyPickerOpen && modelFamilies.length > 0 && (
-                                      <div className="absolute left-0 bottom-full z-20 mb-2 w-[200px] max-w-[min(80vw,200px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
-                                        <div className="max-h-64 overflow-y-auto">
-                                          {modelFamilies.map((family) => {
-                                            const isSel = family.prefix === selectedFamily;
-                                            return (
-                                              <Tooltip content={family.label} position="right" key={family.prefix}>
-                                                <button
-                                                  type="button"
-                                                  onClick={async () => {
-                                                    setSelectedFamily(family.prefix);
-                                                    const defaultModelId = family.models[0]?.model_id ?? "";
-                                                    if (defaultModelId) {
-                                                      setSelectedModel(defaultModelId);
-                                                      await persistModelChoice(defaultModelId);
-                                                    }
-                                                    setShowFamilyVariant(false);
-                                                    setIsFamilyPickerOpen(false);
-                                                  }}
-                                                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
-                                                    isSel
-                                                      ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
-                                                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                                                  }`}
-                                                >
-                                                  <div className="min-w-0 truncate">{family.label}</div>
-                                                  {isSel && <Check size={14} className="shrink-0 text-[var(--accent-color)]" />}
-                                                </button>
-                                              </Tooltip>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </>
-                                ) : (
+                                {composerMode !== "family" && (
                                 <Tooltip content={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"} position="top">
                                   <button
                                     type="button"
@@ -5040,7 +5050,7 @@ export default function ChatView() {
                                       setIsModelPickerOpen((open) => !open);
                                     }}
                                     disabled={modelPickerOptions.length === 0 || isStreaming}
-                                    className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl bg-white/[0.03] ring-1 ring-white/5 px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-secondary)] transition-all duration-200 hover:bg-white/[0.08] hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                                    className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl bg-[var(--bg-hover)] border border-[var(--border-color)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-secondary)] transition-all duration-200 hover:border-[var(--accent-color)]/50 hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                                     aria-label={selectedModel ? `Active model: ${modelPickerLabel(selectedModel)}` : "Select a model"}
                                     aria-haspopup="menu"
                                     aria-expanded={isModelPickerOpen}
@@ -5299,7 +5309,36 @@ export default function ChatView() {
                                     </button>
                                   </Tooltip>
                                 ) : (
-                                  <div className="mb-1 mr-0.5 flex items-center gap-2">
+                                  <div className="mb-1 mr-0.5 flex items-center gap-1.5">
+                                    {/* ── Family picker (family mode) — right corner ── */}
+                                    {composerMode === "family" && (
+                                      <div className="relative" data-active-model-menu>
+                                        <button
+                                          type="button"
+                                          onClick={() => setIsFamilyPickerOpen((open) => !open)}
+                                          disabled={isStreaming}
+                                          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                                          aria-haspopup="menu"
+                                          aria-expanded={isFamilyPickerOpen}
+                                        >
+                                          <span>{selectedFamily ? (modelFamilyLabels[selectedFamily] ?? "Family") : "Family"}</span>
+                                          <ChevronDown size={12} strokeWidth={2.2} />
+                                        </button>
+                                        {isFamilyPickerOpen && modelFamilies.length > 0 && (
+                                          <FamilyPickerMenu
+                                            modelFamilies={modelFamilies}
+                                            selectedFamily={selectedFamily}
+                                            selectedModel={selectedModel}
+                                            onSelect={async (familyPrefix, modelId) => {
+                                              setSelectedFamily(familyPrefix);
+                                              setSelectedModel(modelId);
+                                              await persistModelChoice(modelId);
+                                              setIsFamilyPickerOpen(false);
+                                            }}
+                                          />
+                                        )}
+                                      </div>
+                                    )}
                                     {/* ── Family send buttons (family mode) ── */}
                                     {composerMode === "family" && activeFamilyModels.map((m) => {
                                       const tag = m.model_id.includes(":") ? m.model_id.split(":")[1] : m.model_id;
@@ -5310,7 +5349,7 @@ export default function ChatView() {
                                           <button
                                             onClick={async (e) => {
                                               setSelectedModel(m.model_id);
-                                              setShowFamilyVariant(true);
+                                              _setShowFamilyVariant(true);
                                               await persistModelChoice(m.model_id);
                                               if (e.metaKey || e.ctrlKey) {
                                                 await queueWithModel(m.model_id);
