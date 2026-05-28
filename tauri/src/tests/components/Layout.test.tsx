@@ -125,6 +125,7 @@ describe("Layout", () => {
   });
 
   it("keeps the workspace tab strip separate from the fixed titlebar actions", () => {
+    useWorkspaceStore.setState({ workspaceNavigation: "top-tabs" });
     render(
       <MemoryRouter initialEntries={["/folder"]}>
         <Layout />
@@ -501,6 +502,26 @@ describe("Layout", () => {
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("ws-1-child");
   });
 
+  it("renders a left workspace sidebar in single-pane sidebar mode", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+      ],
+      activeWorkspaceId: "ws-1",
+      workspaceNavigation: "sidebar",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId("single-pane-workspace-sidebar")).toBeInTheDocument();
+    expect(document.querySelector("[data-workspace-tab-strip]")).toBeNull();
+  });
+
   it("renders split workspace navigation in the shared titlebar while keeping titlebar actions", () => {
     useWorkspaceStore.setState({
       workspaceNavigation: "top-tabs",
@@ -721,6 +742,7 @@ describe("Layout", () => {
         { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
       ],
       activeWorkspaceId: "ws-1",
+      workspaceNavigation: "top-tabs",
     });
 
     render(
