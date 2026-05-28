@@ -51,6 +51,7 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
   // scrolls so the pill layout stays static once an item has been seen.
   const offsetCacheRef = useRef<Map<string, { top: number }>>(new Map());
   const layoutHeightRef = useRef<number>(0);
+  const schedulerRef = useRef<(() => void) | null>(null);
   // Bumped only when bar layout should change (new prompts, scroller resize,
   // fresh DOM measurements). NOT bumped on plain scroll.
   const [layoutTick, setLayoutTick] = useState(0);
@@ -85,47 +86,95 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  // Harvest DOM offsets for user messages into the cache. Runs on scroll
-  // (Virtuoso renders new items as you scroll) but only bumps layoutTick when
-  // the cache actually grows or scrollHeight materially shifts, so pills stay
-  // static during pure scrolling.
+  // Refs hold the latest values so the scroll-independent observer effect
+  // doesn't need to tear down on every messages change.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const userMsgIdsRef = useRef<Set<string>>(new Set());
+  userMsgIdsRef.current = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of messages) { if (m.role === "user") { s.add(m.id); } }
+    return s;
+  }, [messages]);
+
+  // ResizeObserver-only: fires when the scroller's content size actually
+  // changes (new item mounts, image loads). Does no work during pure scroll —
+  // Virtuoso's DOM recycling does not change content size.
   useEffect(() => {
     if (!scrollContainer) { return; }
+    let rafId = 0;
+    let disposed = false;
+
     const harvest = () => {
+      rafId = 0;
+      if (disposed) { return; }
       const cache = offsetCacheRef.current;
-      let added = 0;
-      const nodes = scrollContainer.querySelectorAll<HTMLElement>("[data-item-index]");
-      nodes.forEach((n) => {
-        const idxAttr = n.getAttribute("data-item-index");
-        if (idxAttr == null) { return; }
-        const idx = Number(idxAttr);
-        if (!Number.isFinite(idx) || idx < 0 || idx >= messages.length) { return; }
-        const m = messages[idx];
-        if (!m || m.role !== "user") { return; }
-        if (!cache.has(m.id)) {
-          cache.set(m.id, { top: n.offsetTop });
-          added++;
-        }
-      });
+      const wantedIds = userMsgIdsRef.current;
+      const msgs = messagesRef.current;
       const sh = scrollContainer.scrollHeight;
       const heightDelta = Math.abs(sh - layoutHeightRef.current);
+
+      let missing = 0;
+      wantedIds.forEach((id) => { if (!cache.has(id)) { missing++; } });
+
+      if (missing === 0 && heightDelta <= 8) { return; }
+
+      let added = 0;
+      if (missing > 0) {
+        const nodes = scrollContainer.querySelectorAll<HTMLElement>("[data-item-index]");
+        nodes.forEach((n) => {
+          const idxAttr = n.getAttribute("data-item-index");
+          if (idxAttr == null) { return; }
+          const idx = Number(idxAttr);
+          if (!Number.isFinite(idx) || idx < 0 || idx >= msgs.length) { return; }
+          const m = msgs[idx];
+          if (!m || m.role !== "user") { return; }
+          if (!cache.has(m.id)) {
+            cache.set(m.id, { top: n.offsetTop });
+            added++;
+          }
+        });
+      }
+
       if (added > 0 || heightDelta > 8) {
         layoutHeightRef.current = sh;
         setLayoutTick((t) => t + 1);
       }
     };
-    harvest();
-    scrollContainer.addEventListener("scroll", harvest, { passive: true });
-    const ro = new ResizeObserver(harvest);
-    ro.observe(scrollContainer);
-    const mo = new MutationObserver(harvest);
-    mo.observe(scrollContainer, { childList: true, subtree: true, characterData: true });
-    return () => {
-      scrollContainer.removeEventListener("scroll", harvest);
-      ro.disconnect();
-      mo.disconnect();
+
+    const scheduleHarvest = () => {
+      if (rafId !== 0) { return; }
+      rafId = requestAnimationFrame(harvest);
     };
-  }, [scrollContainer, messages]);
+
+    const innerList =
+      scrollContainer.querySelector<HTMLElement>('[data-test-id="virtuoso-item-list"]') ??
+      (scrollContainer.firstElementChild as HTMLElement | null) ??
+      scrollContainer;
+    const ro = new ResizeObserver(scheduleHarvest);
+    ro.observe(innerList);
+    if (innerList !== scrollContainer) { ro.observe(scrollContainer); }
+
+    scheduleHarvest();
+
+    // Expose scheduler for the message-count effect below via a sibling ref.
+    schedulerRef.current = scheduleHarvest;
+
+    return () => {
+      disposed = true;
+      if (rafId !== 0) { window.cancelAnimationFrame(rafId); }
+      ro.disconnect();
+      schedulerRef.current = null;
+    };
+  }, [scrollContainer]);
+
+  // When the number of user messages changes (new prompt sent / session loaded),
+  // schedule a single harvest. Does not depend on `messages` identity, so
+  // streaming token updates do not retrigger it.
+  const userMsgCount = userMsgIdsRef.current.size;
+  useEffect(() => {
+    schedulerRef.current?.();
+  }, [userMsgCount]);
 
   // Evict cache entries for messages that have been removed (e.g. session switch).
   useEffect(() => {
