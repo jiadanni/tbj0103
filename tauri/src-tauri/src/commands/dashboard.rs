@@ -194,47 +194,63 @@ pub fn get_dashboard_summary(
         .prepare(
             &format!("{cte}SELECT *
              FROM (
-                SELECT n.id AS id,
-                       n.title AS title,
-                       'note' AS kind,
-                       COALESCE(n.note_type, '') AS subtitle,
-                       n.updated_at AS timestamp
-                FROM project_notes n
-                WHERE n.workspace_id {ws_cond}
+                SELECT * FROM (
+                    SELECT n.id AS id,
+                           n.title AS title,
+                           'note' AS kind,
+                           COALESCE(n.note_type, '') AS subtitle,
+                           n.updated_at AS timestamp
+                    FROM project_notes n
+                    WHERE n.workspace_id {ws_cond}
+                    ORDER BY n.updated_at DESC
+                    LIMIT 6
+                )
 
                 UNION ALL
 
-                SELECT c.id AS id,
-                       c.name AS title,
-                       'concept' AS kind,
-                       COALESCE(c.concept_type, '') AS subtitle,
-                       c.updated_at AS timestamp
-                FROM concept_nodes c
-                WHERE c.workspace_id {ws_cond}
+                SELECT * FROM (
+                    SELECT c.id AS id,
+                           c.name AS title,
+                           'concept' AS kind,
+                           COALESCE(c.concept_type, '') AS subtitle,
+                           c.updated_at AS timestamp
+                    FROM concept_nodes c
+                    WHERE c.workspace_id {ws_cond}
+                    ORDER BY c.updated_at DESC
+                    LIMIT 6
+                )
 
                 UNION ALL
 
-                SELECT s.id AS id,
-                       s.title AS title,
-                       'chat' AS kind,
-                       COALESCE(p.name, '') AS subtitle,
-                       s.updated_at AS timestamp
-                FROM chat_sessions s
-                LEFT JOIN folders p ON p.id = s.folder_id
-                WHERE s.workspace_id {ws_cond}
-                  AND s.is_deleted = 0
-                  AND s.is_incognito = 0
-                  AND s.exclude_from_analytics = 0
+                SELECT * FROM (
+                    SELECT s.id AS id,
+                           s.title AS title,
+                           'chat' AS kind,
+                           COALESCE(p.name, '') AS subtitle,
+                           s.updated_at AS timestamp
+                    FROM chat_sessions s
+                    LEFT JOIN folders p ON p.id = s.folder_id
+                    WHERE s.workspace_id {ws_cond}
+                      AND s.is_deleted = 0
+                      AND s.is_incognito = 0
+                      AND s.exclude_from_analytics = 0
+                    ORDER BY s.updated_at DESC
+                    LIMIT 6
+                )
 
                 UNION ALL
 
-                SELECT src.id AS id,
-                       src.title AS title,
-                       'source' AS kind,
-                       COALESCE(src.source_type, '') AS subtitle,
-                       src.updated_at AS timestamp
-                FROM sources src
-                WHERE src.workspace_id {ws_cond}
+                SELECT * FROM (
+                    SELECT src.id AS id,
+                           src.title AS title,
+                           'source' AS kind,
+                           COALESCE(src.source_type, '') AS subtitle,
+                           src.updated_at AS timestamp
+                    FROM sources src
+                    WHERE src.workspace_id {ws_cond}
+                    ORDER BY src.updated_at DESC
+                    LIMIT 6
+                )
              )
              ORDER BY timestamp DESC
              LIMIT 6"),
