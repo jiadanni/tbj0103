@@ -109,44 +109,46 @@ function activityIcon(kind: DashboardActivity["kind"]) {
   }
 }
 
-function MetricCard({
-  label,
-  value,
-  accentClassName,
-}: {
-  label: string;
-  value: string | number;
-  accentClassName: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
-      <div className={`mb-3 h-2 w-2 rounded-full ${accentClassName}`} />
-      <div className="text-2xl font-semibold text-[var(--text-primary)]">{value}</div>
-      <div className="mt-1 text-xs text-[var(--text-muted)]">{label}</div>
-    </div>
-  );
-}
+
 
 function Section({
   title,
   eyebrow,
   children,
+  collapsed,
+  onToggle,
 }: {
   title: string;
   eyebrow?: string;
   children: ReactNode;
+  collapsed?: boolean;
+  onToggle?: () => void;
 }) {
   return (
     <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5">
-      <div className="mb-4">
-        {eyebrow && (
-          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
-            {eyebrow}
-          </div>
+      <div className={`flex items-start justify-between ${collapsed ? "" : "mb-4"}`}>
+        <div>
+          {eyebrow && (
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+              {eyebrow}
+            </div>
+          )}
+          <h2 className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{title}</h2>
+        </div>
+        {onToggle && (
+          <button
+            onClick={onToggle}
+            className="rounded-lg p-1 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+            aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
+          >
+            <ChevronDown
+              size={18}
+              className={`transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
+            />
+          </button>
         )}
-        <h2 className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{title}</h2>
       </div>
-      {children}
+      {!collapsed && children}
     </section>
   );
 }
@@ -236,6 +238,19 @@ export default function KnowledgeGraphView() {
   const modelFamilyLabels = useSettingsStore((s) => s.modelFamilyLabels);
   const customModelFamilies = useSettingsStore((s) => s.customModelFamilies);
   const modelLabels = useSettingsStore((s) => s.modelLabels);
+
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("knowledge-sections-collapsed") ?? "{}");
+    } catch { return {}; }
+  });
+  const toggleSection = (key: string) => {
+    setCollapsedSections(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem("knowledge-sections-collapsed", JSON.stringify(next));
+      return next;
+    });
+  };
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -859,17 +874,37 @@ export default function KnowledgeGraphView() {
             </div>
           </header>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-            <MetricCard label="Concepts" value={overview?.concepts ?? nodes.length} accentClassName="bg-[var(--accent-color)]" />
-            <MetricCard label="Links" value={links.length} accentClassName="bg-[var(--accent-color)]" />
-            <MetricCard label="Due Review" value={review?.due_today ?? 0} accentClassName="bg-[var(--accent-color)]" />
-            <MetricCard label="Active Goals" value={overview?.active_goals ?? 0} accentClassName="bg-[var(--accent-color)]" />
-            <MetricCard label="Isolated Concepts" value={summary?.knowledge_health.isolated_concepts ?? 0} accentClassName="bg-[var(--accent-color)]" />
-            <MetricCard label="Unprocessed Sources" value={summary?.knowledge_health.unprocessed_sources ?? 0} accentClassName="bg-[var(--accent-color)]" />
+          <div className="flex flex-wrap gap-2">
+            {[
+              { icon: <Brain size={12} />, label: "Concepts", value: overview?.concepts ?? nodes.length, onClick: () => navigate("/graph") },
+              { icon: <Network size={12} />, label: "Links", value: links.length, onClick: () => navigate("/graph") },
+              { icon: <Clock3 size={12} />, label: "Due Review", value: review?.due_today ?? 0, onClick: review?.route ? () => openRoute(review.route) : undefined },
+              { icon: <Target size={12} />, label: "Active Goals", value: overview?.active_goals ?? 0, onClick: () => navigate("/learning") },
+              { icon: <Network size={12} />, label: "Isolated Concepts", value: summary?.knowledge_health.isolated_concepts ?? 0, onClick: () => navigate("/graph") },
+              { icon: <FileText size={12} />, label: "Unprocessed Sources", value: summary?.knowledge_health.unprocessed_sources ?? 0, onClick: () => navigate("/sources") },
+            ].map(({ icon, label, value, onClick }) => (
+              <button
+                key={label}
+                onClick={onClick}
+                disabled={!onClick}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-color-hover)] transition-all disabled:cursor-default ${
+                  onClick ? "hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]" : ""
+                }`}
+              >
+                <span className="text-[var(--accent-color)] flex items-center">{icon}</span>
+                {summaryLoading ? <Loader2 size={10} className="animate-spin text-[var(--text-muted)]" /> : <span className="font-semibold text-[var(--text-primary)]">{value}</span>}
+                <span className="text-[var(--text-muted)]">{label}</span>
+              </button>
+            ))}
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]">
-            <Section title="Knowledge Map" eyebrow="Roadmap">
+            <Section
+              title="Knowledge Map"
+              eyebrow="Roadmap"
+              collapsed={collapsedSections["roadmap"]}
+              onToggle={() => toggleSection("roadmap")}
+            >
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                   <p className="max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
@@ -889,7 +924,7 @@ export default function KnowledgeGraphView() {
                 </div>
 
                 <div
-                  className="relative h-[560px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)] 2xl:h-[640px]"
+                  className="relative h-[400px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)] 2xl:h-[480px]"
                   data-testid="knowledge-map"
                 >
                   {nodes.length === 0 ? (
@@ -926,7 +961,12 @@ export default function KnowledgeGraphView() {
             </Section>
 
             <div className="grid gap-6">
-              <Section title="Suggested Next Steps" eyebrow="Actions">
+              <Section
+                title="Suggested Next Steps"
+                eyebrow="Actions"
+                collapsed={collapsedSections["suggested"]}
+                onToggle={() => toggleSection("suggested")}
+              >
                 <div className="space-y-3">
                   {continueLearning && (
                     <button
@@ -999,7 +1039,12 @@ export default function KnowledgeGraphView() {
                 </div>
               </Section>
 
-              <Section title="Knowledge Health" eyebrow="Signals">
+              <Section
+                title="Knowledge Health"
+                eyebrow="Signals"
+                collapsed={collapsedSections["health"]}
+                onToggle={() => toggleSection("health")}
+              >
                 <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
                   <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
                     <div className="text-xs text-[var(--text-muted)]">Stalled goals</div>
@@ -1062,7 +1107,12 @@ export default function KnowledgeGraphView() {
           </div>
 
           {learningPath.length > 0 && (
-            <Section title="Learning Path" eyebrow="Next Steps">
+            <Section
+              title="Learning Path"
+              eyebrow="Next Steps"
+              collapsed={collapsedSections["learningPath"]}
+              onToggle={() => toggleSection("learningPath")}
+            >
               <div className="space-y-3">
                 {learningPath.slice(0, 3).map((item) => (
                   <div key={item.concept_id} className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4">
@@ -1104,7 +1154,12 @@ export default function KnowledgeGraphView() {
           )}
 
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-            <Section title="Concept Focus" eyebrow="Signals">
+            <Section
+              title="Concept Focus"
+              eyebrow="Signals"
+              collapsed={collapsedSections["conceptFocus"]}
+              onToggle={() => toggleSection("conceptFocus")}
+            >
               {selectedConcept ? (
                 <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -1153,7 +1208,12 @@ export default function KnowledgeGraphView() {
               )}
             </Section>
 
-            <Section title="Recent Learning Activity" eyebrow="Recent">
+            <Section
+              title="Recent Learning Activity"
+              eyebrow="Recent"
+              collapsed={collapsedSections["recentActivity"]}
+              onToggle={() => toggleSection("recentActivity")}
+            >
               {recentActivity.length > 0 ? (
                 <div className="space-y-3">
                   {recentActivity.map((item) => (
