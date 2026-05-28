@@ -2,12 +2,12 @@
  * WorkspaceSettingsView — manage workspaces: rename, reorder, delete, and switch.
  * Mirrors WorkspaceListView.swift + workspace picker behaviour.
  */
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Plus, Trash2, Pencil, Check, X, LayoutGrid, CornerDownRight,
+  Plus, Trash2, Pencil, Check, X, LayoutGrid,
   MessageSquare, FileText, Globe, Brain, CreditCard,
-  Database, Sparkles, Save, Loader2, ChevronRight, ChevronDown, ArrowUpDown, BookOpen
+  Database, Sparkles, Save, Loader2, ChevronRight, ChevronDown, ArrowUpDown, BookOpen, FolderPlus
 } from "lucide-react";
 import { api } from "../lib/api";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -161,7 +161,7 @@ export default function WorkspaceSettingsView() {
     return workspaces.find((workspace) => workspace.id === selectedWorkspace.parent_workspace_id) ?? null;
   }, [selectedWorkspace, workspaces]);
   const selectedWorkspaceType = selectedWorkspace?.parent_workspace_id ? "Child Workspace" : selectedWorkspace ? "Root Workspace" : null;
-  const childCreateParentId = selectedWorkspace?.parent_workspace_id ?? selectedWorkspace?.id ?? null;
+  const childCreateParentId = selectedWorkspace?.id ?? null;
   const localGlossaryTerms = useMemo(
     () => glossaryTerms.filter((term) => !term.is_inherited),
     [glossaryTerms],
@@ -513,60 +513,24 @@ export default function WorkspaceSettingsView() {
         </div>
       </div>
 
-      {/* New workspace form */}
       {showNew && (
-        <div className="flex flex-col gap-2 px-5 py-3 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] shrink-0">
-          <div className="max-w-3xl w-full flex flex-col gap-2">
-          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
-            {createParentId
-              ? `New Child Workspace in ${workspaces.find((workspace) => workspace.id === createParentId)?.name ?? "Parent Workspace"}`
-              : "New Root Workspace"}
-          </div>
-          <input
-            autoFocus
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {createWorkspace();}
-              if (e.key === "Escape") { resetNewWorkspaceForm(); }
-            }}
-            placeholder={createParentId ? "Child workspace name…" : "Workspace name…"}
-            className="text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-          />
-          <textarea
-            value={newDescription}
-            onChange={(e) => setNewDescription(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") { resetNewWorkspaceForm(); }
-            }}
-            placeholder="Optional description…"
-            rows={2}
-            className="resize-none text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-          />
-          <div className="flex items-center justify-end gap-2">
-            <button
-              onClick={createWorkspace}
-              disabled={creating || !newName.trim()}
-              className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-40"
-            >
-              {creating ? "Creating…" : "Create"}
-            </button>
-            <button
-              onClick={() => { resetNewWorkspaceForm(); }}
-              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            >
-              <X size={14} />
-            </button>
-          </div>
-          </div>
-        </div>
+        <CreateWorkspaceDialog
+          parentName={createParentId ? (workspaces.find((w) => w.id === createParentId)?.name ?? "Parent") : null}
+          creating={creating}
+          onConfirm={createWorkspace}
+          onCancel={resetNewWorkspaceForm}
+          name={newName}
+          onNameChange={setNewName}
+          description={newDescription}
+          onDescriptionChange={setNewDescription}
+        />
       )}
 
       {/* Main Content Areas */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Workspace list */}
-        <div className="w-[380px] border-r border-[var(--border-color)] flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1.5">
+        <div className="w-[260px] border-r border-[var(--border-color)] flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
             {workspaces.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">
                 <LayoutGrid size={32} className="opacity-30" />
@@ -583,111 +547,107 @@ export default function WorkspaceSettingsView() {
                 const isExpanded = expandedParents[ws.id] ?? (hasSelectedChild || hasActiveChild);
 
                 return (
-                  <div key={ws.id} className="space-y-1">
+                  <div key={ws.id}>
                     <div
                       onClick={() => setSelectedId(ws.id)}
-                      className={`rounded-lg border px-3 py-2 transition-all cursor-pointer group ${
+                      className={`relative flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer group transition-colors ${
                         isSelected
-                          ? "border-[var(--accent-color)] bg-[var(--accent-color)]/5 ring-1 ring-[var(--accent-color)]/20"
-                          : "border-[var(--border-color)] bg-[var(--bg-elevated)] hover:border-[var(--border-color-hover)]"
+                          ? "bg-[var(--accent-color)]/10 text-[var(--accent-color)]"
+                          : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`} />
+                      {children.length > 0 ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setExpandedParents((current) => ({ ...current, [ws.id]: !isExpanded })); }}
+                          className="shrink-0 -ml-1 p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                          aria-label={`${isExpanded ? "Collapse" : "Expand"} child workspaces for ${ws.name}`}
+                        >
+                          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        </button>
+                      ) : (
+                        <span className="w-3 shrink-0" />
+                      )}
 
-                        <div className="flex-1 min-w-0">
-                          {isEditing ? (
-                            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                              <input
-                                autoFocus
-                                value={editName}
-                                onChange={(e) => setEditName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {renameWorkspace(ws.id);}
-                                  if (e.key === "Escape") {setEditingId(null);}
-                                }}
-                                placeholder="Workspace name…"
-                                className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
-                              />
-                              <button onClick={() => renameWorkspace(ws.id)} className="text-[var(--accent-color)]">
-                                <Check size={14} />
-                              </button>
-                              <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
-                                <X size={14} />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                                {ws.name}
-                              </span>
-                              {isActive && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium shrink-0">
-                                  {ws.id === activeWorkspaceId ? "Active" : "Active Parent"}
-                                </span>
-                              )}
-                              {children.length > 0 && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-hover)] text-[var(--text-secondary)] font-medium shrink-0">
-                                  {children.length}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex items-start gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                          {children.length > 0 && (
-                            <Tooltip content={isExpanded ? "Collapse child workspaces" : "Expand child workspaces"}>
-                              <button
-                                onClick={() => setExpandedParents((current) => ({ ...current, [ws.id]: !isExpanded }))}
-                                className="mt-0.5 p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
-                                aria-label={`${isExpanded ? "Collapse" : "Expand"} child workspaces for ${ws.name}`}
-                              >
-                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                              </button>
-                            </Tooltip>
-                          )}
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {!isActive && (
-                              <button
-                                onClick={() => activateWorkspace(ws.id)}
-                                className="px-2 py-1 text-[11px] rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
-                              >
-                                Switch
-                              </button>
-                            )}
-                            <Tooltip content="New child workspace">
-                              <button
-                                onClick={() => openCreateForm(ws.id)}
-                                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
-                              >
-                                <Plus size={13} />
-                              </button>
-                            </Tooltip>
-                            <Tooltip content="Rename">
-                              <button
-                                title="Rename"
-                                onClick={() => { setEditingId(ws.id); setEditName(ws.name); setEditDescription(ws.description ?? ""); }}
-                                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
-                              >
-                                <Pencil size={13} />
-                              </button>
-                            </Tooltip>
-                            <Tooltip content="Delete workspace">
-                              <button
-                                onClick={() => deleteWorkspace(ws)}
-                                className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </Tooltip>
+                      <div className="flex-1 min-w-0">
+                        {isEditing ? (
+                          <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                            <input
+                              autoFocus
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {renameWorkspace(ws.id);}
+                                if (e.key === "Escape") {setEditingId(null);}
+                              }}
+                              placeholder="Workspace name…"
+                              className="flex-1 text-sm bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
+                            />
+                            <button onClick={() => renameWorkspace(ws.id)} className="text-[var(--accent-color)]">
+                              <Check size={14} />
+                            </button>
+                            <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
+                              <X size={14} />
+                            </button>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="flex items-center gap-2 min-w-0">
+                            {isActive && (
+                              <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--accent-color)]" />
+                            )}
+                            <span className="text-sm truncate">
+                              {ws.name}
+                            </span>
+                            {children.length > 0 && (
+                              <span className="text-[10px] text-[var(--text-muted)] shrink-0">
+                                {children.length}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div
+                        className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--bg-secondary)] rounded px-0.5"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        {!isActive && (
+                          <button
+                            onClick={() => activateWorkspace(ws.id)}
+                            className="px-1.5 py-0.5 text-[10px] rounded text-[var(--text-secondary)] hover:text-[var(--accent-color)] transition-colors"
+                          >
+                            Switch
+                          </button>
+                        )}
+                        <Tooltip content="New child workspace">
+                          <button
+                            onClick={() => openCreateForm(ws.id)}
+                            className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded"
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </Tooltip>
+                        <Tooltip content="Rename">
+                          <button
+                            title="Rename"
+                            onClick={() => { setEditingId(ws.id); setEditName(ws.name); setEditDescription(ws.description ?? ""); }}
+                            className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                        </Tooltip>
+                        <Tooltip content="Delete workspace">
+                          <button
+                            onClick={() => deleteWorkspace(ws)}
+                            className="p-1 text-[var(--text-muted)] hover:text-red-400 rounded"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </Tooltip>
                       </div>
                     </div>
 
                     {children.length > 0 && isExpanded && (
-                      <div className="ml-4 border-l border-[var(--border-color)] pl-3 space-y-1">
+                      <div className="ml-3 border-l border-[var(--border-color)] pl-1 mt-0.5">
                         {children.map((child) => {
                           const isChildActive = child.id === activeWorkspaceId;
                           const isChildSelected = child.id === selectedId;
@@ -697,76 +657,74 @@ export default function WorkspaceSettingsView() {
                             <div
                               key={child.id}
                               onClick={() => setSelectedId(child.id)}
-                              className={`rounded-lg border px-3 py-2 transition-all cursor-pointer group ${
+                              className={`relative flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer group transition-colors ${
                                 isChildSelected
-                                  ? "border-[var(--accent-color)] bg-[var(--accent-color)]/5 ring-1 ring-[var(--accent-color)]/20"
-                                  : "border-[var(--border-color)] bg-[var(--bg-primary)] hover:border-[var(--border-color-hover)]"
+                                  ? "bg-[var(--accent-color)]/10 text-[var(--accent-color)]"
+                                  : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
                               }`}
                             >
-                              <div className="flex items-center gap-2">
-                                <CornerDownRight size={12} className={`shrink-0 ${isChildActive ? "text-[var(--accent-color)]" : "text-[var(--text-muted)]"}`} />
-                                <div className="flex-1 min-w-0">
-                                  {isChildEditing ? (
-                                    <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                                      <input
-                                        autoFocus
-                                        value={editName}
-                                        onChange={(e) => setEditName(e.target.value)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") {renameWorkspace(child.id);}
-                                          if (e.key === "Escape") {setEditingId(null);}
-                                        }}
-                                        placeholder="Workspace name…"
-                                        className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
-                                      />
-                                      <button onClick={() => renameWorkspace(child.id)} className="text-[var(--accent-color)]">
-                                        <Check size={14} />
-                                      </button>
-                                      <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
-                                        <X size={14} />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center gap-1.5 min-w-0">
-                                      <span className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                                        {child.name}
-                                      </span>
-                                      {isChildActive && (
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium shrink-0">
-                                          Active
-                                        </span>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
+                              <div className="flex-1 min-w-0">
+                                {isChildEditing ? (
+                                  <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                    <input
+                                      autoFocus
+                                      value={editName}
+                                      onChange={(e) => setEditName(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {renameWorkspace(child.id);}
+                                        if (e.key === "Escape") {setEditingId(null);}
+                                      }}
+                                      placeholder="Workspace name…"
+                                      className="flex-1 text-sm bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
+                                    />
+                                    <button onClick={() => renameWorkspace(child.id)} className="text-[var(--accent-color)]">
+                                      <Check size={14} />
+                                    </button>
+                                    <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    {isChildActive && (
+                                      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--accent-color)]" />
+                                    )}
+                                    <span className="text-sm truncate">
+                                      {child.name}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
 
-                                <div className="flex items-start gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                  {!isChildActive && (
-                                    <button
-                                      onClick={() => activateWorkspace(child.id)}
-                                      className="px-2 py-1 text-[11px] rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
-                                    >
-                                      Switch
-                                    </button>
-                                  )}
-                                  <Tooltip content="Rename">
-                                    <button
-                                      title="Rename"
-                                      onClick={() => { setEditingId(child.id); setEditName(child.name); setEditDescription(child.description ?? ""); }}
-                                      className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)]"
-                                    >
-                                      <Pencil size={13} />
-                                    </button>
-                                  </Tooltip>
-                                  <Tooltip content="Delete workspace">
-                                    <button
-                                      onClick={() => deleteWorkspace(child)}
-                                      className="p-1.5 text-[var(--text-muted)] hover:text-red-400 rounded-lg hover:bg-red-400/10"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-                                  </Tooltip>
-                                </div>
+                              <div
+                                className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--bg-secondary)] rounded px-0.5"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                {!isChildActive && (
+                                  <button
+                                    onClick={() => activateWorkspace(child.id)}
+                                    className="px-1.5 py-0.5 text-[10px] rounded text-[var(--text-secondary)] hover:text-[var(--accent-color)] transition-colors"
+                                  >
+                                    Switch
+                                  </button>
+                                )}
+                                <Tooltip content="Rename">
+                                  <button
+                                    title="Rename"
+                                    onClick={() => { setEditingId(child.id); setEditName(child.name); setEditDescription(child.description ?? ""); }}
+                                    className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                </Tooltip>
+                                <Tooltip content="Delete workspace">
+                                  <button
+                                    onClick={() => deleteWorkspace(child)}
+                                    className="p-1 text-[var(--text-muted)] hover:text-red-400 rounded"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </Tooltip>
                               </div>
                             </div>
                           );
@@ -783,9 +741,9 @@ export default function WorkspaceSettingsView() {
         {/* Right: Workspace Details */}
         <div className="flex-1 bg-[var(--bg-primary)] overflow-y-auto">
           {selectedWorkspace ? (
-            <div className="p-6 max-w-4xl mx-auto space-y-5">
+            <div className="p-6 max-w-4xl mx-auto divide-y divide-[var(--border-color)]">
               {/* Header Details */}
-              <div className="space-y-2">
+              <div className="space-y-2 pb-5">
                 <div className="flex items-center gap-3">
                   <h2 className="text-2xl font-bold text-[var(--text-primary)]">{selectedWorkspace.name}</h2>
                   {selectedWorkspace.id === activeWorkspaceId && (
@@ -799,25 +757,17 @@ export default function WorkspaceSettingsView() {
                     </span>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--text-muted)]">
                   {selectedWorkspaceType && (
-                    <span className="px-2 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-                      {selectedWorkspaceType}
-                    </span>
+                    <span>{selectedWorkspaceType}</span>
                   )}
                   {selectedWorkspace.parent_workspace_id && selectedParentWorkspace && (
-                    <span className="px-2 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-                      Parent: {selectedParentWorkspace.name}
-                    </span>
+                    <span>Parent: {selectedParentWorkspace.name}</span>
                   )}
                   {!selectedWorkspace.parent_workspace_id && (
-                    <span className="px-2 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-                      {(childWorkspacesByParent[selectedWorkspace.id] ?? []).length} child workspace{(childWorkspacesByParent[selectedWorkspace.id] ?? []).length !== 1 ? "s" : ""}
-                    </span>
+                    <span>{(childWorkspacesByParent[selectedWorkspace.id] ?? []).length} child workspace{(childWorkspacesByParent[selectedWorkspace.id] ?? []).length !== 1 ? "s" : ""}</span>
                   )}
-                  <span className="px-2 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-                    Created {formatDate(selectedWorkspace.created_at)}
-                  </span>
+                  <span>Created {formatDate(selectedWorkspace.created_at)}</span>
                 </div>
                 {childCreateParentId && (
                   <div>
@@ -861,7 +811,7 @@ export default function WorkspaceSettingsView() {
               </div>
 
               {/* Description Editor */}
-              <div className="space-y-4 pt-2">
+              <div className="space-y-3 py-5">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
                     Description
@@ -885,7 +835,7 @@ export default function WorkspaceSettingsView() {
               </div>
 
               {/* Statistics Row */}
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 py-5">
                 {[
                   { icon: <MessageSquare size={12} />, label: "Chats", value: stats?.overview.chat_sessions ?? 0, onClick: () => navigate("/chat") },
                   { icon: <FileText size={12} />, label: "Notes", value: stats?.overview.notes ?? 0, onClick: () => navigate("/notes") },
@@ -908,7 +858,7 @@ export default function WorkspaceSettingsView() {
               </div>
 
               {/* Workspace Memory Panel */}
-              <div className="space-y-3">
+              <div className="space-y-3 py-5">
                 <button
                   onClick={() => toggleSection("memory")}
                   className="flex w-full items-center justify-between"
@@ -925,7 +875,7 @@ export default function WorkspaceSettingsView() {
               </div>
 
               {/* Conversation Prompt Editor */}
-              <div className="space-y-3">
+              <div className="space-y-3 py-5">
                 <div className="flex items-center justify-between">
                   <button
                     onClick={() => toggleSection("prompt")}
@@ -967,7 +917,7 @@ export default function WorkspaceSettingsView() {
               </div>
 
               {/* Topics Manager */}
-              <div className="space-y-3">
+              <div className="space-y-3 py-5">
                 <button
                   onClick={() => toggleSection("topics")}
                   className="flex w-full items-center justify-between"
@@ -991,7 +941,7 @@ export default function WorkspaceSettingsView() {
                 )}
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-3 py-5">
                 <div className="flex items-center justify-between">
                   <button
                     onClick={() => toggleSection("glossary")}
@@ -1148,6 +1098,102 @@ export default function WorkspaceSettingsView() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function CreateWorkspaceDialog({
+  parentName,
+  creating,
+  onConfirm,
+  onCancel,
+  name,
+  onNameChange,
+  description,
+  onDescriptionChange,
+}: {
+  parentName: string | null;
+  creating: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  name: string;
+  onNameChange: (v: string) => void;
+  description: string;
+  onDescriptionChange: (v: string) => void;
+}) {
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    nameRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === "Escape" && !creating) { onCancel(); }
+    }
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, [creating, onCancel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={() => { if (!creating) { onCancel(); } }}
+    >
+      <div
+        className="mx-4 flex w-full max-w-md flex-col gap-5 rounded-3xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent-color)]/12 text-[var(--accent-color)]">
+            <FolderPlus size={18} />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-semibold text-[var(--text-primary)]">
+              {parentName ? `New Child Workspace` : "New Root Workspace"}
+            </h3>
+            {parentName && (
+              <p className="text-sm text-[var(--text-muted)] mt-0.5">Under <span className="font-medium text-[var(--text-secondary)]">{parentName}</span></p>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-col gap-3">
+          <input
+            ref={nameRef}
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim()) { onConfirm(); }
+            }}
+            placeholder={parentName ? "Child workspace name…" : "Workspace name…"}
+            className="w-full text-sm bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-3 py-2.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors"
+          />
+          <textarea
+            value={description}
+            onChange={(e) => onDescriptionChange(e.target.value)}
+            placeholder="Optional description…"
+            rows={2}
+            className="w-full resize-none text-sm bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-3 py-2.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors"
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={creating}
+            className="rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={creating || !name.trim()}
+            className="rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {creating ? <Loader2 size={13} className="animate-spin" /> : null}
+            {creating ? "Creating…" : "Create"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
