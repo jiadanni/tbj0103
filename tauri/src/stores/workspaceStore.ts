@@ -295,7 +295,7 @@ interface WorkspaceStore {
   activePaneId: PaneId;
   panes: Record<PaneId, WorkspacePaneState>;
   setWorkspaces: (ws: Workspace[]) => void;
-  setActiveWorkspaceId: (id: string | null) => void;
+  setActiveWorkspaceId: (id: string | null, options?: { allowRoot?: boolean }) => void;
   setActiveParentWorkspaceId: (id: string | null) => void;
   setActiveFolderId: (id: string | null) => void;
   setFolders: (ps: Folder[]) => void;
@@ -436,11 +436,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         ),
       };
     }),
-    setActiveWorkspaceId: (activeWorkspaceId) => set((state) => {
+    setActiveWorkspaceId: (activeWorkspaceId, options) => set((state) => {
       const nextSelection = normalizeWorkspaceSelection(
         state.workspaces,
         activeWorkspaceId,
         state.activeParentWorkspaceId,
+        { resolveRootToChild: !(options?.allowRoot) },
       );
       const workspaceChanged = nextSelection.workspaceId !== state.activeWorkspaceId;
       const panes = {
