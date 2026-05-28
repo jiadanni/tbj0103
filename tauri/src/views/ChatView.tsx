@@ -292,11 +292,11 @@ function SessionItem({
           openSession(session);
         }
       }}
-      className={`group flex min-w-0 cursor-pointer select-none items-center gap-1 rounded-xl border px-3 py-2 transition-colors ${isSelected
-        ? "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+      className={`group flex min-w-0 cursor-pointer select-none items-center gap-1 rounded-xl border border-transparent px-3 py-2 transition-colors ${isSelected
+        ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
         : isActive
-          ? "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-          : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
         }`}
       style={{ paddingLeft: `${12 + depth * 20}px` }}
     >
@@ -2570,6 +2570,24 @@ export default function ChatView() {
     setExpandedSources((prev) => prev === msgId ? null : msgId);
   }, []);
 
+  const redoMessageRef = useRef<((msgId: string, modelId: string) => void) | null>(null);
+  const submitEditRef = useRef<((msgId: string) => void) | null>(null);
+  const handleVariationChangeRef = useRef<((msgId: string, newIndex: number) => void) | null>(null);
+
+  const handleRedoWithModelStable = useCallback((id: string, model: string) => {
+    setRedoPickerOpenForId(null);
+    redoMessageRef.current?.(id, model);
+  }, []);
+  const handleToggleRedoPickerStable = useCallback((id: string) => {
+    setRedoPickerOpenForId((prev) => prev === id ? null : id);
+  }, []);
+  const handleSubmitEditStable = useCallback((msgId: string) => {
+    submitEditRef.current?.(msgId);
+  }, []);
+  const handleVariationChangeStable = useCallback((msgId: string, newIndex: number) => {
+    handleVariationChangeRef.current?.(msgId, newIndex);
+  }, []);
+
   const markdownComponents = useMemo(() => ({
     a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
       <a
@@ -4465,6 +4483,10 @@ export default function ChatView() {
     if (activeChatId) { updateMessage(activeChatId, vars[newIndex]); }
   }
 
+  redoMessageRef.current = redoMessage;
+  submitEditRef.current = submitEdit;
+  handleVariationChangeRef.current = handleVariationChange;
+
   // Load models for comparison mode
   useEffect(() => {
     if (activeSubView !== "compare") { return; }
@@ -4751,7 +4773,7 @@ export default function ChatView() {
                   {/* Slim title bar */}
                   <div className="flex min-w-0 items-center gap-2 px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
                     <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                      <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-muted)]">
                         <span className="truncate">{activeWorkspaceName}</span>
                         {effectiveFolderName && (
                           <>
@@ -4885,12 +4907,12 @@ export default function ChatView() {
                               showGenInfoSpeed={showGenInfoSpeed}
                               onCopy={handleCopyMessage}
                               onStartEdit={handleStartEditing}
-                              onSubmitEdit={submitEdit}
+                              onSubmitEdit={handleSubmitEditStable}
                               onSetEditContent={setEditContent}
                               onCancelEdit={handleCancelEdit}
-                              onRedoWithModel={(id, model) => { setRedoPickerOpenForId(null); redoMessage(id, model); }}
-                              onToggleRedoPicker={(id) => setRedoPickerOpenForId((prev) => prev === id ? null : id)}
-                              onVariationChange={handleVariationChange}
+                              onRedoWithModel={handleRedoWithModelStable}
+                              onToggleRedoPicker={handleToggleRedoPickerStable}
+                              onVariationChange={handleVariationChangeStable}
                               onToggleThought={handleToggleThought}
                               onToggleSources={handleToggleSources}
                             />

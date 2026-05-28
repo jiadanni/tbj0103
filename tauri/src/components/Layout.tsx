@@ -412,7 +412,7 @@ function SubWorkspaceTabBar({
     <div
       data-tauri-drag-region
       onMouseDown={onDragRegionMouseDown}
-      className={`relative flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
+      className={`relative flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
     >
       <div
         className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none"
@@ -431,7 +431,7 @@ function SubWorkspaceTabBar({
                   onContextMenu(parent, event.clientX, event.clientY);
                 }
               }}
-              className={`relative mt-0.5 flex h-[30px] w-8 items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
+              className={`relative mt-0.5 flex h-[34px] w-8 items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
                 activeWorkspaceId === parent.id
                   ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
                   : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
@@ -452,10 +452,10 @@ function SubWorkspaceTabBar({
                 onContextMenu(workspace, event.clientX, event.clientY);
               }
             }}
-            className={`relative mt-0.5 flex h-[30px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-3 text-xs font-medium whitespace-nowrap transition-all select-none ${
+            className={`relative mt-0.5 flex h-[34px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-3 text-sm font-medium whitespace-nowrap transition-all select-none ${
               activeWorkspaceId === workspace.id
                 ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
-                : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                : "border-transparent text-[var(--text-secondary)] opacity-60 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
             }`}
           >
             {activeWorkspaceId === workspace.id && (
