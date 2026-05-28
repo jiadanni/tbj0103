@@ -9,9 +9,9 @@ pub struct TopicTag {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TopicSignature {
-    pub domain_tags: Vec<TopicTag>,
-    pub manual_tags: Vec<String>,
-    pub ignored_tags: Vec<String>,
+    pub auto_detected_tags: Vec<TopicTag>,
+    pub custom_tags: Vec<String>,
+    pub excluded_tags: Vec<String>,
     pub intent_patterns: Vec<String>,
     pub generated_at: Option<String>,
     pub message_count_at_gen: Option<u64>,

@@ -339,10 +339,10 @@ pub fn recompute_workspace_signature(
         generated
     };
 
-    sig.manual_tags = existing.manual_tags;
-    sig.ignored_tags = existing.ignored_tags;
-    sig.domain_tags
-        .retain(|t| !sig.ignored_tags.contains(&t.tag));
+    sig.custom_tags = existing.custom_tags;
+    sig.excluded_tags = existing.excluded_tags;
+    sig.auto_detected_tags
+        .retain(|t| !sig.excluded_tags.contains(&t.tag));
     let now = chrono::Utc::now().to_rfc3339();
     let sig_json = serde_json::to_string(&sig).map_err(|e| e.to_string())?;
 
@@ -367,9 +367,9 @@ pub fn generate_heuristic(text: &str) -> TopicSignature {
             specific
         }
     };
-    let mut domain_tags = Vec::new();
+    let mut auto_detected_tags = Vec::new();
     for (i, tag) in tags.into_iter().enumerate() {
-        domain_tags.push(TopicTag {
+        auto_detected_tags.push(TopicTag {
             tag,
             weight: (20 - i) as u32,
             source: "heuristic".to_string(),
@@ -396,9 +396,9 @@ pub fn generate_heuristic(text: &str) -> TopicSignature {
     }
 
     TopicSignature {
-        domain_tags,
-        manual_tags: Vec::new(),
-        ignored_tags: Vec::new(),
+        auto_detected_tags,
+        custom_tags: Vec::new(),
+        excluded_tags: Vec::new(),
         intent_patterns,
         generated_at: Some(chrono::Utc::now().to_rfc3339()),
         message_count_at_gen: None,
@@ -612,7 +612,7 @@ Chat excerpts:\n{sample}"
     intent_patterns.dedup();
 
     let mut enriched = heuristic;
-    enriched.domain_tags = merge_topic_tags(ollama_tags, enriched.domain_tags, 12);
+    enriched.auto_detected_tags = merge_topic_tags(ollama_tags, enriched.auto_detected_tags, 12);
     if !intent_patterns.is_empty() {
         enriched.intent_patterns = intent_patterns;
     }
@@ -661,11 +661,11 @@ pub async fn recompute_workspace_signature_with_ai(
         sig = enrich_with_ollama(sig, &text, &model, &ollama_url, cancel_rx).await;
     }
 
-    sig.manual_tags = existing.manual_tags;
-    sig.ignored_tags = existing.ignored_tags;
+    sig.custom_tags = existing.custom_tags;
+    sig.excluded_tags = existing.excluded_tags;
     sig.suggested_prompts = existing.suggested_prompts;
-    sig.domain_tags
-        .retain(|t| !sig.ignored_tags.contains(&t.tag));
+    sig.auto_detected_tags
+        .retain(|t| !sig.excluded_tags.contains(&t.tag));
 
     let now = chrono::Utc::now().to_rfc3339();
     sig.generated_at = Some(now.clone());
@@ -734,17 +734,17 @@ pub fn compute_match_score(message: &str, signature: &TopicSignature) -> f64 {
     let mut match_count = 0;
     for tag in &msg_tags {
         // Skip if this tag is in the ignored list
-        if signature.ignored_tags.contains(tag) {
+        if signature.excluded_tags.contains(tag) {
             continue;
         }
 
-        // Check domain or manual tags with fuzzy matching
+        // Check auto-detected or custom tags with fuzzy matching
         let matched = signature
-            .domain_tags
+            .auto_detected_tags
             .iter()
             .any(|t| tags_match_fuzzy(&t.tag, tag))
             || signature
-                .manual_tags
+                .custom_tags
                 .iter()
                 .any(|t| tags_match_fuzzy(t, tag));
 

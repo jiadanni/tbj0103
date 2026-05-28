@@ -108,9 +108,9 @@ export interface TopicTag {
 }
 
 export interface TopicSignature {
-  domain_tags: TopicTag[];
-  manual_tags: string[];
-  ignored_tags: string[];
+  auto_detected_tags: TopicTag[];
+  custom_tags: string[];
+  excluded_tags: string[];
   intent_patterns: string[];
   generated_at: string | null;
   message_count_at_gen: number | null;
@@ -685,11 +685,11 @@ export const api = {
   topicSignature: {
     get: (workspaceId: string) => invoke<TopicSignature>("get_topic_signature", { workspaceId }),
     regenerate: (workspaceId: string, model?: string, ollamaUrl?: string) => invoke<TopicSignature>("regenerate_topic_signature", { workspaceId, model, ollamaUrl }),
-    update: (workspaceId: string, manual_tags: string[], ignored_tags: string[]) =>
+    update: (workspaceId: string, custom_tags: string[], excluded_tags: string[]) =>
       invoke<TopicSignature>("update_topic_signature", {
         workspaceId,
-        manualTags: manual_tags,
-        ignoredTags: ignored_tags,
+        customTags: custom_tags,
+        excludedTags: excluded_tags,
       }),
     checkMatch: (workspaceId: string, message: string) => invoke<WorkspaceMatchResult>("check_workspace_match", { workspaceId, message }),
   },

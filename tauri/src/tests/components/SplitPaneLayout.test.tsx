@@ -30,7 +30,7 @@ const PARENT_WS = {
   name: "Parent Workspace",
   description: "",
   prompt_instructions: "",
-  topic_signature: { domain_tags: [], manual_tags: [], ignored_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false },
+  topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false },
   signature_updated_at: null,
   is_hidden: false,
   created_at: "",

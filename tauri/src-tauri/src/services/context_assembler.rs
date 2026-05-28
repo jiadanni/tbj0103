@@ -191,13 +191,13 @@ pub fn assemble_context(
         if let Some(sig_json) = topic_sig_json {
             let sig: TopicSignature = serde_json::from_str(&sig_json).unwrap_or_default();
             let mut active_tags: Vec<String> = sig
-                .domain_tags
+                .auto_detected_tags
                 .iter()
-                .filter(|t| !sig.ignored_tags.contains(&t.tag))
+                .filter(|t| !sig.excluded_tags.contains(&t.tag))
                 .map(|t| t.tag.clone())
                 .collect();
-            for tag in &sig.manual_tags {
-                if !sig.ignored_tags.contains(tag) && !active_tags.contains(tag) {
+            for tag in &sig.custom_tags {
+                if !sig.excluded_tags.contains(tag) && !active_tags.contains(tag) {
                     active_tags.push(tag.clone());
                 }
             }

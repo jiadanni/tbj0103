@@ -127,11 +127,11 @@ function buildWorkspaceDomainContext(
   // reliable than workspace name which may be abbreviated, sentimental, or a
   // misspelling).
   if (topicSignature) {
-    const activeTags = topicSignature.domain_tags
-      .filter((t) => !topicSignature.ignored_tags.includes(t.tag))
+    const activeTags = topicSignature.auto_detected_tags
+      .filter((t) => !topicSignature.excluded_tags.includes(t.tag))
       .map((t) => t.tag);
-    for (const tag of topicSignature.manual_tags) {
-      if (!topicSignature.ignored_tags.includes(tag) && !activeTags.includes(tag)) {
+    for (const tag of topicSignature.custom_tags) {
+      if (!topicSignature.excluded_tags.includes(tag) && !activeTags.includes(tag)) {
         activeTags.push(tag);
       }
     }
@@ -2366,11 +2366,11 @@ export default function ChatView() {
     const fetchRelated = async () => {
       const tags = (() => {
         if (!activeTopicSignature) { return []; }
-        const ignored = new Set(activeTopicSignature.ignored_tags);
-        const active = activeTopicSignature.domain_tags
+        const ignored = new Set(activeTopicSignature.excluded_tags);
+        const active = activeTopicSignature.auto_detected_tags
           .filter(t => !ignored.has(t.tag) && t.weight >= 0.4)
           .map(t => t.tag);
-        for (const tag of activeTopicSignature.manual_tags) {
+        for (const tag of activeTopicSignature.custom_tags) {
           if (!ignored.has(tag) && !active.includes(tag)) {
             active.push(tag);
           }
@@ -3193,12 +3193,12 @@ export default function ChatView() {
     // Only run if we actually have the topic signature loaded from the backend (not just null from initial render)
     if (activeTopicSignature === undefined) { return; }
 
-    // Skip generation for workspaces with no real content — domain_tags and manual_tags are
+    // Skip generation for workspaces with no real content — auto_detected_tags and custom_tags are
     // only populated once the workspace has indexed notes, documents, or chat history.
     // Generating prompts from a bare workspace name produces generic, unhelpful suggestions.
     const hasContent =
-      (activeTopicSignature?.domain_tags?.length ?? 0) > 0 ||
-      (activeTopicSignature?.manual_tags?.length ?? 0) > 0;
+      (activeTopicSignature?.auto_detected_tags?.length ?? 0) > 0 ||
+      (activeTopicSignature?.custom_tags?.length ?? 0) > 0;
     if (!hasContent) { return; }
 
     const currentWorkspace = useWorkspaceStore.getState().workspaces.find(w => w.id === effectiveWorkspaceId);

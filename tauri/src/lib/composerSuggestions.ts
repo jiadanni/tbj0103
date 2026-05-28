@@ -142,7 +142,7 @@ export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext):
   }
 
   // Fallback to legacy string-interpolation if no AI prompts are available yet
-  const topicTerms = context.topicSignature?.domain_tags
+  const topicTerms = context.topicSignature?.auto_detected_tags
     .slice(0, 4)
     .map((tag) => tag.tag) ?? [];
 

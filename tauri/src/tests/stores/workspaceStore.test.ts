@@ -53,9 +53,9 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     description: "",
     prompt_instructions: "",
     topic_signature: {
-      domain_tags: [],
-      manual_tags: [],
-      ignored_tags: [],
+      auto_detected_tags: [],
+      custom_tags: [],
+      excluded_tags: [],
       intent_patterns: [],
       generated_at: null,
       message_count_at_gen: null,
