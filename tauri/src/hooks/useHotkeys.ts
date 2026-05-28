@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { isEditableElement } from "../lib/platform";
 
 export interface HotkeyBinding {
@@ -16,9 +16,14 @@ export interface HotkeyBinding {
  * Registers global hotkey listeners.
  */
 export function useHotkeys(bindings: HotkeyBinding[]) {
+  const bindingsRef = useRef(bindings);
+  useLayoutEffect(() => {
+    bindingsRef.current = bindings;
+  });
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      for (const binding of bindings) {
+      for (const binding of bindingsRef.current) {
         // Match base key (case insensitive)
         const keyMatch = e.key.toLowerCase() === binding.key.toLowerCase();
         if (!keyMatch) {
@@ -64,5 +69,5 @@ export function useHotkeys(bindings: HotkeyBinding[]) {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [bindings]);
+  }, []);
 }
