@@ -9,6 +9,7 @@ pub struct LearningCard {
     pub back: String,
     pub source_type: String,
     pub source_id: Option<String>,
+    pub topic_id: Option<String>,
     // SM-2 fields
     pub ease_factor: f64,
     pub interval: i64,
@@ -61,6 +62,26 @@ pub struct GenerateFromConceptRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlashcardTopic {
+    pub id: String,
+    pub workspace_id: String,
+    pub topic: String,
+    pub source: String,
+    pub mastery_score: f64,
+    pub last_generated_at: Option<String>,
+    pub card_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateForTopicRequest {
+    pub workspace_id: String,
+    pub topic_id: String,
+    pub count: Option<u32>,
+    pub model: String,
+    pub ollama_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractFlashcardsRequest {
     pub workspace_id: String,
     pub content: String,
@@ -85,6 +106,7 @@ impl LearningCard {
             back: back.into(),
             source_type: "manual".to_string(),
             source_id: None,
+            topic_id: None,
             ease_factor: 2.5,
             interval: 1,
             repetitions: 0,

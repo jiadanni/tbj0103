@@ -1,7 +1,7 @@
 use crate::db::DbState;
 use crate::models::learning_card::{
-    CreateCardRequest, ExtractFlashcardsRequest, GenerateCardsRequest, GenerateFromConceptRequest,
-    LearningCard, ReviewRequest, ReviewStats,
+    CreateCardRequest, ExtractFlashcardsRequest, FlashcardTopic, GenerateCardsRequest,
+    GenerateForTopicRequest, GenerateFromConceptRequest, LearningCard, ReviewRequest, ReviewStats,
 };
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::spaced_repetition;
@@ -16,13 +16,120 @@ fn row_to_card(row: &rusqlite::Row) -> rusqlite::Result<LearningCard> {
         back: row.get(3)?,
         source_type: row.get(4)?,
         source_id: row.get(5)?,
-        ease_factor: row.get(6)?,
-        interval: row.get(7)?,
-        repetitions: row.get(8)?,
-        next_review_date: row.get(9)?,
-        last_reviewed_at: row.get(10)?,
-        created_at: row.get(11)?,
+        topic_id: row.get(6)?,
+        ease_factor: row.get(7)?,
+        interval: row.get(8)?,
+        repetitions: row.get(9)?,
+        next_review_date: row.get(10)?,
+        last_reviewed_at: row.get(11)?,
+        created_at: row.get(12)?,
     })
+}
+
+pub(crate) const INSERT_CARD_SQL: &str = "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)";
+
+/// Difficulty levels used when crafting a generation prompt.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum CardDifficulty {
+    Introductory,
+    Applied,
+    Synthesis,
+}
+
+impl CardDifficulty {
+    pub(crate) fn from_mastery(mastery: f64) -> Self {
+        if mastery < 0.3 {
+            Self::Introductory
+        } else if mastery < 0.7 {
+            Self::Applied
+        } else {
+            Self::Synthesis
+        }
+    }
+
+    fn descriptor(self) -> &'static str {
+        match self {
+            Self::Introductory => "introductory, definitional, single-fact",
+            Self::Applied => "applied, scenario-based, requiring practical understanding",
+            Self::Synthesis => "synthesis, edge cases, comparison and tradeoffs",
+        }
+    }
+}
+
+/// Calls Ollama with a topic + difficulty descriptor and returns parsed front/back pairs.
+/// Used by both the manual `generate_flashcards` command and the background topic service.
+pub(crate) async fn generate_card_pairs(
+    topic: &str,
+    model: &str,
+    count: u32,
+    difficulty: CardDifficulty,
+    ollama_url: Option<String>,
+) -> Result<Vec<(String, String)>, String> {
+    let count = count.clamp(1, 20);
+    let prompt = format!(
+        "Generate exactly {count} {difficulty} flashcards about: \"{topic}\"\n\n\
+        Output ONLY a JSON array of objects, each with \"front\" (question) and \"back\" (answer) keys.\n\
+        No markdown, no explanation, no code fences — just the raw JSON array.\n\
+        Example: [{{\"front\":\"What is X?\",\"back\":\"X is...\"}}]",
+        count = count,
+        difficulty = difficulty.descriptor(),
+        topic = topic,
+    );
+    let client = OllamaClient::new(ollama_url)?;
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+    let raw = client.send_message("flashcard", model, messages).await?;
+    let trimmed = raw.trim();
+    let json_str = if let Some(start) = trimmed.find('[') {
+        if let Some(end) = trimmed.rfind(']') {
+            &trimmed[start..=end]
+        } else {
+            return Err("AI response did not contain a valid JSON array".to_string());
+        }
+    } else {
+        return Err("AI response did not contain a JSON array".to_string());
+    };
+
+    #[derive(serde::Deserialize)]
+    struct CardPair {
+        front: String,
+        back: String,
+    }
+    let pairs: Vec<CardPair> = serde_json::from_str(json_str)
+        .map_err(|e| format!("Failed to parse AI-generated cards: {e}\nRaw: {json_str}"))?;
+    Ok(pairs
+        .into_iter()
+        .filter(|p| !p.front.trim().is_empty() && !p.back.trim().is_empty())
+        .map(|p| (p.front, p.back))
+        .collect())
+}
+
+pub(crate) fn insert_card(
+    conn: &rusqlite::Connection,
+    card: &LearningCard,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        INSERT_CARD_SQL,
+        rusqlite::params![
+            card.id,
+            card.workspace_id,
+            card.front,
+            card.back,
+            card.source_type,
+            card.source_id,
+            card.topic_id,
+            card.ease_factor,
+            card.interval,
+            card.repetitions,
+            card.next_review_date,
+            card.last_reviewed_at,
+            card.created_at
+        ],
+    )?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -36,12 +143,7 @@ pub fn create_flashcard(
         card.source_type = st;
     }
     card.source_id = req.source_id;
-    conn.execute(
-        "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-        rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id,
-                          card.ease_factor, card.interval, card.repetitions, card.next_review_date, card.last_reviewed_at, card.created_at],
-    ).map_err(|e| e.to_string())?;
+    insert_card(&conn, &card).map_err(|e| e.to_string())?;
     Ok(card)
 }
 
@@ -60,7 +162,7 @@ pub fn list_flashcards_due(
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
     let sql = format!(
-        "{cte}SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+        "{cte}SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
          FROM learning_cards WHERE workspace_id {ws_cond} AND next_review_date <= ?2 ORDER BY next_review_date ASC LIMIT ?3 OFFSET ?4"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -81,7 +183,7 @@ pub fn review_flashcard(state: State<DbState>, req: ReviewRequest) -> Result<Lea
     let conn = state.0.get().map_err(|e| e.to_string())?;
     // Fetch current card
     let card = conn.query_row(
-        "SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+        "SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
          FROM learning_cards WHERE id = ?1",
         rusqlite::params![req.card_id],
         row_to_card,
@@ -101,6 +203,9 @@ pub fn review_flashcard(state: State<DbState>, req: ReviewRequest) -> Result<Lea
                 rusqlite::params![now, concept_id],
             );
         }
+    }
+    if let Some(ref topic_id) = card.topic_id {
+        crate::services::flashcard_topic_service::on_card_reviewed(&conn, topic_id);
     }
     let updated_card = LearningCard {
         ease_factor: result.ease_factor,
@@ -159,56 +264,25 @@ pub async fn generate_flashcards(
     state: State<'_, DbState>,
     req: GenerateCardsRequest,
 ) -> Result<Vec<LearningCard>, String> {
-    let count = req.count.unwrap_or(5).min(20);
-    let prompt = format!(
-        "Generate exactly {count} flashcards about: \"{topic}\"\n\n\
-        Output ONLY a JSON array of objects, each with \"front\" (question) and \"back\" (answer) keys.\n\
-        No markdown, no explanation, no code fences — just the raw JSON array.\n\
-        Example: [{{\"front\":\"What is X?\",\"back\":\"X is...\"}}]",
-        count = count,
-        topic = req.topic,
-    );
-    let client = OllamaClient::new(req.ollama_url)?;
-    let messages = vec![OllamaMessage {
-        role: "user".to_string(),
-        content: prompt,
-    }];
-    let raw = client.send_message("flashcard", &req.model, messages).await?;
-
-    // Parse the JSON array from the response, stripping any markdown fences
-    let trimmed = raw.trim();
-    let json_str = if let Some(start) = trimmed.find('[') {
-        if let Some(end) = trimmed.rfind(']') {
-            &trimmed[start..=end]
-        } else {
-            return Err("AI response did not contain a valid JSON array".to_string());
-        }
-    } else {
-        return Err("AI response did not contain a JSON array".to_string());
-    };
-
-    #[derive(serde::Deserialize)]
-    struct CardPair {
-        front: String,
-        back: String,
-    }
-
-    let pairs: Vec<CardPair> = serde_json::from_str(json_str)
-        .map_err(|e| format!("Failed to parse AI-generated cards: {e}\nRaw: {json_str}"))?;
+    let count = req.count.unwrap_or(5);
+    let pairs = generate_card_pairs(
+        &req.topic,
+        &req.model,
+        count,
+        CardDifficulty::Applied,
+        req.ollama_url,
+    )
+    .await?;
 
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut cards = Vec::new();
-    for pair in pairs {
-        if pair.front.trim().is_empty() || pair.back.trim().is_empty() {
-            continue;
-        }
-        let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
+    for (front, back) in pairs {
+        let mut card = LearningCard::new(req.workspace_id.clone(), front, back);
         card.source_type = "ai_generated".to_string();
         tx.execute(
-            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id,
+            INSERT_CARD_SQL,
+            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id, card.topic_id,
                               card.ease_factor, card.interval, card.repetitions, card.next_review_date, card.last_reviewed_at, card.created_at],
         ).map_err(|e| e.to_string())?;
         cards.push(card);
@@ -289,9 +363,8 @@ pub async fn generate_flashcards_from_concept(
         card.source_type = "concept".to_string();
         card.source_id = Some(req.concept_id.clone());
         tx.execute(
-            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id,
+            INSERT_CARD_SQL,
+            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id, card.topic_id,
                               card.ease_factor, card.interval, card.repetitions, card.next_review_date, card.last_reviewed_at, card.created_at],
         ).map_err(|e| e.to_string())?;
         cards.push(card);
@@ -308,7 +381,7 @@ pub fn list_flashcards_by_concept(
 ) -> Result<Vec<LearningCard>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+        "SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
          FROM learning_cards WHERE source_type = 'concept' AND source_id = ?1 ORDER BY created_at DESC"
     ).map_err(|e| e.to_string())?;
     let items = stmt
@@ -327,7 +400,7 @@ pub fn list_graph_flashcards(
 ) -> Result<Vec<LearningCard>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT lc.id, lc.workspace_id, lc.front, lc.back, lc.source_type, lc.source_id,
+        "SELECT lc.id, lc.workspace_id, lc.front, lc.back, lc.source_type, lc.source_id, lc.topic_id,
                 lc.ease_factor, lc.interval, lc.repetitions, lc.next_review_date, lc.last_reviewed_at, lc.created_at
          FROM learning_cards lc
          JOIN concept_nodes cn ON cn.id = lc.source_id
@@ -408,13 +481,82 @@ pub async fn extract_flashcards_from_content(
         card.source_type = req.source_type.clone();
         card.source_id = req.source_id.clone();
         tx.execute(
-            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id,
+            INSERT_CARD_SQL,
+            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id, card.topic_id,
                               card.ease_factor, card.interval, card.repetitions, card.next_review_date, card.last_reviewed_at, card.created_at],
         ).map_err(|e| e.to_string())?;
         cards.push(card);
     }
     tx.commit().map_err(|e| e.to_string())?;
     Ok(cards)
+}
+
+
+/// List flashcard topics for a workspace (derived from chat topic signatures).
+#[tauri::command]
+pub fn list_flashcard_topics(
+    state: State<DbState>,
+    workspace_id: String,
+    include_descendants: Option<bool>,
+) -> Result<Vec<FlashcardTopic>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, topic, source, mastery_score, last_generated_at, card_count
+         FROM flashcard_topics WHERE workspace_id {ws_cond}
+         ORDER BY mastery_score ASC, card_count DESC, topic ASC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![workspace_id], |r| {
+            Ok(FlashcardTopic {
+                id: r.get(0)?,
+                workspace_id: r.get(1)?,
+                topic: r.get(2)?,
+                source: r.get(3)?,
+                mastery_score: r.get(4)?,
+                last_generated_at: r.get(5)?,
+                card_count: r.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+/// Generate one batch of flashcards for a specific topic, respecting current mastery for difficulty.
+#[tauri::command]
+pub async fn generate_flashcards_for_topic(
+    state: State<'_, DbState>,
+    req: GenerateForTopicRequest,
+) -> Result<Vec<LearningCard>, String> {
+    let topic_row = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT id, workspace_id, topic, mastery_score, last_generated_at, card_count
+             FROM flashcard_topics WHERE id = ?1",
+            rusqlite::params![req.topic_id],
+            |r| {
+                Ok(crate::services::flashcard_topic_service::FlashcardTopicRow {
+                    id: r.get(0)?,
+                    workspace_id: r.get(1)?,
+                    topic: r.get(2)?,
+                    mastery_score: r.get(3)?,
+                    last_generated_at: r.get(4)?,
+                    card_count: r.get(5)?,
+                })
+            },
+        )
+        .map_err(|e| format!("Topic not found: {e}"))?
+    };
+    let count = req.count.unwrap_or(5);
+    crate::services::flashcard_topic_service::generate_for_topic(
+        &state,
+        &topic_row,
+        &req.model,
+        count,
+        req.ollama_url,
+    )
+    .await
 }

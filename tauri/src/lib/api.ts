@@ -152,13 +152,19 @@ export interface ConceptLink {
 
 export interface LearningCard {
   id: string; workspace_id: string; front: string; back: string;
-  source_type: string; source_id?: string; ease_factor: number; interval: number;
+  source_type: string; source_id?: string; topic_id?: string;
+  ease_factor: number; interval: number;
   repetitions: number; next_review_date: string; last_reviewed_at?: string;
   created_at: string;
 }
 
 export interface ReviewStats {
   total_cards: number; due_today: number; learned: number; avg_ease: number;
+}
+
+export interface FlashcardTopic {
+  id: string; workspace_id: string; topic: string; source: string;
+  mastery_score: number; last_generated_at?: string; card_count: number;
 }
 
 export interface ProjectNote {
@@ -1022,6 +1028,10 @@ export const api = {
       invoke<LearningCard[]>("list_graph_flashcards", { workspaceId }),
     extractFromContent: (workspaceId: string, content: string, sourceType: string, model: string, sourceId?: string, ollamaUrl?: string) =>
       invoke<LearningCard[]>("extract_flashcards_from_content", { req: { workspace_id: workspaceId, content, source_type: sourceType, source_id: sourceId, model, ollama_url: ollamaUrl } }),
+    listTopics: (workspaceId: string, includeDescendants?: boolean) =>
+      invoke<FlashcardTopic[]>("list_flashcard_topics", { workspaceId, includeDescendants }),
+    generateForTopic: (workspaceId: string, topicId: string, model: string, count?: number, ollamaUrl?: string) =>
+      invoke<LearningCard[]>("generate_flashcards_for_topic", { req: { workspace_id: workspaceId, topic_id: topicId, model, count, ollama_url: ollamaUrl } }),
   },
 
   note: {

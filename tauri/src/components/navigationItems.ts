@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart2,
+  CreditCard,
   FileEdit,
   History,
   Library,
@@ -20,6 +21,7 @@ export const PRIMARY_NAV_ITEMS: NavigationItem[] = [
   { path: "/notes", icon: FileEdit, label: "Notes" },
   { path: "/sources", icon: Library, label: "Sources" },
   { path: "/graph", icon: Network, label: "Knowledge" },
+  { path: "/flashcards", icon: CreditCard, label: "Flashcards" },
   { path: "/history", icon: History, label: "History" },
 ];
 export type ChatSubView = "chat" | "compare" | "sessions";
