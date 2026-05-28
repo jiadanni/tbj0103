@@ -144,7 +144,7 @@ export default function Sidebar({
   }
 
   const visibleTooltip = tooltip && tooltip.path === location.pathname ? tooltip : null;
-  const activeNavClassName = "border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  const activeNavClassName = "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]";
   const inactiveNavClassName = "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 
   return (
