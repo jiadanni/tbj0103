@@ -422,6 +422,7 @@ function SubWorkspaceTabBar({
         {parent && (
           <Tooltip content={parent.name} position="bottom">
             <button
+              data-no-drag
               onClick={() => (onSelectOverview ?? onSelect)(parent.id)}
               onContextMenu={(event) => {
                 if (onContextMenu) {
@@ -430,7 +431,7 @@ function SubWorkspaceTabBar({
                   onContextMenu(parent, event.clientX, event.clientY);
                 }
               }}
-              className={`relative mt-0.5 flex h-[30px] w-[26px] items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
+              className={`relative mt-0.5 flex h-[30px] w-8 items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
                 activeWorkspaceId === parent.id
                   ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
                   : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
@@ -970,7 +971,7 @@ function WorkspaceTabBar({
     const { workspaceId: nextWorkspaceId, parentWorkspaceId } = resolveWorkspaceSelection(workspaces, workspaceId, { allowRoot });
     const isChanged = nextWorkspaceId !== activeWorkspaceId;
     setActiveParentWorkspaceId(parentWorkspaceId);
-    setActiveWorkspaceId(nextWorkspaceId);
+    setActiveWorkspaceId(nextWorkspaceId, { allowRoot });
     if (isChanged && switchWorkspaceSection) { navigate(switchWorkspaceSection); }
     setContextMenu(null);
   }
@@ -1084,7 +1085,7 @@ function WorkspaceTabBar({
   }, [contextMenu]);
 
   return (
-    <div className="relative">
+    <div className="relative z-20">
       <div
         data-tauri-drag-region
         onMouseDown={onDragRegionMouseDown}
