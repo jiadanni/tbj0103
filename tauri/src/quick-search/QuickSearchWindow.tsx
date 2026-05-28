@@ -287,7 +287,7 @@ export default function QuickSearchWindow() {
               </button>
 
               {isFilterMenuOpen && (
-                <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[320px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-2 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.75)] backdrop-blur-xl">
+                <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[320px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-2 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.75)]">
                   <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-3">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
                       Workspace

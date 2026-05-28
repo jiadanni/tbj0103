@@ -817,7 +817,7 @@ const SessionSidebar = memo(function SessionSidebar({
     }
 
     return (
-      <div className={`absolute left-full z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg ${flipUp ? "bottom-0" : "top-0"}`}>
+      <div className={`absolute left-full z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg ${flipUp ? "bottom-0" : "top-0"}`}>
         <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
           {shouldShowWorkspaceSearch && !showNewWorkspaceInput && (
             <div className="px-2 pb-2">
@@ -939,7 +939,7 @@ const SessionSidebar = memo(function SessionSidebar({
 
     const isAtRoot = !currentFolderId;
     return (
-      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
+      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg">
         <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
           <button
             onClick={() => onSelect(null)}
@@ -1019,7 +1019,7 @@ const SessionSidebar = memo(function SessionSidebar({
     }
 
     return (
-      <div className={`absolute left-full z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg ${flipUp ? "bottom-0" : "top-0"}`}>
+      <div className={`absolute left-full z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg ${flipUp ? "bottom-0" : "top-0"}`}>
         <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
           {shouldShowWorkspaceSearch && !showNewWorkspaceInput && (
             <div className="px-2 pb-2">
@@ -1223,7 +1223,7 @@ const SessionSidebar = memo(function SessionSidebar({
                   </button>
                 </Tooltip>
                 {moveMenuOpen && bulkActionPending === null && (
-                  <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
+                  <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg">
                     <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
                       {shouldShowWorkspaceSearch && !showNewWorkspaceInput && (
                         <div className="px-2 pb-2">
@@ -1371,7 +1371,7 @@ const SessionSidebar = memo(function SessionSidebar({
                 {bulkFolderMoveOpen && bulkActionPending === null && (() => {
                   const bulkWorkspaceId = sidebarSessions.find((s) => selectedIds.has(s.id))?.workspace_id;
                   return (
-                  <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl shadow-lg">
+                  <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg">
                     <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
                       <button
                         onClick={() => {
@@ -2364,6 +2364,10 @@ export default function ChatView() {
   useEffect(() => {
     let active = true;
     const fetchRelated = async () => {
+      if (activeChatMessages.length === 0) {
+        setRelatedChats([]);
+        return;
+      }
       const tags = (() => {
         if (!activeTopicSignature) { return []; }
         const ignored = new Set(activeTopicSignature.excluded_tags);
@@ -2392,7 +2396,7 @@ export default function ChatView() {
     };
     void fetchRelated();
     return () => { active = false; };
-  }, [activeTopicSignature, effectiveWorkspaceId, currentSessionId]);
+  }, [activeTopicSignature, effectiveWorkspaceId, currentSessionId, activeChatMessages.length]);
 
   // Handle external subview switching via router state
   useEffect(() => {
@@ -2723,6 +2727,7 @@ export default function ChatView() {
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const prevScrollChatIdRef = useRef<string | null>(null);
+  const wasStreamingRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pendingSentScrollId = useRef<string | null>(null);
   const pendingNewSessionRef = useRef<Promise<ChatSession | null> | null>(null);
@@ -3366,10 +3371,16 @@ export default function ChatView() {
   // scroll-pinning via the Footer; firing scrollToIndex at the same time causes
   // competing animations that make the view jerk.
   useEffect(() => {
+    const sessionChanged = prevScrollChatIdRef.current !== activeChatId;
+    const justFinishedStreaming = wasStreamingRef.current && !isCurrentlyStreaming;
     prevScrollChatIdRef.current = activeChatId;
+    wasStreamingRef.current = isCurrentlyStreaming;
 
     // Let followOutput="auto" handle pinning while tokens are arriving.
     if (isCurrentlyStreaming) { return; }
+
+    // followOutput already kept us at the bottom during streaming — no jump needed.
+    if (justFinishedStreaming && !sessionChanged) { return; }
 
     if (scrollToTopOnSend && pendingSentScrollId.current) {
       const msgId = pendingSentScrollId.current;
@@ -4750,7 +4761,9 @@ export default function ChatView() {
                         )}
                       </div>
                       <span className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-sm font-medium text-[var(--text-primary)]">
-                        <span className="truncate">{activeSession?.title || "New Chat"}</span>
+                        <Tooltip content={activeSession?.title || "New Chat"} position="bottom">
+                          <span className="truncate">{activeSession?.title || "New Chat"}</span>
+                        </Tooltip>
                         {activeSession?.is_incognito && (
                           <Tooltip content="Incognito thread" position="bottom">
                             <span><Ghost size={14} className="text-purple-400" /></span>
@@ -4838,7 +4851,7 @@ export default function ChatView() {
                         }}
                         data={activeMessages}
                         initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
-                        followOutput={isCurrentlyStreaming ? "auto" : false}
+                        followOutput={isCurrentlyStreaming ? "smooth" : false}
                         alignToBottom={true}
                         className="w-full min-w-0 overflow-x-hidden py-4"
                         computeItemKey={(_, msg) => msg.id}
@@ -4910,7 +4923,7 @@ export default function ChatView() {
                   <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-10" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-6"}`}>
                     <div
                       data-testid="composer-shell"
-                      className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[32px] bg-[var(--bg-elevated)]/70 backdrop-blur-3xl ring-1 ring-[var(--border-color)] ${showComposerHeader ? "p-3" : "p-2"} shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5),_0_0_0_1px_rgba(255,255,255,0.02)_inset] transition-all duration-300`}
+                      className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[32px] bg-[var(--bg-elevated)] ring-1 ring-[var(--border-color)] ${showComposerHeader ? "p-3" : "p-2"} shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5),_0_0_0_1px_rgba(255,255,255,0.02)_inset] transition-all duration-300`}
                     >
                       <div className="flex flex-col gap-2 min-w-0">
 
@@ -5441,7 +5454,7 @@ export default function ChatView() {
                   <div className="border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-400">{compareError}</div>
                 )}
                 <div className="px-4 pb-6 pt-4">
-                  <div className="mx-auto w-full min-w-0 max-w-5xl rounded-[28px] border border-[var(--border-color)] bg-[var(--bg-elevated)]/90 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur-xl">
+                  <div className="mx-auto w-full min-w-0 max-w-5xl rounded-[28px] border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)]">
                     <div className="flex flex-col gap-3.5 min-w-0">
                       <div className="rounded-[24px] border border-[var(--border-color)] bg-[var(--bg-primary)]/80 p-2.5 shadow-[0_18px_45px_-35px_rgba(15,23,42,0.5)] transition-all focus-within:border-[var(--accent-color)] focus-within:shadow-[0_0_0_4px_rgba(var(--accent-color-rgb),0.11),0_18px_45px_-35px_rgba(15,23,42,0.5)]">
                         <div className="flex items-end gap-2">

@@ -39,7 +39,7 @@ export default function AppHeaderMenu() {
       </Tooltip>
 
       {isOpen && (
-        <div className="absolute top-10 left-0 z-50 w-48 rounded-lg shadow-xl bg-[var(--bg-elevated)] border border-[var(--border-color)] overflow-hidden">
+        <div className="absolute top-10 left-0 z-50 w-48 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl">
           <div className="py-1">
             <button
               onClick={() => handleAction(() => {
