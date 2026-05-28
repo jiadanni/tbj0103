@@ -138,6 +138,8 @@ When adding navigation chrome (workspace switcher, section nav, command bars), d
 - Services (`src-tauri/src/services/`) contain business logic that commands delegate to. Commands should be thin — validate input, acquire the DB lock, call a service, return the result.
 - Use `rusqlite` through the app’s `r2d2_sqlite` connection pool (`DbState`). Acquire a connection with `state.0.get().map_err(|e| e.to_string())?`.
 - All command return types must be `Result<T, String>` where the error string is a human-readable message.
+- **Avoid N+1 queries.** Never fetch per-row data inside a loop (e.g., querying tags or counts for each session individually). Use a single query with `JOIN`, `GROUP BY`, or `UNION ALL` instead. Past incidents: chat session list, dashboard stats, context assembler.
+- **Tauri commands must not block the async runtime.** Any command that does file I/O, HTTP, or heavy computation must be `async` and use `tokio::task::spawn_blocking` for synchronous work. Blocking a command handler starves other IPC calls.
 - Run `cargo check` to verify — it must exit 0 before committing.
 
 ### Window Management (Linux)
@@ -145,6 +147,7 @@ When adding navigation chrome (workspace switcher, section nav, command bars), d
 - On Linux, `data-tauri-drag-region` alone is unreliable for window dragging. Every drag-region element must **also** attach the `onDragRegionMouseDown` handler exported from `src/components/WindowControls.tsx`, which calls `getCurrentWindow().startDragging()` programmatically.
 - The `WindowControls` component renders minimize / maximize / close buttons **only on Linux** (macOS uses native traffic lights). It uses an explicit `isMaximized()` check to toggle maximize/unmaximize — do **not** use `toggleMaximize()`.
 - Any new top-level view or screen that renders a drag region (e.g., a loading/splash screen) must import and apply `onDragRegionMouseDown`.
+- **Debounce window state persistence on Linux.** Writing window position/size/maximize state on every event causes malloc corruption. Any listener that persists window state must debounce writes (e.g., 300 ms). Do not write on every `resize` or `move` tick.
 
 ### Capabilities / Permissions
 
@@ -200,7 +203,7 @@ npm install          # run on first checkout or after package.json changes
 npm run tauri dev
 ```
 
-> **Note:** `node`, `npm`, and `cargo` may resolve differently across macOS, Linux, and Windows setups. Use the local machine’s working toolchain path when they are not already on `$PATH` (for example, an `nvm`-managed `node` binary or `/usr/bin/cargo` on some Linux systems).
+> **Node / nvm (non-interactive shells):** The project pins Node 22 via `.nvmrc`. nvm shims (`node`, `npm`, `npx`) only activate in interactive shells, so they may silently fail in Claude Code. If `npx` is not found, resolve the right binary with: `ls ~/.nvm/versions/node/ | sort -V | tail -1` to find the latest installed version, then call `~/.nvm/versions/node/<version>/bin/npx` directly. Do not hardcode a version — it varies by machine.
 
 ---
 
