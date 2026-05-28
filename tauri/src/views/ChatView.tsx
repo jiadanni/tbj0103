@@ -3193,6 +3193,14 @@ export default function ChatView() {
     // Only run if we actually have the topic signature loaded from the backend (not just null from initial render)
     if (activeTopicSignature === undefined) { return; }
 
+    // Skip generation for workspaces with no real content — domain_tags and manual_tags are
+    // only populated once the workspace has indexed notes, documents, or chat history.
+    // Generating prompts from a bare workspace name produces generic, unhelpful suggestions.
+    const hasContent =
+      (activeTopicSignature?.domain_tags?.length ?? 0) > 0 ||
+      (activeTopicSignature?.manual_tags?.length ?? 0) > 0;
+    if (!hasContent) { return; }
+
     const currentWorkspace = useWorkspaceStore.getState().workspaces.find(w => w.id === effectiveWorkspaceId);
     if (!currentWorkspace) { return; }
 
@@ -4894,6 +4902,7 @@ export default function ChatView() {
                       text={toolbarState.text}
                       onDismiss={dismissToolbar}
                       innerRef={toolbarRef}
+                      workspaceId={effectiveWorkspaceId}
                     />
                   )}
 

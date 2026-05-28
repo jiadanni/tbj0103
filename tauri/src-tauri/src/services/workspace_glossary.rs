@@ -574,6 +574,7 @@ async fn generate_glossary_entries(
          Return ONLY a JSON array. Each item must be an object with keys: term, definition, aliases.\n\
          Definitions must be concise, plain English, and specific to the workspace context.\n\
          Include only terms that are genuinely domain-specific or workspace-specific.\n\
+         Terms must be SINGLE WORDS only — no spaces, no multi-word phrases.\n\
          Skip ordinary English words. Aliases should be a short array and can be empty.\n\n\
          Workspace: {workspace_name}\n\
          Candidate terms:\n- {}\n\n\
