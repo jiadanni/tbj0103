@@ -2588,8 +2588,8 @@ export default function ChatView() {
 
       if (!inline && content.split("\n").length >= 5) {
         return (
-          <div className="group relative">
-            <pre className={`${className} p-4 rounded-lg overflow-x-auto bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800`}>
+          <div className="group relative w-fit max-w-full">
+            <pre className={`${className} p-4 rounded-lg overflow-x-auto bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full`}>
               <code {...props}>{children}</code>
             </pre>
             <button

@@ -219,10 +219,9 @@ body {
   font-weight: 600;
 }
 .prose pre {
-  @apply rounded-lg text-sm;
+  @apply rounded-lg text-sm w-fit max-w-full;
   background-color: var(--bg-secondary);
   color: var(--text-primary);
-  max-width: 100%;
   overflow-x: auto;
   font-family: "JetBrains Mono", "JetBrainsMono NF", monospace;
 }
