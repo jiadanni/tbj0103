@@ -23,7 +23,7 @@ DerivedData/
 # Swift Package Manager
 .swiftpm/
 Packages/
-Package.resolved
+# Package.resolved is intentionally tracked for app targets to pin dependency versions
 .build/
 
 # CocoaPods
