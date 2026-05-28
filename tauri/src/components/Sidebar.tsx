@@ -280,7 +280,7 @@ export default function Sidebar({
         {popoverOpen && (
           <div
             ref={popoverRef}
-            className="absolute bottom-full left-2 right-2 mb-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1.5 shadow-xl z-[60]"
+            className="absolute bottom-full left-2 right-2 mb-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1.5 shadow-xl z-[60]"
             style={!labelsVisible ? { left: 0, right: "auto", minWidth: 200 } : undefined}
           >
             {/* Font size controls */}
@@ -339,7 +339,7 @@ export default function Sidebar({
         <div
           ref={contextMenuRef}
           data-sidebar-section-context-menu
-          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-xl"
+          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button

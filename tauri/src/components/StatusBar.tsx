@@ -322,7 +322,7 @@ export default function StatusBar() {
     // discrete job announcements only.
     <div
       aria-label="System status bar"
-      className="shrink-0 flex h-7 items-center justify-between gap-5 border-t border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-3 backdrop-blur-sm select-none"
+      className="shrink-0 flex h-7 items-center justify-between gap-5 border-t border-[var(--border-color)] bg-[var(--bg-sidebar)] px-3 select-none"
     >
       {/* Hidden live region — announces job state changes only */}
       <span

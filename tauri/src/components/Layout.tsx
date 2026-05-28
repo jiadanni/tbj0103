@@ -124,7 +124,7 @@ function workspaceTabClassName({
       ? "border-[rgba(var(--accent-color-rgb),0.45)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] shadow-sm"
       : isActive
       ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
-      : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+      : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
   }`;
 }
 
@@ -301,7 +301,7 @@ function WorkspaceNavigationTabs({
             e.stopPropagation();
             setMenuOpen((current) => !current);
           }}
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)]/80 text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
         >
           <ChevronDown size={14} />
         </button>
@@ -311,7 +311,7 @@ function WorkspaceNavigationTabs({
             role="menu"
             data-no-drag
             aria-label={paneId ? `Workspace menu ${paneId}` : "Workspace menu"}
-            className="absolute right-0 top-full z-[100] mt-1 flex max-h-80 min-w-[220px] flex-col overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-xl backdrop-blur-xl"
+            className="absolute right-0 top-full z-[100] mt-1 flex max-h-80 min-w-[220px] flex-col overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1 shadow-xl"
           >
             {(() => {
               const roots = allWorkspaces.filter((ws) => ws.parent_workspace_id === null);
@@ -412,7 +412,7 @@ function SubWorkspaceTabBar({
     <div
       data-tauri-drag-region
       onMouseDown={onDragRegionMouseDown}
-      className={`relative flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
+      className={`relative flex items-center h-9 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
     >
       <div
         className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none"
@@ -434,7 +434,7 @@ function SubWorkspaceTabBar({
               className={`relative mt-0.5 flex h-[30px] w-8 items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
                 activeWorkspaceId === parent.id
                   ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
-                  : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+                  : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               }`}
             >
               <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
@@ -455,7 +455,7 @@ function SubWorkspaceTabBar({
             className={`relative mt-0.5 flex h-[30px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-3 text-xs font-medium whitespace-nowrap transition-all select-none ${
               activeWorkspaceId === workspace.id
                 ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
-                : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+                : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
             }`}
           >
             {activeWorkspaceId === workspace.id && (
@@ -514,7 +514,7 @@ function SplitTitlebarWorkspaceDropdown({ paneId }: { paneId: PaneId }) {
         setPaneWorkspace(paneId, resolvePaneWorkspaceSelection(workspaces, value));
       }}
       widthClassName="w-full min-w-0"
-      buttonClassName="h-8 bg-[var(--bg-primary)]/80"
+      buttonClassName="h-8 bg-[var(--bg-primary)]"
     />
   );
 }
@@ -544,7 +544,7 @@ function SingleTitlebarWorkspaceDropdown({
       groups={workspaceGroups}
       onChange={onChange}
       widthClassName="min-w-0 w-full max-w-[280px] sm:w-[240px]"
-      buttonClassName="h-8 bg-[var(--bg-primary)]/80"
+      buttonClassName="h-8 bg-[var(--bg-primary)]"
     />
   );
 }
@@ -793,7 +793,7 @@ function TitlebarHistoryMenu() {
         <div
           role="menu"
           aria-label="History menu"
-          className="absolute right-0 top-10 z-50 w-80 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl backdrop-blur-xl"
+          className="absolute right-0 top-10 z-50 w-80 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl"
         >
           <div className="border-b border-[var(--border-color)] px-4 py-3">
             <div className="flex items-center justify-between gap-3">
@@ -898,7 +898,7 @@ function TitlebarSortMenu() {
       </Tooltip>
 
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-48 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl backdrop-blur-xl py-1">
+        <div className="absolute right-0 top-10 z-50 w-48 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl py-1">
           {options.map((opt) => (
             <button
               key={opt.id}
@@ -1138,7 +1138,7 @@ function WorkspaceTabBar({
         <Tooltip content="Drag window" position="bottom">
           <div
             data-window-drag-handle
-            className={`mx-2 hidden h-5 shrink-0 rounded-full border border-transparent bg-[var(--bg-hover)]/20 sm:block ${showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation ? "flex-1 min-w-16" : "w-16"}`}
+            className={`mx-2 hidden h-5 shrink-0 rounded-full border border-transparent bg-[var(--bg-hover)] sm:block ${showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation ? "flex-1 min-w-16" : "w-16"}`}
           />
         </Tooltip>
         <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
@@ -1197,7 +1197,7 @@ function WorkspaceTabBar({
         <div
           ref={contextMenuRef}
           data-workspace-context-menu
-          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-xl"
+          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
@@ -1413,7 +1413,7 @@ function TopTabsNavigation() {
       className={`relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
         activeSegment === item.path
           ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
-          : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
+          : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
       }`}
     >
       {activeSegment === item.path && (
@@ -1436,7 +1436,7 @@ function TopTabsNavigation() {
         <div
           ref={contextMenuRef}
           data-section-context-menu
-          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] backdrop-blur-xl py-1 shadow-xl"
+          className="fixed z-50 min-w-[190px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
