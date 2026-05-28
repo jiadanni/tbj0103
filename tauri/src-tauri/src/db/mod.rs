@@ -1330,6 +1330,33 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    let applied_v54: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v54_flashcard_topics'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v54 == 0 {
+        let _ = conn.execute_batch(
+            "ALTER TABLE learning_cards ADD COLUMN topic_id TEXT;",
+        );
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS flashcard_topics (
+                id TEXT PRIMARY KEY NOT NULL,
+                workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                topic TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'chat_signature',
+                mastery_score REAL NOT NULL DEFAULT 0.0,
+                last_generated_at TEXT,
+                card_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(workspace_id, topic)
+            );
+             CREATE INDEX IF NOT EXISTS idx_flashcard_topics_workspace ON flashcard_topics(workspace_id);
+             CREATE INDEX IF NOT EXISTS idx_learning_cards_topic ON learning_cards(topic_id);
+             INSERT INTO _migrations(name) VALUES('v54_flashcard_topics');",
+        )?;
+    }
+
     Ok(())
 }
 

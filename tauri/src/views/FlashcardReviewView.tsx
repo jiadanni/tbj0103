@@ -3,9 +3,9 @@
  * Primary flow: generate cards from a topic via AI.
  * Manual creation available as secondary option.
  */
-import { useEffect, useState, useMemo } from "react";
-import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2 } from "lucide-react";
-import { api, type LearningCard, type ReviewStats } from "../lib/api";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { api, type LearningCard, type ReviewStats, type FlashcardTopic } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import { CompactMenuSelect } from "../components/CompactMenuSelect";
@@ -52,6 +52,11 @@ export default function FlashcardReviewView() {
   const [showCreate, setShowCreate] = useState(false);
   const [newFront, setNewFront] = useState("");
   const [newBack, setNewBack] = useState("");
+
+  // Topic list state (chat-derived)
+  const [topics, setTopics] = useState<FlashcardTopic[]>([]);
+  const [generatingTopicId, setGeneratingTopicId] = useState<string | null>(null);
+  const [showCustomTopic, setShowCustomTopic] = useState(false);
 
   const currentCard = cards[currentIndex] ?? null;
 
@@ -114,6 +119,34 @@ export default function FlashcardReviewView() {
     }).catch(() => {});
   }, [activeWorkspaceId, includeDescendants]);
 
+  // Load chat-derived topic list
+  const refreshTopics = useCallback(() => {
+    if (!activeWorkspaceId) {return;}
+    api.flashcard.listTopics(activeWorkspaceId, includeDescendants)
+      .then(setTopics)
+      .catch(() => {});
+  }, [activeWorkspaceId, includeDescendants]);
+
+  useEffect(() => {
+    refreshTopics();
+  }, [refreshTopics]);
+
+  async function generateForTopic(topicId: string) {
+    if (!activeWorkspaceId || !selectedModel || generatingTopicId) {return;}
+    setGeneratingTopicId(topicId);
+    setGenerateError("");
+    try {
+      const generated = await api.flashcard.generateForTopic(activeWorkspaceId, topicId, selectedModel, cardCount, ollamaUrl);
+      setCards((prev) => [...prev, ...generated]);
+      refreshTopics();
+      api.flashcard.getStats(activeWorkspaceId).then(setStats).catch(() => {});
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGeneratingTopicId(null);
+    }
+  }
+
   async function review(quality: number) {
     if (!currentCard) {return;}
     const updated = await api.flashcard.review(currentCard.id, quality);
@@ -127,6 +160,9 @@ export default function FlashcardReviewView() {
     setCurrentIndex((i) => i + 1);
     if (currentIndex >= cards.length - 1) {
       if (activeWorkspaceId) {api.flashcard.getStats(activeWorkspaceId).then(setStats).catch(() => {});}
+    }
+    if (updated.topic_id) {
+      refreshTopics();
     }
   }
 
@@ -175,20 +211,12 @@ export default function FlashcardReviewView() {
           </Tooltip>
         </div>
 
-        {/* Generate from topic — primary action */}
+        {/* Topics from chats — primary surface */}
         <div className="px-3 py-3 border-b border-[var(--border-color)] space-y-2">
           <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--accent-color)]">
             <Sparkles size={12} />
-            Generate from Topic
+            Topics
           </div>
-          <input
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") {generateCards();} }}
-            placeholder="e.g. Rust ownership model"
-            disabled={isGenerating}
-            className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors"
-          />
           <div className="flex gap-1.5">
             <CompactMenuSelect
               label="AI Model"
@@ -206,23 +234,85 @@ export default function FlashcardReviewView() {
               widthClassName="w-16"
             />
           </div>
+
+          {topics.length === 0 ? (
+            <p className="text-[10px] text-[var(--text-muted)] leading-snug">
+              Topics will appear here as you chat.
+            </p>
+          ) : (
+            <div className="space-y-1 max-h-48 overflow-y-auto -mx-1 px-1">
+              {topics.map((t) => {
+                const pct = Math.round(t.mastery_score * 100);
+                const isLoading = generatingTopicId === t.id;
+                return (
+                  <div
+                    key={t.id}
+                    className="group flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-[var(--bg-hover)]"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className="text-[11px] truncate text-[var(--text-primary)]" title={t.topic}>
+                          {t.topic}
+                        </span>
+                        <span className="text-[9px] text-[var(--text-muted)] tabular-nums">
+                          {t.card_count}
+                        </span>
+                      </div>
+                      <div className="h-0.5 bg-[var(--bg-hover)] rounded-full overflow-hidden mt-0.5">
+                        <div
+                          className="h-full bg-[var(--accent-color)] transition-all"
+                          style={{ width: `${pct}%` }}
+                          title={`Mastery ${pct}%`}
+                        />
+                      </div>
+                    </div>
+                    <Tooltip content={`Generate ${cardCount} more`}>
+                      <button
+                        onClick={() => generateForTopic(t.id)}
+                        disabled={isLoading || !!generatingTopicId || !selectedModel}
+                        className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--bg-elevated)] disabled:opacity-40"
+                      >
+                        {isLoading ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
+                      </button>
+                    </Tooltip>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Custom topic — demoted under disclosure */}
           <button
-            onClick={generateCards}
-            disabled={isGenerating || !topic.trim() || !selectedModel}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-[var(--accent-color)] text-white text-xs font-medium hover:opacity-90 disabled:opacity-40 transition-opacity"
+            type="button"
+            onClick={() => setShowCustomTopic((v) => !v)}
+            className="flex items-center gap-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
           >
-            {isGenerating ? (
-              <>
-                <Loader2 size={12} className="animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles size={12} />
-                Generate {cardCount} Cards
-              </>
-            )}
+            {showCustomTopic ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+            Custom topic
           </button>
+          {showCustomTopic && (
+            <div className="space-y-1.5">
+              <input
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") {generateCards();} }}
+                placeholder="e.g. Rust ownership model"
+                disabled={isGenerating}
+                className="w-full px-2 py-1 text-[11px] rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+              />
+              <button
+                onClick={generateCards}
+                disabled={isGenerating || !topic.trim() || !selectedModel}
+                className="w-full flex items-center justify-center gap-1 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] text-[10px] hover:border-[var(--accent-color)] disabled:opacity-40"
+              >
+                {isGenerating ? (
+                  <><Loader2 size={10} className="animate-spin" /> Generating…</>
+                ) : (
+                  <>Generate {cardCount} cards</>
+                )}
+              </button>
+            </div>
+          )}
           {generateError && (
             <p className="text-[10px] text-red-400 leading-tight">{generateError}</p>
           )}
@@ -269,7 +359,7 @@ export default function FlashcardReviewView() {
           ))}
           {cards.length === 0 && (
             <p className="text-xs text-[var(--text-muted)] py-4 px-3 text-center">
-              {activeWorkspaceId ? "No cards due. Generate some from a topic above!" : "No workspace active"}
+              {activeWorkspaceId ? "No cards due. Pick a topic above to generate more." : "No workspace active"}
             </p>
           )}
         </div>
@@ -284,16 +374,30 @@ export default function FlashcardReviewView() {
             <p className="text-sm text-[var(--text-muted)]">
               You reviewed {reviewed} card{reviewed !== 1 ? "s" : ""}. Come back tomorrow for more.
             </p>
-            <button
-              onClick={() => {
-                setCurrentIndex(0);
-                setIsFlipped(false);
-                setReviewed(0);
-              }}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm hover:opacity-90"
-            >
-              <RotateCcw size={14} /> Restart
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setCurrentIndex(0);
+                  setIsFlipped(false);
+                  setReviewed(0);
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm hover:opacity-90"
+              >
+                <RotateCcw size={14} /> Restart
+              </button>
+              {topics.length > 0 && (
+                <button
+                  onClick={() => {
+                    const next = topics.find((t) => t.card_count > 0) ?? topics[0];
+                    if (next) {generateForTopic(next.id);}
+                  }}
+                  disabled={!!generatingTopicId || !selectedModel}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] text-sm hover:bg-[var(--bg-hover)] disabled:opacity-40"
+                >
+                  <Sparkles size={14} /> Study a new topic
+                </button>
+              )}
+            </div>
           </div>
         ) : currentCard ? (
           <>
@@ -353,7 +457,9 @@ export default function FlashcardReviewView() {
             <Sparkles size={40} className="text-[var(--accent-color)] opacity-50" />
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">No cards due right now</h2>
             <p className="text-sm text-[var(--text-muted)]">
-              Type a topic in the sidebar and generate flashcards with AI, or add one manually with the + button.
+              {topics.length > 0
+                ? "Pick a topic in the sidebar to generate more cards, or add one manually with the + button."
+                : "Topics will appear here as you chat. You can also add a card manually with the + button or use Custom topic in the sidebar."}
             </p>
           </div>
         )}

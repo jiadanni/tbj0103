@@ -9,6 +9,7 @@ pub mod concept_extractor;
 pub mod context_assembler;
 pub mod document_processor;
 pub mod export_engine;
+pub mod flashcard_topic_service;
 pub mod git_sync;
 pub mod graph_algorithms;
 pub mod link_parser;

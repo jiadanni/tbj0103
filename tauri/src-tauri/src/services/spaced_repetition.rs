@@ -99,6 +99,7 @@ mod tests {
             back: "A".to_string(),
             source_type: "manual".to_string(),
             source_id: None,
+            topic_id: None,
             ease_factor: 2.5,
             interval: 1,
             repetitions: 0,

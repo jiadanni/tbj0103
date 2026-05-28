@@ -170,12 +170,25 @@ CREATE TABLE IF NOT EXISTS learning_cards (
     back TEXT NOT NULL,
     source_type TEXT NOT NULL DEFAULT 'manual',
     source_id TEXT,
+    topic_id TEXT,
     ease_factor REAL NOT NULL DEFAULT 2.5,
     interval INTEGER NOT NULL DEFAULT 1,
     repetitions INTEGER NOT NULL DEFAULT 0,
     next_review_date TEXT NOT NULL DEFAULT (date('now')),
     last_reviewed_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS flashcard_topics (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    topic TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'chat_signature',
+    mastery_score REAL NOT NULL DEFAULT 0.0,
+    last_generated_at TEXT,
+    card_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(workspace_id, topic)
 );
 
 CREATE TABLE IF NOT EXISTS learning_paths (

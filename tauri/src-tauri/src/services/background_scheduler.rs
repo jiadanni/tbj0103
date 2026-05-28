@@ -204,6 +204,16 @@ pub fn start_scheduler(app: AppHandle) {
                         if any_failed { "Summarization failed" } else { "Summarization done" },
                     );
                 }
+
+                // 4. Flashcard topic sync + automatic card generation
+                emit_task(&app, "flashcard_generation", "started", "Generating flashcards…");
+                let fc_result = crate::services::flashcard_topic_service::tick(&db, ollama_url.clone()).await;
+                emit_task(
+                    &app,
+                    "flashcard_generation",
+                    if fc_result.is_ok() { "completed" } else { "failed" },
+                    if fc_result.is_ok() { "Flashcard generation done" } else { "Flashcard generation failed" },
+                );
             }
 
             // 3. Git sync — configurable interval (default 5 minutes = 10 ticks at 30s)
