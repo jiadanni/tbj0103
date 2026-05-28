@@ -20,6 +20,8 @@ interface CommandItem {
   state?: unknown;
 }
 
+const RELATIVE_FALLBACK_FORMATTER = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+
 function formatRelativeTime(dateStr: string | undefined): string {
   if (!dateStr) { return ""; }
   try {
@@ -35,7 +37,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
     if (diffInHours < 24) { return `${diffInHours}h ago`; }
     const diffInDays = Math.floor(diffInHours / 24);
     if (diffInDays < 7) { return `${diffInDays}d ago`; }
-    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return RELATIVE_FALLBACK_FORMATTER.format(date);
   } catch {
     return "";
   }

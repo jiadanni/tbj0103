@@ -4939,47 +4939,50 @@ export default function ChatView() {
                         alignToBottom={true}
                         className="w-full min-w-0 overflow-x-hidden py-4"
                         computeItemKey={(_, msg) => msg.id}
-                        itemContent={(i, msg) => (
-                          <div className={`${chatMessageStyle === "minimal" ? "px-8 pb-8" : "pl-4 pr-[52px] pb-4"}`}>
-                            <ChatMessageBubble
-                              key={msg.id}
-                              msg={msg}
-                              isLastMessage={i === activeMessages.length - 1}
-                              isStreaming={isStreaming}
-                              chatMessageStyle={chatMessageStyle}
-                              expandChatToWindowWidth={expandChatToWindowWidth}
-                              showGenInfo={showGenInfo}
-                              editingMessageId={editingMessageId}
-                              editContent={editContent}
-                              copiedMessageId={copiedMessageId}
-                              expandedThoughtIds={expandedThoughtIds}
-                              messageSources={messageSources}
-                              expandedSources={expandedSources}
-                              contextSources={i === activeMessages.length - 1 && currentSessionId ? activeContextSources[currentSessionId] ?? null : null}
-                              markdownComponents={markdownComponents}
-                              variations={messageVariations.get(msg.id)}
-                              currentVariationIndex={variationIndex.get(msg.id)}
-                              redoPickerOpen={redoPickerOpenForId === msg.id}
-                              availableModels={availableModels}
-                              aiModelList={aiModelList}
-                              selectedModel={selectedModel}
-                              showGenInfoModel={showGenInfoModel}
-                              showGenInfoTokenCount={showGenInfoTokenCount}
-                              showGenInfoDuration={showGenInfoDuration}
-                              showGenInfoSpeed={showGenInfoSpeed}
-                              onCopy={handleCopyMessage}
-                              onStartEdit={handleStartEditing}
-                              onSubmitEdit={handleSubmitEditStable}
-                              onSetEditContent={setEditContent}
-                              onCancelEdit={handleCancelEdit}
-                              onRedoWithModel={handleRedoWithModelStable}
-                              onToggleRedoPicker={handleToggleRedoPickerStable}
-                              onVariationChange={handleVariationChangeStable}
-                              onToggleThought={handleToggleThought}
-                              onToggleSources={handleToggleSources}
-                            />
-                          </div>
-                        )}
+                        itemContent={(i, msg) => {
+                          const isEditingThis = editingMessageId === msg.id;
+                          return (
+                            <div className={`${chatMessageStyle === "minimal" ? "px-8 pb-8" : "pl-4 pr-[52px] pb-4"}`}>
+                              <ChatMessageBubble
+                                key={msg.id}
+                                msg={msg}
+                                isLastMessage={i === activeMessages.length - 1}
+                                isStreaming={isStreaming}
+                                chatMessageStyle={chatMessageStyle}
+                                expandChatToWindowWidth={expandChatToWindowWidth}
+                                showGenInfo={showGenInfo}
+                                isEditing={isEditingThis}
+                                editValue={isEditingThis ? editContent : ""}
+                                isCopied={copiedMessageId === msg.id}
+                                isThoughtExpanded={expandedThoughtIds.has(msg.id)}
+                                sources={messageSources[msg.id]}
+                                isSourcesExpanded={expandedSources === msg.id}
+                                contextSources={i === activeMessages.length - 1 && currentSessionId ? activeContextSources[currentSessionId] ?? null : null}
+                                markdownComponents={markdownComponents}
+                                variations={messageVariations.get(msg.id)}
+                                currentVariationIndex={variationIndex.get(msg.id)}
+                                redoPickerOpen={redoPickerOpenForId === msg.id}
+                                availableModels={availableModels}
+                                aiModelList={aiModelList}
+                                selectedModel={selectedModel}
+                                showGenInfoModel={showGenInfoModel}
+                                showGenInfoTokenCount={showGenInfoTokenCount}
+                                showGenInfoDuration={showGenInfoDuration}
+                                showGenInfoSpeed={showGenInfoSpeed}
+                                onCopy={handleCopyMessage}
+                                onStartEdit={handleStartEditing}
+                                onSubmitEdit={handleSubmitEditStable}
+                                onSetEditContent={setEditContent}
+                                onCancelEdit={handleCancelEdit}
+                                onRedoWithModel={handleRedoWithModelStable}
+                                onToggleRedoPicker={handleToggleRedoPickerStable}
+                                onVariationChange={handleVariationChangeStable}
+                                onToggleThought={handleToggleThought}
+                                onToggleSources={handleToggleSources}
+                              />
+                            </div>
+                          );
+                        }}
                         components={virtuosoComponents}
                       />
                     </div>

@@ -116,11 +116,23 @@ export default function RoadmapGraph({
   useEffect(() => {
     const el = containerRef.current;
     if (!el || typeof ResizeObserver === "undefined") { return; }
-    const update = () => setDims({ width: el.clientWidth, height: el.clientHeight });
+    let rafId = 0;
+    const update = () => {
+      rafId = 0;
+      const width = el.clientWidth;
+      const height = el.clientHeight;
+      setDims((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+    };
     update();
-    const obs = new ResizeObserver(update);
+    const obs = new ResizeObserver(() => {
+      if (rafId !== 0) { return; }
+      rafId = window.requestAnimationFrame(update);
+    });
     obs.observe(el);
-    return () => obs.disconnect();
+    return () => {
+      if (rafId !== 0) { window.cancelAnimationFrame(rafId); }
+      obs.disconnect();
+    };
   }, []);
 
   // Compute layout via d3.tree() — top-down (root at top, children below)

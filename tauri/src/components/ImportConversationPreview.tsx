@@ -1,6 +1,8 @@
 import { CheckSquare, Square } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
 
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, { dateStyle: "short" });
+
 export interface ImportConversation {
   uuid: string;
   name: string;
@@ -95,7 +97,7 @@ export default function ImportConversationPreview({
                   <p className="truncate text-[10px] text-[var(--text-muted)]">
                     {conversation.message_count} msg{conversation.message_count !== 1 && "s"}
                     {" · "}
-                    {new Date(conversation.created_at).toLocaleDateString()}
+                    {SHORT_DATE_FORMATTER.format(new Date(conversation.created_at))}
                   </p>
                 </div>
               </div>
@@ -113,7 +115,7 @@ export default function ImportConversationPreview({
             <div className="text-sm font-medium text-[var(--text-primary)] truncate">{focused.name || "Untitled"}</div>
             <div className="text-[11px] text-[var(--text-muted)]">
               {focused.message_count} message{focused.message_count === 1 ? "" : "s"}
-              {focused.updated_at && ` · ${new Date(focused.updated_at).toLocaleDateString()}`}
+              {focused.updated_at && ` · ${SHORT_DATE_FORMATTER.format(new Date(focused.updated_at))}`}
             </div>
             {focused.messages && focused.messages.length > 0 ? (
               <div className="mt-1 flex-1 min-h-0 overflow-y-auto rounded-md border border-[var(--border-color)]">
