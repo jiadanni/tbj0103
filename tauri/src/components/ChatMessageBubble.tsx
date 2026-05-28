@@ -40,15 +40,17 @@ function splitAssistantMessage(content: string) {
   return { thought, answer };
 }
 
+const MESSAGE_TIMESTAMP_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
 function formatMessageTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) { return value; }
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+  return MESSAGE_TIMESTAMP_FORMATTER.format(date);
 }
 
 export interface ChatMessageBubbleProps {
@@ -62,12 +64,13 @@ export interface ChatMessageBubbleProps {
   showGenInfoTokenCount?: boolean;
   showGenInfoDuration?: boolean;
   showGenInfoSpeed?: boolean;
-  editingMessageId: string | null;
-  editContent: string;
-  copiedMessageId: string | null;
-  expandedThoughtIds: Set<string>;
-  messageSources: Record<string, SearchResult[]>;
-  expandedSources: string | null;
+  isEditing: boolean;
+  /** Only meaningful when isEditing; pass "" otherwise so non-editing rows don't re-render on each keystroke. */
+  editValue: string;
+  isCopied: boolean;
+  isThoughtExpanded: boolean;
+  sources: SearchResult[] | undefined;
+  isSourcesExpanded: boolean;
   contextSources: ContextSources | null;
 
   markdownComponents: Record<string, React.ElementType>;
@@ -102,12 +105,12 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   showGenInfoTokenCount,
   showGenInfoDuration,
   showGenInfoSpeed,
-  editingMessageId,
-  editContent,
-  copiedMessageId,
-  expandedThoughtIds,
-  messageSources,
-  expandedSources,
+  isEditing,
+  editValue,
+  isCopied,
+  isThoughtExpanded,
+  sources,
+  isSourcesExpanded,
   contextSources,
   markdownComponents,
   variations,
@@ -138,10 +141,8 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
     [msg.role, displayMsg.content]
   );
 
-  const thoughtExpanded = expandedThoughtIds.has(msg.id);
-  const sources = messageSources[msg.id];
+  const thoughtExpanded = isThoughtExpanded;
   const hasSources = sources && sources.length > 0;
-  const isSourcesExpanded = expandedSources === msg.id;
 
   const redoToggleRef = useRef<HTMLButtonElement>(null);
   const [redoPickerStyle, setRedoPickerStyle] = useState<{ bottom: number; right: number } | null>(null);
@@ -181,10 +182,10 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
           {msg.role === "user" ? userChatLabel : assistantChatLabel}
         </div>
       )}
-      {editingMessageId === msg.id ? (
+      {isEditing ? (
         <div className={`w-full min-w-0 ${messageWidthClassName} flex flex-col gap-2`}>
           <textarea
-            value={editContent}
+            value={editValue}
             onChange={(e) => onSetEditContent(e.target.value)}
             className="w-full resize-none px-3.5 py-2.5 text-sm rounded-xl bg-[var(--bg-elevated)] border border-[var(--accent-color)] text-[var(--text-primary)] outline-none max-h-40 overflow-y-auto"
             rows={3}
@@ -309,7 +310,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                 onClick={() => onCopy(msg.id, displayMsg.content)}
                 className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
               >
-                {copiedMessageId === msg.id ? <Check size={11} /> : <Copy size={11} />}
+                {isCopied ? <Check size={11} /> : <Copy size={11} />}
               </button>
             </Tooltip>
             {msg.role === "user" && !isStreaming && (

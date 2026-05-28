@@ -9,6 +9,12 @@ import {
 } from 'lucide-react';
 import { Tooltip } from './Tooltip';
 
+const VERSION_DATETIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'short',
+  timeStyle: 'short',
+});
+const FOOTER_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, { dateStyle: 'short' });
+
 export default function ArtifactPanel() {
   const { 
     isPanelOpen, setPanelOpen, activeArtifact,
@@ -114,7 +120,7 @@ export default function ArtifactPanel() {
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase">Version {v.version}</span>
-                    <span className="text-[10px] text-zinc-400">{new Date(v.updated_at).toLocaleString()}</span>
+                    <span className="text-[10px] text-zinc-400">{VERSION_DATETIME_FORMATTER.format(new Date(v.updated_at))}</span>
                   </div>
                   <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">{v.title}</p>
                   <p className="text-xs text-zinc-500 truncate">{v.artifact_type} • {v.language}</p>
@@ -146,7 +152,7 @@ export default function ArtifactPanel() {
         
         <div className="flex items-center gap-4 text-xs text-zinc-500">
           <span>{activeArtifact.token_count} tokens</span>
-          <span>{new Date(activeArtifact.updated_at).toLocaleDateString()}</span>
+          <span>{FOOTER_DATE_FORMATTER.format(new Date(activeArtifact.updated_at))}</span>
         </div>
       </div>
     </div>

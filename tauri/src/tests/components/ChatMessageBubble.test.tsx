@@ -46,12 +46,12 @@ describe("ChatMessageBubble", () => {
         chatMessageStyle="bubble"
         expandChatToWindowWidth={false}
         showGenInfo={false}
-        editingMessageId={null}
-        editContent=""
-        copiedMessageId={null}
-        expandedThoughtIds={new Set()}
-        messageSources={{}}
-        expandedSources={null}
+        isEditing={false}
+        editValue=""
+        isCopied={false}
+        isThoughtExpanded={false}
+        sources={undefined}
+        isSourcesExpanded={false}
         contextSources={null}
         markdownComponents={{}}
         redoPickerOpen={false}
@@ -89,17 +89,15 @@ describe("ChatMessageBubble", () => {
         chatMessageStyle="bubble"
         expandChatToWindowWidth={false}
         showGenInfo={false}
-        editingMessageId={null}
-        editContent=""
-        copiedMessageId={null}
-        expandedThoughtIds={new Set()}
-        messageSources={{
-          [message.id]: [
-            { id: "source-1", result_type: "document", title: "Rust Book", excerpt: "Ownership basics", score: 0.9 },
-            { id: "source-2", result_type: "document", title: "Cargo Guide", excerpt: "Workspace layout", score: 0.84 },
-          ],
-        }}
-        expandedSources={null}
+        isEditing={false}
+        editValue=""
+        isCopied={false}
+        isThoughtExpanded={false}
+        sources={[
+          { id: "source-1", result_type: "document", title: "Rust Book", excerpt: "Ownership basics", score: 0.9 },
+          { id: "source-2", result_type: "document", title: "Cargo Guide", excerpt: "Workspace layout", score: 0.84 },
+        ]}
+        isSourcesExpanded={false}
         contextSources={null}
         markdownComponents={{}}
         redoPickerOpen={false}

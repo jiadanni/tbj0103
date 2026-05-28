@@ -21,42 +21,51 @@ export function useTextSelectionToolbar(containerRef: React.RefObject<HTMLDivEle
 
   useEffect(() => {
     let rafId = 0;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+
+    const compute = () => {
+      rafId = 0;
+      const selection = window.getSelection();
+
+      if (!selection || selection.isCollapsed || !containerRef.current) {
+        setToolbarState(null);
+        return;
+      }
+
+      const text = selection.toString().trim();
+      if (!text) {
+        setToolbarState(null);
+        return;
+      }
+
+      const anchorNode = selection.anchorNode;
+      const range = selection.getRangeAt(0);
+
+      // Guard: Ensure selection starts inside the container
+      if (!anchorNode || !containerRef.current.contains(anchorNode)) {
+        setToolbarState(null);
+        return;
+      }
+
+      const rect = range.getBoundingClientRect();
+
+      // Position the toolbar above the center of the selection
+      setToolbarState({
+        x: rect.left + rect.width / 2,
+        y: rect.top,
+        text,
+      });
+    };
 
     const handleSelectionChange = () => {
-      // Debounce via rAF so we don't thrash React on every scroll pixel
-      window.cancelAnimationFrame(rafId);
-      rafId = window.requestAnimationFrame(() => {
-        const selection = window.getSelection();
-
-        if (!selection || selection.isCollapsed || !containerRef.current) {
-          setToolbarState(null);
-          return;
-        }
-
-        const text = selection.toString().trim();
-        if (!text) {
-          setToolbarState(null);
-          return;
-        }
-
-        const anchorNode = selection.anchorNode;
-        const range = selection.getRangeAt(0);
-
-        // Guard: Ensure selection starts inside the container
-        if (!anchorNode || !containerRef.current.contains(anchorNode)) {
-          setToolbarState(null);
-          return;
-        }
-
-        const rect = range.getBoundingClientRect();
-
-        // Position the toolbar above the center of the selection
-        setToolbarState({
-          x: rect.left + rect.width / 2,
-          y: rect.top,
-          text,
-        });
-      });
+      // Coalesce bursty selectionchange events: wait for the user to settle
+      // (~80ms idle) then run on the next animation frame.
+      if (timerId !== null) { clearTimeout(timerId); }
+      if (rafId !== 0) { window.cancelAnimationFrame(rafId); rafId = 0; }
+      timerId = setTimeout(() => {
+        timerId = null;
+        rafId = window.requestAnimationFrame(compute);
+      }, 80);
     };
 
     const handleMouseDown = (e: MouseEvent) => {
@@ -80,7 +89,8 @@ export function useTextSelectionToolbar(containerRef: React.RefObject<HTMLDivEle
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.cancelAnimationFrame(rafId);
+      if (timerId !== null) { clearTimeout(timerId); }
+      if (rafId !== 0) { window.cancelAnimationFrame(rafId); }
       document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("mousedown", handleMouseDown);
       document.removeEventListener("keydown", handleKeyDown);
