@@ -932,6 +932,131 @@ function TitlebarSortMenu() {
   );
 }
 
+function SinglePaneWorkspaceSidebar() {
+  const navigate = useNavigate();
+  const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const rootWorkspaces = workspaces.filter((ws) => ws.parent_workspace_id === null);
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
+  const activeParentWorkspaceId = useWorkspaceStore((state) => state.activeParentWorkspaceId);
+  const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
+  const setActiveParentWorkspaceId = useWorkspaceStore((state) => state.setActiveParentWorkspaceId);
+  const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
+  const switchWorkspaceSection = useSettingsStore((state) => state.switchWorkspaceSection);
+  const [creating, setCreating] = useState(false);
+  const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState<string | null>(null);
+  const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeRootId = activeParentWorkspaceId ?? activeWorkspaceId;
+
+  useEffect(() => () => {
+    if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); }
+  }, []);
+
+  function selectWorkspace(workspaceId: string) {
+    const { workspaceId: nextWorkspaceId, parentWorkspaceId } = resolveWorkspaceSelection(workspaces, workspaceId);
+    const isChanged = nextWorkspaceId !== activeWorkspaceId;
+    setActiveParentWorkspaceId(parentWorkspaceId);
+    setActiveWorkspaceId(nextWorkspaceId);
+    if (isChanged && switchWorkspaceSection) { navigate(switchWorkspaceSection); }
+  }
+
+  async function handleCreate(name: string) {
+    setCreating(false);
+    const trimmed = name.trim();
+    if (!trimmed) { return; }
+    const ws = await api.workspace.create(trimmed, "");
+    addWorkspace(ws);
+    selectWorkspace(ws.id);
+  }
+
+  return (
+    <div
+      className="flex h-full w-[180px] shrink-0 flex-col border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]"
+      data-testid="single-pane-workspace-sidebar"
+    >
+      <div className="flex items-center justify-between px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+        <span>Workspaces</span>
+        <Tooltip content="New Workspace" position="right">
+          <button
+            onClick={() => setCreating(true)}
+            className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            aria-label="New Workspace"
+          >
+            <Plus size={12} />
+          </button>
+        </Tooltip>
+      </div>
+      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+        {rootWorkspaces.map((ws) => {
+          const isActive = ws.id === activeRootId;
+          const isDragTarget = dragOverWorkspaceId === ws.id;
+          return (
+            <button
+              key={ws.id}
+              onClick={() => selectWorkspace(ws.id)}
+              onDragOver={(event) => {
+                if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setDragOverWorkspaceId(ws.id);
+              }}
+              onDragEnter={(event) => {
+                if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
+                event.preventDefault();
+                setDragOverWorkspaceId(ws.id);
+                if (dragHoverTimerRef.current) {clearTimeout(dragHoverTimerRef.current);}
+                dragHoverTimerRef.current = setTimeout(() => selectWorkspace(ws.id), 600);
+              }}
+              onDragLeave={(event) => {
+                const related = event.relatedTarget as Node | null;
+                if (related && event.currentTarget.contains(related)) {return;}
+                if (dragOverWorkspaceId === ws.id) {setDragOverWorkspaceId(null);}
+                if (dragHoverTimerRef.current) {
+                  clearTimeout(dragHoverTimerRef.current);
+                  dragHoverTimerRef.current = null;
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragOverWorkspaceId(null);
+                if (dragHoverTimerRef.current) {
+                  clearTimeout(dragHoverTimerRef.current);
+                  dragHoverTimerRef.current = null;
+                }
+                const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+                if (!raw) {return;}
+                try {
+                  const sessionIds = JSON.parse(raw) as string[];
+                  if (sessionIds.length > 0) {
+                    void api.chat.moveSessions(sessionIds, ws.id).then(() => selectWorkspace(ws.id));
+                  }
+                } catch { /* ignore malformed data */ }
+              }}
+              className={`flex w-full items-center rounded-md px-2 py-1.5 text-left text-xs truncate transition-colors ${
+                isDragTarget
+                  ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
+                  : isActive
+                    ? "bg-[var(--accent-color)] text-white"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              {ws.name}
+            </button>
+          );
+        })}
+      </div>
+      {creating && (
+        <PromptDialog
+          title="Create Workspace"
+          placeholder="Workspace name"
+          confirmLabel="Create"
+          onConfirm={handleCreate}
+          onCancel={() => setCreating(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 function WorkspaceTabBar({
   onToggleSplit,
   showWorkspaceTabs = true,
@@ -964,6 +1089,7 @@ function WorkspaceTabBar({
   const splitUnsupportedRoute = ["/preferences"].some((path) => location.pathname.startsWith(path));
   const showSplitTitlebarWorkspaceNavigation = splitMode && !splitUnsupportedRoute && workspaceNavigation !== "sidebar";
   const showSinglePaneWorkspaceDropdown = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "top-dropdown";
+  const showSinglePaneWorkspaceSidebar = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "sidebar";
   const showSplitToggle = !splitUnsupportedRoute || splitMode;
   function resetCreateWorkspaceForm() {
     setNewName("");
@@ -1105,9 +1231,11 @@ function WorkspaceTabBar({
               ? "relative z-0 min-w-0 flex-1"
               : showSinglePaneWorkspaceDropdown
               ? "min-w-0 flex-1"
+              : showSinglePaneWorkspaceSidebar
+              ? "min-w-0 flex-1"
               : "min-w-0 flex-1 overflow-visible"
           }
-          {...(showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceDropdown ? { "data-workspace-tab-strip": "", "data-no-drag": "" } : {})}
+          {...(showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceDropdown && !showSinglePaneWorkspaceSidebar ? { "data-workspace-tab-strip": "", "data-no-drag": "" } : {})}
         >
           {showSinglePaneWorkspaceDropdown ? (
             <div className="flex h-10 items-center">
@@ -1116,6 +1244,9 @@ function WorkspaceTabBar({
                 onChange={activateWorkspace}
               />
             </div>
+          ) : showSinglePaneWorkspaceSidebar ? (
+            // Workspace switching lives in the left sidebar; keep the titlebar slot empty for window dragging.
+            <div className="h-10" />
           ) : (
             <div className={`${showSplitTitlebarWorkspaceNavigation ? "hidden" : "flex min-w-0 flex-1 items-center"}`}>
               {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs ? (
@@ -1142,7 +1273,7 @@ function WorkspaceTabBar({
         <Tooltip content="Drag window" position="bottom">
           <div
             data-window-drag-handle
-            className={`mx-2 hidden h-5 shrink-0 rounded-full border border-transparent bg-[var(--bg-hover)] sm:block ${showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation ? "flex-1 min-w-16" : "w-16"}`}
+            className={`mx-2 hidden h-5 shrink-0 rounded-full border border-transparent bg-[var(--bg-hover)] sm:block ${showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceSidebar ? "flex-1 min-w-16" : "w-16"}`}
           />
         </Tooltip>
         <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
@@ -1541,6 +1672,7 @@ export default function Layout() {
   const setPaneChatSession = useWorkspaceStore((s) => s.setPaneChatSession);
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
+  const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const setDemo = useWorkspaceStore((state) => state.setDemo);
   const loadArtifact = useArtifactStore((state) => state.loadArtifact);
@@ -1550,6 +1682,7 @@ export default function Layout() {
   const showSplitPaneLayout = splitMode && !splitUnsupportedRoute;
   const showSinglePaneNavigation = !showSplitPaneLayout;
   const showSectionSidebar = showSinglePaneNavigation && sectionNavigation === "sidebar";
+  const showWorkspaceSidebar = showSinglePaneNavigation && workspaceNavigation === "sidebar";
   const _hasLeftRail = showSectionSidebar;
 
   const handleExitDemo = async () => {
@@ -1647,6 +1780,7 @@ export default function Layout() {
           <SplitPaneLayout />
         ) : (
           <div className="flex h-full overflow-hidden min-h-0">
+            {showWorkspaceSidebar && <SinglePaneWorkspaceSidebar />}
             {showSectionSidebar && (
               <Sidebar
                 onOpenCommandPalette={() => setCommandPaletteOpen(true)}
