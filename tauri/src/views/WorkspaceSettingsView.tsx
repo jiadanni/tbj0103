@@ -120,6 +120,19 @@ export default function WorkspaceSettingsView() {
   const [glossaryDraftAliases, setGlossaryDraftAliases] = useState("");
   const [glossaryDraftDefinition, setGlossaryDraftDefinition] = useState("");
 
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("ws-sections-collapsed") ?? "{}");
+    } catch { return {}; }
+  });
+  const toggleSection = (key: string) => {
+    setCollapsedSections(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem("ws-sections-collapsed", JSON.stringify(next));
+      return next;
+    });
+  };
+
   const selectedWorkspace = useMemo(() =>
     workspaces.find(w => w.id === selectedId),
   [workspaces, selectedId]);
@@ -553,7 +566,7 @@ export default function WorkspaceSettingsView() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Workspace list */}
         <div className="w-[380px] border-r border-[var(--border-color)] flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1.5">
             {workspaces.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">
                 <LayoutGrid size={32} className="opacity-30" />
@@ -570,59 +583,53 @@ export default function WorkspaceSettingsView() {
                 const isExpanded = expandedParents[ws.id] ?? (hasSelectedChild || hasActiveChild);
 
                 return (
-                  <div key={ws.id} className="space-y-2">
+                  <div key={ws.id} className="space-y-1">
                     <div
                       onClick={() => setSelectedId(ws.id)}
-                      className={`rounded-xl border p-4 transition-all cursor-pointer group ${
+                      className={`rounded-lg border px-3 py-2 transition-all cursor-pointer group ${
                         isSelected
                           ? "border-[var(--accent-color)] bg-[var(--accent-color)]/5 ring-1 ring-[var(--accent-color)]/20"
                           : "border-[var(--border-color)] bg-[var(--bg-elevated)] hover:border-[var(--border-color-hover)]"
                       }`}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${isActive ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`} />
+                      <div className="flex items-center gap-2">
+                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`} />
 
                         <div className="flex-1 min-w-0">
                           {isEditing ? (
-                            <div className="flex flex-col gap-1.5" onClick={e => e.stopPropagation()}>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  autoFocus
-                                  value={editName}
-                                  onChange={(e) => setEditName(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {renameWorkspace(ws.id);}
-                                    if (e.key === "Escape") {setEditingId(null);}
-                                  }}
-                                  placeholder="Workspace name…"
-                                  className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
-                                />
-                                <button onClick={() => renameWorkspace(ws.id)} className="text-[var(--accent-color)]">
-                                  <Check size={14} />
-                                </button>
-                                <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
-                                  <X size={14} />
-                                </button>
-                              </div>
+                            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                              <input
+                                autoFocus
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {renameWorkspace(ws.id);}
+                                  if (e.key === "Escape") {setEditingId(null);}
+                                }}
+                                placeholder="Workspace name…"
+                                className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
+                              />
+                              <button onClick={() => renameWorkspace(ws.id)} className="text-[var(--accent-color)]">
+                                <Check size={14} />
+                              </button>
+                              <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
+                                <X size={14} />
+                              </button>
                             </div>
                           ) : (
-                            <div className="flex flex-col gap-1">
-                              <span className="block pr-2 text-[15px] font-semibold leading-5 text-[var(--text-primary)] whitespace-normal break-words">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-sm font-semibold text-[var(--text-primary)] truncate">
                                 {ws.name}
                               </span>
-                              {(isActive || children.length > 0) && (
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  {isActive && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium">
-                                      {ws.id === activeWorkspaceId ? "Active" : "Active Parent"}
-                                    </span>
-                                  )}
-                                  {children.length > 0 && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-hover)] text-[var(--text-secondary)] font-medium">
-                                      {children.length} child{children.length !== 1 ? "ren" : ""}
-                                    </span>
-                                  )}
-                                </div>
+                              {isActive && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium shrink-0">
+                                  {ws.id === activeWorkspaceId ? "Active" : "Active Parent"}
+                                </span>
+                              )}
+                              {children.length > 0 && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-hover)] text-[var(--text-secondary)] font-medium shrink-0">
+                                  {children.length}
+                                </span>
                               )}
                             </div>
                           )}
@@ -680,7 +687,7 @@ export default function WorkspaceSettingsView() {
                     </div>
 
                     {children.length > 0 && isExpanded && (
-                      <div className="ml-5 border-l border-[var(--border-color)] pl-4 space-y-2">
+                      <div className="ml-4 border-l border-[var(--border-color)] pl-3 space-y-1">
                         {children.map((child) => {
                           const isChildActive = child.id === activeWorkspaceId;
                           const isChildSelected = child.id === selectedId;
@@ -690,48 +697,44 @@ export default function WorkspaceSettingsView() {
                             <div
                               key={child.id}
                               onClick={() => setSelectedId(child.id)}
-                              className={`rounded-xl border p-3 transition-all cursor-pointer group ${
+                              className={`rounded-lg border px-3 py-2 transition-all cursor-pointer group ${
                                 isChildSelected
                                   ? "border-[var(--accent-color)] bg-[var(--accent-color)]/5 ring-1 ring-[var(--accent-color)]/20"
                                   : "border-[var(--border-color)] bg-[var(--bg-primary)] hover:border-[var(--border-color-hover)]"
                               }`}
                             >
-                              <div className="flex items-start gap-3">
-                                <CornerDownRight size={14} className={`mt-0.5 shrink-0 ${isChildActive ? "text-[var(--accent-color)]" : "text-[var(--text-muted)]"}`} />
+                              <div className="flex items-center gap-2">
+                                <CornerDownRight size={12} className={`shrink-0 ${isChildActive ? "text-[var(--accent-color)]" : "text-[var(--text-muted)]"}`} />
                                 <div className="flex-1 min-w-0">
                                   {isChildEditing ? (
-                                    <div className="flex flex-col gap-1.5" onClick={e => e.stopPropagation()}>
-                                      <div className="flex items-center gap-2">
-                                        <input
-                                          autoFocus
-                                          value={editName}
-                                          onChange={(e) => setEditName(e.target.value)}
-                                          onKeyDown={(e) => {
-                                            if (e.key === "Enter") {renameWorkspace(child.id);}
-                                            if (e.key === "Escape") {setEditingId(null);}
-                                          }}
-                                          placeholder="Workspace name…"
-                                          className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
-                                        />
-                                        <button onClick={() => renameWorkspace(child.id)} className="text-[var(--accent-color)]">
-                                          <Check size={14} />
-                                        </button>
-                                        <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
-                                          <X size={14} />
-                                        </button>
-                                      </div>
+                                    <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                      <input
+                                        autoFocus
+                                        value={editName}
+                                        onChange={(e) => setEditName(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {renameWorkspace(child.id);}
+                                          if (e.key === "Escape") {setEditingId(null);}
+                                        }}
+                                        placeholder="Workspace name…"
+                                        className="flex-1 text-sm font-medium bg-[var(--bg-input)] border border-[var(--accent-color)] rounded px-2 py-0.5 text-[var(--text-primary)] outline-none"
+                                      />
+                                      <button onClick={() => renameWorkspace(child.id)} className="text-[var(--accent-color)]">
+                                        <Check size={14} />
+                                      </button>
+                                      <button onClick={() => setEditingId(null)} className="text-[var(--text-muted)]">
+                                        <X size={14} />
+                                      </button>
                                     </div>
                                   ) : (
-                                    <div className="flex flex-col gap-1">
-                                      <span className="block pr-2 text-[15px] font-semibold leading-5 text-[var(--text-primary)] whitespace-normal break-words">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span className="text-sm font-semibold text-[var(--text-primary)] truncate">
                                         {child.name}
                                       </span>
                                       {isChildActive && (
-                                        <div className="flex flex-wrap items-center gap-1.5">
-                                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium">
-                                            Active
-                                          </span>
-                                        </div>
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium shrink-0">
+                                          Active
+                                        </span>
                                       )}
                                     </div>
                                   )}
@@ -780,7 +783,7 @@ export default function WorkspaceSettingsView() {
         {/* Right: Workspace Details */}
         <div className="flex-1 bg-[var(--bg-primary)] overflow-y-auto">
           {selectedWorkspace ? (
-            <div className="p-8 max-w-4xl mx-auto space-y-10">
+            <div className="p-6 max-w-4xl mx-auto space-y-5">
               {/* Header Details */}
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
@@ -876,73 +879,63 @@ export default function WorkspaceSettingsView() {
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   placeholder="Describe what this workspace is for..."
-                  rows={3}
+                  rows={2}
                   className="w-full resize-none text-sm bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors shadow-sm"
                 />
               </div>
 
-              {/* Statistics Grid */}
-              <div className="space-y-4">
-                <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
-                  <Database size={12} /> Workspace Statistics
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <StatCard
-                    icon={<MessageSquare size={16} />}
-                    label="Conversations"
-                    value={stats?.overview.chat_sessions ?? 0}
-                    loading={loadingStats}
-                    onClick={() => navigate("/chat")}
-                  />
-                  <StatCard
-                    icon={<FileText size={16} />}
-                    label="Notes & Daily"
-                    value={stats?.overview.notes ?? 0}
-                    loading={loadingStats}
-                    onClick={() => navigate("/notes")}
-                  />
-                  <StatCard
-                    icon={<Globe size={16} />}
-                    label="Sources & Docs"
-                    value={stats?.overview.sources ?? 0}
-                    loading={loadingStats}
-                    onClick={() => navigate("/sources")}
-                  />
-                  <StatCard
-                    icon={<Brain size={16} />}
-                    label="Concept Nodes"
-                    value={stats?.overview.concepts ?? 0}
-                    loading={loadingStats}
-                    onClick={() => navigate("/graph")}
-                  />
-                  <StatCard
-                    icon={<CreditCard size={16} />}
-                    label="Flashcards"
-                    value={stats?.overview.flashcards ?? 0}
-                    loading={loadingStats}
-                    onClick={() => navigate("/flashcards")}
-                  />
-                  <StatCard
-                    icon={<Database size={16} />}
-                    label="AI Memories"
-                    value={memoryCount}
-                    loading={loadingStats}
-                  />
-                </div>
+              {/* Statistics Row */}
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { icon: <MessageSquare size={12} />, label: "Chats", value: stats?.overview.chat_sessions ?? 0, onClick: () => navigate("/chat") },
+                  { icon: <FileText size={12} />, label: "Notes", value: stats?.overview.notes ?? 0, onClick: () => navigate("/notes") },
+                  { icon: <Globe size={12} />, label: "Sources", value: stats?.overview.sources ?? 0, onClick: () => navigate("/sources") },
+                  { icon: <Brain size={12} />, label: "Nodes", value: stats?.overview.concepts ?? 0, onClick: () => navigate("/graph") },
+                  { icon: <CreditCard size={12} />, label: "Flashcards", value: stats?.overview.flashcards ?? 0, onClick: () => navigate("/flashcards") },
+                  { icon: <Database size={12} />, label: "Memories", value: memoryCount },
+                ].map(({ icon, label, value, onClick }) => (
+                  <button
+                    key={label}
+                    onClick={onClick}
+                    disabled={!onClick}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-color-hover)] transition-all disabled:cursor-default"
+                  >
+                    <span className="text-[var(--accent-color)]">{icon}</span>
+                    {loadingStats ? <Loader2 size={10} className="animate-spin" /> : <span className="font-semibold text-[var(--text-primary)]">{value}</span>}
+                    <span className="text-[var(--text-muted)]">{label}</span>
+                  </button>
+                ))}
               </div>
 
               {/* Workspace Memory Panel */}
-              <div className="pt-4">
-                {/* eslint-disable-next-line @typescript-eslint/no-non-null-assertion */}
-                <WorkspaceMemoryPanel workspaceId={selectedId!} onMemoryCountChange={setMemoryCount} />
+              <div className="space-y-3">
+                <button
+                  onClick={() => toggleSection("memory")}
+                  className="flex w-full items-center justify-between"
+                >
+                  <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+                    <Database size={12} /> Workspace Memory
+                  </h3>
+                  <ChevronDown size={14} className={`text-[var(--text-muted)] transition-transform ${collapsedSections["memory"] ? "-rotate-90" : ""}`} />
+                </button>
+                {!collapsedSections["memory"] && (
+                  /* eslint-disable-next-line @typescript-eslint/no-non-null-assertion */
+                  <WorkspaceMemoryPanel workspaceId={selectedId!} onMemoryCountChange={setMemoryCount} />
+                )}
               </div>
 
               {/* Conversation Prompt Editor */}
-              <div className="space-y-4 pt-4">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
-                    <Sparkles size={12} /> Conversation Prompt
-                  </h3>
+                  <button
+                    onClick={() => toggleSection("prompt")}
+                    className="flex items-center gap-2 min-w-0"
+                  >
+                    <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles size={12} /> Conversation Prompt
+                    </h3>
+                    <ChevronDown size={14} className={`text-[var(--text-muted)] transition-transform flex-shrink-0 ${collapsedSections["prompt"] ? "-rotate-90" : ""}`} />
+                  </button>
                   <button
                     onClick={savePrompt}
                     disabled={isSavingPrompt || editPrompt.trim() === selectedWorkspace.prompt_instructions}
@@ -952,45 +945,63 @@ export default function WorkspaceSettingsView() {
                     {isSavingPrompt ? "Saving..." : "Save Changes"}
                   </button>
                 </div>
-                <div className="relative group">
-                  <textarea
-                    value={editPrompt}
-                    onChange={(e) => setEditPrompt(e.target.value)}
-                    placeholder="Set global instructions for the AI in this workspace... (e.g., 'Always be concise', 'Focus on Rust code', etc.)"
-                    rows={8}
-                    className="w-full resize-none text-sm bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors shadow-sm"
-                  />
-                  <div className="absolute right-3 bottom-3 text-[10px] text-[var(--text-muted)] pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity">
-                    {editPrompt.length} characters
-                  </div>
-                </div>
-                <p className="text-[11px] text-[var(--text-muted)] leading-relaxed italic">
-                  Note: These instructions are prepended to the system prompt of every new chat session started within this workspace.
-                </p>
+                {!collapsedSections["prompt"] && (
+                  <>
+                    <div className="relative group">
+                      <textarea
+                        value={editPrompt}
+                        onChange={(e) => setEditPrompt(e.target.value)}
+                        placeholder="Set global instructions for the AI in this workspace... (e.g., 'Always be concise', 'Focus on Rust code', etc.)"
+                        rows={4}
+                        className="w-full resize-none text-sm bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors shadow-sm"
+                      />
+                      <div className="absolute right-3 bottom-3 text-[10px] text-[var(--text-muted)] pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity">
+                        {editPrompt.length} characters
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)] leading-relaxed italic">
+                      Note: These instructions are prepended to the system prompt of every new chat session started within this workspace.
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* Topics Manager */}
-              <div className="space-y-4 pt-4">
-                <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
-                  <Brain size={12} /> Workspace Topics
-                </h3>
-                <TopicsSection
-                  workspaceId={selectedWorkspace.id}
-                  topicSignature={topicSignaturesByWorkspace[selectedWorkspace.id] ?? null}
-                  onUpdate={(updated) => {
-                    setTopicSignaturesByWorkspace(prev => ({
-                      ...prev,
-                      [selectedWorkspace.id]: updated
-                    }));
-                  }}
-                />
+              <div className="space-y-3">
+                <button
+                  onClick={() => toggleSection("topics")}
+                  className="flex w-full items-center justify-between"
+                >
+                  <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+                    <Brain size={12} /> Workspace Topics
+                  </h3>
+                  <ChevronDown size={14} className={`text-[var(--text-muted)] transition-transform ${collapsedSections["topics"] ? "-rotate-90" : ""}`} />
+                </button>
+                {!collapsedSections["topics"] && (
+                  <TopicsSection
+                    workspaceId={selectedWorkspace.id}
+                    topicSignature={topicSignaturesByWorkspace[selectedWorkspace.id] ?? null}
+                    onUpdate={(updated) => {
+                      setTopicSignaturesByWorkspace(prev => ({
+                        ...prev,
+                        [selectedWorkspace.id]: updated
+                      }));
+                    }}
+                  />
+                )}
               </div>
 
-              <div className="space-y-4 pt-4">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
-                    <BookOpen size={12} /> Workspace Glossary
-                  </h3>
+                  <button
+                    onClick={() => toggleSection("glossary")}
+                    className="flex items-center gap-2 min-w-0"
+                  >
+                    <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+                      <BookOpen size={12} /> Workspace Glossary
+                    </h3>
+                    <ChevronDown size={14} className={`text-[var(--text-muted)] transition-transform flex-shrink-0 ${collapsedSections["glossary"] ? "-rotate-90" : ""}`} />
+                  </button>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => startGlossaryEditor()}
@@ -1009,6 +1020,7 @@ export default function WorkspaceSettingsView() {
                     </button>
                   </div>
                 </div>
+                {!collapsedSections["glossary"] && (<>
                 <p className="text-xs text-[var(--text-muted)]">
                   Definitions here are checked before the built-in tech dictionary. Child workspaces can override inherited parent terms.
                 </p>
@@ -1074,6 +1086,7 @@ export default function WorkspaceSettingsView() {
                     onOverride={(term) => startGlossaryEditor(term)}
                   />
                 </div>
+                </>)}
               </div>
             </div>
           ) : (
@@ -1135,26 +1148,6 @@ export default function WorkspaceSettingsView() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-function StatCard({ icon, label, value, loading, onClick }: { icon: React.ReactNode; label: string; value: number; loading: boolean; onClick?: () => void }) {
-  return (
-    <div
-      onClick={onClick}
-      className={`bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl p-4 flex flex-col gap-2 shadow-sm transition-all hover:border-[var(--border-color-hover)]${onClick ? " cursor-pointer" : ""}`}
-    >      <div className="flex items-center justify-between">
-        <div className="text-[var(--accent-color)] bg-[var(--accent-color)]/10 p-1.5 rounded-lg">
-          {icon}
-        </div>
-        {loading ? (
-          <Loader2 size={12} className="text-[var(--text-muted)] animate-spin" />
-        ) : (
-          <span className="text-lg font-bold text-[var(--text-primary)]">{value}</span>
-        )}
-      </div>
-      <span className="text-[11px] font-medium text-[var(--text-muted)]">{label}</span>
     </div>
   );
 }
