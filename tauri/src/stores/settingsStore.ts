@@ -10,6 +10,11 @@ export type ComposerMode = "normal" | "family";
 interface AppSettings {
   preferredModel: string;
   backgroundModel: string;
+  summarizationModel: string;
+  memoryExtractionModel: string;
+  flashcardModel: string;
+  glossaryModel: string;
+  topicSignatureModel: string;
   quickSearchWorkspaceScope: string;
   quickSearchTypeFilters: string[];
   ollamaUrl: string;
@@ -59,6 +64,11 @@ interface AppSettings {
 interface SettingsStore extends AppSettings {
   setPreferredModel: (m: string) => void;
   setBackgroundModel: (m: string) => void;
+  setSummarizationModel: (m: string) => void;
+  setMemoryExtractionModel: (m: string) => void;
+  setFlashcardModel: (m: string) => void;
+  setGlossaryModel: (m: string) => void;
+  setTopicSignatureModel: (m: string) => void;
   setQuickSearchWorkspaceScope: (scope: string) => void;
   setQuickSearchTypeFilters: (filters: string[]) => void;
   setOllamaUrl: (url: string) => void;
@@ -112,6 +122,11 @@ export const useSettingsStore = create<SettingsStore>()(
     (set) => ({
       preferredModel: "",
       backgroundModel: "",
+      summarizationModel: "",
+      memoryExtractionModel: "",
+      flashcardModel: "",
+      glossaryModel: "",
+      topicSignatureModel: "",
       quickSearchWorkspaceScope: "__all__",
       quickSearchTypeFilters: ["conversation", "message", "artifact", "memory", "summary"],
       ollamaUrl: "http://localhost:11434",
@@ -158,6 +173,11 @@ export const useSettingsStore = create<SettingsStore>()(
       assistantChatLabel: "Assistant",
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
+      setSummarizationModel: (summarizationModel) => set({ summarizationModel }),
+      setMemoryExtractionModel: (memoryExtractionModel) => set({ memoryExtractionModel }),
+      setFlashcardModel: (flashcardModel) => set({ flashcardModel }),
+      setGlossaryModel: (glossaryModel) => set({ glossaryModel }),
+      setTopicSignatureModel: (topicSignatureModel) => set({ topicSignatureModel }),
       setQuickSearchWorkspaceScope: (quickSearchWorkspaceScope) => set({ quickSearchWorkspaceScope }),
       setQuickSearchTypeFilters: (quickSearchTypeFilters) => set({ quickSearchTypeFilters }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),

@@ -192,7 +192,7 @@ function formatTaskName(taskType: string): string {
     .join(" ");
 }
 
-function JobPill({ taskType }: { taskType: string }) {
+function JobPill({ taskType, model }: { taskType: string; model?: string }) {
   return (
     <div className="flex items-center gap-2">
       {/* Pulsing dot */}
@@ -203,6 +203,11 @@ function JobPill({ taskType }: { taskType: string }) {
       <span className="text-xs text-emerald-400 leading-none font-medium">
         {formatTaskName(taskType)}
       </span>
+      {model && (
+        <span className="text-[10px] text-[var(--text-muted)] leading-none truncate max-w-[100px]" title={model}>
+          {model}
+        </span>
+      )}
     </div>
   );
 }
@@ -215,9 +220,15 @@ export default function StatusBar() {
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
   const refiningSessionId = useChatStore((s) => s.refiningSessionId);
   const isAiStreaming = streamingSessionId !== null || refiningSessionId !== null;
+  const streamingModel = useChatStore((s) => {
+    const id = s.streamingSessionId ?? s.refiningSessionId;
+    if (!id) { return null; }
+    const session = s.sessions.find((sess) => sess.id === id);
+    return session?.model_name ?? null;
+  });
 
   const [stats, setStats] = useState<PerformanceStats | null>(null);
-  const [activeJobs, setActiveJobs] = useState<Set<string>>(new Set());
+  const [activeJobs, setActiveJobs] = useState<Map<string, { model?: string }>>(new Map());
   // [P2] In-flight guard: prevents overlapping getPerformanceStats() calls.
   const inFlightRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -263,11 +274,11 @@ export default function StatusBar() {
 
     const setup = async () => {
       unlistenFn = await api.listenBackgroundTask((payload: BackgroundTaskEvent) => {
-        const { task_type, status } = payload;
+        const { task_type, status, model } = payload;
         setActiveJobs((prev) => {
-          const next = new Set(prev);
+          const next = new Map(prev);
           if (status === "started" || status === "processing") {
-            next.add(task_type);
+            next.set(task_type, { model });
           } else {
             // completed or failed
             next.delete(task_type);
@@ -307,11 +318,11 @@ export default function StatusBar() {
     }
   }
 
-  const jobList = Array.from(activeJobs);
+  const jobList = Array.from(activeJobs.entries());
 
   // [P2] Build a screen-reader announcement string for background jobs only —
   // the continuously-updating metrics are not announced.
-  const allActiveTypes = [...(isAiStreaming ? ["ai_generating"] : []), ...jobList];
+  const allActiveTypes = [...(isAiStreaming ? ["ai_generating"] : []), ...jobList.map(([t]) => t)];
   const jobAnnouncement = allActiveTypes.length > 0
     ? allActiveTypes.map((t) => formatTaskName(t)).join(", ") + " running"
     : "";
@@ -336,8 +347,8 @@ export default function StatusBar() {
 
       {/* Left — active background jobs + AI streaming (visible) */}
       <div className="flex items-center gap-4 min-w-0 overflow-hidden" aria-hidden="true">
-        {isAiStreaming && <JobPill taskType="ai_generating" />}
-        {jobList.slice(0, 3).map((type) => <JobPill key={type} taskType={type} />)}
+        {isAiStreaming && <JobPill taskType="ai_generating" model={streamingModel ?? undefined} />}
+        {jobList.slice(0, 3).map(([type, meta]) => <JobPill key={type} taskType={type} model={meta.model} />)}
       </div>
 
       {/* Right — performance meters (aria-hidden; screen readers get no value from constant churn) */}

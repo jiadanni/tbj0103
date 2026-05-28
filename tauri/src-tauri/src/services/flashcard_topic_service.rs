@@ -2,6 +2,7 @@ use crate::commands::flashcard::{generate_card_pairs, insert_card, CardDifficult
 use crate::db::DbState;
 use crate::models::learning_card::LearningCard;
 use crate::models::workspace::TopicSignature;
+use crate::services::model_settings::get_model_for_job;
 use rusqlite::Connection;
 
 /// One row from the `flashcard_topics` table.
@@ -116,14 +117,7 @@ pub async fn generate_for_topic(
 pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<(), String> {
     let (workspace_ids, model, min_interval) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let model_raw = conn
-            .query_row(
-                "SELECT value FROM settings WHERE key = 'preferred_model'",
-                [],
-                |r| r.get::<_, String>(0),
-            )
-            .unwrap_or_default();
-        let model = model_raw.trim_matches('"').to_string();
+        let model = get_model_for_job(&conn, "flashcard_model").unwrap_or_default();
         let interval = conn
             .query_row(
                 "SELECT value FROM settings WHERE key = 'flashcard_topic_min_interval_minutes'",

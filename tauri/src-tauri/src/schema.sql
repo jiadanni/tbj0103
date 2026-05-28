@@ -439,6 +439,11 @@ CREATE TABLE IF NOT EXISTS settings (
 INSERT OR IGNORE INTO settings (key, value) VALUES
     ('preferred_model', '""'),
     ('background_model', '""'),
+    ('summarization_model', '""'),
+    ('memory_extraction_model', '""'),
+    ('flashcard_model', '""'),
+    ('glossary_model', '""'),
+    ('topic_signature_model', '""'),
     ('quick_search_models', '[]'),
     ('quick_search_shortcut', '"CmdOrCtrl+Shift+K"'),
     ('quick_search_workspace_scope', '"__all__"'),
