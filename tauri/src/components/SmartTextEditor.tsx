@@ -74,9 +74,11 @@ export default function SmartTextEditor({
   // Load concept names for autocomplete
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
+    let disposed = false;
     api.graph.listConcepts(activeWorkspaceId)
-      .then((concepts) => { setConceptNames(concepts.map((c) => c.name)); })
+      .then((concepts) => { if (!disposed) { setConceptNames(concepts.map((c) => c.name)); } })
       .catch(() => {});
+    return () => { disposed = true; };
   }, [activeWorkspaceId]);
 
   const completer = useCallback(
