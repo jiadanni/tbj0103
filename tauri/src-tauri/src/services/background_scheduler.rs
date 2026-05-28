@@ -1,4 +1,5 @@
 use crate::db::DbState;
+use crate::services::model_settings::get_model_for_job;
 use crate::services::{git_sync, memory_pipeline, summarization_service, workspace_glossary};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,17 +14,27 @@ pub struct BackgroundTaskEvent {
     pub task_type: String,
     pub status: String, // "started" | "processing" | "completed" | "failed"
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
-fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str) {
+fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str, model: Option<String>) {
     let _ = app.emit(
         "background-task",
         BackgroundTaskEvent {
             task_type: task_type.to_string(),
             status: status.to_string(),
             message: message.to_string(),
+            model,
         },
     );
+}
+
+/// Look up the model the scheduler would use for a given job key.
+fn lookup_job_model(app: &AppHandle, job_key: &str) -> Option<String> {
+    let db = app.state::<DbState>();
+    let conn = db.0.get().ok()?;
+    get_model_for_job(&conn, job_key)
 }
 
 pub fn start_scheduler(app: AppHandle) {
@@ -99,7 +110,8 @@ pub fn start_scheduler(app: AppHandle) {
             // If user is NOT chatting and background inference is enabled, run AI tasks
             if !is_streaming && !is_active_chatting && background_inference_enabled {
                 // 1. Process memory extraction
-                emit_task(&app, "memory_extraction", "started", "Extracting memories…");
+                let mem_model = lookup_job_model(&app, "memory_extraction_model");
+                emit_task(&app, "memory_extraction", "started", "Extracting memories…", mem_model.clone());
                 let mem_result =
                     memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone()).await;
                 emit_task(
@@ -107,9 +119,11 @@ pub fn start_scheduler(app: AppHandle) {
                     "memory_extraction",
                     if mem_result.is_ok() { "completed" } else { "failed" },
                     if mem_result.is_ok() { "Memory extraction done" } else { "Memory extraction failed" },
+                    mem_model,
                 );
 
-                emit_task(&app, "workspace_glossary", "started", "Refreshing workspace glossary…");
+                let glossary_model = lookup_job_model(&app, "glossary_model");
+                emit_task(&app, "workspace_glossary", "started", "Refreshing workspace glossary…", glossary_model.clone());
                 let glossary_result = workspace_glossary::refresh_due_workspaces(&db).await;
                 emit_task(
                     &app,
@@ -120,6 +134,7 @@ pub fn start_scheduler(app: AppHandle) {
                     } else {
                         "Workspace glossary refresh failed"
                     },
+                    glossary_model.clone(),
                 );
 
                 emit_task(
@@ -127,6 +142,7 @@ pub fn start_scheduler(app: AppHandle) {
                     "hover_definition_scan",
                     "started",
                     "Scanning chats for missing definitions…",
+                    glossary_model.clone(),
                 );
                 let scan_result = workspace_glossary::scan_recent_sessions_for_missing_terms(&db).await;
                 emit_task(
@@ -138,6 +154,7 @@ pub fn start_scheduler(app: AppHandle) {
                     } else {
                         "Hover definition scan failed"
                     },
+                    glossary_model,
                 );
 
                 // 2. Process summarization — only sessions with recent activity
@@ -183,7 +200,8 @@ pub fn start_scheduler(app: AppHandle) {
                 };
 
                 if !sessions.is_empty() {
-                    emit_task(&app, "summarization", "started", "Summarizing chats…");
+                    let summ_model = lookup_job_model(&app, "summarization_model");
+                    emit_task(&app, "summarization", "started", "Summarizing chats…", summ_model.clone());
                     let mut any_failed = false;
                     for (session_id, workspace_id) in sessions {
                         let result = summarization_service::generate_rolling_summary(
@@ -202,17 +220,20 @@ pub fn start_scheduler(app: AppHandle) {
                         "summarization",
                         if any_failed { "failed" } else { "completed" },
                         if any_failed { "Summarization failed" } else { "Summarization done" },
+                        summ_model,
                     );
                 }
 
                 // 4. Flashcard topic sync + automatic card generation
-                emit_task(&app, "flashcard_generation", "started", "Generating flashcards…");
+                let fc_model = lookup_job_model(&app, "flashcard_model");
+                emit_task(&app, "flashcard_generation", "started", "Generating flashcards…", fc_model.clone());
                 let fc_result = crate::services::flashcard_topic_service::tick(&db, ollama_url.clone()).await;
                 emit_task(
                     &app,
                     "flashcard_generation",
                     if fc_result.is_ok() { "completed" } else { "failed" },
                     if fc_result.is_ok() { "Flashcard generation done" } else { "Flashcard generation failed" },
+                    fc_model,
                 );
             }
 
@@ -254,7 +275,7 @@ pub fn start_scheduler(app: AppHandle) {
                 };
 
                 if sync_enabled && !remote_url.is_empty() {
-                    emit_task(&app, "git_sync", "started", "Syncing to Git…");
+                    emit_task(&app, "git_sync", "started", "Syncing to Git…", None);
                     let sync_ok;
                     if let Ok(app_dir) = app.path().app_data_dir() {
                         let remote_url_clone = remote_url.clone();
@@ -297,6 +318,7 @@ pub fn start_scheduler(app: AppHandle) {
                         "git_sync",
                         if sync_ok { "completed" } else { "failed" },
                         if sync_ok { "Git sync done" } else { "Git sync failed" },
+                        None,
                     );
                 }
             }

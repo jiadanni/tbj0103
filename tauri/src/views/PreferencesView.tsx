@@ -786,6 +786,11 @@ export default function PreferencesView() {
     settingsStore.setFontSize(settings.font_size);
     settingsStore.setPreferredModel(settings.preferred_model);
     settingsStore.setBackgroundModel(settings.background_model);
+    settingsStore.setSummarizationModel(settings.summarization_model);
+    settingsStore.setMemoryExtractionModel(settings.memory_extraction_model);
+    settingsStore.setFlashcardModel(settings.flashcard_model);
+    settingsStore.setGlossaryModel(settings.glossary_model);
+    settingsStore.setTopicSignatureModel(settings.topic_signature_model);
     settingsStore.setQuickSearchWorkspaceScope(settings.quick_search_workspace_scope);
     settingsStore.setQuickSearchTypeFilters(settings.quick_search_type_filters);
     settingsStore.setOllamaUrl(settings.ollama_base_url);
@@ -1258,9 +1263,9 @@ export default function PreferencesView() {
       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] overflow-hidden">
         <div className="grid grid-cols-[minmax(0,1fr)_100px_120px_120px_60px_60px] items-center gap-3 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
           <span>Ollama Models</span>
-          <Tooltip content="Background model: used for automatic AI tasks that run without your direct input, such as topic signatures, note summarization, and knowledge graph linking. Only one model can be the background model at a time." position="top">
+          <Tooltip content="BG Default: fallback model for background AI tasks (memory extraction, summarization, flashcards, glossary, topic signatures) when no per-job model is set below. Per-job overrides take precedence." position="top">
             <span className="text-center inline-flex items-center justify-center gap-1">
-              Background
+              BG Default
               <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
             </span>
           </Tooltip>
@@ -1595,6 +1600,79 @@ export default function PreferencesView() {
           )}
         </div>
       )}
+
+      {(() => {
+        const eligibleModels = aiModels.filter((m) => m.provider === "ollama" && m.enabled);
+        const jobs: { key: keyof AppSettings; label: string; tokens: string; note: string }[] = [
+          { key: "memory_extraction_model", label: "Memory Extraction", tokens: "~200–1,000 tokens input", note: "2k context OK" },
+          { key: "summarization_model", label: "Summarization", tokens: "~500–5,000 tokens input", note: "≥4k context recommended" },
+          { key: "flashcard_model", label: "Flashcard Generation", tokens: "~100–200 tokens input", note: "2k context OK" },
+          { key: "glossary_model", label: "Workspace Glossary", tokens: "~800–2,000 tokens input", note: "≥4k context recommended" },
+          { key: "topic_signature_model", label: "Topic Signatures", tokens: "~1,000–3,000 tokens input", note: "≥4k context recommended" },
+        ];
+        const options = [
+          { value: "", label: "Default (background model)" },
+          ...eligibleModels.map((m) => ({
+            value: m.model_id,
+            label: resolveModelDisplayName(m.model_id, modelLabels, aiModels),
+          })),
+        ];
+        return (
+          <div className="rounded-lg border border-[var(--border-color)]/60 bg-[var(--bg-primary)]/40 p-3.5 space-y-3">
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">Background Tasks</h4>
+              <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+                Background tasks work best with smaller, faster models. The token ranges below show how much context each job typically needs — pick a model whose context window comfortably exceeds it. Leave a row on “Default” to fall back to BG Default → preferred model.
+              </p>
+            </div>
+            <div className="divide-y divide-[var(--border-color)]/60">
+              {jobs.map((job) => {
+                const selected = (dbSettings[job.key] as string) ?? "";
+                const selectedModel = selected ? eligibleModels.find((m) => m.model_id === selected) : null;
+                const ollamaMeta = selectedModel ? ollamaModels.find((om) => om.name === selectedModel.model_id) : null;
+                const modelParams = selectedModel
+                  ? parseModelParamsB(selectedModel.model_id)
+                    ?? parseModelParamsB(selectedModel.name)
+                    ?? parseModelParamsB(ollamaMeta?.details?.parameter_size ?? "")
+                  : null;
+                const formattedParams = modelParams != null ? formatParams(modelParams) : null;
+                const fit = systemGuidance
+                  ? classifyModelFit(modelParams, systemGuidance.recommendedMaxParamsB)
+                  : "unknown";
+                const fitMeta = getModelFitMeta(fit);
+                return (
+                  <div key={String(job.key)} className="grid grid-cols-[minmax(0,1fr)_220px] items-center gap-3 py-2">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-[var(--text-primary)]">{job.label}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-muted)]">
+                        <span>{job.tokens}</span>
+                        <span>•</span>
+                        <span>{job.note}</span>
+                        {selectedModel && (formattedParams || fitMeta.label) && (
+                          <>
+                            <span>•</span>
+                            {formattedParams && <span>{formattedParams}</span>}
+                            {formattedParams && fitMeta.label && <span>•</span>}
+                            {fitMeta.label && <span className={`font-medium ${fitMeta.textClassName}`}>{fitMeta.label}</span>}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <CompactMenuSelect
+                        label={job.label}
+                        value={selected}
+                        options={options}
+                        onChange={(value) => set(job.key, value as never)}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 

@@ -1,6 +1,6 @@
 use crate::db::DbState;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
-use crate::services::model_settings::get_configured_background_model;
+use crate::services::model_settings::get_model_for_job;
 
 pub async fn generate_rolling_summary(
     state: &DbState,
@@ -84,7 +84,7 @@ pub async fn generate_rolling_summary(
     // Use the configured background/chat model and skip quietly if none is available.
     let model = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        get_configured_background_model(&conn)
+        get_model_for_job(&conn, "summarization_model")
     };
 
     let Some(model) = model else {

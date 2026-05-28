@@ -2,7 +2,7 @@ use crate::db::DbState;
 use crate::models::workspace::{TopicSignature, TopicTag};
 use crate::ollama::client::{OllamaClient, OllamaMessage, RequestContext};
 use crate::services::ai_content_generator::generate_tags;
-use crate::services::model_settings::{get_configured_background_model, get_ollama_base_url};
+use crate::services::model_settings::{get_model_for_job, get_ollama_base_url};
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -638,7 +638,7 @@ pub async fn recompute_workspace_signature_with_ai(
             .map_err(|e| e.to_string())?;
         let existing: TopicSignature = serde_json::from_str(&existing_json).unwrap_or_default();
         let (text, count) = collect_workspace_text(&conn, workspace_id)?;
-        let model = model_override.or_else(|| get_configured_background_model(&conn));
+        let model = model_override.or_else(|| get_model_for_job(&conn, "topic_signature_model"));
         let ollama_url = ollama_url_override.or_else(|| get_ollama_base_url(&conn));
         (existing, text, count, model, ollama_url)
     };

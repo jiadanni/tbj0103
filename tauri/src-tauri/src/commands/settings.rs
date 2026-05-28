@@ -9,6 +9,11 @@ use tauri_plugin_autostart::ManagerExt;
 pub struct Settings {
     pub preferred_model: String,
     pub background_model: String,
+    pub summarization_model: String,
+    pub memory_extraction_model: String,
+    pub flashcard_model: String,
+    pub glossary_model: String,
+    pub topic_signature_model: String,
     pub quick_search_models: Vec<String>,
     pub quick_search_shortcut: String,
     pub quick_search_workspace_scope: String,
@@ -75,6 +80,11 @@ impl Default for Settings {
         Self {
             preferred_model: "".to_string(),
             background_model: "".to_string(),
+            summarization_model: "".to_string(),
+            memory_extraction_model: "".to_string(),
+            flashcard_model: "".to_string(),
+            glossary_model: "".to_string(),
+            topic_signature_model: "".to_string(),
             quick_search_models: Vec::new(),
             quick_search_shortcut: "CmdOrCtrl+Shift+K".to_string(),
             quick_search_workspace_scope: "__all__".to_string(),
@@ -240,6 +250,21 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         background_model: get_setting(&conn, "background_model")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.background_model),
+        summarization_model: get_setting(&conn, "summarization_model")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.summarization_model),
+        memory_extraction_model: get_setting(&conn, "memory_extraction_model")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.memory_extraction_model),
+        flashcard_model: get_setting(&conn, "flashcard_model")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.flashcard_model),
+        glossary_model: get_setting(&conn, "glossary_model")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.glossary_model),
+        topic_signature_model: get_setting(&conn, "topic_signature_model")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.topic_signature_model),
         quick_search_models: get_setting(&conn, "quick_search_models")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.quick_search_models),
@@ -452,6 +477,31 @@ pub fn update_settings(
         &conn,
         "background_model",
         &serde_json::to_string(&settings.background_model).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "summarization_model",
+        &serde_json::to_string(&settings.summarization_model).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "memory_extraction_model",
+        &serde_json::to_string(&settings.memory_extraction_model).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "flashcard_model",
+        &serde_json::to_string(&settings.flashcard_model).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "glossary_model",
+        &serde_json::to_string(&settings.glossary_model).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "topic_signature_model",
+        &serde_json::to_string(&settings.topic_signature_model).unwrap(),
     )?;
     set_setting(
         &conn,

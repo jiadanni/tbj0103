@@ -1,7 +1,7 @@
 use crate::db::DbState;
 use crate::models::chat::Message;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
-use crate::services::model_settings::{get_configured_background_model, get_embedding_model};
+use crate::services::model_settings::{get_embedding_model, get_model_for_job};
 
 /// Read a configurable threshold from settings (default: 5).
 fn get_extraction_threshold(state: &DbState) -> usize {
@@ -171,7 +171,7 @@ pub async fn extract_and_store_memories(
     // Fetch model config and existing embeddings in a SINGLE lock acquisition
     let (model, embedding_model, existing_embeddings) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let model = get_configured_background_model(&conn);
+        let model = get_model_for_job(&conn, "memory_extraction_model");
         let emb_model = get_embedding_model(&conn);
 
         // Pre-fetch all existing memory embeddings for dedup (avoids per-fact lock)

@@ -28,6 +28,14 @@ pub fn get_configured_background_model(conn: &Connection) -> Option<String> {
     get_string_setting(conn, "background_model").or_else(|| get_configured_chat_model(conn))
 }
 
+/// Resolve the model to use for a given background job.
+///
+/// Resolution order: per-job override → background model → first enabled chat
+/// model → `preferred_model`. Returns `None` if no model can be resolved.
+pub fn get_model_for_job(conn: &Connection, job_key: &str) -> Option<String> {
+    get_string_setting(conn, job_key).or_else(|| get_configured_background_model(conn))
+}
+
 pub fn get_configured_chat_model(conn: &Connection) -> Option<String> {
     let enabled_model = conn
         .query_row(

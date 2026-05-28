@@ -332,6 +332,8 @@ export interface BackgroundTaskEvent {
   task_type: string;
   status: 'started' | 'processing' | 'completed' | 'failed';
   message: string;
+  /** Model name being used for this job, when applicable. */
+  model?: string;
 }
 
 export interface WorkspaceGlossaryTerm {
@@ -385,6 +387,11 @@ export interface AppSettings {
   mlx_base_url: string;
   llamacpp_model_paths: string[];
   background_model: string;
+  summarization_model: string;
+  memory_extraction_model: string;
+  flashcard_model: string;
+  glossary_model: string;
+  topic_signature_model: string;
   quick_search_shortcut: string;
   quick_search_workspace_scope: string;
   quick_search_type_filters: string[];

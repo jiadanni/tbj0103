@@ -5,7 +5,7 @@ use crate::models::glossary::{
 use crate::models::workspace::TopicSignature;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::ai_content_generator::generate_tags;
-use crate::services::model_settings::{get_configured_background_model, get_ollama_base_url};
+use crate::services::model_settings::{get_model_for_job, get_ollama_base_url};
 use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::{HashMap, HashSet};
@@ -671,7 +671,7 @@ pub async fn refresh_workspace_glossary(
         let known = known_terms_for_workspace(&conn, workspace_id)?;
         let mut seed_terms = extract_candidate_terms(&corpus, 24);
         seed_terms.retain(|term| !known.contains(term));
-        let model = get_configured_background_model(&conn);
+        let model = get_model_for_job(&conn, "glossary_model");
         let ollama_url = get_ollama_base_url(&conn);
         let assistant_count = assistant_message_count_for_workspace(&conn, workspace_id)?;
         (workspace_name, corpus, seed_terms, model, ollama_url, assistant_count)
@@ -850,7 +850,7 @@ pub async fn scan_recent_sessions_for_missing_terms(state: &DbState) -> Result<u
             crate::commands::settings::get_setting(&conn, "hover_definition_scan_max_sessions")
                 .and_then(|value| value.parse::<usize>().ok())
                 .unwrap_or(3);
-        let model = get_configured_background_model(&conn);
+        let model = get_model_for_job(&conn, "glossary_model");
         let ollama_url = get_ollama_base_url(&conn);
         let mut stmt = conn
             .prepare(
