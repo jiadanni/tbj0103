@@ -149,6 +149,10 @@ function WorkspaceNavigationTabs({
   const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => () => {
+    if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); }
+  }, []);
+
   useEffect(() => {
     if (!menuOpen) {return;}
 
