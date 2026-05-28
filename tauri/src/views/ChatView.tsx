@@ -2194,7 +2194,7 @@ export default function ChatView() {
   const composerToggleBaseClass = "inline-flex h-10 items-center gap-2 rounded-full px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all duration-200 hover:-translate-y-px hover:shadow-md active:scale-95";
   const composerToggleInactiveClass = "bg-white/[0.03] ring-1 ring-white/5 text-[var(--text-secondary)] hover:bg-white/[0.08] hover:text-[var(--text-primary)]";
   const composerToggleActiveClass = "bg-[var(--bg-hover)] text-[var(--text-primary)] shadow-sm ring-1 ring-[var(--accent-color)]/30";
-  const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-[var(--text-muted)] transition-all duration-200 hover:bg-white/[0.08] hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40";
+  const composerIconOnlyButtonClass = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-[var(--text-muted)] transition-all duration-200 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40";
 
 
   const [input, setInput] = useState("");
@@ -4945,7 +4945,7 @@ export default function ChatView() {
                   <div className={`min-w-0 bg-transparent flex flex-col items-center ${activeMessages.length === 0 && !isStreaming ? "flex-1 justify-center px-6 py-10" : "flex-shrink-0 px-4 pb-6 pt-3 sm:px-6"}`}>
                     <div
                       data-testid="composer-shell"
-                      className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[32px] bg-[var(--bg-elevated)] ring-1 ring-[var(--border-color)] ${showComposerHeader ? "p-3" : "p-2"} shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5),_0_0_0_1px_rgba(255,255,255,0.02)_inset] transition-all duration-300`}
+                      className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} min-w-0 rounded-[28px] bg-[var(--bg-elevated)] ring-1 ring-[var(--border-color)] ${showComposerHeader ? "p-3" : "p-2"} shadow-[0_8px_24px_-8px_rgba(0,0,0,0.3)] transition-all duration-300`}
                     >
                       <div className="flex flex-col gap-2 min-w-0">
 
@@ -4984,7 +4984,7 @@ export default function ChatView() {
                                       type="button"
                                       onClick={() => setIsFamilyPickerOpen((open) => !open)}
                                       disabled={isStreaming}
-                                      className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl bg-white/[0.03] ring-1 ring-white/5 px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-secondary)] transition-all duration-200 hover:bg-white/[0.08] hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                                      className="inline-flex h-8 max-w-[min(62vw,260px)] items-center gap-2 rounded-xl bg-[var(--bg-hover)] border border-[var(--border-color)] px-3 text-[12px] font-semibold tracking-[0.01em] text-[var(--text-secondary)] transition-all duration-200 hover:border-[var(--accent-color)]/50 hover:text-[var(--text-primary)] hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                                       aria-haspopup="menu"
                                       aria-expanded={isFamilyPickerOpen}
                                     >
@@ -5240,7 +5240,7 @@ export default function ChatView() {
                             </div>
 
                         {/* Textarea */}
-                        <div className="flex items-end gap-2.5 rounded-[24px] bg-black/20 shadow-inner px-2 py-1.5 transition-all duration-300 focus-within:bg-[var(--bg-secondary)]/40 focus-within:ring-1 focus-within:ring-[var(--accent-color)] focus-within:shadow-[0_0_15px_rgba(var(--accent-color-rgb),0.15)]">
+                        <div className="flex items-end gap-2.5 px-2 py-1.5">
                                 <textarea
                                   ref={inputRef}
                                   value={input}
@@ -5319,15 +5319,14 @@ export default function ChatView() {
                                               }
                                             }}
                                             disabled={!input.trim() || isStreaming}
-                                            className={`flex h-10 items-center justify-center rounded-2xl px-3.5 text-[12px] font-semibold tracking-[0.01em] transition-all duration-200 hover:-translate-y-px hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none ${
+                                            className={`flex h-8 items-center justify-center rounded-lg px-2.5 text-[11px] font-medium tracking-[0.01em] transition-colors duration-150 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
                                               isActive
-                                                ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)] shadow-sm ring-1 ring-[var(--accent-color)]/30"
+                                                ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
                                                 : isDefault
-                                                  ? "bg-white/[0.03] ring-1 ring-[var(--accent-color)]/25 text-[var(--text-primary)] hover:bg-white/[0.08]"
-                                                  : "bg-white/[0.03] ring-1 ring-white/5 text-[var(--text-secondary)] hover:bg-white/[0.08] hover:text-[var(--text-primary)]"
+                                                  ? "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                                                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                                             }`}
                                           >
-                                            {isDefault && <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-[var(--accent-color)]" aria-hidden="true" />}
                                             {tag}
                                           </button>
                                         </Tooltip>
