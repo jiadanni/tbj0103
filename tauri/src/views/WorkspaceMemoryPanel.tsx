@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Brain, Pin, PinOff, Plus, RefreshCw, Trash2, ToggleLeft, ToggleRight, ChevronDown, ChevronRight } from "lucide-react";
+import { Pin, PinOff, Plus, RefreshCw, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { api, type Memory, type MemorySummary } from "../lib/api";
 import { CompactMenuSelect } from "../components/CompactMenuSelect";
 import { Tooltip } from "../components/Tooltip";
@@ -32,7 +32,6 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange 
   const [newContent, setNewContent] = useState("");
   const [newType, setNewType] = useState<Memory["memory_type"]>("fact");
   const [submitting, setSubmitting] = useState(false);
-  const [expanded, setExpanded] = useState(true);
 
   const loadMemories = useCallback(async () => {
     if (!workspaceId) { return; }
@@ -107,17 +106,7 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange 
 
   return (
     <div className="space-y-4">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-      >
-        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <Brain size={12} /> Workspace Memory
-        <span className="ml-1 text-[var(--text-muted)]">({memories.length})</span>
-      </button>
-
-      {expanded && (
-        <div className="space-y-4 pl-0">
+      <div className="space-y-4 pl-0">
           {/* Summary */}
           <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4">
             <div className="mb-2 flex items-center justify-between">
@@ -238,7 +227,6 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange 
             </p>
           )}
         </div>
-      )}
     </div>
   );
 }
