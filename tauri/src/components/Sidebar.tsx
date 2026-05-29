@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, memo } from "react";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -22,7 +22,7 @@ interface SidebarProps {
   presentation?: "sidebar" | "icon-bar";
 }
 
-export default function Sidebar({
+const Sidebar = memo(function Sidebar({
   onOpenCommandPalette,
   showPreferencesButton = false,
   presentation = "sidebar",
@@ -364,4 +364,6 @@ export default function Sidebar({
       )}
     </div>
   );
-}
+});
+
+export default Sidebar;
