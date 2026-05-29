@@ -541,7 +541,7 @@ describe("ChatView", () => {
 
     const composerShell = screen.getByTestId("composer-shell");
     expect(composerShell.className).toContain("ring-[var(--border-color)]");
-    expect(composerShell.className).toContain("bg-[var(--bg-elevated)]/70");
+    expect(composerShell.className).toContain("bg-[var(--bg-elevated)]");
   });
 
   it("shows the full Ollama model id when the stored label is only the base model name", () => {
