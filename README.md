@@ -125,7 +125,7 @@ ollama pull nomic-embed-text
 
 **Additional prerequisites:**
 - [Rust](https://rustup.rs) toolchain (`cargo`)
-- Node.js 20+
+- Node.js 22 (pinned via `.nvmrc`)
 - macOS: Xcode command-line tools
 
 ```bash

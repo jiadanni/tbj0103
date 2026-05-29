@@ -42,7 +42,7 @@ Two parallel implementations exist: a Swift/macOS app and a Tauri cross-platform
 │                           │                                  │
 │  ┌───────────┐            │  ┌──────────────────────────┐   │
 │  │  Views    │  invoke()  │  │  Commands (thin layer)   │   │
-│  │  (22 pages)◄──────────►│  │  (one file per domain)   │   │
+│  │  (25+ pages)◄─────────►│  │  (one file per domain)   │   │
 │  └───────────┘            │  └────────────┬─────────────┘   │
 │  ┌───────────┐            │               │                  │
 │  │  Stores   │            │  ┌────────────▼─────────────┐   │
