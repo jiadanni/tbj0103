@@ -194,8 +194,9 @@ describe("setModelLabel", () => {
 // ─── persistence ─────────────────────────────────────────────────────────────
 
 describe("zustand/persist", () => {
-  it("writes to localStorage['aetherium-settings']", () => {
+  it("writes to localStorage['aetherium-settings']", async () => {
     useSettingsStore.getState().setFontSize(20);
+    await new Promise((r) => setTimeout(r, 250));
     const raw = localStorage.getItem("aetherium-settings");
     expect(raw).not.toBeNull();
     const parsed = JSON.parse(raw || "{}");

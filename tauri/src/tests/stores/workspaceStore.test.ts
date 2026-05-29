@@ -452,7 +452,7 @@ describe("split layout", () => {
     expect(state.panes.secondary.chatSessionId).toBe("chat-2");
   });
 
-  it("persists split sizes and mode", () => {
+  it("persists split sizes and mode", async () => {
     useWorkspaceStore.setState({
       workspaces: [makeWorkspace({ id: "ws-1" }), makeWorkspace({ id: "ws-2" })],
       activeWorkspaceId: "ws-1",
@@ -460,6 +460,7 @@ describe("split layout", () => {
     useWorkspaceStore.getState().setSplitSizes([40, 60]);
     useWorkspaceStore.getState().enterSplitMode();
 
+    await new Promise((r) => setTimeout(r, 250));
     const raw = localStorage.getItem("workspaceSplitLayout");
     expect(raw).not.toBeNull();
     expect(raw).toContain("\"splitMode\":true");
@@ -541,8 +542,9 @@ describe("integration edge cases", () => {
 });
 
   describe("persistence and UI state restoration", () => {
-    it("should write to localStorage on split pane size changes", () => {
+    it("should write to localStorage on split pane size changes", async () => {
       useWorkspaceStore.getState().setSplitSizes([30, 70]);
+      await new Promise((r) => setTimeout(r, 250));
       const raw = localStorage.getItem("workspaceSplitLayout");
       expect(raw).not.toBeNull();
       expect(raw).toContain('"splitSizes":[30,70]');

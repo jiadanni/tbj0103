@@ -13,6 +13,9 @@ import HoverDefinitionSurface from "./HoverDefinitionSurface";
 import { useScopedWorkspace } from "../lib/workspacePane";
 import { useSettingsStore } from "../stores/settingsStore";
 
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REHYPE_PLUGINS = [rehypeKatex];
+
 type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
 
 function splitAssistantMessage(content: string) {
@@ -243,7 +246,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                     {thoughtExpanded && (
                       <div className="border-t border-[var(--border-color)] px-3 py-2.5">
                         <div className="prose prose-sm prose-invert min-w-0 max-w-none text-[var(--text-secondary)]">
-                          <ReactMarkdown skipHtml remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>{parts.thought}</ReactMarkdown>
+                          <ReactMarkdown skipHtml remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={markdownComponents}>{parts.thought}</ReactMarkdown>
                         </div>
                       </div>
                     )}
@@ -253,7 +256,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                   workspaceId={activeWorkspaceId}
                   className="prose prose-sm prose-invert min-w-0 max-w-none"
                 >
-                  <ReactMarkdown skipHtml remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>
+                  <ReactMarkdown skipHtml remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={markdownComponents}>
                     {parts?.answer || displayMsg.content}
                   </ReactMarkdown>
                 </HoverDefinitionSurface>

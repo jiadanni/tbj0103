@@ -111,13 +111,24 @@ function readStoredSplitLayout(): Pick<WorkspaceStore, "splitMode" | "splitSizes
   }
 }
 
+let pendingSplitLayout: Pick<WorkspaceStore, "splitMode" | "splitSizes" | "activePaneId" | "panes"> | null = null;
+let splitLayoutTimer: ReturnType<typeof setTimeout> | null = null;
+
 function persistSplitLayout(state: Pick<WorkspaceStore, "splitMode" | "splitSizes" | "activePaneId" | "panes">) {
-  window.localStorage.setItem(SPLIT_LAYOUT_KEY, JSON.stringify({
-    splitMode: state.splitMode,
-    splitSizes: state.splitSizes,
-    activePaneId: state.activePaneId,
-    panes: state.panes,
-  }));
+  pendingSplitLayout = state;
+  if (splitLayoutTimer !== null) { return; }
+  splitLayoutTimer = setTimeout(() => {
+    splitLayoutTimer = null;
+    const snapshot = pendingSplitLayout;
+    pendingSplitLayout = null;
+    if (!snapshot) { return; }
+    window.localStorage.setItem(SPLIT_LAYOUT_KEY, JSON.stringify({
+      splitMode: snapshot.splitMode,
+      splitSizes: snapshot.splitSizes,
+      activePaneId: snapshot.activePaneId,
+      panes: snapshot.panes,
+    }));
+  }, 200);
 }
 
 function normalizeNavigationPresentation(
