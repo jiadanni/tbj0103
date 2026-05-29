@@ -87,7 +87,6 @@ tbj0103/
 │       └── schema.sql          # SQLite schema (source of truth)
 ├── docs/                       # Project documentation
 │   ├── ARCHITECTURE.md         # Deep dive into system design
-│   ├── TAURI_PORT_ANALYSIS.md  # Analysis of the Tauri port
 │   ├── todo.md                 # Active roadmap — read before starting work
 │   └── bugs.md                 # Known issues — check before touching affected areas
 ├── README.md
