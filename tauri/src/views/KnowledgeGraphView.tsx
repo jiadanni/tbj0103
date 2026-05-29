@@ -952,7 +952,7 @@ export default function KnowledgeGraphView() {
                       nodes={nodes}
                       links={links}
                       selectedConceptId={selectedConcept?.id ?? null}
-                      onSelectConcept={(c) => setSelectedConcept(c)}
+                      onSelectConcept={setSelectedConcept}
                       searchFilter={graphSearch}
                     />
                   )}

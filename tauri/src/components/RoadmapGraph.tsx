@@ -3,7 +3,7 @@
  * Renders chapters → sections → concepts as a top-down tree of labeled boxes
  * connected by dashed/curved paths. Supports zoom/pan and node selection.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { ConceptNode, ConceptLink } from "../lib/api";
 
@@ -100,7 +100,7 @@ interface RoadmapGraphProps {
   searchFilter?: string;
 }
 
-export default function RoadmapGraph({
+function RoadmapGraphInner({
   nodes,
   links,
   selectedConceptId,
@@ -367,3 +367,6 @@ export default function RoadmapGraph({
     </div>
   );
 }
+
+const RoadmapGraph = memo(RoadmapGraphInner);
+export default RoadmapGraph;

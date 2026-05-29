@@ -1,6 +1,29 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { normalizeTheme, type Theme } from "../lib/theme";
+
+function createDebouncedLocalStorage(delayMs: number): StateStorage {
+  const pending = new Map<string, string>();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const flush = () => {
+    timer = null;
+    for (const [key, value] of pending) {
+      window.localStorage.setItem(key, value);
+    }
+    pending.clear();
+  };
+  return {
+    getItem: (name) => window.localStorage.getItem(name),
+    setItem: (name, value) => {
+      pending.set(name, value);
+      if (timer === null) { timer = setTimeout(flush, delayMs); }
+    },
+    removeItem: (name) => {
+      pending.delete(name);
+      window.localStorage.removeItem(name);
+    },
+  };
+}
 
 export type DualModelExecutionMode = "serial" | "parallel";
 export type SettingsNavigationLayout = "top-tabs" | "side-tabs";
@@ -240,6 +263,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: "aetherium-settings",
+      storage: createJSONStorage(() => createDebouncedLocalStorage(200)),
       // modelRefreshCounter is a transient signal — never persist it.
       partialize: (state) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars

@@ -24,6 +24,7 @@ export function useAiModelSync(
     if (isLoadingollama || syncingRef.current || ollamaModels.length === 0) {
       return;
     }
+    let cancelled = false;
 
     const managedOllamaIds = new Set(
       aiModels
@@ -66,6 +67,7 @@ export function useAiModelSync(
       })
     )
       .then((results) => {
+        if (cancelled) { return; }
         if (results.some((result) => result.status === "fulfilled")) {
           onModelsSynced();
           incrementModelRefreshCounter();
@@ -74,6 +76,8 @@ export function useAiModelSync(
       .finally(() => {
         syncingRef.current = false;
       });
+
+    return () => { cancelled = true; };
   }, [
     aiModels,
     ollamaModels,

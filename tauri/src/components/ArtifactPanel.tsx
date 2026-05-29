@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useArtifactStore } from '../stores/artifactStore';
 import { api } from '../lib/api';
@@ -15,7 +15,7 @@ const VERSION_DATETIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
 });
 const FOOTER_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, { dateStyle: 'short' });
 
-export default function ArtifactPanel() {
+function ArtifactPanelInner() {
   const { 
     isPanelOpen, setPanelOpen, activeArtifact,
     deleteArtifact, togglePin, loadArtifact
@@ -158,3 +158,6 @@ export default function ArtifactPanel() {
     </div>
   );
 }
+
+const ArtifactPanel = memo(ArtifactPanelInner);
+export default ArtifactPanel;
