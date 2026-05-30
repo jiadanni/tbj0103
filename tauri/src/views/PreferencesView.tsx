@@ -479,35 +479,62 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
   const fontSize = overrides.fontSize !== undefined && overrides.fontSize !== null ? overrides.fontSize : dbSettings.font_size || 14;
   const scaledFontSize = Math.max(9, Math.min(20, Math.round(fontSize * 0.9)));
 
-  const mockWorkspaces = useMemo(() => {
-    const list = [
-      { id: "ws-1", name: "Aetherium Docs", created: 100, updated: 300, lastMsg: 500 },
-      { id: "ws-2", name: "Deep Learning", created: 200, updated: 100, lastMsg: 200 },
-      { id: "ws-3", name: "Personal Notes", created: 300, updated: 200, lastMsg: 400 },
-    ];
-    return [...list].sort((a, b) => {
-      switch (workspaceSortOrder) {
-        case "name-asc":
-          return a.name.localeCompare(b.name);
-        case "name-desc":
-          return b.name.localeCompare(a.name);
-        case "created-newest":
-          return b.created - a.created;
-        case "created-oldest":
-          return a.created - b.created;
-        case "updated-newest":
-          return b.updated - a.updated;
-        case "updated-oldest":
-          return a.updated - b.updated;
-        case "last-message-newest":
-          return b.lastMsg - a.lastMsg;
-        default:
-          return 0;
-      }
-    });
-  }, [workspaceSortOrder]);
+  const rawWorkspaces = useWorkspaceStore((s) => s.workspaces);
+  const storeWorkspaces = useMemo(() => rawWorkspaces || [], [rawWorkspaces]);
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId) || null;
 
-  const activeWorkspaceName = mockWorkspaces[0]?.name || "Workspace A";
+  const activeWorkspaceChildren = useMemo(() => {
+    if (storeWorkspaces.length === 0) {
+      return [];
+    }
+    return storeWorkspaces.filter((w) => w.parent_workspace_id === activeWorkspaceId);
+  }, [storeWorkspaces, activeWorkspaceId]);
+
+  const parentWorkspaces = useMemo(() => {
+    let list = storeWorkspaces.filter((w) => !w.parent_workspace_id).map((w) => ({
+      id: w.id,
+      name: w.name,
+      created_at: w.created_at,
+      updated_at: w.updated_at,
+      index: 0
+    }));
+
+    if (list.length === 0) {
+      list = [
+        { id: "ws-1", name: "React", created_at: "2026-01-01", updated_at: "2026-05-30", index: 1 },
+        { id: "ws-2", name: "Frontend", created_at: "2026-01-02", updated_at: "2026-05-29", index: 2 },
+        { id: "ws-3", name: "Linux", created_at: "2026-01-03", updated_at: "2026-05-28", index: 3 },
+        { id: "ws-4", name: "Python", created_at: "2026-01-04", updated_at: "2026-05-27", index: 4 },
+        { id: "ws-5", name: "Git", created_at: "2026-01-05", updated_at: "2026-05-26", index: 5 },
+        { id: "ws-6", name: "Databases", created_at: "2026-01-06", updated_at: "2026-05-25", index: 6 },
+        { id: "ws-7", name: "C", created_at: "2026-01-07", updated_at: "2026-05-24", index: 7 },
+        { id: "ws-8", name: "Binary", created_at: "2026-01-08", updated_at: "2026-05-23", index: 8 },
+        { id: "ws-9", name: "Rust", created_at: "2026-01-09", updated_at: "2026-05-22", index: 9 },
+      ];
+    }
+
+    if (workspaceSortOrder === "name-asc") {
+      list.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (workspaceSortOrder === "name-desc") {
+      list.sort((a, b) => b.name.localeCompare(a.name));
+    } else if (workspaceSortOrder === "created-newest") {
+      list.sort((a, b) => (a.index && b.index) ? b.index - a.index : new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    } else if (workspaceSortOrder === "created-oldest") {
+      list.sort((a, b) => (a.index && b.index) ? a.index - b.index : new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+    } else if (workspaceSortOrder === "updated-newest" || workspaceSortOrder === "last-message-newest") {
+      list.sort((a, b) => (a.index && b.index) ? a.index - b.index : new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime());
+    } else if (workspaceSortOrder === "updated-oldest") {
+      list.sort((a, b) => (a.index && b.index) ? b.index - a.index : new Date(a.updated_at || 0).getTime() - new Date(b.updated_at || 0).getTime());
+    }
+
+    return list.map((w) => ({ id: w.id, name: w.name }));
+  }, [storeWorkspaces, workspaceSortOrder]);
+
+  const activeWorkspace = useMemo(() => {
+    return storeWorkspaces.find((w) => w.id === activeWorkspaceId);
+  }, [storeWorkspaces, activeWorkspaceId]);
+
+  const activeWorkspaceName = activeWorkspace?.name || parentWorkspaces[0]?.name || "React";
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-full">
@@ -519,7 +546,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
       {/* Simulated Desktop Container */}
       <div className="w-full flex flex-col items-center justify-center bg-[var(--bg-secondary)]/35 rounded-2xl p-4 border border-[var(--border-color)]/60 shadow-inner">
         {/* Mock macOS Menubar */}
-        <div className="w-full h-6 bg-[var(--bg-sidebar)]/80 text-[var(--text-muted)] text-[10px] px-3 rounded-t-xl flex justify-between items-center select-none border-t border-x border-[var(--border-color)]">
+        <div className="w-full h-6 bg-[var(--bg-sidebar)]/80 text-[var(--text-muted)] text-[0.7em] px-3 rounded-t-xl flex justify-between items-center select-none border-t border-x border-[var(--border-color)]">
           <div className="flex gap-2.5 items-center">
             <span className="font-semibold text-[var(--text-primary)]"></span>
             <span className="font-medium text-[var(--text-secondary)]">Aetherium</span>
@@ -550,7 +577,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 
         {/* Mock App Window */}
         <div
-          className={`${themeClass} relative flex flex-col w-full h-[360px] 2xl:h-[420px] 3xl:h-[500px] rounded-b-xl border border-[var(--border-color)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden select-none`}
+          className={`${themeClass} relative flex flex-col w-full aspect-[16/10.5] rounded-b-xl border border-[var(--border-color)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden select-none`}
           style={{
             "--accent-color": accentColor,
             "--accent-color-rgb": hexToRgb(accentColor),
@@ -558,30 +585,36 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
           } as React.CSSProperties}
         >
           {/* Simulated Window Titlebar */}
-          <div className="h-10 flex items-center justify-between px-3 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] shrink-0 select-none">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#FF5F56] opacity-80" />
-              <span className="w-2.5 h-2.5 rounded-full bg-[#FFBD2E] opacity-80" />
-              <span className="w-2.5 h-2.5 rounded-full bg-[#27C93F] opacity-80" />
-            </div>
+          <div className="h-10 flex items-center justify-between px-3 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] shrink-0 select-none relative">
+            {isMac ? (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#FF5F56] opacity-80" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#FFBD2E] opacity-80" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#27C93F] opacity-80" />
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="w-3.5 h-3.5 rounded bg-[var(--accent-color)] text-white flex items-center justify-center font-extrabold text-[0.55em]">A</span>
+              </div>
+            )}
 
-            <div className="flex items-center gap-2 max-w-[65%] truncate h-full">
+            <div className="flex items-center gap-2 max-w-[60%] truncate h-full">
               <div className="flex items-center gap-1 opacity-70">
                 <ChevronLeft size={12} className="text-[var(--text-secondary)]" />
                 <ChevronRight size={12} className="text-[var(--text-muted)]" />
               </div>
 
               {workspaceNavigation === "top-dropdown" ? (
-                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[9px] text-[var(--text-primary)] font-medium">
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[0.65em] text-[var(--text-primary)] font-medium">
                   <span>{activeWorkspaceName}</span>
                   <ChevronDown size={8} className="text-[var(--text-muted)]" />
                 </div>
               ) : workspaceNavigation === "top-tabs" ? (
                 <div className="flex gap-1 items-end relative -bottom-[1px] h-full" data-no-drag>
-                  {mockWorkspaces.map((ws, index) => (
+                  {parentWorkspaces.map((ws, index) => (
                     <div
                       key={ws.id}
-                      className={`text-[8.5px] px-2 py-0.5 rounded-t-md border border-b-0 border-[var(--border-color)] select-none whitespace-nowrap cursor-pointer transition-all ${
+                      className={`text-[0.65em] px-2 py-0.5 rounded-t-md border border-b-0 border-[var(--border-color)] select-none whitespace-nowrap cursor-pointer transition-all ${
                         index === 0
                           ? "font-semibold text-[var(--accent-color)] bg-[var(--bg-primary)] border-t-2 border-t-[var(--accent-color)] shadow-sm"
                           : "text-[var(--text-muted)] bg-[var(--bg-sidebar)]/50 hover:bg-[var(--bg-hover)]/40"
@@ -596,11 +629,11 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                   </button>
                 </div>
               ) : (
-                <span className="text-[10px] font-semibold text-[var(--text-primary)] truncate">{activeWorkspaceName}</span>
+                <span className="text-[0.7em] font-semibold text-[var(--text-primary)] truncate">{activeWorkspaceName}</span>
               )}
 
               {sectionNavigation === "top-dropdown" && (
-                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[9px] text-[var(--text-secondary)] font-medium">
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[0.65em] text-[var(--text-secondary)] font-medium">
                   <span>Chat</span>
                   <ChevronDown size={8} className="text-[var(--text-muted)]" />
                 </div>
@@ -621,25 +654,30 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               <div className="w-5 h-5 rounded flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] border border-[var(--border-color)]">
                 <Columns2 size={10} />
               </div>
+              {!isMac && (
+                <div className="flex items-center gap-2 ml-1 text-[var(--text-secondary)] select-none">
+                  <span className="w-3 h-3 flex items-center justify-center hover:bg-[var(--bg-hover)] cursor-pointer text-[0.7em]">—</span>
+                  <span className="w-3 h-3 flex items-center justify-center hover:bg-[var(--bg-hover)] cursor-pointer text-[0.7em]">☐</span>
+                  <span className="w-3 h-3 flex items-center justify-center hover:bg-red-500 hover:text-white cursor-pointer text-[0.7em]">✕</span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Row 2: Sub-workspace tabs for the active parent workspace (child workspaces) */}
-          {(workspaceNavigation === "top-tabs" || workspaceNavigation === "top-dropdown") && (
+          {(workspaceNavigation === "top-tabs" || workspaceNavigation === "top-dropdown") && activeWorkspaceChildren.length > 0 && (
             <div className="h-7 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/90 px-3 flex items-center justify-between shrink-0 select-none">
               <div className="flex items-center gap-1.5 h-full">
                 {/* Pinned overview indicator */}
                 <div className="flex h-[22px] w-5 items-center justify-center self-end rounded-t border border-b-0 border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] cursor-pointer">
                   <svg width="4" height="4" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
                 </div>
-                {[
-                  "React", "Frontend", "Linux", "Python", "Git", "Databases", "C", "Binary", "Rust"
-                ].map((name) => {
-                  const isActive = name === "Frontend";
+                {activeWorkspaceChildren.map((child, index) => {
+                  const isActive = index === 0;
                   return (
                     <div
-                      key={name}
-                      className={`relative flex h-[22px] items-center self-end rounded-t border border-b-0 px-2 text-[8px] font-medium whitespace-nowrap cursor-pointer transition-all select-none ${
+                      key={child.id}
+                      className={`relative flex h-[22px] items-center self-end rounded-t border border-b-0 px-2 text-[0.6em] font-medium whitespace-nowrap cursor-pointer transition-all select-none ${
                         isActive
                           ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] font-semibold"
                           : "border-transparent text-[var(--text-secondary)] opacity-60 hover:opacity-100 hover:bg-[var(--bg-hover)]"
@@ -648,7 +686,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                       {isActive && (
                         <span className="absolute inset-x-1.5 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
                       )}
-                      {name}
+                      {child.name}
                     </div>
                   );
                 })}
@@ -661,20 +699,20 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 
           {!showLeftSidebar && sectionNavigation === "top-tabs" && (
             <div className="h-8 flex items-center gap-2 px-3 bg-[var(--bg-sidebar)] border-b border-[var(--border-color)] shrink-0">
-              <span className="text-[9px] font-semibold text-[var(--accent-color)] border-b border-[var(--accent-color)] px-1 py-0.5">Chat</span>
-              <span className="text-[9px] font-semibold text-[var(--text-muted)] px-1 py-0.5">Notes</span>
-              <span className="text-[9px] font-semibold text-[var(--text-muted)] px-1 py-0.5">Knowledge</span>
+              <span className="text-[0.65em] font-semibold text-[var(--accent-color)] border-b border-[var(--accent-color)] px-1 py-0.5">Chat</span>
+              <span className="text-[0.65em] font-semibold text-[var(--text-muted)] px-1 py-0.5">Notes</span>
+              <span className="text-[0.65em] font-semibold text-[var(--text-muted)] px-1 py-0.5">Knowledge</span>
             </div>
           )}
 
           <div className="flex flex-1 min-h-0 overflow-hidden">
             {workspaceNavigation === "sidebar" && (
               <div className="w-[85px] shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] p-1 flex flex-col gap-0.5" data-testid="single-pane-workspace-sidebar">
-                <div className="text-[7px] uppercase tracking-wider text-[var(--text-muted)] font-bold px-1.5 py-0.5 opacity-60 mb-0.5">Workspaces</div>
-                {mockWorkspaces.map((ws, index) => (
+                <div className="text-[0.55em] uppercase tracking-wider text-[var(--text-muted)] font-bold px-1.5 py-0.5 opacity-60 mb-0.5">Workspaces</div>
+                {parentWorkspaces.map((ws, index) => (
                   <div
                     key={ws.id}
-                    className={`px-1.5 py-0.5 rounded text-[8px] truncate leading-tight select-none ${
+                    className={`px-1.5 py-0.5 rounded text-[0.6em] truncate leading-tight select-none ${
                       index === 0
                         ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold border-l-2 border-[var(--accent-color)]"
                         : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/40"
@@ -701,27 +739,27 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                     return (
                       <div
                         key={item.label}
-                        className={`flex flex-col items-center justify-center w-full py-1 rounded-lg text-[7px] transition-colors select-none ${
+                        className={`flex flex-col items-center justify-center w-full py-1 rounded-lg text-[0.55em] transition-colors select-none ${
                           item.active
                             ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold"
                             : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/50"
                         }`}
                       >
                         <Icon size={12} strokeWidth={1.5} className="mb-0.5" />
-                        <span className="text-[6.5px] scale-[0.9] origin-center truncate w-full text-center">{item.label}</span>
+                        <span className="scale-[0.9] origin-center truncate w-full text-center">{item.label}</span>
                       </div>
                     );
                   })}
                 </div>
                 <div className="flex flex-col items-center gap-1 w-full px-1 pt-1.5 border-t border-[var(--border-color)]/60">
-                  <div className="text-[var(--text-secondary)] text-[7px] flex items-center justify-center gap-0.5 hover:bg-[var(--bg-hover)] w-full py-0.5 rounded cursor-pointer scale-[0.85]">
+                  <div className="text-[var(--text-secondary)] text-[0.5em] flex items-center justify-center gap-0.5 hover:bg-[var(--bg-hover)] w-full py-0.5 rounded cursor-pointer scale-[0.85]">
                     <ChevronLeft size={8} />
                     <span>Collapse</span>
                   </div>
                   <div className="w-5 h-5 rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-primary)] cursor-pointer">
                     <SettingsIcon size={10} strokeWidth={1.5} />
                   </div>
-                  <div className="w-6 h-6 rounded-lg bg-[var(--accent-color)] text-white text-[9px] font-bold flex items-center justify-center shadow-sm select-none cursor-pointer mt-0.5">
+                  <div className="w-6 h-6 rounded-lg bg-[var(--accent-color)] text-white text-[0.65em] font-bold flex items-center justify-center shadow-sm select-none cursor-pointer mt-0.5">
                     A
                   </div>
                 </div>
@@ -731,13 +769,13 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
             {/* Chat Session List Pane (Sub-sidebar) */}
             <div className="w-[105px] shrink-0 bg-[var(--bg-sidebar)]/40 border-r border-[var(--border-color)] p-1.5 flex flex-col gap-1.5 select-none" data-testid="chat-sessions-list">
               <div className="flex items-center justify-between px-1">
-                <span className="text-[8px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Chats</span>
-                <div className="flex gap-0.5 text-[8px] text-[var(--text-muted)]">
+                <span className="text-[0.6em] font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Chats</span>
+                <div className="flex gap-0.5 text-[0.6em] text-[var(--text-muted)]">
                   <ArrowUpDown size={8} />
                   <Pencil size={8} />
                 </div>
               </div>
-              <div className="flex items-center gap-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)]/60 px-1 py-0.5 text-[8px] text-[var(--text-muted)]">
+              <div className="flex items-center gap-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)]/60 px-1 py-0.5 text-[0.6em] text-[var(--text-muted)]">
                 <Search size={8} className="shrink-0" />
                 <span className="truncate">Search...</span>
               </div>
@@ -751,7 +789,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                 ].map((s, idx) => (
                   <div
                     key={idx}
-                    className={`px-1.5 py-1 rounded text-[8px] truncate leading-tight select-none cursor-pointer ${
+                    className={`px-1.5 py-1 rounded text-[0.6em] truncate leading-tight select-none cursor-pointer ${
                       s.active
                         ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold border-l-2 border-[var(--accent-color)]"
                         : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/30"
@@ -761,7 +799,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                   </div>
                 ))}
               </div>
-              <div className="text-[7.5px] text-[var(--text-muted)] mt-auto pt-1 border-t border-[var(--border-color)]/40">
+              <div className="text-[0.55em] text-[var(--text-muted)] mt-auto pt-1 border-t border-[var(--border-color)]/40">
                 5 sessions
               </div>
             </div>
@@ -770,18 +808,18 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               {/* Chat View Pane Header */}
               <div className="h-8.5 px-3 border-b border-[var(--border-color)]/60 bg-[var(--bg-primary)] flex items-center justify-between shrink-0 select-none">
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[6.5px] font-bold text-[var(--text-muted)] uppercase tracking-wider leading-none mb-0.5">FRONTEND</span>
-                  <span className="text-[9px] font-semibold text-[var(--text-primary)] truncate">SPAs: Advantages and Challenges</span>
+                  <span className="text-[0.5em] font-bold text-[var(--text-muted)] uppercase tracking-wider leading-none mb-0.5">FRONTEND</span>
+                  <span className="text-[0.7em] font-semibold text-[var(--text-primary)] truncate">SPAs: Advantages and Challenges</span>
                 </div>
-                <div className="flex items-center gap-1 text-[8.5px] text-[var(--text-secondary)] font-medium">
+                <div className="flex items-center gap-1 text-[0.65em] text-[var(--text-secondary)] font-medium">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                   <span>7b | 8.2s</span>
                 </div>
               </div>
 
               {/* Related link pills list below header */}
-              <div className="h-6.5 px-3 bg-[var(--bg-elevated)]/25 border-b border-[var(--border-color)]/30 flex items-center gap-2 shrink-0 overflow-x-hidden text-[7.5px] select-none">
-                <span className="font-bold text-[var(--text-muted)] text-[7px] uppercase tracking-wider shrink-0">RELATED</span>
+              <div className="h-6.5 px-3 bg-[var(--bg-elevated)]/25 border-b border-[var(--border-color)]/30 flex items-center gap-2 shrink-0 overflow-x-hidden text-[0.55em] select-none">
+                <span className="font-bold text-[var(--text-muted)] text-[0.5em] uppercase tracking-wider shrink-0">RELATED</span>
                 {[
                   "Inner HTML discussion", "Flexbox CSS Basics", "React getting started"
                 ].map((lnk) => (
@@ -796,12 +834,12 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                   chatMessageStyle === "minimal" ? "items-start" : "items-end"
                 }`}>
                   {chatMessageStyle === "minimal" && (
-                    <span className="text-[8px] font-semibold text-[var(--text-muted)] tracking-wide">
+                    <span className="text-[0.55em] font-semibold text-[var(--text-muted)] tracking-wide">
                       {dbSettings.user_chat_label || "You"}
                     </span>
                   )}
                   <div
-                    className={`text-[11px] break-words ${
+                    className={`text-[0.8em] break-words ${
                       chatMessageStyle === "minimal"
                         ? "w-full py-0.5 text-[var(--text-primary)]"
                         : chatMessageStyle === "flat"
@@ -815,12 +853,12 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 
                 <div className="flex flex-col gap-0.5 items-start">
                   {chatMessageStyle === "minimal" && (
-                    <span className="text-[8px] font-semibold text-[var(--text-muted)] tracking-wide">
+                    <span className="text-[0.55em] font-semibold text-[var(--text-muted)] tracking-wide">
                       {dbSettings.assistant_chat_label || "Assistant"}
                     </span>
                   )}
                   <div
-                    className={`text-[11px] break-words relative ${
+                    className={`text-[0.8em] break-words relative ${
                       chatMessageStyle === "minimal"
                         ? "w-full py-0.5 text-[var(--text-primary)]"
                         : chatMessageStyle === "flat"
@@ -845,7 +883,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                     )}
 
                     {hoveredTerm && dbSettings.hover_definition_scan_enabled && (
-                      <div className="absolute bottom-full left-4 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-lg p-2 shadow-xl text-[9px] max-w-[200px] z-50 mb-1.5 pointer-events-none">
+                      <div className="absolute bottom-full left-4 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-lg p-2 shadow-xl text-[0.65em] max-w-[200px] z-50 mb-1.5 pointer-events-none">
                         <div className="font-semibold text-[var(--accent-color)]">Glossary: SPAs</div>
                         <p className="text-[var(--text-secondary)] mt-0.5 leading-snug">
                           Single-Page Applications. Loads assets once and updates dynamically via client-side routing.
@@ -855,7 +893,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                   </div>
 
                   {showGenInfo && (
-                    <div className="text-[8px] text-[var(--text-muted)] mt-0.5 flex flex-wrap items-center gap-1 select-none pl-0.5">
+                    <div className="text-[0.55em] text-[var(--text-muted)] mt-0.5 flex flex-wrap items-center gap-1 select-none pl-0.5">
                       {showGenInfoModel && <span>gemma2-9b</span>}
                       {showGenInfoModel && (showGenInfoTokenCount || showGenInfoDuration || showGenInfoSpeed) && <span>•</span>}
                       {showGenInfoTokenCount && <span>120 tok</span>}
@@ -872,16 +910,16 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                 <div className="flex items-center justify-between gap-1 overflow-x-hidden">
                   <div className="flex gap-1 overflow-x-hidden relative items-center py-0.5 select-none">
                     {showComposerWorkspaceSuggestions && (
-                      <span className="text-[7.5px] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
+                      <span className="text-[0.55em] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
                         {"What's the best frontend framework?"}
                       </span>
                     )}
                     {showComposerChatFollowUps && (
                       <>
-                        <span className="text-[7.5px] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
+                        <span className="text-[0.55em] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
                           How do I create a responsive layout?
                         </span>
-                        <span className="text-[7.5px] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap flex items-center gap-0.5 truncate max-w-[120px]">
+                        <span className="text-[0.55em] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap flex items-center gap-0.5 truncate max-w-[120px]">
                           What are some popular CSS frameworks... <ChevronDown size={8} />
                         </span>
                       </>
@@ -889,7 +927,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                   </div>
 
                   {dbSettings.memory_enabled && (
-                    <div className="flex items-center gap-0.5 text-[8px] font-medium text-[var(--accent-color)] shrink-0 bg-[var(--accent-color)]/10 px-1 rounded">
+                    <div className="flex items-center gap-0.5 text-[0.55em] font-medium text-[var(--accent-color)] shrink-0 bg-[var(--accent-color)]/10 px-1 rounded">
                       <Brain size={8} />
                       <span>Memory</span>
                     </div>
@@ -902,21 +940,21 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                     <Search size={10} className="hover:text-[var(--text-secondary)] cursor-pointer" />
                     <Pencil size={10} className="hover:text-[var(--text-secondary)] cursor-pointer" />
                   </div>
-                  <div className="flex-1 text-[9.5px] text-[var(--text-muted)] font-normal truncate">
+                  <div className="flex-1 text-[0.7em] text-[var(--text-muted)] font-normal truncate">
                     Continue this thread...
                   </div>
                   {composerMode === "family" ? (
                     <div className="flex gap-1 items-center shrink-0 pr-1">
-                      <span className="text-[7.5px] text-[var(--text-muted)]">Family</span>
+                      <span className="text-[0.55em] text-[var(--text-muted)]">Family</span>
                       <button
                         type="button"
-                        className="h-4.5 px-1.5 rounded bg-[var(--accent-color)] text-white flex items-center justify-center shadow-sm text-[8px] font-bold"
+                        className="h-4.5 px-1.5 rounded bg-[var(--accent-color)] text-white flex items-center justify-center shadow-sm text-[0.55em] font-bold"
                       >
                         7b
                       </button>
                       <button
                         type="button"
-                        className="h-4.5 px-1.5 rounded bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-color)] flex items-center justify-center shadow-sm text-[8px] font-bold"
+                        className="h-4.5 px-1.5 rounded bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-color)] flex items-center justify-center shadow-sm text-[0.55em] font-bold"
                       >
                         14b
                       </button>
@@ -935,7 +973,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
           </div>
 
           {showStatusBar && (
-            <div className="h-5 px-2 border-t border-[var(--border-color)] bg-[var(--bg-sidebar)] flex items-center justify-between text-[8px] text-[var(--text-muted)] shrink-0 select-none">
+            <div className="h-5 px-2 border-t border-[var(--border-color)] bg-[var(--bg-sidebar)] flex items-center justify-between text-[0.55em] text-[var(--text-muted)] shrink-0 select-none">
               <div className="flex items-center gap-1">
                 <span>CPU: 20%</span>
                 <span>•</span>
@@ -2924,58 +2962,7 @@ export default function PreferencesView() {
 
                 {/* ── Appearance ── */}
                 {activeTab === "appearance" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                    {/* Theme & Accent Card */}
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Theme & Accent</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
-                          Personalize the color scheme and main highlights of the interface.
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Theme</label>
-                        <div className="flex flex-wrap gap-2">
-                          {THEMES.map((t) => (
-                            <button
-                              key={t}
-                              onClick={() => updateSettings({ theme: t, accent_color: THEME_DEFAULT_ACCENTS[t] })}
-                              onMouseEnter={() => setHoverOverrides((o) => ({ ...o, theme: t, accentColor: THEME_DEFAULT_ACCENTS[t] }))}
-                              onMouseLeave={() => setHoverOverrides((o) => ({ ...o, theme: null, accentColor: null }))}
-                              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${dbSettings.theme === t
-                                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                                : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                                }`}
-                            >
-                              {t}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Accent Color</label>
-                        <div className="grid grid-cols-8 gap-2 w-fit">
-                          {ACCENT_COLORS.map(({ label, value }) => (
-                            <Tooltip key={value} content={label}>
-                              <button
-                                onClick={() => setAppearance("accent_color", value)}
-                                onMouseEnter={() => setHoverOverrides((o) => ({ ...o, accentColor: value }))}
-                                onMouseLeave={() => setHoverOverrides((o) => ({ ...o, accentColor: null }))}
-                                aria-label={`Use ${label} accent`}
-                                className={`relative h-8 w-8 rounded-full border-2 border-white transition-all ${dbSettings.accent_color === value ? "scale-110 shadow-sm ring-2 ring-white ring-offset-2 ring-offset-[var(--bg-elevated)] z-10" : "opacity-80 hover:opacity-100 hover:scale-105"
-                                  }`}
-                                style={{ backgroundColor: value }}
-                              >
-                                <span className="sr-only">{label}</span>
-                              </button>
-                            </Tooltip>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
+                  <div className="flex flex-col gap-4">
                     {/* Typography & Interface Card */}
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
                       <div>
@@ -3043,6 +3030,58 @@ export default function PreferencesView() {
                           </div>
                         </div>
                       )}
+                    </div>
+
+                    {/* Theme & Accent Card */}
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Theme & Accent</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Personalize the color scheme and main highlights of the interface.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Theme</label>
+                        <div className="flex flex-wrap gap-2">
+                          {THEMES.map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => updateSettings({ theme: t, accent_color: THEME_DEFAULT_ACCENTS[t] })}
+                              onMouseEnter={() => setHoverOverrides((o) => ({ ...o, theme: t, accentColor: THEME_DEFAULT_ACCENTS[t] }))}
+                              onMouseLeave={() => setHoverOverrides((o) => ({ ...o, theme: null, accentColor: null }))}
+                              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${dbSettings.theme === t
+                                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                                : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                                }`}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Accent Color</label>
+                        <div className="grid grid-cols-8 gap-2 w-fit">
+                          {ACCENT_COLORS.map(({ label, value }) => (
+                            <Tooltip key={value} content={label}>
+                              <button
+                                onClick={() => setAppearance("accent_color", value)}
+                                onMouseEnter={() => setHoverOverrides((o) => ({ ...o, accentColor: value }))}
+                                onMouseLeave={() => setHoverOverrides((o) => ({ ...o, accentColor: null }))}
+                                aria-label={`Use ${label} accent`}
+                                className={`relative h-8 w-8 rounded-full border-2 border-white transition-all ${dbSettings.accent_color === value ? "scale-110 shadow-sm ring-2 ring-white ring-offset-2 ring-offset-[var(--bg-elevated)] z-10" : "opacity-80 hover:opacity-100 hover:scale-105"
+                                  }`}
+                                style={{ backgroundColor: value }}
+                              >
+                                <span className="sr-only">{label}</span>
+                              </button>
+                            </Tooltip>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -4502,7 +4541,7 @@ export default function PreferencesView() {
               </div>
 
               {/* Right Column: Live App Preview */}
-              <div className="hidden xl:flex xl:w-[580px] 2xl:w-[760px] shrink-0 min-h-0 border-l border-[var(--border-color)] bg-[var(--bg-secondary)]/10 flex-col items-center justify-center p-6 select-none overflow-hidden">
+              <div className="hidden xl:flex xl:w-[42%] 2xl:w-[48%] shrink-0 min-h-0 border-l border-[var(--border-color)] bg-[var(--bg-secondary)]/10 flex-col items-center justify-center p-6 select-none overflow-hidden">
                 <LiveAppPreview dbSettings={dbSettings} overrides={hoverOverrides} />
               </div>
             </>
