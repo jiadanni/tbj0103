@@ -7,7 +7,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -16,11 +16,13 @@ import { applyHeadroom, classifyModelFit, formatBytes, formatParams, inferHardwa
 import { ACCENT_COLORS, THEMES, THEME_DEFAULT_ACCENTS, normalizeTheme } from "../lib/theme";
 import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore";
 import { type NavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
-import WorkspaceSettingsView from "./WorkspaceSettingsView";
-import BackupSettingsSection from "./BackupSettingsSection";
-import GlobalBackupSection from "./GlobalBackupSection";
-import ImportSettingsSection from "./ImportSettingsSection";
-import GlobalMemoryView from "./GlobalMemoryView";
+// Heavy tab-specific subviews are lazy-loaded so opening the standalone
+// preferences window doesn't have to parse/initialize them up-front.
+const WorkspaceSettingsView = React.lazy(() => import("./WorkspaceSettingsView"));
+const BackupSettingsSection = React.lazy(() => import("./BackupSettingsSection"));
+const GlobalBackupSection = React.lazy(() => import("./GlobalBackupSection"));
+const ImportSettingsSection = React.lazy(() => import("./ImportSettingsSection"));
+const GlobalMemoryView = React.lazy(() => import("./GlobalMemoryView"));
 const LogsView = React.lazy(() => import("./LogsView"));
 import { CompactMenuSelect } from "../components/CompactMenuSelect";
 import { Tooltip } from "../components/Tooltip";
@@ -435,6 +437,540 @@ function ContextSizeInput({ modelName, savedValue, onSave, onClear }: {
 
 // ──────────────────────────────────────────────────────────────────────────────
 
+function LiveAppPreview({ dbSettings, overrides = {} }: {
+  dbSettings: AppSettings;
+  overrides?: {
+    theme?: string | null;
+    accentColor?: string | null;
+    fontSize?: number | null;
+    workspaceNavigation?: NavigationPresentation | null;
+    sectionNavigation?: NavigationPresentation | null;
+    workspaceSortOrder?: string | null;
+    chatMessageStyle?: ChatMessageStyle | null;
+    composerMode?: string | null;
+  };
+}) {
+  const dbWorkspaceNavigation = useWorkspaceStore((s) => s.workspaceNavigation);
+  const dbSectionNavigation = useWorkspaceStore((s) => s.sectionNavigation);
+  const dbWorkspaceSortOrder = useWorkspaceStore((s) => s.workspaceSortOrder);
+  const dbChatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
+  const dbComposerMode = useSettingsStore((s) => s.composerMode);
+
+  const workspaceNavigation = overrides.workspaceNavigation !== undefined && overrides.workspaceNavigation !== null ? overrides.workspaceNavigation : dbWorkspaceNavigation;
+  const sectionNavigation = overrides.sectionNavigation !== undefined && overrides.sectionNavigation !== null ? overrides.sectionNavigation : dbSectionNavigation;
+  const workspaceSortOrder = overrides.workspaceSortOrder !== undefined && overrides.workspaceSortOrder !== null ? overrides.workspaceSortOrder : dbWorkspaceSortOrder;
+  const showGenInfo = useSettingsStore((s) => s.showGenInfo);
+  const showGenInfoTokenCount = useSettingsStore((s) => s.showGenInfoTokenCount);
+  const showGenInfoDuration = useSettingsStore((s) => s.showGenInfoDuration);
+  const showGenInfoSpeed = useSettingsStore((s) => s.showGenInfoSpeed);
+  const showGenInfoModel = useSettingsStore((s) => s.showGenInfoModel);
+  const showStatusBar = useSettingsStore((s) => s.showStatusBar);
+  const showComposerWorkspaceSuggestions = useSettingsStore((s) => s.showComposerWorkspaceSuggestions);
+  const showComposerChatFollowUps = useSettingsStore((s) => s.showComposerChatFollowUps);
+  const chatMessageStyle = overrides.chatMessageStyle !== undefined && overrides.chatMessageStyle !== null ? overrides.chatMessageStyle : dbChatMessageStyle;
+  const composerMode = overrides.composerMode !== undefined && overrides.composerMode !== null ? overrides.composerMode : dbComposerMode;
+  const [singleWindowMode] = usePrefsWindowMode();
+
+  const [hoveredTerm, setHoveredTerm] = useState(false);
+
+  const showLeftSidebar = workspaceNavigation === "sidebar";
+  const themeClass = `theme-${overrides.theme !== undefined && overrides.theme !== null ? overrides.theme : dbSettings.theme || "system"}`;
+  const accentColor = overrides.accentColor !== undefined && overrides.accentColor !== null ? overrides.accentColor : dbSettings.accent_color || "#007AFF";
+  const fontSize = overrides.fontSize !== undefined && overrides.fontSize !== null ? overrides.fontSize : dbSettings.font_size || 14;
+  const scaledFontSize = Math.max(9, Math.min(20, Math.round(fontSize * 0.9)));
+
+  const mockWorkspaces = useMemo(() => {
+    const list = [
+      { id: "ws-1", name: "Aetherium Docs", created: 100, updated: 300, lastMsg: 500 },
+      { id: "ws-2", name: "Deep Learning", created: 200, updated: 100, lastMsg: 200 },
+      { id: "ws-3", name: "Personal Notes", created: 300, updated: 200, lastMsg: 400 },
+    ];
+    return [...list].sort((a, b) => {
+      switch (workspaceSortOrder) {
+        case "name-asc":
+          return a.name.localeCompare(b.name);
+        case "name-desc":
+          return b.name.localeCompare(a.name);
+        case "created-newest":
+          return b.created - a.created;
+        case "created-oldest":
+          return a.created - b.created;
+        case "updated-newest":
+          return b.updated - a.updated;
+        case "updated-oldest":
+          return a.updated - b.updated;
+        case "last-message-newest":
+          return b.lastMsg - a.lastMsg;
+        default:
+          return 0;
+      }
+    });
+  }, [workspaceSortOrder]);
+
+  const activeWorkspaceName = mockWorkspaces[0]?.name || "Workspace A";
+
+  return (
+    <div className="flex flex-col items-center justify-center w-full h-full">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-3 flex items-center gap-1.5 self-start">
+        <span>Live App Preview</span>
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+      </div>
+
+      {/* Simulated Desktop Container */}
+      <div className="w-full flex flex-col items-center justify-center bg-[var(--bg-secondary)]/35 rounded-2xl p-4 border border-[var(--border-color)]/60 shadow-inner">
+        {/* Mock macOS Menubar */}
+        <div className="w-full h-6 bg-[var(--bg-sidebar)]/80 text-[var(--text-muted)] text-[10px] px-3 rounded-t-xl flex justify-between items-center select-none border-t border-x border-[var(--border-color)]">
+          <div className="flex gap-2.5 items-center">
+            <span className="font-semibold text-[var(--text-primary)]"></span>
+            <span className="font-medium text-[var(--text-secondary)]">Aetherium</span>
+            {!dbSettings.hide_native_menu && (
+              <div className="flex gap-2.5 opacity-60">
+                <span>File</span>
+                <span>Edit</span>
+                <span>View</span>
+                <span>Workspace</span>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2.5 items-center">
+            <span>Jobs: {dbSettings.background_inference_enabled ? "Active" : "Disabled"}</span>
+            <span>100%</span>
+            <div className="flex items-center">
+              {dbSettings.menubar_icon_style === "white" ? (
+                <span className="w-3.5 h-3.5 rounded bg-white flex items-center justify-center text-black font-extrabold text-[8px]">A</span>
+              ) : dbSettings.menubar_icon_style === "black" ? (
+                <span className="w-3.5 h-3.5 rounded bg-black text-white flex items-center justify-center font-extrabold text-[8px] border border-white/20">A</span>
+              ) : (
+                /* monochrome (adapts to text color) */
+                <span className="w-3.5 h-3.5 rounded bg-[var(--text-secondary)]/20 text-[var(--text-secondary)] flex items-center justify-center font-extrabold text-[8px]">A</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Mock App Window */}
+        <div
+          className={`${themeClass} relative flex flex-col w-full h-[360px] 2xl:h-[420px] 3xl:h-[500px] rounded-b-xl border border-[var(--border-color)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden select-none`}
+          style={{
+            "--accent-color": accentColor,
+            "--accent-color-rgb": hexToRgb(accentColor),
+            fontSize: `${scaledFontSize}px`,
+          } as React.CSSProperties}
+        >
+          {/* Simulated Window Titlebar */}
+          <div className="h-10 flex items-center justify-between px-3 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] shrink-0 select-none">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#FF5F56] opacity-80" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#FFBD2E] opacity-80" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#27C93F] opacity-80" />
+            </div>
+
+            <div className="flex items-center gap-2 max-w-[65%] truncate h-full">
+              <div className="flex items-center gap-1 opacity-70">
+                <ChevronLeft size={12} className="text-[var(--text-secondary)]" />
+                <ChevronRight size={12} className="text-[var(--text-muted)]" />
+              </div>
+
+              {workspaceNavigation === "top-dropdown" ? (
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[9px] text-[var(--text-primary)] font-medium">
+                  <span>{activeWorkspaceName}</span>
+                  <ChevronDown size={8} className="text-[var(--text-muted)]" />
+                </div>
+              ) : workspaceNavigation === "top-tabs" ? (
+                <div className="flex gap-1 items-end relative -bottom-[1px] h-full" data-no-drag>
+                  {mockWorkspaces.map((ws, index) => (
+                    <div
+                      key={ws.id}
+                      className={`text-[8.5px] px-2 py-0.5 rounded-t-md border border-b-0 border-[var(--border-color)] select-none whitespace-nowrap cursor-pointer transition-all ${
+                        index === 0
+                          ? "font-semibold text-[var(--accent-color)] bg-[var(--bg-primary)] border-t-2 border-t-[var(--accent-color)] shadow-sm"
+                          : "text-[var(--text-muted)] bg-[var(--bg-sidebar)]/50 hover:bg-[var(--bg-hover)]/40"
+                      }`}
+                      style={index === 0 ? { borderTopColor: "var(--accent-color)" } : {}}
+                    >
+                      {ws.name}
+                    </div>
+                  ))}
+                  <button className="h-5 w-5 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded flex items-center justify-center mb-0.5">
+                    <Plus size={10} />
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[10px] font-semibold text-[var(--text-primary)] truncate">{activeWorkspaceName}</span>
+              )}
+
+              {sectionNavigation === "top-dropdown" && (
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[9px] text-[var(--text-secondary)] font-medium">
+                  <span>Chat</span>
+                  <ChevronDown size={8} className="text-[var(--text-muted)]" />
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {singleWindowMode && (
+                <Tooltip content="Single Window Mode Active" position="bottom">
+                  <div className="text-[var(--accent-color)] flex items-center shrink-0">
+                    <Pin size={10} className="rotate-45" />
+                  </div>
+                </Tooltip>
+              )}
+              <div className="w-5 h-5 rounded flex items-center justify-center text-[var(--text-secondary)]">
+                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+              </div>
+              <div className="w-5 h-5 rounded flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] border border-[var(--border-color)]">
+                <Columns2 size={10} />
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Sub-workspace tabs for the active parent workspace (child workspaces) */}
+          {(workspaceNavigation === "top-tabs" || workspaceNavigation === "top-dropdown") && (
+            <div className="h-7 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/90 px-3 flex items-center justify-between shrink-0 select-none">
+              <div className="flex items-center gap-1.5 h-full">
+                {/* Pinned overview indicator */}
+                <div className="flex h-[22px] w-5 items-center justify-center self-end rounded-t border border-b-0 border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] cursor-pointer">
+                  <svg width="4" height="4" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+                </div>
+                {[
+                  "React", "Frontend", "Linux", "Python", "Git", "Databases", "C", "Binary", "Rust"
+                ].map((name) => {
+                  const isActive = name === "Frontend";
+                  return (
+                    <div
+                      key={name}
+                      className={`relative flex h-[22px] items-center self-end rounded-t border border-b-0 px-2 text-[8px] font-medium whitespace-nowrap cursor-pointer transition-all select-none ${
+                        isActive
+                          ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] font-semibold"
+                          : "border-transparent text-[var(--text-secondary)] opacity-60 hover:opacity-100 hover:bg-[var(--bg-hover)]"
+                      }`}
+                    >
+                      {isActive && (
+                        <span className="absolute inset-x-1.5 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+                      )}
+                      {name}
+                    </div>
+                  );
+                })}
+                <button className="h-4 w-4 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] rounded flex items-center justify-center mb-0.5">
+                  <Plus size={8} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!showLeftSidebar && sectionNavigation === "top-tabs" && (
+            <div className="h-8 flex items-center gap-2 px-3 bg-[var(--bg-sidebar)] border-b border-[var(--border-color)] shrink-0">
+              <span className="text-[9px] font-semibold text-[var(--accent-color)] border-b border-[var(--accent-color)] px-1 py-0.5">Chat</span>
+              <span className="text-[9px] font-semibold text-[var(--text-muted)] px-1 py-0.5">Notes</span>
+              <span className="text-[9px] font-semibold text-[var(--text-muted)] px-1 py-0.5">Knowledge</span>
+            </div>
+          )}
+
+          <div className="flex flex-1 min-h-0 overflow-hidden">
+            {workspaceNavigation === "sidebar" && (
+              <div className="w-[85px] shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] p-1 flex flex-col gap-0.5" data-testid="single-pane-workspace-sidebar">
+                <div className="text-[7px] uppercase tracking-wider text-[var(--text-muted)] font-bold px-1.5 py-0.5 opacity-60 mb-0.5">Workspaces</div>
+                {mockWorkspaces.map((ws, index) => (
+                  <div
+                    key={ws.id}
+                    className={`px-1.5 py-0.5 rounded text-[8px] truncate leading-tight select-none ${
+                      index === 0
+                        ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold border-l-2 border-[var(--accent-color)]"
+                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/40"
+                    }`}
+                  >
+                    {ws.name}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {sectionNavigation === "sidebar" && (
+              <div className="w-14 shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] py-1.5 flex flex-col justify-between items-center select-none" data-testid="sidebar">
+                <div className="flex flex-col gap-0.5 px-1 w-full">
+                  {[
+                    { label: "Dashboard", icon: BarChart2, active: false },
+                    { label: "Chat", icon: MessageSquare, active: true },
+                    { label: "Notes", icon: FileEdit, active: false },
+                    { label: "Sources", icon: Library, active: false },
+                    { label: "Learning", icon: GraduationCap, active: false },
+                    { label: "History", icon: History, active: false },
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div
+                        key={item.label}
+                        className={`flex flex-col items-center justify-center w-full py-1 rounded-lg text-[7px] transition-colors select-none ${
+                          item.active
+                            ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold"
+                            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/50"
+                        }`}
+                      >
+                        <Icon size={12} strokeWidth={1.5} className="mb-0.5" />
+                        <span className="text-[6.5px] scale-[0.9] origin-center truncate w-full text-center">{item.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-col items-center gap-1 w-full px-1 pt-1.5 border-t border-[var(--border-color)]/60">
+                  <div className="text-[var(--text-secondary)] text-[7px] flex items-center justify-center gap-0.5 hover:bg-[var(--bg-hover)] w-full py-0.5 rounded cursor-pointer scale-[0.85]">
+                    <ChevronLeft size={8} />
+                    <span>Collapse</span>
+                  </div>
+                  <div className="w-5 h-5 rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-primary)] cursor-pointer">
+                    <SettingsIcon size={10} strokeWidth={1.5} />
+                  </div>
+                  <div className="w-6 h-6 rounded-lg bg-[var(--accent-color)] text-white text-[9px] font-bold flex items-center justify-center shadow-sm select-none cursor-pointer mt-0.5">
+                    A
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Chat Session List Pane (Sub-sidebar) */}
+            <div className="w-[105px] shrink-0 bg-[var(--bg-sidebar)]/40 border-r border-[var(--border-color)] p-1.5 flex flex-col gap-1.5 select-none" data-testid="chat-sessions-list">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[8px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Chats</span>
+                <div className="flex gap-0.5 text-[8px] text-[var(--text-muted)]">
+                  <ArrowUpDown size={8} />
+                  <Pencil size={8} />
+                </div>
+              </div>
+              <div className="flex items-center gap-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)]/60 px-1 py-0.5 text-[8px] text-[var(--text-muted)]">
+                <Search size={8} className="shrink-0" />
+                <span className="truncate">Search...</span>
+              </div>
+              <div className="flex flex-col gap-0.5 overflow-y-auto max-h-[220px]">
+                {[
+                  { title: "SPAs: Advantages and Challenges", active: true },
+                  { title: "Flexbox CSS Basics", active: false },
+                  { title: "NPM sudo permissions", active: false },
+                  { title: "Inner HTML discussion", active: false },
+                  { title: "React getting started", active: false },
+                ].map((s, idx) => (
+                  <div
+                    key={idx}
+                    className={`px-1.5 py-1 rounded text-[8px] truncate leading-tight select-none cursor-pointer ${
+                      s.active
+                        ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold border-l-2 border-[var(--accent-color)]"
+                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/30"
+                    }`}
+                  >
+                    {s.title}
+                  </div>
+                ))}
+              </div>
+              <div className="text-[7.5px] text-[var(--text-muted)] mt-auto pt-1 border-t border-[var(--border-color)]/40">
+                5 sessions
+              </div>
+            </div>
+
+            <div className="flex-1 flex flex-col min-h-0 bg-[var(--bg-primary)] overflow-hidden">
+              {/* Chat View Pane Header */}
+              <div className="h-8.5 px-3 border-b border-[var(--border-color)]/60 bg-[var(--bg-primary)] flex items-center justify-between shrink-0 select-none">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[6.5px] font-bold text-[var(--text-muted)] uppercase tracking-wider leading-none mb-0.5">FRONTEND</span>
+                  <span className="text-[9px] font-semibold text-[var(--text-primary)] truncate">SPAs: Advantages and Challenges</span>
+                </div>
+                <div className="flex items-center gap-1 text-[8.5px] text-[var(--text-secondary)] font-medium">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                  <span>7b | 8.2s</span>
+                </div>
+              </div>
+
+              {/* Related link pills list below header */}
+              <div className="h-6.5 px-3 bg-[var(--bg-elevated)]/25 border-b border-[var(--border-color)]/30 flex items-center gap-2 shrink-0 overflow-x-hidden text-[7.5px] select-none">
+                <span className="font-bold text-[var(--text-muted)] text-[7px] uppercase tracking-wider shrink-0">RELATED</span>
+                {[
+                  "Inner HTML discussion", "Flexbox CSS Basics", "React getting started"
+                ].map((lnk) => (
+                  <span key={lnk} className="px-1.5 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)]/40 text-[var(--text-secondary)] hover:text-[var(--accent-color)] cursor-pointer whitespace-nowrap">
+                    {lnk}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-3 flex flex-col min-h-0 justify-end relative">
+                <div className={`flex flex-col gap-0.5 ${
+                  chatMessageStyle === "minimal" ? "items-start" : "items-end"
+                }`}>
+                  {chatMessageStyle === "minimal" && (
+                    <span className="text-[8px] font-semibold text-[var(--text-muted)] tracking-wide">
+                      {dbSettings.user_chat_label || "You"}
+                    </span>
+                  )}
+                  <div
+                    className={`text-[11px] break-words ${
+                      chatMessageStyle === "minimal"
+                        ? "w-full py-0.5 text-[var(--text-primary)]"
+                        : chatMessageStyle === "flat"
+                          ? "w-fit max-w-[85%] rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[var(--text-primary)]"
+                          : "w-fit max-w-[85%] rounded-lg rounded-tr-sm bg-[var(--accent-color)] text-white px-2 py-1"
+                    }`}
+                  >
+                    What are single-page applications (SPAs)?
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-0.5 items-start">
+                  {chatMessageStyle === "minimal" && (
+                    <span className="text-[8px] font-semibold text-[var(--text-muted)] tracking-wide">
+                      {dbSettings.assistant_chat_label || "Assistant"}
+                    </span>
+                  )}
+                  <div
+                    className={`text-[11px] break-words relative ${
+                      chatMessageStyle === "minimal"
+                        ? "w-full py-0.5 text-[var(--text-primary)]"
+                        : chatMessageStyle === "flat"
+                          ? "w-full rounded border-l border-[var(--accent-color)] bg-[var(--bg-elevated)]/40 px-2 py-1 text-[var(--text-primary)]"
+                          : "w-full rounded-lg rounded-tl-sm bg-[var(--bg-secondary)] px-2 py-1 text-[var(--text-primary)]"
+                    }`}
+                  >
+                    {dbSettings.hover_definition_scan_enabled ? (
+                      <span>
+                        Single-page applications (
+                        <span
+                          onMouseEnter={() => setHoveredTerm(true)}
+                          onMouseLeave={() => setHoveredTerm(false)}
+                          className="underline decoration-dotted decoration-[var(--accent-color)] underline-offset-2 cursor-help font-semibold"
+                        >
+                          SPAs
+                        </span>
+                        ) are a type of web application that loads a single HTML page and dynamically updates content.
+                      </span>
+                    ) : (
+                      "Single-page applications (SPAs) are a type of web application that loads a single HTML page and dynamically updates content."
+                    )}
+
+                    {hoveredTerm && dbSettings.hover_definition_scan_enabled && (
+                      <div className="absolute bottom-full left-4 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-lg p-2 shadow-xl text-[9px] max-w-[200px] z-50 mb-1.5 pointer-events-none">
+                        <div className="font-semibold text-[var(--accent-color)]">Glossary: SPAs</div>
+                        <p className="text-[var(--text-secondary)] mt-0.5 leading-snug">
+                          Single-Page Applications. Loads assets once and updates dynamically via client-side routing.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {showGenInfo && (
+                    <div className="text-[8px] text-[var(--text-muted)] mt-0.5 flex flex-wrap items-center gap-1 select-none pl-0.5">
+                      {showGenInfoModel && <span>gemma2-9b</span>}
+                      {showGenInfoModel && (showGenInfoTokenCount || showGenInfoDuration || showGenInfoSpeed) && <span>•</span>}
+                      {showGenInfoTokenCount && <span>120 tok</span>}
+                      {showGenInfoTokenCount && (showGenInfoDuration || showGenInfoSpeed) && <span>•</span>}
+                      {showGenInfoDuration && <span>2.5s</span>}
+                      {showGenInfoDuration && showGenInfoSpeed && <span>•</span>}
+                      {showGenInfoSpeed && <span className="text-[var(--accent-color)] font-medium">48 tok/s</span>}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-2 border-t border-[var(--border-color)] bg-[var(--bg-primary)] shrink-0 flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-1 overflow-x-hidden">
+                  <div className="flex gap-1 overflow-x-hidden relative items-center py-0.5 select-none">
+                    {showComposerWorkspaceSuggestions && (
+                      <span className="text-[7.5px] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
+                        {"What's the best frontend framework?"}
+                      </span>
+                    )}
+                    {showComposerChatFollowUps && (
+                      <>
+                        <span className="text-[7.5px] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
+                          How do I create a responsive layout?
+                        </span>
+                        <span className="text-[7.5px] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap flex items-center gap-0.5 truncate max-w-[120px]">
+                          What are some popular CSS frameworks... <ChevronDown size={8} />
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {dbSettings.memory_enabled && (
+                    <div className="flex items-center gap-0.5 text-[8px] font-medium text-[var(--accent-color)] shrink-0 bg-[var(--accent-color)]/10 px-1 rounded">
+                      <Brain size={8} />
+                      <span>Memory</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1">
+                  <div className="flex items-center gap-1 text-[var(--text-muted)] px-1 scale-90">
+                    <Paperclip size={10} className="hover:text-[var(--text-secondary)] cursor-pointer" />
+                    <Search size={10} className="hover:text-[var(--text-secondary)] cursor-pointer" />
+                    <Pencil size={10} className="hover:text-[var(--text-secondary)] cursor-pointer" />
+                  </div>
+                  <div className="flex-1 text-[9.5px] text-[var(--text-muted)] font-normal truncate">
+                    Continue this thread...
+                  </div>
+                  {composerMode === "family" ? (
+                    <div className="flex gap-1 items-center shrink-0 pr-1">
+                      <span className="text-[7.5px] text-[var(--text-muted)]">Family</span>
+                      <button
+                        type="button"
+                        className="h-4.5 px-1.5 rounded bg-[var(--accent-color)] text-white flex items-center justify-center shadow-sm text-[8px] font-bold"
+                      >
+                        7b
+                      </button>
+                      <button
+                        type="button"
+                        className="h-4.5 px-1.5 rounded bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-color)] flex items-center justify-center shadow-sm text-[8px] font-bold"
+                      >
+                        14b
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="w-5 h-5 rounded bg-[var(--accent-color)] text-white flex items-center justify-center shadow-sm shrink-0"
+                    >
+                      <Send size={8} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {showStatusBar && (
+            <div className="h-5 px-2 border-t border-[var(--border-color)] bg-[var(--bg-sidebar)] flex items-center justify-between text-[8px] text-[var(--text-muted)] shrink-0 select-none">
+              <div className="flex items-center gap-1">
+                <span>CPU: 20%</span>
+                <span>•</span>
+                <span>RAM: 22.0 GB / 31.3 GB</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className={`h-1.5 w-1.5 rounded-full ${dbSettings.background_inference_enabled ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+                <span>Jobs: {dbSettings.background_inference_enabled ? "Running Summaries" : "Idle (Paused)"}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function hexToRgb(hex: string): string {
+  const cleanHex = (hex || "").replace("#", "");
+  if (cleanHex.length === 3) {
+    const r = parseInt(cleanHex.substring(0, 1).repeat(2), 16);
+    const g = parseInt(cleanHex.substring(1, 2).repeat(2), 16);
+    const b = parseInt(cleanHex.substring(2, 3).repeat(2), 16);
+    return `${r}, ${g}, ${b}`;
+  } else if (cleanHex.length === 6) {
+    const r = parseInt(cleanHex.substring(0, 2), 16);
+    const g = parseInt(cleanHex.substring(2, 4), 16);
+    const b = parseInt(cleanHex.substring(4, 6), 16);
+    return `${r}, ${g}, ${b}`;
+  }
+  return "0, 122, 255";
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 export default function PreferencesView() {
   const settingsNavLayout = useSettingsStore((state) => state.settingsNavLayout);
   const setSettingsNavLayout = useSettingsStore((state) => state.setSettingsNavLayout);
@@ -485,6 +1021,17 @@ export default function PreferencesView() {
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const setDemo = useWorkspaceStore((state) => state.setDemo);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
+
+  const [hoverOverrides, setHoverOverrides] = useState<{
+    theme?: string | null;
+    accentColor?: string | null;
+    fontSize?: number | null;
+    workspaceNavigation?: NavigationPresentation | null;
+    sectionNavigation?: NavigationPresentation | null;
+    workspaceSortOrder?: string | null;
+    chatMessageStyle?: ChatMessageStyle | null;
+    composerMode?: string | null;
+  }>({});
 
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
   const [activeTab, setActiveTab] = useState<PreferencesSection>(() => (window.localStorage.getItem("preferencesActiveTab") as PreferencesSection) || "app");
@@ -794,6 +1341,7 @@ export default function PreferencesView() {
     settingsStore.setFlashcardModel(settings.flashcard_model);
     settingsStore.setGlossaryModel(settings.glossary_model);
     settingsStore.setTopicSignatureModel(settings.topic_signature_model);
+    settingsStore.setGoalSuggestionModel(settings.goal_suggestion_model);
     settingsStore.setQuickSearchWorkspaceScope(settings.quick_search_workspace_scope);
     settingsStore.setQuickSearchTypeFilters(settings.quick_search_type_filters);
     settingsStore.setOllamaUrl(settings.ollama_base_url);
@@ -1048,13 +1596,8 @@ export default function PreferencesView() {
       setDbSettings(normalizedSettings);
       dbSettingsRef.current = normalizedSettings;
       syncClientSettings(normalizedSettings);
-      refreshOllamaModels(normalizedSettings.ollama_base_url, { useCache: true });
     }).catch(() => { });
-    loadSystemSpecs();
     loadAiModels();
-    api.security.getStatus().then(setSecurityStatus).catch(() => { });
-    api.mcp.listServers().then(setMcpServers).catch(() => { });
-    api.gitSync.getStatus().then((s) => { setGitSync(s); setGitSyncUrl(s.remote_url); }).catch(() => { });
 
     // Initial fetch and listen for workspace changes
     api.workspace.list().then(setWorkspaces).catch(() => { });
@@ -1084,6 +1627,36 @@ export default function PreferencesView() {
       unlistenSettings.then((fn) => fn());
     };
   }, [setWorkspaces]);
+
+  // Tab-gated backend probes: only fire each (potentially slow) backend call
+  // once, when the user first visits the tab that needs the data. This keeps
+  // the initial preferences-window paint fast — especially the default "App"
+  // tab, which doesn't need Ollama / system specs / MCP / git / security.
+  const probedTabsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const probed = probedTabsRef.current;
+    const aiTabs = new Set(["ai", "webai", "chat", "learning"]);
+    if (aiTabs.has(activeTab)) {
+      if (!probed.has("ai")) {
+        probed.add("ai");
+        loadSystemSpecs();
+        const url = dbSettingsRef.current?.ollama_base_url ?? "";
+        refreshOllamaModels(url, { useCache: true });
+      }
+    }
+    if (activeTab === "security" && !probed.has("security")) {
+      probed.add("security");
+      api.security.getStatus().then(setSecurityStatus).catch(() => { });
+    }
+    if (activeTab === "mcp" && !probed.has("mcp")) {
+      probed.add("mcp");
+      api.mcp.listServers().then(setMcpServers).catch(() => { });
+    }
+    if (activeTab === "sync" && !probed.has("sync")) {
+      probed.add("sync");
+      api.gitSync.getStatus().then((s) => { setGitSync(s); setGitSyncUrl(s.remote_url); }).catch(() => { });
+    }
+  }, [activeTab, dbSettings?.ollama_base_url]);
 
   function set<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
     updateSettings({ [key]: value } as Partial<AppSettings>);
@@ -1243,7 +1816,6 @@ export default function PreferencesView() {
     : saveStatus === "saved"
       ? "text-emerald-400"
       : "text-[var(--text-muted)]";
-  const contentWidthClassName = "app-container";
   const ollamaModelsSection = (
     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -1612,6 +2184,7 @@ export default function PreferencesView() {
           { key: "flashcard_model", label: "Flashcard Generation", tokens: "~100–200 tokens input", note: "2k context OK" },
           { key: "glossary_model", label: "Workspace Glossary", tokens: "~800–2,000 tokens input", note: "≥4k context recommended" },
           { key: "topic_signature_model", label: "Topic Signatures", tokens: "~1,000–3,000 tokens input", note: "≥4k context recommended" },
+          { key: "goal_suggestion_model", label: "Goal Suggestion", tokens: "~300–1,500 tokens input", note: "2k context OK" },
         ];
         const options = [
           { value: "", label: "Default (background model)" },
@@ -1788,178 +2361,202 @@ export default function PreferencesView() {
           </aside>
         )}
 
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-          {(activeTab === "app" || activeTab === "navigation" || activeTab === "appearance" || activeTab === "chat" || activeTab === "learning" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
-            <div className="flex-1 min-h-0 overflow-y-auto py-4">
-              <div className={`${contentWidthClassName} space-y-4`}>
-
-                {/* ── App ── */}
-                {activeTab === "app" && (
-                  <>
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Startup & background</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
-                          Control how Aetherium launches and whether it stays available after the main window closes.
-                        </p>
-                      </div>
-
-                      <div className="flex items-center justify-between py-0.5">
+        <div className={`flex-1 min-h-0 overflow-hidden flex ${
+          ["app", "navigation", "appearance", "ai", "chat", "learning", "webai", "security", "sync"].includes(activeTab)
+            ? "flex-row"
+            : "flex-col"
+        }`}>
+          {["app", "navigation", "appearance", "ai", "chat", "learning", "webai", "security", "sync"].includes(activeTab) && (
+            <>
+              <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+                <div className="max-w-5xl space-y-5">
+                  {activeTab === "app" && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                    <div className="space-y-4">
+                      {/* Startup & background */}
+                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
                         <div>
-                          <p className="text-sm text-[var(--text-secondary)]">
-                            {isLinux ? "Start with desktop session" : "Start at login"}
-                          </p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            {isLinux
-                              ? "Adds Aetherium to your desktop environment's autostart applications"
-                              : "Automatically launch Aetherium when you log in"}
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Startup & background</h3>
+                          <p className="text-xs text-[var(--text-muted)] mt-1">
+                            Control how Aetherium launches and whether it stays available after the main window closes.
                           </p>
                         </div>
-                        <Toggle
-                          on={dbSettings.start_at_login}
-                          onToggle={() => {
-                            const nextStartAtLogin = !dbSettings.start_at_login;
-                            set("start_at_login", nextStartAtLogin);
-                            if (!nextStartAtLogin && dbSettings.open_in_background) {
-                              set("open_in_background", false);
-                            }
-                          }}
-                        />
-                      </div>
 
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className={`text-sm ${dbSettings.start_at_login ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]"}`}>Open in background</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            {dbSettings.start_at_login
-                              ? "Launch without bringing window to front"
-                              : "Available only when Start at login is enabled"}
-                          </p>
-                        </div>
-                        <Toggle
-                          on={dbSettings.open_in_background}
-                          disabled={!dbSettings.start_at_login}
-                          onToggle={() => set("open_in_background", !dbSettings.open_in_background)}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Keep running in tray</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Closing the main window keeps the menu bar or tray app alive so quick search still works.
-                          </p>
-                        </div>
-                        <Toggle
-                          on={dbSettings.keep_running_in_tray}
-                          onToggle={() => set("keep_running_in_tray", !dbSettings.keep_running_in_tray)}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Hide native menu</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Removes the standard application menu bar (macOS only).
-                          </p>
-                        </div>
-                        <Toggle
-                          on={dbSettings.hide_native_menu}
-                          onToggle={() => set("hide_native_menu", !dbSettings.hide_native_menu)}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm text-[var(--text-secondary)]">Single window mode</p>
-                            <Pin size={12} className={singleWindowMode ? "text-[var(--accent-color)]" : "text-[var(--text-muted)]"} />
-                          </div>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Prevent multiple preferences windows from opening simultaneously.
-                          </p>
-                        </div>
-                        <Toggle
-                          on={singleWindowMode}
-                          onToggle={toggleSingleWindowMode}
-                        />
-                      </div>
-
-                      {isDemoMode ? (
                         <div className="flex items-center justify-between py-0.5">
                           <div>
-                            <p className="text-sm text-[var(--text-secondary)]">Exit Demo Mode</p>
+                            <p className="text-sm text-[var(--text-secondary)]">
+                              {isLinux ? "Start with desktop session" : "Start at login"}
+                            </p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                              Exit demo and return to your regular workspaces. All demo data will be deleted.
+                              {isLinux
+                                ? "Adds Aetherium to your desktop environment's autostart applications"
+                                : "Automatically launch Aetherium when you log in"}
                             </p>
                           </div>
-                          <button
-                            onClick={async () => {
-                              try {
-                                // Mark demo as dismissed to prevent re-auto-activation
-                                await api.settings.update({ ...dbSettings, demo_dismissed: true });
-                                await api.demo.deactivate();
-                                setDemo(false);
-                                window.location.reload();
-                              } catch (e) {
-                                await message(`Failed to exit demo mode.\n${e}`, { title: "Error", kind: "error" });
+                          <Toggle
+                            on={dbSettings.start_at_login}
+                            onToggle={() => {
+                              const nextStartAtLogin = !dbSettings.start_at_login;
+                              set("start_at_login", nextStartAtLogin);
+                              if (!nextStartAtLogin && dbSettings.open_in_background) {
+                                set("open_in_background", false);
                               }
                             }}
-                            className="rounded-lg border border-red-500/50 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 transition-colors hover:border-red-500 hover:bg-red-500/10"
-                          >
-                            Exit Demo
-                          </button>
+                          />
                         </div>
-                      ) : (
+
                         <div className="flex items-center justify-between py-0.5">
                           <div>
-                            <p className="text-sm text-[var(--text-secondary)]">Start Demo Mode</p>
+                            <p className={`text-sm ${dbSettings.start_at_login ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]"}`}>Open in background</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                              Explore Aetherium with pre-populated examples and a fully featured workspace.
+                              {dbSettings.start_at_login
+                                ? "Launch without bringing window to front"
+                                : "Available only when Start at login is enabled"}
                             </p>
                           </div>
-                          <button
-                            onClick={async () => {
-                              try {
-                                // Ensure demo_dismissed is false when manually starting demo
-                                await api.settings.update({ ...dbSettings, demo_dismissed: false });
-                                const demoWorkspaceId = await api.demo.activate();
-                                setDemo(true, demoWorkspaceId);
-                                window.location.reload();
-                              } catch (e) {
-                                await message(`Failed to activate demo mode.\n${e}`, { title: "Error", kind: "error" });
-                              }
-                            }}
-                            className="rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
-                          >
-                            Start Demo
-                          </button>
+                          <Toggle
+                            on={dbSettings.open_in_background}
+                            disabled={!dbSettings.start_at_login}
+                            onToggle={() => set("open_in_background", !dbSettings.open_in_background)}
+                          />
                         </div>
-                      )}
-                    </div>
 
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Features</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
-                          Enable or disable optional features across Aetherium.
-                        </p>
+                        <div className="flex items-center justify-between py-0.5">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Keep running in tray</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              Closing the main window keeps the menu bar or tray app alive so quick search still works.
+                            </p>
+                          </div>
+                          <Toggle
+                            on={dbSettings.keep_running_in_tray}
+                            onToggle={() => set("keep_running_in_tray", !dbSettings.keep_running_in_tray)}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between py-0.5">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Hide native menu</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              Removes the standard application menu bar (macOS only).
+                            </p>
+                          </div>
+                          <Toggle
+                            on={dbSettings.hide_native_menu}
+                            onToggle={() => set("hide_native_menu", !dbSettings.hide_native_menu)}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between py-0.5">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm text-[var(--text-secondary)]">Single window mode</p>
+                              <Pin size={12} className={singleWindowMode ? "text-[var(--accent-color)]" : "text-[var(--text-muted)]"} />
+                            </div>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              Prevent multiple preferences windows from opening simultaneously.
+                            </p>
+                          </div>
+                          <Toggle
+                            on={singleWindowMode}
+                            onToggle={toggleSingleWindowMode}
+                          />
+                        </div>
+
+                        {isDemoMode ? (
+                          <div className="flex items-center justify-between py-0.5">
+                            <div>
+                              <p className="text-sm text-[var(--text-secondary)]">Exit Demo Mode</p>
+                              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                                Exit demo and return to your regular workspaces. All demo data will be deleted.
+                              </p>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  // Mark demo as dismissed to prevent re-auto-activation
+                                  await api.settings.update({ ...dbSettings, demo_dismissed: true });
+                                  await api.demo.deactivate();
+                                  setDemo(false);
+                                  window.location.reload();
+                                } catch (e) {
+                                  await message(`Failed to exit demo mode.\n${e}`, { title: "Error", kind: "error" });
+                                }
+                              }}
+                              className="rounded-lg border border-red-500/50 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 transition-colors hover:border-red-500 hover:bg-red-500/10"
+                            >
+                              Exit Demo
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between py-0.5">
+                            <div>
+                              <p className="text-sm text-[var(--text-secondary)]">Start Demo Mode</p>
+                              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                                Explore Aetherium with pre-populated examples and a fully featured workspace.
+                              </p>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  // Ensure demo_dismissed is false when manually starting demo
+                                  await api.settings.update({ ...dbSettings, demo_dismissed: false });
+                                  const demoWorkspaceId = await api.demo.activate();
+                                  setDemo(true, demoWorkspaceId);
+                                  window.location.reload();
+                                } catch (e) {
+                                  await message(`Failed to activate demo mode.\n${e}`, { title: "Error", kind: "error" });
+                                }
+                              }}
+                              className="rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
+                            >
+                              Start Demo
+                            </button>
+                          </div>
+                        )}
                       </div>
 
-                      <div className="flex items-center justify-between py-0.5">
+                      {/* Features */}
+                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
                         <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Memory</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Store and use persistent facts and preferences across conversations
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Features</h3>
+                          <p className="text-xs text-[var(--text-muted)] mt-1">
+                            Enable or disable optional features across Aetherium.
                           </p>
                         </div>
-                        <Toggle
-                          on={dbSettings.memory_enabled}
-                          onToggle={() => set("memory_enabled", !dbSettings.memory_enabled)}
+
+                        <div className="flex items-center justify-between py-0.5">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Memory</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              Store and use persistent facts and preferences across conversations
+                            </p>
+                          </div>
+                          <Toggle
+                            on={dbSettings.memory_enabled}
+                            onToggle={() => set("memory_enabled", !dbSettings.memory_enabled)}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Shortcut */}
+                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Shortcut</h3>
+                          <p className="text-xs text-[var(--text-muted)] mt-1">
+                            Set the global accelerator used to open quick search from anywhere.
+                          </p>
+                        </div>
+                        <ShortcutRecorder
+                          value={quickSearchShortcutDraft}
+                          onChange={setQuickSearchShortcutDraft}
+                          onCommit={(v) => set("quick_search_shortcut", v)}
+                          placeholder={isMac ? "Cmd+Shift+K" : "Ctrl+Shift+K"}
                         />
                       </div>
                     </div>
 
+                    {/* Background Jobs */}
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
                       <div>
                         <h3 className="text-sm font-semibold text-[var(--text-primary)]">Background Jobs</h3>
@@ -2138,27 +2735,12 @@ export default function PreferencesView() {
                         />
                       </div>
                     </div>
-
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Shortcut</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
-                          Set the global accelerator used to open quick search from anywhere.
-                        </p>
-                      </div>
-                      <ShortcutRecorder
-                        value={quickSearchShortcutDraft}
-                        onChange={setQuickSearchShortcutDraft}
-                        onCommit={(v) => set("quick_search_shortcut", v)}
-                        placeholder={isMac ? "Cmd+Shift+K" : "Ctrl+Shift+K"}
-                      />
-                    </div>
-                  </>
+                  </div>
                 )}
 
                 {/* ── Navigation ── */}
                 {activeTab === "navigation" && (
-                  <>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
                       <div>
                         <h3 className="text-sm font-semibold text-[var(--text-primary)]">Main layout</h3>
@@ -2178,6 +2760,8 @@ export default function PreferencesView() {
                             <button
                               key={option.id}
                               onClick={() => setWorkspaceNavigation(option.id as NavigationPresentation)}
+                              onMouseEnter={() => setHoverOverrides((o) => ({ ...o, workspaceNavigation: option.id as NavigationPresentation }))}
+                              onMouseLeave={() => setHoverOverrides((o) => ({ ...o, workspaceNavigation: null }))}
                               className={`rounded-lg border px-3 py-2 text-left transition-colors ${workspaceNavigation === option.id
                                 ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
                                 : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
@@ -2202,6 +2786,8 @@ export default function PreferencesView() {
                             <button
                               key={option.id}
                               onClick={() => setSectionNavigation(option.id as NavigationPresentation)}
+                              onMouseEnter={() => setHoverOverrides((o) => ({ ...o, sectionNavigation: option.id as NavigationPresentation }))}
+                              onMouseLeave={() => setHoverOverrides((o) => ({ ...o, sectionNavigation: null }))}
                               className={`rounded-lg border px-3 py-2 text-left transition-colors ${sectionNavigation === option.id
                                 ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
                                 : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
@@ -2241,6 +2827,8 @@ export default function PreferencesView() {
                             <button
                               key={option.id}
                               onClick={() => setWorkspaceSortOrder(option.id)}
+                              onMouseEnter={() => setHoverOverrides((o) => ({ ...o, workspaceSortOrder: option.id }))}
+                              onMouseLeave={() => setHoverOverrides((o) => ({ ...o, workspaceSortOrder: null }))}
                               className={`rounded-lg border px-3 py-2 text-left transition-colors ${workspaceSortOrder === option.id
                                 ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
                                 : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
@@ -2331,109 +2919,139 @@ export default function PreferencesView() {
                         </div>
                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
 
                 {/* ── Appearance ── */}
                 {activeTab === "appearance" && (
-                  <>
-                    <div>
-                      <label className="text-xs text-[var(--text-secondary)] mb-2 block">Theme</label>
-                      <div className="flex flex-wrap gap-2">
-                        {THEMES.map((t) => (
-                          <button
-                            key={t}
-                            onClick={() => updateSettings({ theme: t, accent_color: THEME_DEFAULT_ACCENTS[t] })}
-                            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${dbSettings.theme === t
-                              ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                              : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                              }`}
-                          >
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-xs text-[var(--text-secondary)] mb-2 block">Accent Color</label>
-                      <div className="flex flex-wrap gap-2">
-                        {ACCENT_COLORS.map(({ label, value }) => (
-                          <Tooltip key={value} content={label}>
-                            <button
-                              onClick={() => setAppearance("accent_color", value)}
-                              aria-label={`Use ${label} accent`}
-                              className={`relative h-8 w-8 rounded-full border-2 transition-transform ${dbSettings.accent_color === value ? "border-white scale-110 shadow-sm" : "border-transparent"
-                                }`}
-                              style={{ backgroundColor: value }}
-                            >
-                              <span className="sr-only">{label}</span>
-                            </button>
-                          </Tooltip>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-xs text-[var(--text-secondary)] mb-2 block">Text Size</label>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setAppearance("font_size", Math.max(MIN_FONT_SIZE, dbSettings.font_size - 1))}
-                          disabled={dbSettings.font_size <= MIN_FONT_SIZE}
-                          className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          A-
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAppearance("font_size", Math.min(MAX_FONT_SIZE, dbSettings.font_size + 1))}
-                          disabled={dbSettings.font_size >= MAX_FONT_SIZE}
-                          className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          A+
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAppearance("font_size", DEFAULT_FONT_SIZE)}
-                          disabled={dbSettings.font_size === DEFAULT_FONT_SIZE}
-                          className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          Reset
-                        </button>
-                        <span className="ml-2 text-xs font-medium text-[var(--text-muted)] w-8 text-center bg-[var(--bg-hover)] px-2 py-1 rounded-md">
-                          {dbSettings.font_size}
-                        </span>
-                      </div>
-                    </div>
-
-                    {isMac && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                    {/* Theme & Accent Card */}
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
                       <div>
-                        <label className="text-xs text-[var(--text-secondary)] mb-2 block">Menubar Icon Style</label>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Theme & Accent</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Personalize the color scheme and main highlights of the interface.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Theme</label>
                         <div className="flex flex-wrap gap-2">
-                          {["monochrome", "white", "black"].map((style) => (
+                          {THEMES.map((t) => (
                             <button
-                              key={style}
-                              onClick={() => updateSettings({ menubar_icon_style: style as "monochrome" | "white" | "black" })}
-                              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${dbSettings.menubar_icon_style === style
+                              key={t}
+                              onClick={() => updateSettings({ theme: t, accent_color: THEME_DEFAULT_ACCENTS[t] })}
+                              onMouseEnter={() => setHoverOverrides((o) => ({ ...o, theme: t, accentColor: THEME_DEFAULT_ACCENTS[t] }))}
+                              onMouseLeave={() => setHoverOverrides((o) => ({ ...o, theme: null, accentColor: null }))}
+                              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${dbSettings.theme === t
                                 ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
                                 : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                                 }`}
                             >
-                              {style}
+                              {t}
                             </button>
                           ))}
                         </div>
                       </div>
-                    )}
 
-                  </>
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Accent Color</label>
+                        <div className="grid grid-cols-8 gap-2 w-fit">
+                          {ACCENT_COLORS.map(({ label, value }) => (
+                            <Tooltip key={value} content={label}>
+                              <button
+                                onClick={() => setAppearance("accent_color", value)}
+                                onMouseEnter={() => setHoverOverrides((o) => ({ ...o, accentColor: value }))}
+                                onMouseLeave={() => setHoverOverrides((o) => ({ ...o, accentColor: null }))}
+                                aria-label={`Use ${label} accent`}
+                                className={`relative h-8 w-8 rounded-full border-2 border-white transition-all ${dbSettings.accent_color === value ? "scale-110 shadow-sm ring-2 ring-white ring-offset-2 ring-offset-[var(--bg-elevated)] z-10" : "opacity-80 hover:opacity-100 hover:scale-105"
+                                  }`}
+                                style={{ backgroundColor: value }}
+                              >
+                                <span className="sr-only">{label}</span>
+                              </button>
+                            </Tooltip>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Typography & Interface Card */}
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Typography & Interface</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Adjust text sizes and platform-specific window decorations.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Text Size</label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAppearance("font_size", Math.max(MIN_FONT_SIZE, dbSettings.font_size - 1))}
+                            onMouseEnter={() => setHoverOverrides((o) => ({ ...o, fontSize: Math.max(MIN_FONT_SIZE, dbSettings.font_size - 1) }))}
+                            onMouseLeave={() => setHoverOverrides((o) => ({ ...o, fontSize: null }))}
+                            disabled={dbSettings.font_size <= MIN_FONT_SIZE}
+                            className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            A-
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAppearance("font_size", Math.min(MAX_FONT_SIZE, dbSettings.font_size + 1))}
+                            onMouseEnter={() => setHoverOverrides((o) => ({ ...o, fontSize: Math.min(MAX_FONT_SIZE, dbSettings.font_size + 1) }))}
+                            onMouseLeave={() => setHoverOverrides((o) => ({ ...o, fontSize: null }))}
+                            disabled={dbSettings.font_size >= MAX_FONT_SIZE}
+                            className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            A+
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAppearance("font_size", DEFAULT_FONT_SIZE)}
+                            onMouseEnter={() => setHoverOverrides((o) => ({ ...o, fontSize: DEFAULT_FONT_SIZE }))}
+                            onMouseLeave={() => setHoverOverrides((o) => ({ ...o, fontSize: null }))}
+                            disabled={dbSettings.font_size === DEFAULT_FONT_SIZE}
+                            className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Reset
+                          </button>
+                          <span className="ml-2 text-xs font-medium text-[var(--text-muted)] w-8 text-center bg-[var(--bg-hover)] px-2 py-1 rounded-md">
+                            {dbSettings.font_size}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isMac && (
+                        <div>
+                          <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Menubar Icon Style</label>
+                          <div className="flex flex-wrap gap-2">
+                            {["monochrome", "white", "black"].map((style) => (
+                              <button
+                                key={style}
+                                onClick={() => updateSettings({ menubar_icon_style: style as "monochrome" | "white" | "black" })}
+                                className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${dbSettings.menubar_icon_style === style
+                                  ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                                  : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                                  }`}
+                              >
+                                {style}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
 
                 {/* ── AI / Ollama ── */}
                 {activeTab === "ai" && (
-                  <>
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 space-y-3">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-sm text-[var(--text-secondary)]">Detected hardware guidance</p>
@@ -2504,9 +3122,9 @@ export default function PreferencesView() {
 
                           <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5 space-y-3">
                             <div>
-                              <p className="text-[11px] font-semibold text-[var(--text-primary)]">Reserved memory</p>
+                              <p className="text-[11px] font-semibold text-[var(--text-primary)]">Reserved VRAM</p>
                               <p className="mt-0.5 text-[10px] text-[var(--text-secondary)]">
-                                Tell Aetherium how much memory the desktop and other apps already hold so model-fit suggestions reflect what is actually usable. The larger of GB and % is applied.
+                                Tell Aetherium how much VRAM the desktop and other apps already hold so model-fit suggestions reflect what is actually usable. The larger of GB and % is applied.
                               </p>
                               <p className="mt-1 text-[10px] text-[var(--text-secondary)]">
                                 Check current usage: macOS — Activity Monitor (Memory / GPU History) · Linux NVIDIA — <code>nvidia-smi</code> or <code>nvtop</code> · Linux AMD — <code>radeontop</code>, <code>rocm-smi</code>, or Mission Center · Linux Intel — <code>intel_gpu_top</code> · Windows — Task Manager → Performance → GPU.
@@ -2602,8 +3220,6 @@ export default function PreferencesView() {
                         </p>
                       )}
                     </div>
-
-                    {ollamaModelsSection}
 
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
                       <div className="flex items-start justify-between gap-3">
@@ -2957,281 +3573,322 @@ export default function PreferencesView() {
                       </div>
                     </div>
 
-                  </>
-                )}
+                  </div>
+                  {ollamaModelsSection}
+                </div>
+              )}
 
                 {/* ── Chat ── */}
                 {activeTab === "chat" && (
-                  <>
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                    {/* Card 1: Chat Layout & Preview */}
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
                       <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Chat Identifiers</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                          Customize the display labels for you (the user) and the assistant in the chat.
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Chat Layout & Preview</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Configure chat message appearance, size limits, and scroll behavior.
                         </p>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-xs text-[var(--text-secondary)]">User Identifier</label>
-                          <input
-                            type="text"
-                            value={dbSettings.user_chat_label}
-                            onChange={(e) => set("user_chat_label", e.target.value)}
-                            placeholder="You"
-                            className="w-full text-sm bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                          />
+
+                      {/* Chat messages style selector */}
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Chat Messages Style</label>
+                        <div className="flex flex-row flex-wrap gap-x-6 gap-y-2">
+                          {(["bubble", "flat", "minimal"] as ChatMessageStyle[]).map((style) => (
+                            <label
+                              key={style}
+                              className="flex items-center gap-2 text-sm cursor-pointer"
+                              onMouseEnter={() => setHoverOverrides((o) => ({ ...o, chatMessageStyle: style }))}
+                              onMouseLeave={() => setHoverOverrides((o) => ({ ...o, chatMessageStyle: null }))}
+                            >
+                              <input
+                                type="radio"
+                                name="chat_message_style"
+                                checked={chatMessageStyle === style}
+                                onChange={() => setChatMessageStyle(style)}
+                                className="accent-[var(--accent-color)]"
+                              />
+                              <span className="text-[var(--text-secondary)] capitalize">{style}</span>
+                            </label>
+                          ))}
                         </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs text-[var(--text-secondary)]">Assistant Identifier</label>
-                          <input
-                            type="text"
-                            value={dbSettings.assistant_chat_label}
-                            onChange={(e) => set("assistant_chat_label", e.target.value)}
-                            placeholder="Assistant"
-                            className="w-full text-sm bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                          />
+                        <p className="text-[11px] text-[var(--text-muted)] mt-2">
+                          <strong>Bubble:</strong> colored rounded message bubbles. <strong>Flat:</strong> borderless document-style layout. <strong>Minimal:</strong> full-width, no bubbles, with role labels.
+                        </p>
+
+                        {/* Live preview */}
+                        <div className="mt-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3 overflow-hidden">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Preview</p>
+                          {/* User message */}
+                          <div className={`flex flex-col gap-0.5 ${
+                            chatMessageStyle === "minimal" ? "items-start" : "items-end"
+                          }`}>
+                            {chatMessageStyle === "minimal" && (
+                              <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">{dbSettings.user_chat_label || "You"}</span>
+                            )}
+                            <div className={`text-xs ${
+                              chatMessageStyle === "minimal"
+                                ? "w-full py-1 text-[var(--text-primary)]"
+                                : chatMessageStyle === "flat"
+                                  ? "w-fit rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[var(--text-primary)]"
+                                  : "w-fit rounded-2xl rounded-tr-sm message-user px-3 py-1.5"
+                            }`}>
+                              What is the speed of light?
+                            </div>
+                          </div>
+                          {/* Assistant message */}
+                          <div className={`flex flex-col gap-0.5 ${
+                            chatMessageStyle === "minimal" ? "items-start" : "items-start"
+                          }`}>
+                            {chatMessageStyle === "minimal" && (
+                              <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">{dbSettings.assistant_chat_label || "Assistant"}</span>
+                            )}
+                            <div className={`text-xs ${
+                              chatMessageStyle === "minimal"
+                                ? "w-full py-1 text-[var(--text-primary)]"
+                                : chatMessageStyle === "flat"
+                                  ? "w-full rounded border-l-2 border-[var(--accent-color)]/40 bg-transparent px-3 py-1.5 text-[var(--text-primary)]"
+                                  : "w-full rounded-2xl rounded-tl-sm message-assistant px-3 py-1.5"
+                            }`}>
+                              The speed of light in a vacuum is approximately 299,792,458 meters per second.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-[var(--border-color)] pt-3 space-y-3">
+                        <div className="flex items-center justify-between py-0.5">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Expand Chat Container</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">Remove the maximum width constraint on the chat area</p>
+                          </div>
+                          <Toggle on={expandChatToWindowWidth} onToggle={() => setExpandChatToWindowWidth(!expandChatToWindowWidth)} />
+                        </div>
+
+                        <div className="flex items-center justify-between py-0.5">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Scroll Message to Top</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">After sending, scroll so your message appears at the top of the view</p>
+                          </div>
+                          <Toggle on={scrollToTopOnSend} onToggle={() => setScrollToTopOnSend(!scrollToTopOnSend)} />
                         </div>
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-2">
+                    {/* Card 2: Composer & Input */}
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
                       <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Composer Suggestions</h3>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Composer & Input</h3>
                         <p className="text-xs text-[var(--text-muted)] mt-1">
-                          Manage the suggestion chips shown above the composer input.
+                          Configure layout buttons, chips, and identification labels.
                         </p>
                       </div>
-                      <div className="flex flex-row items-center gap-x-5">
-<label className="flex items-center gap-2 text-sm cursor-pointer">
-                          <Toggle on={showComposerWorkspaceSuggestions} onToggle={() => setShowComposerWorkspaceSuggestions(!showComposerWorkspaceSuggestions)} />
-                          <span className="text-[var(--text-secondary)]">Workspace suggestions</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                          <Toggle on={showComposerChatFollowUps} onToggle={() => setShowComposerChatFollowUps(!showComposerChatFollowUps)} />
-                          <span className="text-[var(--text-secondary)]">Follow-up suggestions</span>
-                        </label>
-                      </div>
-                    </div>
 
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-2">
+                      {/* Composer Mode */}
                       <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Composer Mode</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Composer Mode</label>
+                        <div className="flex flex-row items-center gap-x-6">
+                          {(["normal", "family"] as const).map((mode) => (
+                            <label
+                              key={mode}
+                              className="flex items-center gap-2 text-sm cursor-pointer"
+                              onMouseEnter={() => setHoverOverrides((o) => ({ ...o, composerMode: mode }))}
+                              onMouseLeave={() => setHoverOverrides((o) => ({ ...o, composerMode: null }))}
+                            >
+                              <input
+                                type="radio"
+                                name="composer_mode"
+                                checked={composerMode === mode}
+                                onChange={() => setComposerMode(mode)}
+                                className="accent-[var(--accent-color)]"
+                              />
+                              <span className="text-[var(--text-secondary)] capitalize">{mode}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-1.5">
                           Normal: one send button per message. Family: send buttons grouped by model family.
                         </p>
                       </div>
-                      <div className="flex flex-row items-center gap-x-6">
-                        {(["normal", "family"] as const).map((mode) => (
-                          <label key={mode} className="flex items-center gap-2 text-sm cursor-pointer">
+
+                      {/* Composer Suggestions */}
+                      <div className="border-t border-[var(--border-color)] pt-3">
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Composer Suggestions</label>
+                        <div className="flex flex-col gap-2">
+                          <label className="flex items-center gap-2 text-sm cursor-pointer font-normal">
+                            <Toggle on={showComposerWorkspaceSuggestions} onToggle={() => setShowComposerWorkspaceSuggestions(!showComposerWorkspaceSuggestions)} />
+                            <span className="text-[var(--text-secondary)]">Workspace suggestions</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer font-normal">
+                            <Toggle on={showComposerChatFollowUps} onToggle={() => setShowComposerChatFollowUps(!showComposerChatFollowUps)} />
+                            <span className="text-[var(--text-secondary)]">Follow-up suggestions</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Chat Identifiers */}
+                      <div className="border-t border-[var(--border-color)] pt-3">
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Chat Identifiers</label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-xs text-[var(--text-secondary)]">User Identifier</label>
+                            <input
+                              type="text"
+                              value={dbSettings.user_chat_label}
+                              onChange={(e) => set("user_chat_label", e.target.value)}
+                              placeholder="You"
+                              className="w-full text-sm bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-xs text-[var(--text-secondary)]">Assistant Identifier</label>
+                            <input
+                              type="text"
+                              value={dbSettings.assistant_chat_label}
+                              onChange={(e) => set("assistant_chat_label", e.target.value)}
+                              placeholder="Assistant"
+                              className="w-full text-sm bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card 3: Metadata & Behavior */}
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Metadata & Diagnostics</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Configure auto-generated content and performance overlays.
+                        </p>
+                      </div>
+
+                      {/* Chat Title Auto-Generation */}
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium font-semibold">Chat Title Auto-Generation</label>
+                        <div className="flex flex-col gap-2">
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
                             <input
                               type="radio"
-                              name="composer_mode"
-                              checked={composerMode === mode}
-                              onChange={() => setComposerMode(mode)}
+                              name="chat_title_refresh"
+                              checked={dbSettings.chat_title_auto_refresh === "disabled"}
+                              onChange={() => set("chat_title_auto_refresh", "disabled")}
                               className="accent-[var(--accent-color)]"
                             />
-                            <span className="text-[var(--text-secondary)] capitalize">{mode}</span>
+                            <span className="text-[var(--text-secondary)]">Disabled</span>
                           </label>
-                        ))}
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="chat_title_refresh"
+                              checked={dbSettings.chat_title_auto_refresh === "initial_only"}
+                              onChange={() => set("chat_title_auto_refresh", "initial_only")}
+                              className="accent-[var(--accent-color)]"
+                            />
+                            <span className="text-[var(--text-secondary)]">Initial title only</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer flex-wrap">
+                            <input
+                              type="radio"
+                              name="chat_title_refresh"
+                              checked={dbSettings.chat_title_auto_refresh === "periodic"}
+                              onChange={() => set("chat_title_auto_refresh", "periodic")}
+                              className="accent-[var(--accent-color)]"
+                            />
+                            <span className="text-[var(--text-secondary)]">Refresh periodically every</span>
+                            {dbSettings.chat_title_auto_refresh === "periodic" && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min={2}
+                                  max={50}
+                                  value={dbSettings.chat_title_refresh_interval || 5}
+                                  onChange={(e) => set("chat_title_refresh_interval", Number(e.target.value))}
+                                  className="w-16 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                                />
+                                <span className="text-xs text-[var(--text-secondary)]">messages</span>
+                              </div>
+                            )}
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Show Gen Info */}
+                      <div className="border-t border-[var(--border-color)] pt-3 space-y-2">
+                        <div className="flex items-center justify-between py-0.5">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Show Gen Info</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">Display token count, duration, and speed (tok/s) below assistant messages.</p>
+                          </div>
+                          <Toggle on={showGenInfo} onToggle={() => setShowGenInfo(!showGenInfo)} />
+                        </div>
+                        {showGenInfo && (
+                          <div className="flex flex-col gap-2 ml-4 border-l border-[var(--border-color)] pl-4 py-1">
+                            <label className="flex items-center gap-2 text-xs cursor-pointer">
+                              <Toggle on={showGenInfoModel} onToggle={() => setShowGenInfoModel(!showGenInfoModel)} />
+                              <span className="text-[var(--text-secondary)]">Model name</span>
+                            </label>
+                            <label className="flex items-center gap-2 text-xs cursor-pointer">
+                              <Toggle on={showGenInfoTokenCount} onToggle={() => setShowGenInfoTokenCount(!showGenInfoTokenCount)} />
+                              <span className="text-[var(--text-secondary)]">Token count</span>
+                            </label>
+                            <label className="flex items-center gap-2 text-xs cursor-pointer">
+                              <Toggle on={showGenInfoDuration} onToggle={() => setShowGenInfoDuration(!showGenInfoDuration)} />
+                              <span className="text-[var(--text-secondary)]">Generation duration</span>
+                            </label>
+                            <label className="flex items-center gap-2 text-xs cursor-pointer">
+                              <Toggle on={showGenInfoSpeed} onToggle={() => setShowGenInfoSpeed(!showGenInfoSpeed)} />
+                              <span className="text-[var(--text-secondary)]">Generation speed (tok/s)</span>
+                            </label>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Status Bar */}
+                      <div className="border-t border-[var(--border-color)] pt-3">
+                        <div className="flex items-center justify-between py-0.5">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Show Status Bar</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">Display the system status bar (CPU, RAM, active jobs) at the bottom of the window</p>
+                          </div>
+                          <Toggle on={showStatusBar} onToggle={() => setShowStatusBar(!showStatusBar)} />
+                        </div>
                       </div>
                     </div>
 
-                    {/* Chat Title Auto-Generation */}
-                    <div>
-                      <label className="text-xs text-[var(--text-secondary)] mb-2 block">Chat Title Auto-Generation</label>
-                      <div className="flex flex-row items-center gap-x-6">
-                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input
-                            type="radio"
-                            name="chat_title_refresh"
-                            checked={dbSettings.chat_title_auto_refresh === "disabled"}
-                            onChange={() => set("chat_title_auto_refresh", "disabled")}
-                            className="accent-[var(--accent-color)]"
-                          />
-                          <span className="text-[var(--text-secondary)]">Disabled</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input
-                            type="radio"
-                            name="chat_title_refresh"
-                            checked={dbSettings.chat_title_auto_refresh === "initial_only"}
-                            onChange={() => set("chat_title_auto_refresh", "initial_only")}
-                            className="accent-[var(--accent-color)]"
-                          />
-                          <span className="text-[var(--text-secondary)]">Initial title only</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
-                          <input
-                            type="radio"
-                            name="chat_title_refresh"
-                            checked={dbSettings.chat_title_auto_refresh === "periodic"}
-                            onChange={() => set("chat_title_auto_refresh", "periodic")}
-                            className="accent-[var(--accent-color)]"
-                          />
-                          <span className="text-[var(--text-secondary)]">Refresh periodically every</span>
-                          {dbSettings.chat_title_auto_refresh === "periodic" && (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                min={2}
-                                max={50}
-                                value={dbSettings.chat_title_refresh_interval || 5}
-                                onChange={(e) => set("chat_title_refresh_interval", Number(e.target.value))}
-                                className="w-16 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                              />
-                              <span className="text-xs text-[var(--text-secondary)]">messages</span>
-                            </div>
-                          )}
-                        </label>
-                      </div>
-                      <p className="text-xs text-[var(--text-muted)] mt-2">
-                        AI-generated titles improve chat organization. &apos;Periodic&apos; refreshes the title based on conversation progress.
-                      </p>
-                    </div>
-
-                    {/* Deletion Settings */}
-                    <div className="flex items-center justify-between py-0.5">
+                    {/* Card 4: Safety & Deletion */}
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
                       <div>
-                        <p className="text-sm text-[var(--text-secondary)]">Immediate Delete</p>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">Bypass recycle bin and delete chats immediately with confirmation</p>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Safety & Deletion</h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                          Configure safety prompts and permanent deletion options.
+                        </p>
                       </div>
-                      <Toggle on={dbSettings.immediate_delete} onToggle={() => set("immediate_delete", !dbSettings.immediate_delete)} />
-                    </div>
 
-                    {!dbSettings.immediate_delete && (
                       <div className="flex items-center justify-between py-0.5">
                         <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Confirm Move to Trash</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">Prompt for confirmation before moving chats to the recycle bin</p>
+                          <p className="text-sm text-[var(--text-secondary)]">Immediate Delete</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">Bypass recycle bin and delete chats immediately with confirmation</p>
                         </div>
-                        <Toggle on={dbSettings.confirm_move_to_trash} onToggle={() => set("confirm_move_to_trash", !dbSettings.confirm_move_to_trash)} />
+                        <Toggle on={dbSettings.immediate_delete} onToggle={() => set("immediate_delete", !dbSettings.immediate_delete)} />
                       </div>
-                    )}
 
-                    {/* Status Bar */}
-                    <div className="flex items-center justify-between py-0.5">
-                      <div>
-                        <p className="text-sm text-[var(--text-secondary)]">Show Status Bar</p>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">Display the system status bar (CPU, RAM, active jobs) at the bottom of the window</p>
-                      </div>
-                      <Toggle on={showStatusBar} onToggle={() => setShowStatusBar(!showStatusBar)} />
-                    </div>
-
-                    {/* Show Gen Info */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Show Gen Info</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">Display token count, duration, and speed (tok/s) below assistant messages. Speed benchmarks are suppressed for Web AI models.</p>
-                        </div>
-                        <Toggle on={showGenInfo} onToggle={() => setShowGenInfo(!showGenInfo)} />
-                      </div>
-                      {showGenInfo && (
-                        <div className="flex flex-row items-center gap-x-5 ml-4 border-l border-[var(--border-color)] pl-4 py-2">
-                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                            <Toggle on={showGenInfoModel} onToggle={() => setShowGenInfoModel(!showGenInfoModel)} />
-                            <span className="text-[var(--text-secondary)]">Model name</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                            <Toggle on={showGenInfoTokenCount} onToggle={() => setShowGenInfoTokenCount(!showGenInfoTokenCount)} />
-                            <span className="text-[var(--text-secondary)]">Token count</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                            <Toggle on={showGenInfoDuration} onToggle={() => setShowGenInfoDuration(!showGenInfoDuration)} />
-                            <span className="text-[var(--text-secondary)]">Generation duration</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                            <Toggle on={showGenInfoSpeed} onToggle={() => setShowGenInfoSpeed(!showGenInfoSpeed)} />
-                            <span className="text-[var(--text-secondary)]">Generation speed (tok/s)</span>
-                          </label>
+                      {!dbSettings.immediate_delete && (
+                        <div className="flex items-center justify-between py-0.5">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Confirm Move to Trash</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">Prompt for confirmation before moving chats to the recycle bin</p>
+                          </div>
+                          <Toggle on={dbSettings.confirm_move_to_trash} onToggle={() => set("confirm_move_to_trash", !dbSettings.confirm_move_to_trash)} />
                         </div>
                       )}
                     </div>
-
-                    {/* Scroll message to top on send */}
-                    <div className="flex items-center justify-between py-0.5">
-                      <div>
-                        <p className="text-sm text-[var(--text-secondary)]">Scroll Message to Top on Send</p>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">After sending, scroll so your message appears at the top of the view</p>
-                      </div>
-                      <Toggle on={scrollToTopOnSend} onToggle={() => setScrollToTopOnSend(!scrollToTopOnSend)} />
-                    </div>
-
-                    {/* Chat messages style */}
-                    <div>
-                      <label className="text-xs text-[var(--text-secondary)] mb-2 block">Chat Messages Style</label>
-                      <div className="flex flex-row flex-wrap gap-x-6 gap-y-2">
-                        {(["bubble", "flat", "minimal"] as ChatMessageStyle[]).map((style) => (
-                          <label key={style} className="flex items-center gap-2 text-sm cursor-pointer">
-                            <input
-                              type="radio"
-                              name="chat_message_style"
-                              checked={chatMessageStyle === style}
-                              onChange={() => setChatMessageStyle(style)}
-                              className="accent-[var(--accent-color)]"
-                            />
-                            <span className="text-[var(--text-secondary)] capitalize">{style}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <p className="text-xs text-[var(--text-muted)] mt-2">
-                        <strong>Bubble:</strong> colored rounded message bubbles. <strong>Flat:</strong> borderless document-style layout. <strong>Minimal:</strong> full-width, no bubbles, with role labels.
-                      </p>
-
-                      {/* Live preview */}
-                      <div className="mt-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3 overflow-hidden">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Preview</p>
-                        {/* User message */}
-                        <div className={`flex flex-col gap-0.5 ${
-                          chatMessageStyle === "minimal" ? "items-start" : "items-end"
-                        }`}>
-                          {chatMessageStyle === "minimal" && (
-                            <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">{dbSettings.user_chat_label || "You"}</span>
-                          )}
-                          <div className={`text-xs ${
-                            chatMessageStyle === "minimal"
-                              ? "w-full py-1 text-[var(--text-primary)]"
-                              : chatMessageStyle === "flat"
-                                ? "w-fit rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[var(--text-primary)]"
-                                : "w-fit rounded-2xl rounded-tr-sm message-user px-3 py-1.5"
-                          }`}>
-                            What is the speed of light?
-                          </div>
-                        </div>
-                        {/* Assistant message */}
-                        <div className={`flex flex-col gap-0.5 ${
-                          chatMessageStyle === "minimal" ? "items-start" : "items-start"
-                        }`}>
-                          {chatMessageStyle === "minimal" && (
-                            <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">{dbSettings.assistant_chat_label || "Assistant"}</span>
-                          )}
-                          <div className={`text-xs ${
-                            chatMessageStyle === "minimal"
-                              ? "w-full py-1 text-[var(--text-primary)]"
-                              : chatMessageStyle === "flat"
-                                ? "w-full rounded border-l-2 border-[var(--accent-color)]/40 bg-transparent px-3 py-1.5 text-[var(--text-primary)]"
-                                : "w-full rounded-2xl rounded-tl-sm message-assistant px-3 py-1.5"
-                          }`}>
-                            The speed of light in a vacuum is approximately 299,792,458 meters per second.
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Expand chat container to window width */}
-                    <div className="flex items-center justify-between py-1">
-                      <div>
-                        <p className="text-sm text-[var(--text-secondary)]">Expand Chat Container to Window Width</p>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">Remove the maximum width constraint on the chat area</p>
-                      </div>
-                      <Toggle on={expandChatToWindowWidth} onToggle={() => setExpandChatToWindowWidth(!expandChatToWindowWidth)} />
-                    </div>
-                  </>
+                  </div>
                 )}
 
                 {/* ── Learning ── */}
                 {activeTab === "learning" && (
-                  <>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -3291,7 +3948,7 @@ export default function PreferencesView() {
                         </button>
                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
 
                 {/* ── Browser Automation ── */}
@@ -3459,114 +4116,119 @@ export default function PreferencesView() {
                 {/* ── Security ── */}
                 {activeTab === "security" && (
                   <>
-                    {/* ── Require PIN on launch (primary toggle) ── */}
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] divide-y divide-[var(--border-color)]">
-                      <div className="flex items-center justify-between px-4 py-2">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Require PIN on launch</p>
-                          <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                            {dbSettings.pin_lock_enabled
-                              ? "The app will prompt for your PIN (or biometrics) at startup."
-                              : "Lock the app with a PIN passcode each time it starts."}
-                          </p>
-                        </div>
-                        <Toggle
-                          on={dbSettings.pin_lock_enabled}
-                          onToggle={() => {
-                            if (!dbSettings.pin_lock_enabled) {
-                              // Enabling — if no PIN exists, show the setup modal
-                              if (!pinConfigured) {
-                                resetPinForm();
-                                setPinMessage(null);
-                                setShowPinSetupModal(true);
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                    {/* Left Column: Enable & Unlock Options */}
+                    <div className="space-y-4">
+                      {/* ── Require PIN on launch ── */}
+                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3.5">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-[var(--text-primary)]">Require PIN on launch</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-1">
+                              {dbSettings.pin_lock_enabled
+                                ? "The app will prompt for your PIN (or biometrics) at startup."
+                                : "Lock the app with a PIN passcode each time it starts."}
+                            </p>
+                          </div>
+                          <Toggle
+                            on={dbSettings.pin_lock_enabled}
+                            onToggle={() => {
+                              if (!dbSettings.pin_lock_enabled) {
+                                // Enabling — if no PIN exists, show the setup modal
+                                if (!pinConfigured) {
+                                  resetPinForm();
+                                  setPinMessage(null);
+                                  setShowPinSetupModal(true);
+                                } else {
+                                  set("pin_lock_enabled", true);
+                                }
                               } else {
-                                set("pin_lock_enabled", true);
+                                // Disabling
+                                set("pin_lock_enabled", false);
+                                if (dbSettings.touch_id_enabled) {
+                                  set("touch_id_enabled", false);
+                                }
                               }
-                            } else {
-                              // Disabling
-                              set("pin_lock_enabled", false);
-                              if (dbSettings.touch_id_enabled) {
-                                set("touch_id_enabled", false);
-                              }
-                            }
-                          }}
-                        />
+                            }}
+                          />
+                        </div>
                       </div>
+
+                      {/* ── Biometric ── */}
+                      {dbSettings.pin_lock_enabled && biometricAvailable && (
+                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3.5">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-[var(--text-primary)]">{biometricLabel}</p>
+                              <p className="text-xs text-[var(--text-muted)] mt-1">
+                                Use {biometricLabel} as a quick unlock. PIN is always available as a fallback.
+                              </p>
+                            </div>
+                            <Toggle
+                              on={dbSettings.touch_id_enabled}
+                              onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Auto-lock ── */}
+                      {dbSettings.pin_lock_enabled && (
+                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3.5 space-y-3">
+                          <div>
+                            <h3 className="text-sm font-semibold text-[var(--text-primary)]">Auto-lock</h3>
+                            <p className="text-xs text-[var(--text-muted)] mt-1">Automatically lock the app after a period of inactivity.</p>
+                          </div>
+                          <div className="flex flex-row flex-wrap gap-x-6 gap-y-2 pt-1 font-normal">
+                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input
+                                type="radio"
+                                name="auto_lock"
+                                checked={dbSettings.auto_lock_minutes === 0}
+                                onChange={() => set("auto_lock_minutes", 0)}
+                                className="accent-[var(--accent-color)]"
+                              />
+                              <span className="text-[var(--text-secondary)] font-normal">Off</span>
+                            </label>
+                            <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
+                              <input
+                                type="radio"
+                                name="auto_lock"
+                                checked={dbSettings.auto_lock_minutes > 0}
+                                onChange={() => set("auto_lock_minutes", dbSettings.auto_lock_minutes > 0 ? dbSettings.auto_lock_minutes : 5)}
+                                className="accent-[var(--accent-color)]"
+                              />
+                              <span className="text-[var(--text-secondary)] font-normal">Lock after</span>
+                              {dbSettings.auto_lock_minutes > 0 && (
+                                <span className="flex items-center gap-2">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={1440}
+                                    value={dbSettings.auto_lock_minutes}
+                                    onChange={(e) => {
+                                      const val = Number(e.target.value);
+                                      if (val > 0) { set("auto_lock_minutes", val); }
+                                    }}
+                                    className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                                  />
+                                  <span className="text-xs text-[var(--text-secondary)] font-normal">minutes</span>
+                                </span>
+                              )}
+                            </label>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    {/* ── Subordinate options (visible when PIN lock is on) ── */}
-                    {dbSettings.pin_lock_enabled && (
-                      <>
-                        {/* ── Biometric ── */}
-                        {biometricAvailable && (
-                          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-2">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-sm text-[var(--text-secondary)]">{biometricLabel}</p>
-                                <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                                  Use {biometricLabel} as a quick unlock. PIN is always available as a fallback.
-                                </p>
-                              </div>
-                              <Toggle
-                                on={dbSettings.touch_id_enabled}
-                                onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* ── Auto-lock ── */}
-                        <div className="space-y-2">
-                          <div>
-                            <label className="text-xs text-[var(--text-secondary)] mb-2 block">Auto-lock</label>
-                            <p className="text-[11px] text-[var(--text-muted)] mb-2">Automatically lock the app after a period of inactivity.</p>
-                            <div className="flex flex-row flex-wrap gap-x-6 gap-y-2">
-                              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name="auto_lock"
-                                  checked={dbSettings.auto_lock_minutes === 0}
-                                  onChange={() => set("auto_lock_minutes", 0)}
-                                  className="accent-[var(--accent-color)]"
-                                />
-                                <span className="text-[var(--text-secondary)]">Off</span>
-                              </label>
-                              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name="auto_lock"
-                                  checked={dbSettings.auto_lock_minutes > 0}
-                                  onChange={() => set("auto_lock_minutes", dbSettings.auto_lock_minutes > 0 ? dbSettings.auto_lock_minutes : 5)}
-                                  className="accent-[var(--accent-color)]"
-                                />
-                                <span className="text-[var(--text-secondary)]">Lock after</span>
-                                {dbSettings.auto_lock_minutes > 0 && (
-                                  <span className="flex items-center gap-2">
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      max={1440}
-                                      value={dbSettings.auto_lock_minutes}
-                                      onChange={(e) => {
-                                        const val = Number(e.target.value);
-                                        if (val > 0) { set("auto_lock_minutes", val); }
-                                      }}
-                                      className="w-20 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                                    />
-                                    <span className="text-xs text-[var(--text-secondary)]">minutes</span>
-                                  </span>
-                                )}
-                              </label>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* ── PIN Management ── */}
+                    {/* Right Column: PIN Management */}
+                    <div className="space-y-4">
+                      {dbSettings.pin_lock_enabled && (
                         <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
                           <div className="flex items-start justify-between gap-4">
                             <div>
-                              <p className="text-sm text-[var(--text-secondary)]">PIN passcode</p>
-                              <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-sm">
+                              <p className="text-sm font-semibold text-[var(--text-primary)]">PIN passcode</p>
+                              <p className="text-xs text-[var(--text-muted)] mt-1 max-w-sm">
                                 4 to 8 digits. Stored as a hash, never plaintext.
                               </p>
                             </div>
@@ -3576,7 +4238,7 @@ export default function PreferencesView() {
                           </div>
 
                           <div>
-                            <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Current PIN</label>
+                            <label className="text-xs text-[var(--text-secondary)] mb-1.5 block font-medium">Current PIN</label>
                             <input
                               type="password"
                               inputMode="numeric"
@@ -3590,7 +4252,7 @@ export default function PreferencesView() {
 
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div>
-                              <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">New PIN</label>
+                              <label className="text-xs text-[var(--text-secondary)] mb-1.5 block font-medium">New PIN</label>
                               <input
                                 type="password"
                                 inputMode="numeric"
@@ -3602,7 +4264,7 @@ export default function PreferencesView() {
                               />
                             </div>
                             <div>
-                              <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">Confirm PIN</label>
+                              <label className="text-xs text-[var(--text-secondary)] mb-1.5 block font-medium">Confirm PIN</label>
                               <input
                                 type="password"
                                 inputMode="numeric"
@@ -3621,7 +4283,7 @@ export default function PreferencesView() {
                             </p>
                           )}
 
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-2 pt-1">
                             <button
                               onClick={handleSetPin}
                               disabled={pinSaving}
@@ -3638,8 +4300,9 @@ export default function PreferencesView() {
                             </button>
                           </div>
                         </div>
-                      </>
-                    )}
+                      )}
+                    </div>
+                  </div>
 
                     {/* ── PIN Setup Modal ── */}
                     {showPinSetupModal && (
@@ -3721,19 +4384,19 @@ export default function PreferencesView() {
 
                 {/* ── Sync ── */}
                 {activeTab === "sync" && (
-                  <>
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
                     <div>
-                      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Multi-device Sync</h3>
-                      <p className="text-xs text-[var(--text-muted)] mb-3">
+                      <h3 className="text-sm font-semibold text-[var(--text-primary)]">Multi-device Sync</h3>
+                      <p className="text-xs text-[var(--text-muted)] mt-1">
                         Sync your chats, memories, and settings across devices using a private Git remote.
                         Requires a private repository (GitHub, GitLab, or any SSH-accessible bare repo) and
                         Git installed on this machine.
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between py-1">
+                    <div className="flex items-center justify-between py-1 border-t border-[var(--border-color)] pt-4">
                       <div>
-                        <p className="text-sm text-[var(--text-secondary)]">Enable sync</p>
+                        <p className="text-sm font-semibold text-[var(--text-secondary)]">Enable sync</p>
                         <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically sync every 5 minutes in the background</p>
                       </div>
                       <Toggle
@@ -3755,8 +4418,8 @@ export default function PreferencesView() {
                       />
                     </div>
 
-                    <div>
-                      <label className="text-xs text-[var(--text-secondary)] mb-1 block">Remote URL</label>
+                    <div className="border-t border-[var(--border-color)] pt-4 space-y-2">
+                      <label className="text-xs text-[var(--text-secondary)] block font-medium">Remote URL</label>
                       <div className="flex gap-2">
                         <input
                           value={gitSyncUrl}
@@ -3783,7 +4446,7 @@ export default function PreferencesView() {
                           {gitSyncSaving ? <RefreshCw size={12} className="animate-spin" /> : "Save"}
                         </button>
                       </div>
-                      <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                      <p className="text-[11px] text-[var(--text-muted)] mt-1.5">
                         SSH remote required. Use `git@...` or `ssh://...` and ensure your key is loaded in `ssh-agent`.
                       </p>
                       {gitSyncUrl.trim() && !isGitSyncSshUrl && (
@@ -3793,10 +4456,10 @@ export default function PreferencesView() {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between py-1">
+                    <div className="flex items-center justify-between py-1 border-t border-[var(--border-color)] pt-4">
                       <div>
                         <p className="text-xs text-[var(--text-muted)]">Last synced</p>
-                        <p className="text-sm text-[var(--text-secondary)]">
+                        <p className="text-sm font-semibold text-[var(--text-secondary)] mt-0.5">
                           {gitSync?.last_synced_at ? new Date(gitSync.last_synced_at).toLocaleString() : "Never"}
                         </p>
                       </div>
@@ -3826,17 +4489,25 @@ export default function PreferencesView() {
                         {gitSync.last_error}
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
 
+                </div>
               </div>
-            </div>
+
+              {/* Right Column: Live App Preview */}
+              <div className="hidden xl:flex xl:w-[580px] 2xl:w-[760px] shrink-0 min-h-0 border-l border-[var(--border-color)] bg-[var(--bg-secondary)]/10 flex-col items-center justify-center p-6 select-none overflow-hidden">
+                <LiveAppPreview dbSettings={dbSettings} overrides={hoverOverrides} />
+              </div>
+            </>
           )}
 
           {/* ── Full-bleed tabs (workspaces, backup, import) ── */}
           {activeTab === "workspaces" && (
             <div className="flex-1 min-h-0 overflow-hidden">
-              <WorkspaceSettingsView />
+              <React.Suspense fallback={null}>
+                <WorkspaceSettingsView />
+              </React.Suspense>
             </div>
           )}
 
@@ -3847,12 +4518,16 @@ export default function PreferencesView() {
                   {/* Workspace backup section */}
                   <div>
                     <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Workspace Backup</h2>
-                    <BackupSettingsSection />
+                    <React.Suspense fallback={null}>
+                      <BackupSettingsSection />
+                    </React.Suspense>
                   </div>
                   {/* Global backup section */}
                   <div className="border-t border-[var(--border-color)] pt-8">
                     <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Global Backup</h2>
-                    <GlobalBackupSection />
+                    <React.Suspense fallback={null}>
+                      <GlobalBackupSection />
+                    </React.Suspense>
                   </div>
                 </div>
               </div>
@@ -3861,7 +4536,9 @@ export default function PreferencesView() {
 
           {activeTab === "import" && (
             <div className="flex-1 min-h-0 overflow-hidden">
-              <ImportSettingsSection />
+              <React.Suspense fallback={null}>
+                <ImportSettingsSection />
+              </React.Suspense>
             </div>
           )}
 
@@ -3875,7 +4552,9 @@ export default function PreferencesView() {
 
           {activeTab === "memory" && (
             <div className="flex-1 min-h-0 overflow-hidden">
-              <GlobalMemoryView />
+              <React.Suspense fallback={null}>
+                <GlobalMemoryView />
+              </React.Suspense>
             </div>
           )}
 
