@@ -1243,7 +1243,7 @@ export default function PreferencesView() {
     : saveStatus === "saved"
       ? "text-emerald-400"
       : "text-[var(--text-muted)]";
-  const contentWidthClassName = activeTab === "ai" ? "max-w-5xl" : "max-w-4xl";
+  const contentWidthClassName = "app-container";
   const ollamaModelsSection = (
     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -1790,7 +1790,7 @@ export default function PreferencesView() {
 
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {(activeTab === "app" || activeTab === "navigation" || activeTab === "appearance" || activeTab === "chat" || activeTab === "learning" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
-            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+            <div className="flex-1 min-h-0 overflow-y-auto py-4">
               <div className={`${contentWidthClassName} space-y-4`}>
 
                 {/* ── App ── */}
@@ -3880,8 +3880,8 @@ export default function PreferencesView() {
           )}
 
           {activeTab === "mcp" && (
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="max-w-4xl w-full">
+            <div className="flex-1 overflow-y-auto py-6">
+              <div className="app-container">
                 <h2 className="text-2xl font-bold mb-4">Model Context Protocol Servers</h2>
 
                 <div className="mb-6">

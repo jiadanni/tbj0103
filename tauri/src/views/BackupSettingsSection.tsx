@@ -146,7 +146,7 @@ export default function BackupSettingsSection() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2 max-w-4xl">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
           <div className="flex items-start justify-between gap-4">
             <div>

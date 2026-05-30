@@ -234,7 +234,7 @@ export default function ThoughtQueueView() {
             <p className="text-xs opacity-60">Add a thought from the right sidebar to get started.</p>
           </div>
         ) : (
-          <div className="p-4 space-y-3 max-w-3xl mx-auto">
+          <div className="app-container py-4 space-y-3">
             {/* Ordered: processing → scheduled → pending → done */}
             {[...processing, ...scheduled, ...pending, ...done].map((thought) => (
               <ThoughtCard

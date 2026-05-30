@@ -491,3 +491,22 @@ select optgroup {
 .animate-tooltip-right {
   animation: tooltip-fade-in-right 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+@layer components {
+  .app-container {
+    @apply mx-auto w-full px-6;
+    max-width: 80rem;
+  }
+
+  @screen xl {
+    .app-container {
+      max-width: 96rem;
+    }
+  }
+
+  @screen 2xl {
+    .app-container {
+      max-width: 112rem;
+    }
+  }
+}

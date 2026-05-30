@@ -121,7 +121,7 @@ export default function GlobalMemoryView() {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--bg-primary)]">
       <div className="border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-6 py-6">
+        <div className="app-container flex flex-col gap-5 py-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-2xl">
               <div className="flex items-center gap-2 text-[var(--text-primary)]">
@@ -152,7 +152,7 @@ export default function GlobalMemoryView() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-7xl space-y-6 px-6 py-6">
+        <div className="app-container space-y-6 py-6">
           {/* Summary Section */}
           <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5">
             <div className="mb-3 flex items-center justify-between">

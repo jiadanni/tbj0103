@@ -1,22 +1,60 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  Activity,
   ArrowRight,
   BarChart2,
+  BookOpen,
   CheckCircle2,
   Clock3,
+  FileText,
+  Globe,
+  Lightbulb,
   MessageSquare,
   RefreshCw,
   Search,
+  Sparkles,
   Target,
+  Zap,
 } from "lucide-react";
 import {
   api,
+  type DashboardActivity,
   type DashboardRoute,
   type DashboardSummary,
 } from "../lib/api";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+
+function useResponsiveLimit(narrow: number, wide: number, ultrawide: number) {
+  const [limit, setLimit] = useState(() => {
+    if (typeof window === "undefined") { return narrow; }
+    const w = window.innerWidth;
+    return w >= 1792 ? ultrawide : w >= 1280 ? wide : narrow;
+  });
+  useEffect(() => {
+    const compute = () => {
+      const w = window.innerWidth;
+      setLimit(w >= 1792 ? ultrawide : w >= 1280 ? wide : narrow);
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, [narrow, wide, ultrawide]);
+  return limit;
+}
+
+function activityIcon(kind: string) {
+  switch (kind) {
+    case "chat": return MessageSquare;
+    case "note": return FileText;
+    case "source":
+    case "document": return BookOpen;
+    case "capture":
+    case "web": return Globe;
+    default: return Activity;
+  }
+}
 
 function timeAgo(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -149,6 +187,11 @@ export default function FolderDashboardView() {
     };
   }, [activeWorkspaceId, includeDescendants]);
 
+  const goalsLimit = useResponsiveLimit(3, 5, 8);
+  const activityLimit = useResponsiveLimit(5, 10, 15);
+  const suggestionsLimit = useResponsiveLimit(3, 6, 10);
+  const weakConceptsLimit = useResponsiveLimit(3, 6, 10);
+
   function openRoute(route: DashboardRoute) {
     const normalized = normalizeKnowledgeRoute(route);
     navigate(normalized.path, normalized.state ? { state: routeState(normalized) } : undefined);
@@ -209,9 +252,20 @@ export default function FolderDashboardView() {
   const effectiveSummary = summary;
   if (!effectiveSummary) { return null; }
 
+  const visibleGoals = effectiveSummary.goals.slice(0, goalsLimit);
+  const visibleActivity: DashboardActivity[] = effectiveSummary.recent_activity.slice(0, activityLimit);
+  const visibleSuggestions = effectiveSummary.progression.slice(0, suggestionsLimit);
+  const visibleWeakConcepts = effectiveSummary.review.weak_concepts.slice(0, weakConceptsLimit);
+  const knowledgeHealth = effectiveSummary.knowledge_health;
+  const hasKnowledgeHealth =
+    knowledgeHealth.stalled_goals > 0 ||
+    knowledgeHealth.unprocessed_sources > 0 ||
+    knowledgeHealth.isolated_concepts > 0 ||
+    knowledgeHealth.active_topic_tags.length > 0;
+
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-4">
+      <div className="app-container flex flex-col gap-4 py-4">
         <header className="rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(255,255,255,0)_50%),var(--bg-elevated)] p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0 flex-1">
@@ -264,15 +318,24 @@ export default function FolderDashboardView() {
           </div>
         </header>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <MetricCard label="Due Review" value={effectiveSummary.review.due_today} accent="bg-[var(--accent-color)]" />
           <MetricCard label="Active Goals" value={effectiveSummary.overview.active_goals} accent="bg-[var(--accent-color)]" />
           <MetricCard label="Concepts Tracked" value={effectiveSummary.overview.concepts} accent="bg-[var(--accent-color)]" />
           <MetricCard label="Sources Captured" value={effectiveSummary.overview.sources} accent="bg-[var(--accent-color)]" />
+          <MetricCard
+            label="Cards Learned"
+            value={
+              effectiveSummary.review.total_cards > 0
+                ? `${effectiveSummary.review.learned}/${effectiveSummary.review.total_cards}`
+                : effectiveSummary.review.learned
+            }
+            accent="bg-emerald-400"
+          />
+          <MetricCard label="Completed Goals" value={effectiveSummary.overview.completed_goals} accent="bg-emerald-400" />
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
-          <div className="flex flex-col gap-4">
+        <div className="grid gap-4 xl:grid-cols-3">
             <Section title="Continue Learning">
               {continueLearning ? (
                 <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
@@ -321,7 +384,7 @@ export default function FolderDashboardView() {
             <Section title="Goals In Motion" eyebrow="Progress">
               {effectiveSummary.goals.length > 0 ? (
                 <div className="space-y-3">
-                  {effectiveSummary.goals.map((goal) => (
+                  {visibleGoals.map((goal) => (
                     <button
                       key={goal.id}
                       onClick={() => openRoute(goal.route)}
@@ -373,20 +436,109 @@ export default function FolderDashboardView() {
                 </div>
               )}
             </Section>
-          </div>
 
-          <Section title="Recent Chats">
-            {effectiveSummary.recent_activity.filter((a) => a.kind === "chat").length > 0 ? (
+          {visibleSuggestions.length > 0 && (
+            <Section title="Suggested Next Steps" eyebrow="For you">
+              <div className="space-y-2">
+                {visibleSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.id}
+                    onClick={() => openRoute(suggestion.route)}
+                    className="block w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
+                        <Lightbulb size={14} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-[var(--text-primary)]">{suggestion.title}</div>
+                        {suggestion.description && (
+                          <div className="mt-0.5 text-xs text-[var(--text-secondary)]">{suggestion.description}</div>
+                        )}
+                      </div>
+                      <ArrowRight size={13} className="mt-1 shrink-0 text-[var(--text-muted)]" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {visibleWeakConcepts.length > 0 && (
+            <Section title="Weak Concepts" eyebrow="Needs review">
+              <div className="space-y-2">
+                {visibleWeakConcepts.map((concept) => (
+                  <button
+                    key={concept.concept_id}
+                    onClick={() => openRoute(concept.route)}
+                    className="block w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500">
+                        <Zap size={14} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className="truncate text-sm font-medium text-[var(--text-primary)]">{concept.name}</div>
+                          <span className="shrink-0 rounded-full bg-[var(--bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+                            {concept.review_count}×
+                          </span>
+                        </div>
+                        {concept.reason && (
+                          <div className="mt-0.5 text-xs text-[var(--text-secondary)]">{concept.reason}</div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {hasKnowledgeHealth && (
+            <Section title="Knowledge Health" eyebrow="Snapshot">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
+                  <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.stalled_goals}</div>
+                  <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Stalled goals</div>
+                </div>
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
+                  <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.unprocessed_sources}</div>
+                  <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Unprocessed sources</div>
+                </div>
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
+                  <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.isolated_concepts}</div>
+                  <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Isolated concepts</div>
+                </div>
+              </div>
+              {knowledgeHealth.active_topic_tags.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {knowledgeHealth.active_topic_tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-1 rounded-full bg-[rgba(var(--accent-color-rgb),0.12)] px-2 py-0.5 text-[11px] text-[var(--accent-color)]"
+                    >
+                      <Sparkles size={10} />
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </Section>
+          )}
+
+          <Section title="Recent Activity">
+            {visibleActivity.length > 0 ? (
               <div className="space-y-1">
-                {effectiveSummary.recent_activity
-                  .filter((a) => a.kind === "chat")
-                  .map((item) => (
+                {visibleActivity.map((item) => {
+                  const Icon = activityIcon(item.kind);
+                  return (
                     <button
                       key={item.id}
                       onClick={() => openRoute(item.route)}
                       className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--bg-primary)]"
                     >
-                      <MessageSquare size={13} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+                      <Icon size={13} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-xs font-medium text-[var(--text-primary)]">{item.title}</div>
                         <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">
@@ -394,7 +546,8 @@ export default function FolderDashboardView() {
                         </div>
                       </div>
                     </button>
-                  ))}
+                  );
+                })}
                 <button
                   onClick={() => navigate("/history")}
                   className="mt-2 flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
@@ -405,7 +558,7 @@ export default function FolderDashboardView() {
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-3">
-                <div className="text-xs text-[var(--text-muted)]">No recent chats</div>
+                <div className="text-xs text-[var(--text-muted)]">No recent activity</div>
               </div>
             )}
           </Section>
