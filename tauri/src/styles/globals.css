@@ -50,7 +50,7 @@
     --text-primary: #f4f4f5;
     --text-secondary: #d4d4d8;
     --text-muted: #a1a1aa;
-    --bg-elevated: rgba(39, 39, 42, 0.9);
+    --bg-elevated: #27272a;
     --tooltip-bg: #27272a;
     --tooltip-border: rgba(255, 255, 255, 0.1);
     --bg-hover: rgba(255, 255, 255, 0.06);
@@ -123,7 +123,7 @@
   --text-primary: #f8f9fa;
   --text-secondary: #a1a1aa;
   --text-muted: #71717a;
-  --bg-elevated: rgba(30, 30, 30, 0.92);
+  --bg-elevated: #1e1e1e;
   --tooltip-bg: #1e1e1e;
   --tooltip-border: rgba(255, 255, 255, 0.14);
   --bg-hover: rgba(255, 255, 255, 0.08);

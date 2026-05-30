@@ -16,6 +16,7 @@ const apiMocks = vi.hoisted(() => ({
   getSummary: vi.fn(),
   listMemories: vi.fn(),
   getMemorySummary: vi.fn(),
+  listSummarySnapshots: vi.fn(() => Promise.resolve([])),
   getTopicSignature: vi.fn(),
   listGlossaryTerms: vi.fn(),
   resolveGlossaryTerm: vi.fn(),
@@ -40,6 +41,7 @@ vi.mock("@/lib/api", () => ({
     memory: {
       list: apiMocks.listMemories,
       getSummary: apiMocks.getMemorySummary,
+      listSummarySnapshots: apiMocks.listSummarySnapshots,
     },
     topicSignature: {
       get: apiMocks.getTopicSignature,
