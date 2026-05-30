@@ -2,9 +2,9 @@
  * LearningPathView — learning goals with progress tracking.
  * Mirrors LearningPathView.swift.
  */
-import { useEffect, useState } from "react";
-import { Plus, Check, Trash2, Target, Sparkles, Loader2 } from "lucide-react";
-import { api, type LearningGoal } from "../lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, Check, Trash2, Target, Sparkles, Loader2, X } from "lucide-react";
+import { api, type LearningGoal, type ConceptNode } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useBubbleUpFlag } from "../lib/workspacePane";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -15,7 +15,15 @@ import WorkspaceSurveyModal, {
 
 type GenerateStep = "analyze" | "suggest" | "save" | null;
 
-export default function LearningPathView() {
+interface Props {
+  /** When set, list is filtered to goals tagged with this concept and new
+   * goals default to it. Supplied by `LearningHubView` via the Goals tab. */
+  conceptId?: string | null;
+  /** Called when the user clicks the "clear filter" affordance on the banner. */
+  onClearConceptFilter?: () => void;
+}
+
+export default function LearningPathView({ conceptId = null, onClearConceptFilter }: Props = {}) {
   const { activeWorkspaceId, workspaces } = useWorkspaceStore();
   const includeDescendants = useBubbleUpFlag();
   const { preferredModel, ollamaUrl } = useSettingsStore();
@@ -24,6 +32,13 @@ export default function LearningPathView() {
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newDue, setNewDue] = useState("");
+
+  // Concept lookup (for the filter banner) — fetched once per workspace.
+  const [concepts, setConcepts] = useState<ConceptNode[]>([]);
+  const selectedConceptName = useMemo(() => {
+    if (!conceptId) {return null;}
+    return concepts.find((c) => c.id === conceptId)?.name ?? null;
+  }, [conceptId, concepts]);
 
   // Survey state
   const [showSurvey, setShowSurvey] = useState(false);
@@ -40,8 +55,16 @@ export default function LearningPathView() {
 
   useEffect(() => {
     if (!activeWorkspaceId) { return; }
-    api.learningGoal.list(activeWorkspaceId, { includeDescendants }).then(setGoals).catch(() => {});
-  }, [activeWorkspaceId, includeDescendants]);
+    api.learningGoal
+      .list(activeWorkspaceId, { includeDescendants, conceptId })
+      .then(setGoals)
+      .catch(() => {});
+  }, [activeWorkspaceId, includeDescendants, conceptId]);
+
+  useEffect(() => {
+    if (!activeWorkspaceId) { return; }
+    api.graph.listConcepts(activeWorkspaceId).then(setConcepts).catch(() => {});
+  }, [activeWorkspaceId]);
 
   async function handleSurveySubmit(survey: WorkspaceSurvey) {
     if (!activeWorkspaceId || !activeWorkspace) { return; }
@@ -102,7 +125,7 @@ export default function LearningPathView() {
       const newGoals: LearningGoal[] = [];
       for (const s of suggested) {
         if (!existingTitles.has(s.title.trim().toLowerCase())) {
-          const g = await api.learningGoal.create(activeWorkspaceId, s.title.trim());
+          const g = await api.learningGoal.create(activeWorkspaceId, s.title.trim(), { conceptId });
           // Patch description if provided
           if (s.description) {
             try {
@@ -129,7 +152,7 @@ export default function LearningPathView() {
 
   async function createGoal() {
     if (!newTitle.trim() || !activeWorkspaceId) { return; }
-    const goal = await api.learningGoal.create(activeWorkspaceId, newTitle.trim());
+    const goal = await api.learningGoal.create(activeWorkspaceId, newTitle.trim(), { conceptId });
     setGoals((prev) => [goal, ...prev]);
     setNewTitle("");
     setNewDesc("");
@@ -225,6 +248,24 @@ export default function LearningPathView() {
           <button onClick={() => setLastGeneratedCount(null)} className="text-xs text-green-400 hover:opacity-80 ml-2 flex-shrink-0">
             ×
           </button>
+        </div>
+      )}
+
+      {/* Concept-filter banner — surfaced when the Learning hub sidebar selects a concept. */}
+      {conceptId && (
+        <div className="flex items-center justify-between px-5 py-2 bg-[var(--accent-color)]/10 border-b border-[var(--border-color)]">
+          <span className="text-xs text-[var(--accent-color)]">
+            Showing goals for: <strong>{selectedConceptName ?? "(unknown concept)"}</strong>
+          </span>
+          {onClearConceptFilter && (
+            <button
+              onClick={onClearConceptFilter}
+              className="flex items-center gap-1 text-xs text-[var(--accent-color)] hover:opacity-80 ml-2 flex-shrink-0"
+              title="Show all goals"
+            >
+              <X size={12} /> Clear filter
+            </button>
+          )}
         </div>
       )}
 
@@ -413,3 +454,7 @@ function GoalCard({
     </div>
   );
 }
+
+/** Named export used by `LearningHubView` (Goals tab). Currently aliases the
+ * full view; chrome stripping is a follow-up. */
+export const GoalsPane = LearningPathView;

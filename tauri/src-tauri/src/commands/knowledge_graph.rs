@@ -150,6 +150,111 @@ pub fn delete_concept(state: State<DbState>, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Idempotent: returns the existing concept id when a case-insensitive match exists
+/// on `concept_nodes.name` or any entry in the `aliases` JSON array. Otherwise inserts
+/// a new concept with `hierarchy_level = 'concept'` and `concept_type = 'topic'`.
+///
+/// Used by the chat topic-signature bridge and exposed as a Tauri command for the UI.
+pub fn upsert_concept_from_tag_inner(
+    conn: &rusqlite::Connection,
+    workspace_id: &str,
+    name: &str,
+) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("tag name is empty".to_string());
+    }
+    // Fast path: exact (case-insensitive) name match.
+    if let Ok(id) = conn.query_row(
+        "SELECT id FROM concept_nodes
+         WHERE workspace_id = ?1 AND lower(name) = lower(?2)
+         LIMIT 1",
+        rusqlite::params![workspace_id, trimmed],
+        |r| r.get::<_, String>(0),
+    ) {
+        return Ok(id);
+    }
+    // Slower path: scan aliases JSON.
+    let lower_trim = trimmed.to_lowercase();
+    let mut stmt = conn
+        .prepare("SELECT id, aliases FROM concept_nodes WHERE workspace_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt
+        .query(rusqlite::params![workspace_id])
+        .map_err(|e| e.to_string())?;
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let id: String = row.get(0).map_err(|e| e.to_string())?;
+        let aliases_json: String = row.get(1).map_err(|e| e.to_string())?;
+        let aliases: Vec<String> = serde_json::from_str(&aliases_json).unwrap_or_default();
+        if aliases.iter().any(|a| a.trim().to_lowercase() == lower_trim) {
+            return Ok(id);
+        }
+    }
+    // Insert.
+    let c = ConceptNode::new(workspace_id, trimmed);
+    let type_str = c.concept_type.to_string();
+    let level_str = c.hierarchy_level.to_string();
+    let tags_json = serde_json::to_string(&c.tags).unwrap_or_else(|_| "[]".to_string());
+    let aliases_json = serde_json::to_string(&c.aliases).unwrap_or_else(|_| "[]".to_string());
+    let refs_json = serde_json::to_string(&c.references).unwrap_or_else(|_| "[]".to_string());
+    conn.execute(
+        "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        rusqlite::params![c.id, c.workspace_id, c.name, c.concept_description, type_str, tags_json, aliases_json, refs_json, c.x_position, c.y_position, c.review_count, c.created_at, c.updated_at, level_str],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(c.id)
+}
+
+#[tauri::command]
+pub fn upsert_concept_from_tag(
+    state: State<DbState>,
+    workspace_id: String,
+    name: String,
+) -> Result<String, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    upsert_concept_from_tag_inner(&conn, &workspace_id, &name)
+}
+
+#[cfg(test)]
+mod upsert_concept_tests {
+    use super::*;
+    use crate::db::test_utils::tests::setup_test_db;
+
+    #[test]
+    fn idempotent_and_case_insensitive() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO workspaces (id, name, created_at, updated_at)
+             VALUES ('ws_uc', 'WS', datetime('now'), datetime('now'))",
+            [],
+        )
+        .ok();
+        let a = upsert_concept_from_tag_inner(&conn, "ws_uc", "Rust").unwrap();
+        let b = upsert_concept_from_tag_inner(&conn, "ws_uc", "rust").unwrap();
+        let c = upsert_concept_from_tag_inner(&conn, "ws_uc", "  RUST  ").unwrap();
+        assert_eq!(a, b);
+        assert_eq!(a, c);
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws_uc'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn empty_name_errors() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let err = upsert_concept_from_tag_inner(&conn, "ws_any", "   ").unwrap_err();
+        assert!(err.contains("empty"));
+    }
+}
+
 #[tauri::command]
 pub fn create_concept_link(
     state: State<DbState>,

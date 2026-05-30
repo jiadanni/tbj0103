@@ -6,6 +6,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { ConceptNode, ConceptLink } from "../lib/api";
+import { buildForest, type RoadmapNode } from "../lib/conceptTree";
 
 const TYPE_COLORS: Record<string, string> = {
   person: "#60a5fa",
@@ -40,56 +41,6 @@ function dimsFor(level: string): BoxDims {
 
 function truncate(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
-}
-
-interface RoadmapNode {
-  id: string;
-  name: string;
-  hierarchy_level: string;
-  concept_type: string;
-  children?: RoadmapNode[];
-}
-
-function buildForest(nodes: ConceptNode[], links: ConceptLink[]): RoadmapNode {
-  // Convention: part_of link has source_id = child, target_id = parent
-  // (matches backend in commands/ai_knowledge.rs and commands/knowledge_graph.rs)
-  const parentOf = new Map<string, string>();
-  links.forEach((link) => {
-    if (link.link_type === "part_of") {
-      parentOf.set(link.source_id, link.target_id);
-    }
-  });
-
-  const nodeMap = new Map<string, RoadmapNode>(
-    nodes.map((n) => [n.id, {
-      id: n.id,
-      name: n.name,
-      hierarchy_level: n.hierarchy_level || "concept",
-      concept_type: n.concept_type,
-      children: [],
-    }]),
-  );
-
-  nodeMap.forEach((node, id) => {
-    const parentId = parentOf.get(id);
-    if (parentId && nodeMap.has(parentId)) {
-      const parent = nodeMap.get(parentId);
-      if (parent?.children) { parent.children.push(node); }
-    }
-  });
-
-  const roots: RoadmapNode[] = [];
-  nodeMap.forEach((node, id) => {
-    if (!parentOf.has(id)) { roots.push(node); }
-  });
-
-  return {
-    id: "__root__",
-    name: "Knowledge Map",
-    hierarchy_level: "root",
-    concept_type: "topic",
-    children: roots,
-  };
 }
 
 interface RoadmapGraphProps {

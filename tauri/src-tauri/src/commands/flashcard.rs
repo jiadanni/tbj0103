@@ -148,6 +148,7 @@ pub fn create_flashcard(
 }
 
 /// Returns cards due today or overdue, for a given folder.
+/// Optionally filter to a single concept (`source_type = 'concept' AND source_id = ?`).
 #[tauri::command]
 pub fn list_flashcards_due(
     state: State<DbState>,
@@ -155,6 +156,7 @@ pub fn list_flashcards_due(
     limit: Option<i64>,
     offset: Option<i64>,
     include_descendants: Option<bool>,
+    concept_id: Option<String>,
 ) -> Result<Vec<LearningCard>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(200).clamp(1, 1000);
@@ -163,12 +165,15 @@ pub fn list_flashcards_due(
     let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
     let sql = format!(
         "{cte}SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
-         FROM learning_cards WHERE workspace_id {ws_cond} AND next_review_date <= ?2 ORDER BY next_review_date ASC LIMIT ?3 OFFSET ?4"
+         FROM learning_cards WHERE workspace_id {ws_cond}
+           AND next_review_date <= ?2
+           AND (?5 IS NULL OR (source_type = 'concept' AND source_id = ?5))
+         ORDER BY next_review_date ASC LIMIT ?3 OFFSET ?4"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
         .query_map(
-            rusqlite::params![workspace_id, today, limit, offset],
+            rusqlite::params![workspace_id, today, limit, offset, concept_id],
             row_to_card,
         )
         .map_err(|e| e.to_string())?
@@ -679,5 +684,139 @@ pub fn suggest_next_topic(
         topic,
         reason: "New topic".to_string(),
         due_count: 0,
+    }))
+}
+
+#[derive(serde::Serialize)]
+pub struct SuggestedConcept {
+    pub concept_id: String,
+    pub concept_name: String,
+    pub hierarchy_level: String,
+    pub reason: String,
+    pub due_count: i64,
+    pub avg_ease: f64,
+    pub card_count: i64,
+}
+
+/// Pick the next concept the user should review, mirroring `suggest_next_topic`
+/// but operating on the unified `concept_nodes` + `learning_cards (source_type='concept')` model.
+/// 1. Concept with the most due cards (today or overdue).
+/// 2. Concept with cards and the lowest average ease_factor.
+/// 3. Most recently created concept that has cards.
+#[tauri::command]
+pub fn suggest_next_concept(
+    state: State<DbState>,
+    workspace_id: String,
+    include_descendants: Option<bool>,
+) -> Result<Option<SuggestedConcept>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+    // 1. Most due.
+    let sql_due = format!(
+        "{cte}SELECT cn.id, cn.name, cn.hierarchy_level,
+                COUNT(c.id) AS due,
+                COALESCE(AVG(c.ease_factor), 2.5) AS avg_ease,
+                (SELECT COUNT(*) FROM learning_cards
+                   WHERE source_type='concept' AND source_id=cn.id) AS total
+         FROM concept_nodes cn
+         JOIN learning_cards c
+           ON c.source_type='concept' AND c.source_id = cn.id AND c.next_review_date <= ?2
+         WHERE cn.workspace_id {ws_cond}
+         GROUP BY cn.id
+         ORDER BY due DESC, avg_ease ASC
+         LIMIT 1"
+    );
+    let row: Option<(String, String, String, i64, f64, i64)> = conn
+        .query_row(&sql_due, rusqlite::params![workspace_id, today], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get::<_, Option<String>>(2)?.unwrap_or_else(|| "concept".to_string()),
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+            ))
+        })
+        .ok();
+    if let Some((id, name, level, due_count, avg_ease, total)) = row {
+        if due_count > 0 {
+            return Ok(Some(SuggestedConcept {
+                concept_id: id,
+                concept_name: name,
+                hierarchy_level: level,
+                reason: format!("{due_count} card{} due", if due_count == 1 { "" } else { "s" }),
+                due_count,
+                avg_ease,
+                card_count: total,
+            }));
+        }
+    }
+
+    // 2. Weakest by avg ease, with cards.
+    let sql_weak = format!(
+        "{cte}SELECT cn.id, cn.name, cn.hierarchy_level,
+                COALESCE(AVG(c.ease_factor), 2.5) AS avg_ease,
+                COUNT(c.id) AS total
+         FROM concept_nodes cn
+         JOIN learning_cards c ON c.source_type='concept' AND c.source_id = cn.id
+         WHERE cn.workspace_id {ws_cond}
+         GROUP BY cn.id
+         HAVING total > 0
+         ORDER BY avg_ease ASC, total DESC
+         LIMIT 1"
+    );
+    let weak: Option<(String, String, String, f64, i64)> = conn
+        .query_row(&sql_weak, rusqlite::params![workspace_id], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get::<_, Option<String>>(2)?.unwrap_or_else(|| "concept".to_string()),
+                r.get(3)?,
+                r.get(4)?,
+            ))
+        })
+        .ok();
+    if let Some((id, name, level, avg_ease, total)) = weak {
+        // Mastery proxy: normalise ease factor (range ~1.3–2.5+) to 0..1.
+        let mastery = ((avg_ease - 1.3) / 1.5).clamp(0.0, 1.0);
+        let pct = (mastery * 100.0).round() as i64;
+        return Ok(Some(SuggestedConcept {
+            concept_id: id,
+            concept_name: name,
+            hierarchy_level: level,
+            reason: format!("Weakest concept ({pct}% mastery)"),
+            due_count: 0,
+            avg_ease,
+            card_count: total,
+        }));
+    }
+
+    // 3. Most recently created concept.
+    let sql_recent = format!(
+        "{cte}SELECT cn.id, cn.name, cn.hierarchy_level
+         FROM concept_nodes cn
+         WHERE cn.workspace_id {ws_cond}
+         ORDER BY cn.created_at DESC
+         LIMIT 1"
+    );
+    let recent: Option<(String, String, String)> = conn
+        .query_row(&sql_recent, rusqlite::params![workspace_id], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get::<_, Option<String>>(2)?.unwrap_or_else(|| "concept".to_string()),
+            ))
+        })
+        .ok();
+    Ok(recent.map(|(id, name, level)| SuggestedConcept {
+        concept_id: id,
+        concept_name: name,
+        hierarchy_level: level,
+        reason: "New concept".to_string(),
+        due_count: 0,
+        avg_ease: 2.5,
+        card_count: 0,
     }))
 }

@@ -1,4 +1,5 @@
 use crate::commands::flashcard::{generate_card_pairs, insert_card, CardDifficulty};
+use crate::commands::knowledge_graph::upsert_concept_from_tag_inner;
 use crate::db::DbState;
 use crate::models::learning_card::LearningCard;
 use crate::models::workspace::TopicSignature;
@@ -20,9 +21,22 @@ const TARGET_CARDS_PER_TOPIC: i64 = 8;
 const DEFAULT_MIN_INTERVAL_MINUTES: i64 = 60;
 const DEFAULT_BATCH_SIZE: u32 = 3;
 
-/// Read the workspace topic_signature JSON and upsert each topic into `flashcard_topics`.
-/// Idempotent — existing rows keep their mastery_score and card_count.
-pub fn sync_topics_from_signatures(conn: &Connection, workspace_id: &str) -> Result<(), String> {
+/// DEPRECATED: legacy bridge from `workspaces.topic_signature` to `flashcard_topics`.
+/// Now a no-op so that `flashcard_topics` stops growing. Callers should use
+/// [`sync_concepts_from_signatures`] instead. Existing `flashcard_topics` rows
+/// remain readable so existing code paths keep working.
+pub fn sync_topics_from_signatures(_conn: &Connection, _workspace_id: &str) -> Result<(), String> {
+    Ok(())
+}
+
+/// Read the workspace topic_signature JSON and upsert each tag into `concept_nodes`
+/// as a top-level concept (no parent). Idempotent — case-insensitive match against
+/// `concept_nodes.name` and `aliases`. This is the new bridge that replaces the
+/// legacy `flashcard_topics` path so the Learning hub sees one taxonomy.
+pub fn sync_concepts_from_signatures(
+    conn: &Connection,
+    workspace_id: &str,
+) -> Result<(), String> {
     let sig_json: String = conn
         .query_row(
             "SELECT topic_signature FROM workspaces WHERE id = ?1",
@@ -46,25 +60,20 @@ pub fn sync_topics_from_signatures(conn: &Connection, workspace_id: &str) -> Res
         }
     }
 
-    for topic in seen {
-        let id = uuid::Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
-        conn.execute(
-            "INSERT OR IGNORE INTO flashcard_topics (id, workspace_id, topic, source, mastery_score, card_count, created_at)
-             VALUES (?1, ?2, ?3, 'chat_signature', 0.0, 0, ?4)",
-            rusqlite::params![id, workspace_id, topic, now],
-        ).map_err(|e| e.to_string())?;
+    for tag in seen {
+        let _ = upsert_concept_from_tag_inner(conn, workspace_id, &tag);
     }
-    reconcile_parents(conn, workspace_id)?;
     Ok(())
 }
 
 /// Normalise a topic for grouping: lowercase, trim, collapse British/US z↔s.
+#[allow(dead_code)]
 fn normalise_topic(t: &str) -> String {
     t.trim().to_lowercase().replace(['-', '_'], " ")
 }
 
 /// First "word" used for parent grouping. Collapses `ise/ize`, `isation/ization`.
+#[allow(dead_code)]
 fn group_key(t: &str) -> String {
     let n = normalise_topic(t);
     let first = n.split_whitespace().next().unwrap_or("").to_string();
@@ -85,6 +94,7 @@ fn group_key(t: &str) -> String {
 /// Group topics by their first-word key. When ≥2 siblings share a key,
 /// elect the shortest topic as the parent and link the others to it.
 /// Idempotent: rerunning is safe and converges on the same parent assignments.
+#[allow(dead_code)]
 fn reconcile_parents(conn: &Connection, workspace_id: &str) -> Result<(), String> {
     let mut stmt = conn
         .prepare("SELECT id, topic FROM flashcard_topics WHERE workspace_id = ?1")
@@ -238,7 +248,7 @@ pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<(), Str
 
     for ws_id in &workspace_ids {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let _ = sync_topics_from_signatures(&conn, ws_id);
+        let _ = sync_concepts_from_signatures(&conn, ws_id);
     }
 
     for ws_id in &workspace_ids {

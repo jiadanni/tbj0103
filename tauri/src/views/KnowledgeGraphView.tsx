@@ -225,7 +225,10 @@ function makeDemoCards(concept: ConceptNode, workspaceId: string): LearningCard[
   ];
 }
 
-export default function KnowledgeGraphView() {
+export default function KnowledgeGraphView({
+  hideSidebar = false,
+  selectedConceptId: externalSelectedConceptId = null,
+}: { hideSidebar?: boolean; selectedConceptId?: string | null } = {}) {
   const navigate = useNavigate();
   const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
@@ -393,6 +396,20 @@ export default function KnowledgeGraphView() {
 
     api.flashcard.listByConcept(selectedConcept.id).then(setConceptCards).catch(() => setConceptCards([]));
   }, [selectedConcept]);
+
+  // Honour an externally-provided concept selection (from the shared
+  // LearningHubSidebar). Looks up the node in `nodes` and mirrors it into local
+  // state so existing rendering logic (right panel, related cards, etc.) works.
+  useEffect(() => {
+    if (externalSelectedConceptId === null) {
+      // Don't aggressively clear here — user may have an internal selection.
+      return;
+    }
+    const match = nodes.find((n) => n.id === externalSelectedConceptId);
+    if (match && match.id !== selectedConcept?.id) {
+      setSelectedConcept(match);
+    }
+  }, [externalSelectedConceptId, nodes, selectedConcept?.id]);
 
   const hierarchyTree = useMemo(() => {
     const parentOf = new Map(
@@ -585,6 +602,7 @@ export default function KnowledgeGraphView() {
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-[var(--bg-primary)]">
+      {!hideSidebar && (
       <div className="w-72 flex-shrink-0 overflow-y-auto border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]">
         <div className="flex flex-col gap-3 p-3">
           <SidebarCard className="p-3">
@@ -831,6 +849,7 @@ export default function KnowledgeGraphView() {
           )}
           </div>
       </div>
+      )}
 
       <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 py-5 sm:px-6">
@@ -1297,3 +1316,7 @@ export default function KnowledgeGraphView() {
     </div>
   );
 }
+
+/** Named export used by `LearningHubView` (Roadmap tab). Currently aliases the
+ * full view; chrome stripping is a follow-up. */
+export const RoadmapPane = KnowledgeGraphView;
