@@ -552,6 +552,14 @@ pub fn run() {
             commands::flashcard::extract_flashcards_from_content,
             commands::flashcard::list_flashcard_topics,
             commands::flashcard::generate_flashcards_for_topic,
+            commands::flashcard::suggest_next_topic,
+            // Quiz / exam commands
+            commands::quiz::create_quiz,
+            commands::quiz::get_quiz,
+            commands::quiz::list_quizzes,
+            commands::quiz::submit_quiz_answer,
+            commands::quiz::finalize_quiz,
+            commands::quiz::delete_quiz,
             // Note & template commands
             commands::note::create_note,
             commands::note::list_notes,

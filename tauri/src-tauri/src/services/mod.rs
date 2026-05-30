@@ -19,6 +19,7 @@ pub mod model_settings;
 pub mod note_template_engine;
 pub mod folder_service;
 pub mod quick_search_index;
+pub mod quiz_service;
 pub mod quick_search_service;
 pub mod retrieval_engine;
 pub mod semantic_search;
