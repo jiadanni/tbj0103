@@ -65,8 +65,11 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v51_workspace_glossary",
     "v52_chat_sessions_unread",
     "v53_chat_identifiers",
+    "v54_flashcard_topics",
     "v55_flashcard_topic_parent",
     "v56_quizzes",
+    "v57_topics_to_concepts",
+    "v58_learning_goals_concept_id",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1434,6 +1437,130 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v57: bridge legacy flashcard_topics into concept_nodes so the new Learning
+    // hub can use a single taxonomy. Additive only — flashcard_topics rows and
+    // learning_cards.topic_id remain untouched for back-compat.
+    let applied_v57: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v57_topics_to_concepts'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v57 == 0 {
+        // Guard: in legacy DB-migration snapshots used by tests, the schema-defined
+        // tables (`learning_cards`, `concept_nodes`) may not exist yet — they are
+        // created from `schema.sql` at app boot rather than via migrations. Skip
+        // the backfill cleanly when any required table is missing; the marker is
+        // still recorded so we don't keep retrying on every open.
+        let tables_present = ["flashcard_topics", "concept_nodes", "learning_cards"]
+            .iter()
+            .all(|name| {
+                conn.query_row(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
+                    rusqlite::params![name],
+                    |_| Ok(()),
+                )
+                .is_ok()
+            });
+        if tables_present {
+            migrate_topics_to_concepts(conn)?;
+        }
+        conn.execute(
+            "INSERT INTO _migrations(name) VALUES('v57_topics_to_concepts')",
+            [],
+        )?;
+    }
+
+    // v58: learning_goals gains optional concept_id so the Learning hub Goals
+    // tab can scope to a selected concept. Additive nullable column.
+    let applied_v58: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v58_learning_goals_concept_id'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v58 == 0 {
+        let has_col: bool = {
+            let mut stmt = conn.prepare("PRAGMA table_info(learning_goals)")?;
+            let names = stmt
+                .query_map([], |r| r.get::<_, String>(1))?
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
+            names.iter().any(|n| n == "concept_id")
+        };
+        if !has_col {
+            let _ = conn.execute_batch(
+                "ALTER TABLE learning_goals ADD COLUMN concept_id TEXT REFERENCES concept_nodes(id) ON DELETE SET NULL;",
+            );
+        }
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_learning_goals_concept ON learning_goals(concept_id);
+             INSERT INTO _migrations(name) VALUES('v58_learning_goals_concept_id');",
+        )?;
+    }
+
+    Ok(())
+}
+
+/// One-time backfill: for every legacy `flashcard_topics` row with no matching
+/// `concept_nodes.name` (case-insensitive) in the same workspace, insert a new
+/// concept node with `hierarchy_level = 'concept'`. Then, for every
+/// `learning_cards.topic_id` row whose topic has an equivalent concept, set
+/// `source_type = 'concept'` and `source_id = <concept_id>`. The legacy
+/// `topic_id` column is left untouched.
+fn migrate_topics_to_concepts(conn: &Connection) -> Result<()> {
+    // Collect candidate (workspace_id, topic, topic_id) rows.
+    let mut stmt = conn.prepare(
+        "SELECT id, workspace_id, topic, created_at FROM flashcard_topics",
+    )?;
+    let rows: Vec<(String, String, String, String)> = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })?
+        .filter_map(std::result::Result::ok)
+        .collect();
+    drop(stmt);
+
+    for (topic_id, workspace_id, topic, created_at) in rows {
+        let trimmed = topic.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // Look up an existing concept_node by case-insensitive name.
+        let existing: Option<String> = conn
+            .query_row(
+                "SELECT id FROM concept_nodes
+                 WHERE workspace_id = ?1 AND lower(name) = lower(?2)
+                 LIMIT 1",
+                rusqlite::params![workspace_id, trimmed],
+                |r| r.get::<_, String>(0),
+            )
+            .ok();
+
+        let concept_id = if let Some(id) = existing {
+            id
+        } else {
+            let new_id = uuid::Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level)
+                 VALUES (?1, ?2, ?3, '', 'topic', '[]', '[]', '[]', 0.0, 0.0, 0, ?4, ?4, 'concept')",
+                rusqlite::params![new_id, workspace_id, trimmed, created_at],
+            )?;
+            new_id
+        };
+
+        // Repoint cards that referenced this topic.
+        conn.execute(
+            "UPDATE learning_cards
+             SET source_type = 'concept', source_id = ?1
+             WHERE topic_id = ?2
+               AND (source_type IS NULL OR source_type != 'concept' OR source_id IS NULL)",
+            rusqlite::params![concept_id, topic_id],
+        )?;
+    }
     Ok(())
 }
 
@@ -1567,6 +1694,9 @@ mod tests {
         .expect("Failed to create legacy schema");
 
         for name in ALL_MIGRATION_NAMES {
+            if *name == "v36_ai_models_provider_model_unique" {
+                continue;
+            }
             conn.execute(
                 "INSERT INTO _migrations(name) VALUES(?1)",
                 rusqlite::params![name],

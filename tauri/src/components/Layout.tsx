@@ -29,14 +29,14 @@ import StatusBar from "./StatusBar";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
-const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
+// `/graph`, `/flashcards`, `/learning` now all funnel into LearningHubView,
+// which in turn lazily imports the underlying panes via named exports.
 const HistoryView = React.lazy(() => import("../views/HistoryView"));
 const FolderDashboardView = React.lazy(() => import("../views/FolderDashboardView"));
 const PreferencesView = React.lazy(() => import("../views/PreferencesView"));
 const SourceBrowserView = React.lazy(() => import("../views/SourceBrowserView"));
 const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
-const FlashcardReviewView = React.lazy(() => import("../views/FlashcardReviewView"));
-const LearningPathView = React.lazy(() => import("../views/LearningPathView"));
+const LearningHubView = React.lazy(() => import("../views/LearningHubView"));
 const LogsView = React.lazy(() => import("../views/LogsView"));
 import type { Workspace, PaneId } from "../stores/workspaceStore";
 import type { ChatSession } from "../stores/chatStore";
@@ -1634,8 +1634,6 @@ function pathToPaneView(pathname: string): import("../stores/workspaceStore").Pa
     case "chat": return "chat";
     case "notes": return "notes";
     case "documents": return "documents";
-    case "graph": return "graph";
-    case "flashcards": return "flashcards";
     case "learning": return "graph";
     default: return "folder";
   }
@@ -1650,8 +1648,8 @@ function paneViewToPath(view: import("../stores/workspaceStore").PaneView, chatS
     case "documents":
     case "webcapture":
       return "/sources";
-    case "graph": return "/graph";
-    case "flashcards": return "/flashcards";
+    case "graph": return "/learning?tab=roadmap";
+    case "flashcards": return "/learning?tab=review";
     case "settings": return "/preferences";
     case "memory": return "/memory";
     case "folder": return "/folder";
@@ -1814,9 +1812,7 @@ function AppRoutes() {
       <Route path="/chat/:sessionId" element={<ChatView />} />
       <Route path="/notes" element={<NoteEditorView />} />
       <Route path="/sources" element={<SourceBrowserView />} />
-      <Route path="/graph" element={<KnowledgeGraphView />} />
-      <Route path="/flashcards" element={<FlashcardReviewView />} />
-      <Route path="/learning" element={<LearningPathView />} />
+      <Route path="/learning" element={<LearningHubView />} />
       <Route path="/history" element={<HistoryView />} />
       <Route path="/logs" element={<LogsView />} />
       <Route path="/preferences" element={<PreferencesView />} />
@@ -1829,8 +1825,8 @@ function AppRoutes() {
       <Route path="/daily" element={<Navigate to="/notes" state={{ subView: "daily" }} replace />} />
 
       <Route path="/plugins" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
-      <Route path="/backlinks" element={<Navigate to="/graph" replace />} />
-      <Route path="/dedup" element={<Navigate to="/graph" replace />} />
+      <Route path="/backlinks" element={<Navigate to="/learning?tab=roadmap" replace />} />
+      <Route path="/dedup" element={<Navigate to="/learning?tab=roadmap" replace />} />
       <Route path="/settings" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
       <Route path="/workspaces" element={<Navigate to="/preferences" state={{ settingsTab: "workspaces" }} replace />} />
       <Route path="/backup" element={<Navigate to="/preferences" state={{ settingsTab: "backup" }} replace />} />

@@ -86,7 +86,10 @@ function TopicRow({ topic, indent, hasChildren, collapsed, onToggle, isLoading, 
   );
 }
 
-export default function FlashcardReviewView() {
+export default function FlashcardReviewView({
+  conceptId,
+  hideSidebar = false,
+}: { conceptId?: string | null; hideSidebar?: boolean } = {}) {
   const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
   const { preferredModel, ollamaUrl } = useSettingsStore();
@@ -174,7 +177,7 @@ export default function FlashcardReviewView() {
   useEffect(() => {
     if (!activeWorkspaceId) {return;}
     Promise.all([
-      api.flashcard.listDue(activeWorkspaceId, { limit: 200, offset: 0, includeDescendants }),
+      api.flashcard.listDue(activeWorkspaceId, { limit: 200, offset: 0, includeDescendants, conceptId: conceptId ?? undefined }),
       api.flashcard.getStats(activeWorkspaceId),
     ]).then(([due, s]) => {
       setCards(due);
@@ -182,7 +185,7 @@ export default function FlashcardReviewView() {
       setCurrentIndex(0);
       setIsFlipped(false);
     }).catch(() => {});
-  }, [activeWorkspaceId, includeDescendants]);
+  }, [activeWorkspaceId, includeDescendants, conceptId]);
 
   // Load chat-derived topic list + suggestion
   const refreshTopics = useCallback(() => {
@@ -297,7 +300,8 @@ export default function FlashcardReviewView() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Sidebar */}
+      {/* Sidebar — hidden when mounted inside LearningHubView which provides its own shared concept tree. */}
+      {!hideSidebar && (
       <div className="w-56 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] flex flex-col overflow-hidden shrink-0">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)]">
@@ -459,6 +463,7 @@ export default function FlashcardReviewView() {
           )}
         </div>
       </div>
+      )}
 
       {/* Card area */}
       <div className="flex-1 flex flex-col items-center justify-center gap-8 p-8">
@@ -601,3 +606,9 @@ export default function FlashcardReviewView() {
     </div>
   );
 }
+
+/** Named export used by `LearningHubView` so the Review tab can mount the
+ * card player while passing a `conceptId` filter from the shared sidebar.
+ * The default export remains the full sidebar-plus-player surface used by
+ * the legacy `/flashcards` route and any direct mounts. */
+export const ReviewPane = FlashcardReviewView;

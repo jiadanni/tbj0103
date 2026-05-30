@@ -134,6 +134,7 @@ export interface LearningGoal {
   id: string; workspace_id: string; title: string; goal_description: string;
   progress: number; is_completed: boolean; due_date?: string;
   prerequisite_ids: string[]; related_chat_ids: string[];
+  concept_id?: string | null;
   created_at: string; updated_at: string;
 }
 
@@ -172,6 +173,16 @@ export interface SuggestedTopic {
   topic: FlashcardTopic;
   reason: string;
   due_count: number;
+}
+
+export interface SuggestedConcept {
+  concept_id: string;
+  concept_name: string;
+  hierarchy_level: string;
+  reason: string;
+  due_count: number;
+  avg_ease: number;
+  card_count: number;
 }
 
 export interface ProjectNote {
@@ -1023,12 +1034,16 @@ export const api = {
         "extract_and_link_concepts",
         { req: { workspace_id: workspaceId, text, source_type: sourceType, source_id: sourceId } },
       ),
+    /** Idempotent: ensures a concept exists for the given tag name (case-insensitive). Returns the concept id. */
+    upsertFromTopicTag: (workspaceId: string, name: string) =>
+      invoke<string>("upsert_concept_from_tag", { workspaceId, name }),
   },
 
   learningGoal: {
-    create: (workspaceId: string, title: string) =>
-      invoke<LearningGoal>("create_learning_goal", { req: { workspace_id: workspaceId, title } }),
-    list: (workspaceId: string, opts?: { includeDescendants?: boolean }) => invoke<LearningGoal[]>("list_learning_goals", { workspaceId, includeDescendants: opts?.includeDescendants }),
+    create: (workspaceId: string, title: string, opts?: { conceptId?: string | null }) =>
+      invoke<LearningGoal>("create_learning_goal", { req: { workspace_id: workspaceId, title, concept_id: opts?.conceptId ?? null } }),
+    list: (workspaceId: string, opts?: { includeDescendants?: boolean; conceptId?: string | null }) =>
+      invoke<LearningGoal[]>("list_learning_goals", { workspaceId, includeDescendants: opts?.includeDescendants, conceptId: opts?.conceptId ?? null }),
     update: (id: string, fields: Partial<LearningGoal>) =>
       invoke<void>("update_learning_goal", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_learning_goal", { id }),
@@ -1037,8 +1052,8 @@ export const api = {
   flashcard: {
     create: (workspaceId: string, front: string, back: string) =>
       invoke<LearningCard>("create_flashcard", { req: { workspace_id: workspaceId, front, back } }),
-    listDue: (workspaceId: string, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
-      invoke<LearningCard[]>("list_flashcards_due", { workspaceId, limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),
+    listDue: (workspaceId: string, opts?: { limit?: number; offset?: number; includeDescendants?: boolean; conceptId?: string }) =>
+      invoke<LearningCard[]>("list_flashcards_due", { workspaceId, limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants, conceptId: opts?.conceptId }),
     review: (cardId: string, quality: number) =>
       invoke<LearningCard>("review_flashcard", { req: { card_id: cardId, quality } }),
     getStats: (workspaceId: string) => invoke<ReviewStats>("get_review_stats", { workspaceId }),
@@ -1058,6 +1073,8 @@ export const api = {
       invoke<LearningCard[]>("generate_flashcards_for_topic", { req: { workspace_id: workspaceId, topic_id: topicId, model, count, ollama_url: ollamaUrl } }),
     suggestNext: (workspaceId: string, includeDescendants?: boolean) =>
       invoke<SuggestedTopic | null>("suggest_next_topic", { workspaceId, includeDescendants }),
+    suggestNextConcept: (workspaceId: string, includeDescendants?: boolean) =>
+      invoke<SuggestedConcept | null>("suggest_next_concept", { workspaceId, includeDescendants }),
   },
 
   note: {

@@ -529,6 +529,7 @@ pub fn run() {
             commands::knowledge_graph::get_concept,
             commands::knowledge_graph::update_concept,
             commands::knowledge_graph::delete_concept,
+            commands::knowledge_graph::upsert_concept_from_tag,
             commands::knowledge_graph::create_concept_link,
             commands::knowledge_graph::list_concept_links,
             commands::knowledge_graph::delete_concept_link,
@@ -553,6 +554,7 @@ pub fn run() {
             commands::flashcard::list_flashcard_topics,
             commands::flashcard::generate_flashcards_for_topic,
             commands::flashcard::suggest_next_topic,
+            commands::flashcard::suggest_next_concept,
             // Quiz / exam commands
             commands::quiz::create_quiz,
             commands::quiz::get_quiz,

@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS learning_goals (
     due_date TEXT,
     prerequisite_ids TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(prerequisite_ids)),
     related_chat_ids TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(related_chat_ids)),
+    concept_id TEXT REFERENCES concept_nodes(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
