@@ -502,7 +502,7 @@ pub fn list_flashcard_topics(
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
     let sql = format!(
-        "{cte}SELECT id, workspace_id, topic, source, mastery_score, last_generated_at, card_count
+        "{cte}SELECT id, workspace_id, topic, source, mastery_score, last_generated_at, card_count, parent_topic_id
          FROM flashcard_topics WHERE workspace_id {ws_cond}
          ORDER BY mastery_score ASC, card_count DESC, topic ASC"
     );
@@ -517,6 +517,7 @@ pub fn list_flashcard_topics(
                 mastery_score: r.get(4)?,
                 last_generated_at: r.get(5)?,
                 card_count: r.get(6)?,
+                parent_topic_id: r.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -559,4 +560,124 @@ pub async fn generate_flashcards_for_topic(
         req.ollama_url,
     )
     .await
+}
+
+#[derive(serde::Serialize)]
+pub struct SuggestedTopic {
+    pub topic: FlashcardTopic,
+    pub reason: String,
+    pub due_count: i64,
+}
+
+/// Pick the next topic the user should review.
+/// 1. Topic with the most due cards (overdue/today).
+/// 2. Topic with cards and the lowest mastery_score.
+/// 3. Most recently generated topic.
+#[tauri::command]
+pub fn suggest_next_topic(
+    state: State<DbState>,
+    workspace_id: String,
+    include_descendants: Option<bool>,
+) -> Result<Option<SuggestedTopic>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+    // 1. most due
+    let sql_due = format!(
+        "{cte}SELECT t.id, t.workspace_id, t.topic, t.source, t.mastery_score, t.last_generated_at, t.card_count, t.parent_topic_id,
+                COUNT(c.id) AS due
+         FROM flashcard_topics t
+         JOIN learning_cards c ON c.topic_id = t.id AND c.next_review_date <= ?2
+         WHERE t.workspace_id {ws_cond}
+         GROUP BY t.id
+         ORDER BY due DESC, t.mastery_score ASC
+         LIMIT 1"
+    );
+    let mut stmt = conn.prepare(&sql_due).map_err(|e| e.to_string())?;
+    let row: Option<(FlashcardTopic, i64)> = stmt
+        .query_row(rusqlite::params![workspace_id, today], |r| {
+            Ok((
+                FlashcardTopic {
+                    id: r.get(0)?,
+                    workspace_id: r.get(1)?,
+                    topic: r.get(2)?,
+                    source: r.get(3)?,
+                    mastery_score: r.get(4)?,
+                    last_generated_at: r.get(5)?,
+                    card_count: r.get(6)?,
+                    parent_topic_id: r.get(7)?,
+                },
+                r.get::<_, i64>(8)?,
+            ))
+        })
+        .ok();
+    if let Some((topic, due_count)) = row {
+        if due_count > 0 {
+            return Ok(Some(SuggestedTopic {
+                topic,
+                reason: format!("{due_count} card{} due", if due_count == 1 { "" } else { "s" }),
+                due_count,
+            }));
+        }
+    }
+
+    // 2. lowest mastery with cards
+    let sql_weak = format!(
+        "{cte}SELECT id, workspace_id, topic, source, mastery_score, last_generated_at, card_count, parent_topic_id
+         FROM flashcard_topics WHERE workspace_id {ws_cond} AND card_count > 0
+         ORDER BY mastery_score ASC, card_count DESC
+         LIMIT 1"
+    );
+    let mut stmt = conn.prepare(&sql_weak).map_err(|e| e.to_string())?;
+    let weak: Option<FlashcardTopic> = stmt
+        .query_row(rusqlite::params![workspace_id], |r| {
+            Ok(FlashcardTopic {
+                id: r.get(0)?,
+                workspace_id: r.get(1)?,
+                topic: r.get(2)?,
+                source: r.get(3)?,
+                mastery_score: r.get(4)?,
+                last_generated_at: r.get(5)?,
+                card_count: r.get(6)?,
+                parent_topic_id: r.get(7)?,
+            })
+        })
+        .ok();
+    if let Some(topic) = weak {
+        let mastery_pct = (topic.mastery_score * 100.0).round() as i64;
+        return Ok(Some(SuggestedTopic {
+            reason: format!("Weakest topic ({mastery_pct}% mastery)"),
+            topic,
+            due_count: 0,
+        }));
+    }
+
+    // 3. most recently created
+    let sql_recent = format!(
+        "{cte}SELECT id, workspace_id, topic, source, mastery_score, last_generated_at, card_count, parent_topic_id
+         FROM flashcard_topics WHERE workspace_id {ws_cond}
+         ORDER BY created_at DESC
+         LIMIT 1"
+    );
+    let mut stmt = conn.prepare(&sql_recent).map_err(|e| e.to_string())?;
+    let recent: Option<FlashcardTopic> = stmt
+        .query_row(rusqlite::params![workspace_id], |r| {
+            Ok(FlashcardTopic {
+                id: r.get(0)?,
+                workspace_id: r.get(1)?,
+                topic: r.get(2)?,
+                source: r.get(3)?,
+                mastery_score: r.get(4)?,
+                last_generated_at: r.get(5)?,
+                card_count: r.get(6)?,
+                parent_topic_id: r.get(7)?,
+            })
+        })
+        .ok();
+    Ok(recent.map(|topic| SuggestedTopic {
+        topic,
+        reason: "New topic".to_string(),
+        due_count: 0,
+    }))
 }

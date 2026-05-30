@@ -4,8 +4,8 @@
  * Manual creation available as secondary option.
  */
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2, ChevronDown, ChevronRight } from "lucide-react";
-import { api, type LearningCard, type ReviewStats, type FlashcardTopic } from "../lib/api";
+import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2, ChevronDown, ChevronRight, Play } from "lucide-react";
+import { api, type LearningCard, type ReviewStats, type FlashcardTopic, type SuggestedTopic } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import { CompactMenuSelect } from "../components/CompactMenuSelect";
@@ -22,6 +22,69 @@ const QUALITY_LABELS = [
   { q: 4, label: "Easy",       color: "text-blue-400",    bg: "bg-blue-400/10 hover:bg-blue-400/20" },
   { q: 5, label: "Perfect",    color: "text-indigo-400",  bg: "bg-indigo-400/10 hover:bg-indigo-400/20" },
 ];
+
+interface TopicRowProps {
+  topic: FlashcardTopic;
+  indent: boolean;
+  hasChildren: boolean;
+  collapsed?: boolean;
+  onToggle?: () => void;
+  isLoading: boolean;
+  disabled: boolean;
+  cardCount: number;
+  onGenerate: () => void;
+}
+
+function TopicRow({ topic, indent, hasChildren, collapsed, onToggle, isLoading, disabled, cardCount, onGenerate }: TopicRowProps) {
+  const pct = Math.round(topic.mastery_score * 100);
+  return (
+    <div className={`group flex items-center gap-1 px-1 py-1 rounded hover:bg-[var(--bg-hover)] ${indent ? "ml-3" : ""}`}>
+      {hasChildren ? (
+        <button
+          onClick={onToggle}
+          className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] shrink-0"
+          aria-label={collapsed ? "Expand" : "Collapse"}
+        >
+          {collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
+        </button>
+      ) : (
+        <span className="w-3 shrink-0" />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-1.5">
+          <span
+            className={`text-[11px] truncate ${indent ? "text-[var(--text-secondary)]" : "text-[var(--text-primary)]"}`}
+            title={topic.topic}
+          >
+            {topic.topic}
+          </span>
+          <span
+            className="text-[9px] text-[var(--text-muted)] tabular-nums shrink-0"
+            title={`${topic.card_count} card${topic.card_count === 1 ? "" : "s"} in this topic`}
+          >
+            {topic.card_count} {topic.card_count === 1 ? "card" : "cards"}
+          </span>
+        </div>
+        <div className="h-0.5 bg-[var(--bg-hover)] rounded-full overflow-hidden mt-0.5">
+          <div
+            className="h-full bg-[var(--accent-color)] transition-all"
+            style={{ width: `${pct}%` }}
+            title={`Mastery ${pct}%`}
+          />
+        </div>
+      </div>
+      <Tooltip content={`Generate ${cardCount} more`}>
+        <button
+          onClick={onGenerate}
+          disabled={isLoading || disabled}
+          className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--bg-elevated)] disabled:opacity-40"
+        >
+          {isLoading ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
+        </button>
+      </Tooltip>
+    </div>
+  );
+}
 
 export default function FlashcardReviewView() {
   const { activeWorkspaceId } = useScopedWorkspace();
@@ -57,6 +120,8 @@ export default function FlashcardReviewView() {
   const [topics, setTopics] = useState<FlashcardTopic[]>([]);
   const [generatingTopicId, setGeneratingTopicId] = useState<string | null>(null);
   const [showCustomTopic, setShowCustomTopic] = useState(false);
+  const [suggested, setSuggested] = useState<SuggestedTopic | null>(null);
+  const [collapsedRoots, setCollapsedRoots] = useState<Record<string, boolean>>({});
 
   const currentCard = cards[currentIndex] ?? null;
 
@@ -119,13 +184,49 @@ export default function FlashcardReviewView() {
     }).catch(() => {});
   }, [activeWorkspaceId, includeDescendants]);
 
-  // Load chat-derived topic list
+  // Load chat-derived topic list + suggestion
   const refreshTopics = useCallback(() => {
     if (!activeWorkspaceId) {return;}
     api.flashcard.listTopics(activeWorkspaceId, includeDescendants)
       .then(setTopics)
       .catch(() => {});
+    api.flashcard.suggestNext(activeWorkspaceId, includeDescendants)
+      .then(setSuggested)
+      .catch(() => {});
   }, [activeWorkspaceId, includeDescendants]);
+
+  // Group topics into roots + children once per topics update.
+  const topicTree = useMemo(() => {
+    const byId = new Map(topics.map((t) => [t.id, t]));
+    const roots: FlashcardTopic[] = [];
+    const childrenOf = new Map<string, FlashcardTopic[]>();
+    for (const t of topics) {
+      const parentId = t.parent_topic_id && byId.has(t.parent_topic_id) ? t.parent_topic_id : null;
+      if (parentId) {
+        const arr = childrenOf.get(parentId) ?? [];
+        arr.push(t);
+        childrenOf.set(parentId, arr);
+      } else {
+        roots.push(t);
+      }
+    }
+    return { roots, childrenOf };
+  }, [topics]);
+
+  function startSuggested() {
+    if (!suggested) {return;}
+    const topicCards = cards.filter((c) => c.topic_id === suggested.topic.id);
+    if (topicCards.length > 0) {
+      const idx = cards.findIndex((c) => c.id === topicCards[0].id);
+      if (idx >= 0) {
+        setCurrentIndex(idx);
+        setIsFlipped(false);
+        return;
+      }
+    }
+    // No due cards loaded for that topic → generate a fresh batch.
+    generateForTopic(suggested.topic.id);
+  }
 
   useEffect(() => {
     refreshTopics();
@@ -211,28 +312,65 @@ export default function FlashcardReviewView() {
           </Tooltip>
         </div>
 
-        {/* Topics from chats — primary surface */}
-        <div className="px-3 py-3 border-b border-[var(--border-color)] space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--accent-color)]">
-            <Sparkles size={12} />
-            Topics
+        {/* Stats — compact, with progress */}
+        {stats && (
+          <div className="px-4 py-3 border-b border-[var(--border-color)] space-y-2">
+            <div className="flex items-baseline justify-between">
+              <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Due today</span>
+              <span className="text-lg font-semibold text-[var(--accent-color)] tabular-nums">{stats.due_today}</span>
+            </div>
+            <div className="h-1 bg-[var(--bg-hover)] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[var(--accent-color)] transition-all"
+                style={{ width: stats.total_cards > 0 ? `${(stats.learned / stats.total_cards) * 100}%` : "0%" }}
+                title={`${stats.learned} learned of ${stats.total_cards}`}
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-[var(--text-muted)] tabular-nums">
+              <span>{stats.learned} learned / {stats.total_cards} total</span>
+              <span>ease {stats.avg_ease.toFixed(2)}</span>
+            </div>
           </div>
-          <div className="flex gap-1.5">
-            <CompactMenuSelect
-              label="AI Model"
-              value={selectedModel}
-              options={groupedModelOptions.options}
-              groups={groupedModelOptions.groups}
-              onChange={(val) => setSelectedModel(val)}
-              widthClassName="min-w-0 flex-1"
-            />
-            <CompactMenuSelect
-              label="Count"
-              value={cardCount.toString()}
-              options={[3, 5, 8, 10, 15, 20].map((n) => ({ value: n.toString(), label: n.toString() }))}
-              onChange={(val) => setCardCount(Number(val))}
-              widthClassName="w-16"
-            />
+        )}
+
+        {/* Suggested next review */}
+        {suggested && (
+          <div className="px-3 py-3 border-b border-[var(--border-color)]">
+            <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] mb-1.5">Suggested</div>
+            <button
+              onClick={startSuggested}
+              disabled={!!generatingTopicId}
+              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/30 hover:bg-[var(--accent-color)]/20 text-left disabled:opacity-50"
+            >
+              <Play size={12} className="text-[var(--accent-color)] shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] font-medium text-[var(--text-primary)] truncate" title={suggested.topic.topic}>
+                  {suggested.topic.topic}
+                </div>
+                <div className="text-[9px] text-[var(--text-muted)] truncate">{suggested.reason}</div>
+              </div>
+            </button>
+          </div>
+        )}
+
+        {/* Topics — hierarchical (root then children) */}
+        <div className="px-3 py-3 border-b border-[var(--border-color)] space-y-2 flex-1 overflow-y-auto min-h-0">
+          <div className="flex items-center justify-between gap-1.5">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--accent-color)]">
+              <Sparkles size={12} />
+              Topics
+            </div>
+            <Tooltip content="Cards generated per click of the + button">
+              <div className="shrink-0">
+                <CompactMenuSelect
+                  label="+"
+                  value={cardCount.toString()}
+                  options={[3, 5, 8, 10, 15, 20].map((n) => ({ value: n.toString(), label: `+${n}` }))}
+                  onChange={(val) => setCardCount(Number(val))}
+                  widthClassName="w-14"
+                />
+              </div>
+            </Tooltip>
           </div>
 
           {topics.length === 0 ? (
@@ -240,58 +378,61 @@ export default function FlashcardReviewView() {
               Topics will appear here as you chat.
             </p>
           ) : (
-            <div className="space-y-1 max-h-48 overflow-y-auto -mx-1 px-1">
-              {topics.map((t) => {
-                const pct = Math.round(t.mastery_score * 100);
-                const isLoading = generatingTopicId === t.id;
+            <div className="space-y-0.5 -mx-1 px-1">
+              {topicTree.roots.map((root) => {
+                const children = topicTree.childrenOf.get(root.id) ?? [];
+                const hasChildren = children.length > 0;
+                const collapsed = collapsedRoots[root.id] ?? false;
                 return (
-                  <div
-                    key={t.id}
-                    className="group flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-[var(--bg-hover)]"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1.5">
-                        <span className="text-[11px] truncate text-[var(--text-primary)]" title={t.topic}>
-                          {t.topic}
-                        </span>
-                        <span className="text-[9px] text-[var(--text-muted)] tabular-nums">
-                          {t.card_count}
-                        </span>
-                      </div>
-                      <div className="h-0.5 bg-[var(--bg-hover)] rounded-full overflow-hidden mt-0.5">
-                        <div
-                          className="h-full bg-[var(--accent-color)] transition-all"
-                          style={{ width: `${pct}%` }}
-                          title={`Mastery ${pct}%`}
-                        />
-                      </div>
-                    </div>
-                    <Tooltip content={`Generate ${cardCount} more`}>
-                      <button
-                        onClick={() => generateForTopic(t.id)}
-                        disabled={isLoading || !!generatingTopicId || !selectedModel}
-                        className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--bg-elevated)] disabled:opacity-40"
-                      >
-                        {isLoading ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
-                      </button>
-                    </Tooltip>
+                  <div key={root.id}>
+                    <TopicRow
+                      topic={root}
+                      indent={false}
+                      hasChildren={hasChildren}
+                      collapsed={collapsed}
+                      onToggle={() => setCollapsedRoots((p) => ({ ...p, [root.id]: !collapsed }))}
+                      isLoading={generatingTopicId === root.id}
+                      disabled={!!generatingTopicId || !selectedModel}
+                      cardCount={cardCount}
+                      onGenerate={() => generateForTopic(root.id)}
+                    />
+                    {hasChildren && !collapsed && children.map((child) => (
+                      <TopicRow
+                        key={child.id}
+                        topic={child}
+                        indent
+                        hasChildren={false}
+                        isLoading={generatingTopicId === child.id}
+                        disabled={!!generatingTopicId || !selectedModel}
+                        cardCount={cardCount}
+                        onGenerate={() => generateForTopic(child.id)}
+                      />
+                    ))}
                   </div>
                 );
               })}
             </div>
           )}
 
-          {/* Custom topic — demoted under disclosure */}
+          {/* Custom topic — disclosure; model + count live here */}
           <button
             type="button"
             onClick={() => setShowCustomTopic((v) => !v)}
-            className="flex items-center gap-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+            className="flex items-center gap-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors pt-1"
           >
             {showCustomTopic ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
             Custom topic
           </button>
           {showCustomTopic && (
             <div className="space-y-1.5">
+              <CompactMenuSelect
+                label="AI Model"
+                value={selectedModel}
+                options={groupedModelOptions.options}
+                groups={groupedModelOptions.groups}
+                onChange={(val) => setSelectedModel(val)}
+                widthClassName="w-full"
+              />
               <input
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
@@ -306,7 +447,7 @@ export default function FlashcardReviewView() {
                 className="w-full flex items-center justify-center gap-1 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] text-[10px] hover:border-[var(--accent-color)] disabled:opacity-40"
               >
                 {isGenerating ? (
-                  <><Loader2 size={10} className="animate-spin" /> Generating…</>
+                  <><Loader2 size={10} className="animate-spin" /> Generating...</>
                 ) : (
                   <>Generate {cardCount} cards</>
                 )}
@@ -315,52 +456,6 @@ export default function FlashcardReviewView() {
           )}
           {generateError && (
             <p className="text-[10px] text-red-400 leading-tight">{generateError}</p>
-          )}
-        </div>
-
-        {/* Stats */}
-        {stats && (
-          <div className="px-4 py-2.5 border-b border-[var(--border-color)] space-y-1.5">
-            {[
-              { label: "Total", value: stats.total_cards },
-              { label: "Due today", value: stats.due_today, accent: true },
-              { label: "Learned", value: stats.learned },
-              { label: "Avg ease", value: stats.avg_ease.toFixed(2) },
-            ].map(({ label, value, accent }) => (
-              <div key={label} className="flex justify-between items-center text-xs">
-                <span className="text-[var(--text-muted)]">{label}</span>
-                <span className={accent ? "text-[var(--accent-color)] font-semibold" : "text-[var(--text-secondary)]"}>
-                  {value}
-                </span>
-              </div>
-            ))}
-            {reviewed > 0 && (
-              <div className="text-xs text-[var(--text-muted)] pt-1">
-                Reviewed: <span className="text-[var(--accent-color)]">{reviewed}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Card list */}
-        <div className="flex-1 overflow-y-auto">
-          {cards.map((c, i) => (
-            <button
-              key={c.id}
-              onClick={() => { setCurrentIndex(i); setIsFlipped(false); }}
-              className={`w-full text-left px-3 py-1.5 text-xs truncate transition-colors ${
-                i === currentIndex
-                  ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
-                  : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
-              }`}
-            >
-              {c.front.slice(0, 32)}{c.front.length > 32 ? "\u2026" : ""}
-            </button>
-          ))}
-          {cards.length === 0 && (
-            <p className="text-xs text-[var(--text-muted)] py-4 px-3 text-center">
-              {activeWorkspaceId ? "No cards due. Pick a topic above to generate more." : "No workspace active"}
-            </p>
           )}
         </div>
       </div>

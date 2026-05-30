@@ -70,6 +70,7 @@ pub struct FlashcardTopic {
     pub mastery_score: f64,
     pub last_generated_at: Option<String>,
     pub card_count: i64,
+    pub parent_topic_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

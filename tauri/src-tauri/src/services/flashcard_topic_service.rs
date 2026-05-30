@@ -55,7 +55,100 @@ pub fn sync_topics_from_signatures(conn: &Connection, workspace_id: &str) -> Res
             rusqlite::params![id, workspace_id, topic, now],
         ).map_err(|e| e.to_string())?;
     }
+    reconcile_parents(conn, workspace_id)?;
     Ok(())
+}
+
+/// Normalise a topic for grouping: lowercase, trim, collapse British/US z↔s.
+fn normalise_topic(t: &str) -> String {
+    t.trim().to_lowercase().replace(['-', '_'], " ")
+}
+
+/// First "word" used for parent grouping. Collapses `ise/ize`, `isation/ization`.
+fn group_key(t: &str) -> String {
+    let n = normalise_topic(t);
+    let first = n.split_whitespace().next().unwrap_or("").to_string();
+    // memoisation / memoization -> "memo"; profiler / profilers -> "profile"
+    // Strip common trailing morphemes so spelling variants and plurals collapse.
+    let stripped = first
+        .trim_end_matches("isation")
+        .trim_end_matches("ization")
+        .trim_end_matches("ise")
+        .trim_end_matches("ize")
+        .trim_end_matches("ers")
+        .trim_end_matches("er")
+        .trim_end_matches('s')
+        .to_string();
+    if stripped.len() >= 3 { stripped } else { first }
+}
+
+/// Group topics by their first-word key. When ≥2 siblings share a key,
+/// elect the shortest topic as the parent and link the others to it.
+/// Idempotent: rerunning is safe and converges on the same parent assignments.
+fn reconcile_parents(conn: &Connection, workspace_id: &str) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare("SELECT id, topic FROM flashcard_topics WHERE workspace_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<(String, String)> = stmt
+        .query_map(rusqlite::params![workspace_id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+
+    let mut groups: std::collections::HashMap<String, Vec<(String, String)>> =
+        std::collections::HashMap::new();
+    for (id, topic) in rows {
+        let key = group_key(&topic);
+        if key.len() < 3 {
+            continue;
+        }
+        groups.entry(key).or_default().push((id, topic));
+    }
+
+    for (_key, mut members) in groups {
+        if members.len() < 2 {
+            // Single-member group → ensure it's a root.
+            if let Some((id, _)) = members.into_iter().next() {
+                conn.execute(
+                    "UPDATE flashcard_topics SET parent_topic_id = NULL WHERE id = ?1",
+                    rusqlite::params![id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            continue;
+        }
+        // Sort by topic length then alphabetical for stability; pick shortest as parent.
+        members.sort_by(|a, b| a.1.len().cmp(&b.1.len()).then_with(|| a.1.cmp(&b.1)));
+        let (parent_id, _) = members[0].clone();
+        // Parent itself has no parent.
+        conn.execute(
+            "UPDATE flashcard_topics SET parent_topic_id = NULL WHERE id = ?1",
+            rusqlite::params![parent_id],
+        )
+        .map_err(|e| e.to_string())?;
+        for (child_id, _) in members.iter().skip(1) {
+            conn.execute(
+                "UPDATE flashcard_topics SET parent_topic_id = ?1 WHERE id = ?2 AND id != ?1",
+                rusqlite::params![parent_id, child_id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn group_key_collapses_spelling_and_morphology() {
+        assert_eq!(group_key("memoisation"), group_key("memoization"));
+        assert_eq!(group_key("profiler"), group_key("profilers"));
+        assert_eq!(group_key("React performance"), "react");
+        assert_eq!(group_key("react profiler"), "react");
+    }
 }
 
 /// Compute mastery score for one topic from its cards' average SM-2 ease factor.

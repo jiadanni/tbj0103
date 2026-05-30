@@ -165,6 +165,13 @@ export interface ReviewStats {
 export interface FlashcardTopic {
   id: string; workspace_id: string; topic: string; source: string;
   mastery_score: number; last_generated_at?: string; card_count: number;
+  parent_topic_id?: string | null;
+}
+
+export interface SuggestedTopic {
+  topic: FlashcardTopic;
+  reason: string;
+  due_count: number;
 }
 
 export interface ProjectNote {
@@ -1049,6 +1056,8 @@ export const api = {
       invoke<FlashcardTopic[]>("list_flashcard_topics", { workspaceId, includeDescendants }),
     generateForTopic: (workspaceId: string, topicId: string, model: string, count?: number, ollamaUrl?: string) =>
       invoke<LearningCard[]>("generate_flashcards_for_topic", { req: { workspace_id: workspaceId, topic_id: topicId, model, count, ollama_url: ollamaUrl } }),
+    suggestNext: (workspaceId: string, includeDescendants?: boolean) =>
+      invoke<SuggestedTopic | null>("suggest_next_topic", { workspaceId, includeDescendants }),
   },
 
   note: {

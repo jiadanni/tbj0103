@@ -187,8 +187,50 @@ CREATE TABLE IF NOT EXISTS flashcard_topics (
     mastery_score REAL NOT NULL DEFAULT 0.0,
     last_generated_at TEXT,
     card_count INTEGER NOT NULL DEFAULT 0,
+    parent_topic_id TEXT REFERENCES flashcard_topics(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(workspace_id, topic)
+);
+
+-- Pop quizzes and full exams. Questions are AI-generated from topic(s);
+-- answers are typed free-text and graded by the AI.
+CREATE TABLE IF NOT EXISTS quizzes (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('pop', 'exam')),
+    title TEXT NOT NULL DEFAULT '',
+    topic_ids TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(topic_ids)),
+    topic_labels TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(topic_labels)),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed', 'abandoned')),
+    score REAL,
+    question_count INTEGER NOT NULL DEFAULT 0,
+    chat_session_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS quiz_questions (
+    id TEXT PRIMARY KEY NOT NULL,
+    quiz_id TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    prompt TEXT NOT NULL,
+    expected_answer TEXT NOT NULL DEFAULT '',
+    rubric TEXT NOT NULL DEFAULT '',
+    topic TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(quiz_id, position)
+);
+
+CREATE TABLE IF NOT EXISTS quiz_answers (
+    id TEXT PRIMARY KEY NOT NULL,
+    quiz_id TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    question_id TEXT NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+    user_answer TEXT NOT NULL DEFAULT '',
+    score REAL,
+    feedback TEXT NOT NULL DEFAULT '',
+    graded_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(question_id)
 );
 
 CREATE TABLE IF NOT EXISTS learning_paths (

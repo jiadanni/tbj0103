@@ -25,6 +25,7 @@ pub mod note;
 pub mod ollama;
 pub mod folder;
 pub mod quick_search;
+pub mod quiz;
 pub mod search;
 pub mod security;
 pub mod settings;
