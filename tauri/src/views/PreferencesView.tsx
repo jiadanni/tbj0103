@@ -847,7 +847,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                           : "w-fit max-w-[85%] rounded-lg rounded-tr-sm bg-[var(--accent-color)] text-white px-2 py-1"
                     }`}
                   >
-                    What are single-page applications (SPAs)?
+                    What is the speed of light?
                   </div>
                 </div>
 
@@ -868,25 +868,25 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                   >
                     {dbSettings.hover_definition_scan_enabled ? (
                       <span>
-                        Single-page applications (
+                        The{" "}
                         <span
                           onMouseEnter={() => setHoveredTerm(true)}
                           onMouseLeave={() => setHoveredTerm(false)}
                           className="underline decoration-dotted decoration-[var(--accent-color)] underline-offset-2 cursor-help font-semibold"
                         >
-                          SPAs
-                        </span>
-                        ) are a type of web application that loads a single HTML page and dynamically updates content.
+                          speed of light
+                        </span>{" "}
+                        in a vacuum is approximately 299,792,458 meters per second.
                       </span>
                     ) : (
-                      "Single-page applications (SPAs) are a type of web application that loads a single HTML page and dynamically updates content."
+                      "The speed of light in a vacuum is approximately 299,792,458 meters per second."
                     )}
 
                     {hoveredTerm && dbSettings.hover_definition_scan_enabled && (
                       <div className="absolute bottom-full left-4 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-lg p-2 shadow-xl text-[0.65em] max-w-[200px] z-50 mb-1.5 pointer-events-none">
-                        <div className="font-semibold text-[var(--accent-color)]">Glossary: SPAs</div>
+                        <div className="font-semibold text-[var(--accent-color)]">Glossary: Speed of Light</div>
                         <p className="text-[var(--text-secondary)] mt-0.5 leading-snug">
-                          Single-Page Applications. Loads assets once and updates dynamically via client-side routing.
+                          A fundamental physical constant. The maximum speed at which all conventional matter and information in the universe can travel.
                         </p>
                       </div>
                     )}
