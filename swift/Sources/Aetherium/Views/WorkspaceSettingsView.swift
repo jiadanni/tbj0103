@@ -31,7 +31,7 @@ struct WorkspaceSettingsView: View {
                     TextField("Workspace Name...", text: $newName)
                         .textFieldStyle(.roundedBorder)
                     Button("Create") {
-                        let w = Workspace(name: newName, isDefault: workspaces.isEmpty)
+                        let w = Workspace(title: newName, description: "")
                         modelContext.insert(w)
                         try? modelContext.save()
                         newName = ""
@@ -77,8 +77,8 @@ struct WorkspaceListCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(workspace.name).font(.headline)
-                if workspace.isDefault {
+                Text(workspace.title).font(.headline)
+                if false {
                     Text("Active")
                         .font(.caption2)
                         .padding(.horizontal, 6)
@@ -123,11 +123,11 @@ struct WorkspaceListCard: View {
             }
         }
         .padding()
-        .background(workspace.isDefault ? Color.accentColor.opacity(0.05) : Color(nsColor: .windowBackgroundColor))
+        .background(false ? Color.accentColor.opacity(0.05) : Color(nsColor: .windowBackgroundColor))
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12).stroke(
-                workspace.isDefault ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.2), 
+                false ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.2), 
                 lineWidth: 1
             )
         )

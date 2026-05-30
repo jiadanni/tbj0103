@@ -19,6 +19,8 @@ struct ChatView: View {
     @State private var rerunModelPickerMessage: Message?
     @State private var showingExportSheet = false
     @State private var showingClearConfirmation = false
+    @State private var isGeneratingVariant = false
+    @State private var showingConvertToNote = false
     @FocusState private var isInputFocused: Bool
     @State private var showDemoTip = false
     @EnvironmentObject var demoModeManager: DemoModeManager
@@ -79,7 +81,8 @@ struct ChatView: View {
                                     onEdit: { startEditing(message) },
                                     onRerun: { rerunMessage(message, withModel: nil) },
                                     onRerunWithModel: { rerunModelPickerMessage = message },
-                                    onBranch: { branchFrom(message) }
+                                    onBranch: { branchFrom(message) },
+                                    onGenerateVariant: message.role == .assistant ? { generateVariant(for: message) } : nil
                                 )
                                 .id(message.id)
                             }
@@ -192,6 +195,11 @@ struct ChatView: View {
                         Label("Export Chat", systemImage: "square.and.arrow.up")
                     }
 
+                    Button(action: { showingConvertToNote = true }) {
+                        Label("Save as Note", systemImage: "note.text.badge.plus")
+                    }
+                    .disabled(chatSession.messages.isEmpty)
+
                     Button(action: { showingClearConfirmation = true }) {
                         Label("Clear History", systemImage: "trash")
                     }
@@ -253,6 +261,11 @@ struct ChatView: View {
                 currentModel: chatSession.modelName
             ) { selectedModel in
                 rerunMessage(message, withModel: selectedModel)
+            }
+        }
+        .sheet(isPresented: $showingConvertToNote) {
+            if let workspace = chatSession.project?.workspace {
+                ConvertChatToNoteSheet(chatSession: chatSession, workspace: workspace)
             }
         }
         .onAppear {
@@ -379,7 +392,46 @@ struct ChatView: View {
         onBranchCreated?(branchSession)
     }
 
-    // MARK: - Existing methods
+    // MARK: - Variant generation
+
+    private func generateVariant(for assistantMessage: Message) {
+        guard !isStreaming else { return }
+        // Find the preceding user message
+        let sorted = chatSession.messages.sorted { $0.timestamp < $1.timestamp }
+        guard let msgIndex = sorted.firstIndex(where: { $0.id == assistantMessage.id }),
+              msgIndex > 0,
+              sorted[msgIndex - 1].role == .user else { return }
+
+        let userMessage = sorted[msgIndex - 1]
+        let contextMessages = Array(sorted[...msgIndex - 1])
+        isGeneratingVariant = true
+
+        Task {
+            do {
+                let stream = try await modelOrchestrator.processMessageStreaming(
+                    userMessage.content,
+                    context: contextMessages,
+                    model: chatSession.modelName
+                )
+                var accumulated = ""
+                for try await token in stream {
+                    accumulated += token
+                }
+                // Save the variant — does NOT modify history
+                let variant = MessageVariant(
+                    content: accumulated,
+                    modelName: chatSession.modelName,
+                    isSelected: false,
+                    message: assistantMessage
+                )
+                modelContext.insert(variant)
+                try? modelContext.save()
+            } catch {
+                // Silently fail; original response is unchanged
+            }
+            isGeneratingVariant = false
+        }
+    }
 
     private func regenerateTitle() {
         guard !chatSession.messages.isEmpty else { return }
@@ -604,6 +656,7 @@ struct MessageBubbleView: View {
     var onRerun: (() -> Void)?
     var onRerunWithModel: (() -> Void)?
     var onBranch: (() -> Void)?
+    var onGenerateVariant: (() -> Void)?
 
     @State private var isHovered = false
 
@@ -669,6 +722,9 @@ struct MessageBubbleView: View {
                     Button(action: { onBranch?() }) {
                         Label("Branch from here", systemImage: "arrow.triangle.branch")
                     }
+                    Button(action: { onGenerateVariant?() }) {
+                        Label("Generate Variant", systemImage: "arrow.triangle.2.circlepath")
+                    }
                 }
                 .font(.caption2)
                 .buttonStyle(.plain)
@@ -700,6 +756,13 @@ struct MessageBubbleView: View {
 
             Button(action: { onBranch?() }) {
                 Label("Branch from Here", systemImage: "arrow.triangle.branch")
+            }
+
+            if message.role == .assistant {
+                Divider()
+                Button(action: { onGenerateVariant?() }) {
+                    Label("Generate Variant", systemImage: "arrow.triangle.2.circlepath")
+                }
             }
         }
     }
@@ -832,5 +895,96 @@ struct ChatInputView: View {
             .disabled(messageText.isEmpty || isStreaming)
         }
         .padding()
+    }
+}
+
+// MARK: - ConvertChatToNoteSheet
+// Mirrors Tauri convert_chat_to_note command.
+
+struct ConvertChatToNoteSheet: View {
+    let chatSession: ChatSession
+    let workspace: Workspace
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title: String
+    @State private var includeUserMessages = true
+    @State private var includeAIMessages = true
+
+    init(chatSession: ChatSession, workspace: Workspace) {
+        self.chatSession = chatSession
+        self.workspace = workspace
+        _title = State(initialValue: chatSession.title.isEmpty ? "Converted Chat" : chatSession.title)
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Save Chat as Note")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 14) {
+                TextField("Note Title", text: $title)
+                    .textFieldStyle(.roundedBorder)
+
+                Toggle("Include your messages", isOn: $includeUserMessages)
+                Toggle("Include AI responses", isOn: $includeAIMessages)
+
+                if !includeUserMessages && !includeAIMessages {
+                    Label("Select at least one message type to include.", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+            }
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+
+                Button("Create Note") { createNote() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                        (!includeUserMessages && !includeAIMessages)
+                    )
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+    }
+
+    private func createNote() {
+        let messages = chatSession.messages
+            .sorted { $0.timestamp < $1.timestamp }
+            .filter { msg in
+                (msg.role == .user && includeUserMessages) ||
+                (msg.role == .assistant && includeAIMessages)
+            }
+
+        var content = "# \(title)\n\n"
+        content += "*Converted from chat on \(Date().formatted(date: .long, time: .omitted))*\n\n---\n\n"
+
+        for msg in messages {
+            let roleLabel = msg.role == .user ? "**You**" : "**AI**"
+            content += "\(roleLabel): \(msg.content)\n\n"
+        }
+
+        let note = ProjectNote(
+            title: title,
+            content: content,
+            noteType: .manual,
+            tags: ["chat-export"]
+        )
+        let source = ProjectSource(
+            sourceType: .note,
+            title: title
+        )
+        source.note = note
+        source.project = workspace
+        modelContext.insert(note)
+        modelContext.insert(source)
+        try? modelContext.save()
+        dismiss()
     }
 }

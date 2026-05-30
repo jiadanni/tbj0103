@@ -21,6 +21,17 @@ struct ContentView: View {
     @State private var showingNewWorkspaceSheet = false
     @State private var showingSettings = false
 
+    private var visibleProjects: [Workspace] {
+        projects
+            .filter { !$0.isHidden }
+            .sorted { lhs, rhs in
+                if lhs.sortOrder == rhs.sortOrder {
+                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                }
+                return lhs.sortOrder < rhs.sortOrder
+            }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if demoModeManager.isActive {
@@ -45,7 +56,10 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .sheet(isPresented: $showingNewWorkspaceSheet) {
-            NewWorkspaceSheet(isPresented: $showingNewWorkspaceSheet)
+            NewWorkspaceSheet(
+                isPresented: $showingNewWorkspaceSheet,
+                availableWorkspaces: projects
+            )
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
@@ -94,7 +108,7 @@ struct ContentView: View {
         }
         .task {
             // Auto-select the most recently updated project if none is selected
-            if selectedProject == nil, let first = projects.first {
+            if selectedProject == nil, let first = visibleProjects.first {
                 selectedProject = first
             }
 
@@ -105,11 +119,19 @@ struct ContentView: View {
         }
         .onChange(of: projects.count) { _, newCount in
             // Select newly created project or fall back if selected was deleted
-            if selectedProject == nil, let first = projects.first {
+            if selectedProject == nil, let first = visibleProjects.first {
                 selectedProject = first
             } else if newCount > 0, let selected = selectedProject,
-                      !projects.contains(where: { $0.id == selected.id }) {
-                selectedProject = projects.first
+                      !visibleProjects.contains(where: { $0.id == selected.id }) {
+                selectedProject = visibleProjects.first
+            }
+        }
+        .onChange(of: projects.map { "\($0.id.uuidString)-\($0.isHidden)-\($0.sortOrder)" }) { _, _ in
+            if let selected = selectedProject,
+               !visibleProjects.contains(where: { $0.id == selected.id }) {
+                selectedProject = visibleProjects.first
+            } else if selectedProject == nil {
+                selectedProject = visibleProjects.first
             }
         }
         .commandPalette(onNavigate: handleSearchNavigation)
@@ -129,9 +151,14 @@ struct ContentView: View {
         VStack(spacing: 0) {
             // Project tabs bar
             WorkspaceTabBar(
-                projects: projects,
+                projects: visibleProjects,
                 selectedProject: $selectedProject,
-                showingNewWorkspaceSheet: $showingNewWorkspaceSheet
+                showingNewWorkspaceSheet: $showingNewWorkspaceSheet,
+                canMoveUp: canMoveWorkspaceUp,
+                canMoveDown: canMoveWorkspaceDown,
+                onMoveUp: moveWorkspaceUp,
+                onMoveDown: moveWorkspaceDown,
+                onHide: hideWorkspace
             )
 
             Divider()
@@ -154,7 +181,7 @@ struct ContentView: View {
             } else {
                 WelcomeView(
                     onCreateProject: { showingNewWorkspaceSheet = true },
-                    hasProjects: !projects.isEmpty
+                    hasProjects: !visibleProjects.isEmpty
                 )
             }
         }
@@ -166,9 +193,14 @@ struct ContentView: View {
         NavigationSplitView {
             VStack(spacing: 0) {
                 WorkspaceSelectorView(
-                    projects: projects,
+                    projects: visibleProjects,
                     selectedProject: $selectedProject,
-                    showingNewWorkspaceSheet: $showingNewWorkspaceSheet
+                    showingNewWorkspaceSheet: $showingNewWorkspaceSheet,
+                    canMoveUp: canMoveWorkspaceUp,
+                    canMoveDown: canMoveWorkspaceDown,
+                    onMoveUp: moveWorkspaceUp,
+                    onMoveDown: moveWorkspaceDown,
+                    onHide: hideWorkspace
                 )
 
                 Divider()
@@ -196,7 +228,7 @@ struct ContentView: View {
             } else {
                 WelcomeView(
                     onCreateProject: { showingNewWorkspaceSheet = true },
-                    hasProjects: !projects.isEmpty
+                    hasProjects: !visibleProjects.isEmpty
                 )
             }
         }
@@ -207,7 +239,7 @@ struct ContentView: View {
     private func handleSearchNavigation(_ result: SearchResult) {
         switch result.type {
         case .chatMessage:
-            if let project = projects.first(where: { project in
+            if let project = visibleProjects.first(where: { project in
                 project.chatSessions.contains(where: { $0.id.uuidString == result.sourceID })
             }) {
                 DispatchQueue.main.async {
@@ -217,7 +249,7 @@ struct ContentView: View {
             }
 
         case .documentChunk:
-            if let project = projects.first(where: { project in
+            if let project = visibleProjects.first(where: { project in
                 project.sources.contains(where: { source in
                     source.document?.id.uuidString == result.sourceID
                 })
@@ -229,7 +261,7 @@ struct ContentView: View {
             }
 
         case .concept:
-            if let project = projects.first(where: { project in
+            if let project = visibleProjects.first(where: { project in
                 project.concepts.contains(where: { $0.id.uuidString == result.sourceID })
             }) {
                 DispatchQueue.main.async {
@@ -239,7 +271,7 @@ struct ContentView: View {
             }
 
         case .note:
-            if let project = projects.first(where: { project in
+            if let project = visibleProjects.first(where: { project in
                 project.sources.contains(where: { $0.id.uuidString == result.sourceID })
             }) {
                 DispatchQueue.main.async {
@@ -249,7 +281,7 @@ struct ContentView: View {
             }
 
         case .learningGoal:
-            if let project = projects.first(where: { project in
+            if let project = visibleProjects.first(where: { project in
                 project.learningGoals.contains(where: { $0.id.uuidString == result.sourceID })
             }) {
                 DispatchQueue.main.async {
@@ -258,6 +290,63 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    private func orderedSiblings(for workspace: Workspace) -> [Workspace] {
+        let siblings = projects.filter { candidate in
+            candidate.parentWorkspace?.id == workspace.parentWorkspace?.id && !candidate.isHidden
+        }
+        return siblings.sorted { lhs, rhs in
+            if lhs.sortOrder == rhs.sortOrder {
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+            return lhs.sortOrder < rhs.sortOrder
+        }
+    }
+
+    private func canMoveWorkspaceUp(_ workspace: Workspace) -> Bool {
+        let siblings = orderedSiblings(for: workspace)
+        guard let index = siblings.firstIndex(where: { $0.id == workspace.id }) else { return false }
+        return index > 0
+    }
+
+    private func canMoveWorkspaceDown(_ workspace: Workspace) -> Bool {
+        let siblings = orderedSiblings(for: workspace)
+        guard let index = siblings.firstIndex(where: { $0.id == workspace.id }) else { return false }
+        return index < siblings.count - 1
+    }
+
+    private func moveWorkspaceUp(_ workspace: Workspace) {
+        moveWorkspace(workspace, direction: -1)
+    }
+
+    private func moveWorkspaceDown(_ workspace: Workspace) {
+        moveWorkspace(workspace, direction: 1)
+    }
+
+    private func moveWorkspace(_ workspace: Workspace, direction: Int) {
+        guard direction == -1 || direction == 1 else { return }
+        var siblings = orderedSiblings(for: workspace)
+        guard let fromIndex = siblings.firstIndex(where: { $0.id == workspace.id }) else { return }
+        let toIndex = fromIndex + direction
+        guard siblings.indices.contains(toIndex) else { return }
+
+        siblings.swapAt(fromIndex, toIndex)
+        for (index, sibling) in siblings.enumerated() {
+            sibling.sortOrder = index
+            sibling.updateTimestamp()
+        }
+
+        try? modelContext.save()
+    }
+
+    private func hideWorkspace(_ workspace: Workspace) {
+        workspace.isHidden = true
+        workspace.updateTimestamp()
+        if selectedProject?.id == workspace.id {
+            selectedProject = visibleProjects.first(where: { $0.id != workspace.id })
+        }
+        try? modelContext.save()
     }
 }
 
@@ -451,6 +540,9 @@ enum NavigationView: String, CaseIterable, Identifiable {
     case recycleBin = "Recycle Bin"
     case webCaptures = "Web Captures"
     case workspaceSettings = "Workspace Settings"
+    case folders = "Folders"
+    case globalMemory = "Global Memory"
+    case glossary = "Glossary"
 
     var id: String { rawValue }
 
@@ -471,6 +563,9 @@ enum NavigationView: String, CaseIterable, Identifiable {
         case .recycleBin: return "trash"
         case .webCaptures: return "globe"
         case .workspaceSettings: return "gearshape.2.fill"
+        case .folders: return "folder.fill"
+        case .globalMemory: return "brain"
+        case .glossary: return "text.book.closed.fill"
         }
     }
 
@@ -488,6 +583,9 @@ enum NavigationView: String, CaseIterable, Identifiable {
         case .backups: return "0"
         case .memory: return nil
         case .thoughtQueue: return nil
+        case .folders: return nil
+        case .globalMemory: return nil
+        case .glossary: return nil
         }
     }
 }
@@ -498,6 +596,11 @@ struct WorkspaceSelectorView: View {
     let projects: [Workspace]
     @Binding var selectedProject: Workspace?
     @Binding var showingNewWorkspaceSheet: Bool
+    let canMoveUp: (Workspace) -> Bool
+    let canMoveDown: (Workspace) -> Bool
+    let onMoveUp: (Workspace) -> Void
+    let onMoveDown: (Workspace) -> Void
+    let onHide: (Workspace) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -535,6 +638,29 @@ struct WorkspaceSelectorView: View {
                 List(projects, selection: $selectedProject) { project in
                     WorkspaceRowView(project: project)
                         .tag(project)
+                        .contextMenu {
+                            Button {
+                                onMoveUp(project)
+                            } label: {
+                                Label("Move Up", systemImage: "arrow.up")
+                            }
+                            .disabled(!canMoveUp(project))
+
+                            Button {
+                                onMoveDown(project)
+                            } label: {
+                                Label("Move Down", systemImage: "arrow.down")
+                            }
+                            .disabled(!canMoveDown(project))
+
+                            Divider()
+
+                            Button {
+                                onHide(project)
+                            } label: {
+                                Label("Hide Workspace", systemImage: "eye.slash")
+                            }
+                        }
                 }
                 .listStyle(.sidebar)
             }
@@ -569,6 +695,11 @@ struct WorkspaceTabBar: View {
     let projects: [Workspace]
     @Binding var selectedProject: Workspace?
     @Binding var showingNewWorkspaceSheet: Bool
+    let canMoveUp: (Workspace) -> Bool
+    let canMoveDown: (Workspace) -> Bool
+    let onMoveUp: (Workspace) -> Void
+    let onMoveDown: (Workspace) -> Void
+    let onHide: (Workspace) -> Void
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -577,7 +708,12 @@ struct WorkspaceTabBar: View {
                     WorkspaceTab(
                         project: project,
                         isSelected: selectedProject?.id == project.id,
-                        onSelect: { selectedProject = project }
+                        onSelect: { selectedProject = project },
+                        canMoveUp: canMoveUp(project),
+                        canMoveDown: canMoveDown(project),
+                        onMoveUp: { onMoveUp(project) },
+                        onMoveDown: { onMoveDown(project) },
+                        onHide: { onHide(project) }
                     )
                 }
 
@@ -607,6 +743,11 @@ struct WorkspaceTab: View {
     let project: Workspace
     let isSelected: Bool
     let onSelect: () -> Void
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
+    let onHide: () -> Void
 
     @State private var isHovering = false
 
@@ -631,6 +772,23 @@ struct WorkspaceTab: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering in isHovering = hovering }
+        .contextMenu {
+            Button(action: onMoveUp) {
+                Label("Move Left", systemImage: "arrow.left")
+            }
+            .disabled(!canMoveUp)
+
+            Button(action: onMoveDown) {
+                Label("Move Right", systemImage: "arrow.right")
+            }
+            .disabled(!canMoveDown)
+
+            Divider()
+
+            Button(action: onHide) {
+                Label("Hide Workspace", systemImage: "eye.slash")
+            }
+        }
     }
 }
 
@@ -762,6 +920,17 @@ struct DetailViewRouter: View {
 
             case .workspaceSettings:
                 WorkspaceSettingsView()
+
+            case .folders:
+                FolderDashboardView(workspace: project)
+
+            case .globalMemory:
+                GlobalMemoryView()
+                    .environmentObject(OllamaService())
+
+            case .glossary:
+                WorkspaceGlossaryView(workspace: project)
+                    .environmentObject(OllamaService())
             }
         }
         .navigationTitle(selectedView.rawValue)
