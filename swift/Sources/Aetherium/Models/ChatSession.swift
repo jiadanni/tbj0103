@@ -163,6 +163,7 @@ final class Message {
     var durationMs: Int?
 
     @Relationship(deleteRule: .cascade) var citations: [Citation]
+    @Relationship(deleteRule: .cascade) var variants: [MessageVariant] = []
     var chatSession: ChatSession?
 
     init(
@@ -186,6 +187,7 @@ final class Message {
         self.tokensUsed = tokensUsed
         self.durationMs = durationMs
         self.citations = []
+        self.variants = []
     }
 }
 

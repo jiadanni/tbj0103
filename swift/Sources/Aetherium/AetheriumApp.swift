@@ -48,7 +48,12 @@ struct AetheriumApp: App {
                 ThoughtQueueItem.self,
                 ConversationSummary.self,
                 ContextSnapshot.self,
-                AIModelEntity.self
+                AIModelEntity.self,
+                Folder.self,
+                MemorySummary.self,
+                MemorySummarySnapshot.self,
+                WorkspaceGlossaryTerm.self,
+                MessageVariant.self
             )
         } catch {
             // Present a minimal UI with an error instead of crashing
