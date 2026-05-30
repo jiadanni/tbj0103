@@ -569,8 +569,6 @@ export default function FolderDashboardView() {
           <span>{effectiveSummary.overview.chat_sessions} learning thread{effectiveSummary.overview.chat_sessions === 1 ? "" : "s"}</span>
           <span className="text-[var(--text-muted)]">•</span>
           <span>{effectiveSummary.overview.notes} note{effectiveSummary.overview.notes === 1 ? "" : "s"}</span>
-          <span className="text-[var(--text-muted)]">•</span>
-          <span>{effectiveSummary.overview.flashcards} flashcard{effectiveSummary.overview.flashcards === 1 ? "" : "s"}</span>
           {isLoading && (
             <>
               <span className="text-[var(--text-muted)]">•</span>
