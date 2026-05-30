@@ -185,33 +185,39 @@ pub fn toggle_devtools(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_system_specs() -> Result<SystemSpecs, String> {
-    let system = System::new_all();
-    let gpu_info = detect_gpu_info();
+pub async fn get_system_specs() -> Result<SystemSpecs, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut system = System::new();
+        system.refresh_cpu_usage();
+        system.refresh_memory();
+        let gpu_info = detect_gpu_info();
 
-    let cpu_brand = system
-        .cpus()
-        .first()
-        .map(|cpu| cpu.brand().trim().to_string())
-        .filter(|brand| !brand.is_empty())
-        .unwrap_or_else(|| "Unknown CPU".to_string());
+        let cpu_brand = system
+            .cpus()
+            .first()
+            .map(|cpu| cpu.brand().trim().to_string())
+            .filter(|brand| !brand.is_empty())
+            .unwrap_or_else(|| "Unknown CPU".to_string());
 
-    Ok(SystemSpecs {
-        host_name: System::host_name(),
-        os_name: System::name().unwrap_or_else(|| std::env::consts::OS.to_string()),
-        os_version: System::os_version(),
-        kernel_version: System::kernel_version(),
-        cpu_brand,
-        cpu_arch: std::env::consts::ARCH.to_string(),
-        logical_cores: system.cpus().len(),
-        physical_cores: system.physical_core_count(),
-        total_memory_bytes: system.total_memory(),
-        available_memory_bytes: system.available_memory(),
-        total_swap_bytes: system.total_swap(),
-        gpu_name: gpu_info.as_ref().map(|gpu| gpu.name.clone()),
-        gpu_memory_bytes: gpu_info.as_ref().and_then(|gpu| gpu.memory_bytes),
-        gpu_detection_source: gpu_info.map(|gpu| gpu.detection_source),
+        Ok(SystemSpecs {
+            host_name: System::host_name(),
+            os_name: System::name().unwrap_or_else(|| std::env::consts::OS.to_string()),
+            os_version: System::os_version(),
+            kernel_version: System::kernel_version(),
+            cpu_brand,
+            cpu_arch: std::env::consts::ARCH.to_string(),
+            logical_cores: system.cpus().len(),
+            physical_cores: system.physical_core_count(),
+            total_memory_bytes: system.total_memory(),
+            available_memory_bytes: system.available_memory(),
+            total_swap_bytes: system.total_swap(),
+            gpu_name: gpu_info.as_ref().map(|gpu| gpu.name.clone()),
+            gpu_memory_bytes: gpu_info.as_ref().and_then(|gpu| gpu.memory_bytes),
+            gpu_detection_source: gpu_info.map(|gpu| gpu.detection_source),
+        })
     })
+    .await
+    .map_err(|e| format!("Spawn blocking error: {e}"))?
 }
 
 // macOS system_profiler only gives total VRAM capacity — not live usage.
@@ -223,33 +229,38 @@ fn gpu_vram_usage_is_live() -> bool { false }
 fn gpu_vram_usage_is_live() -> bool { true }
 
 #[tauri::command]
-pub fn get_performance_stats() -> Result<crate::models::system::PerformanceStats, String> {
-    // sysinfo 0.30: use System::new_all() then refresh to get a CPU delta.
-    let mut sys = System::new_all();
-    // Pause so sysinfo can compute a CPU usage delta.
-    std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
-    sys.refresh_cpu_usage();
-    sys.refresh_memory();
+pub async fn get_performance_stats() -> Result<crate::models::system::PerformanceStats, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut sys = System::new();
+        sys.refresh_cpu_usage();
+        sys.refresh_memory();
+        // Pause so sysinfo can compute a CPU usage delta.
+        std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+        sys.refresh_cpu_usage();
+        sys.refresh_memory();
 
-    // global_cpu_info() returns the aggregate CPU, .cpu_usage() gives the percentage.
-    let cpu_usage = sys.global_cpu_info().cpu_usage();
-    let memory_used = sys.used_memory();
-    let memory_total = sys.total_memory();
-    let gpu = query_gpu_vram();
-    let usage_available = gpu.is_some() && gpu_vram_usage_is_live();
+        // global_cpu_info() returns the aggregate CPU, .cpu_usage() gives the percentage.
+        let cpu_usage = sys.global_cpu_info().cpu_usage();
+        let memory_used = sys.used_memory();
+        let memory_total = sys.total_memory();
+        let gpu = query_gpu_vram();
+        let usage_available = gpu.is_some() && gpu_vram_usage_is_live();
 
-    let cpu_core_usages: Vec<f32> = sys.cpus().iter().map(|c| c.cpu_usage()).collect();
+        let cpu_core_usages: Vec<f32> = sys.cpus().iter().map(|c| c.cpu_usage()).collect();
 
-    Ok(crate::models::system::PerformanceStats {
-        cpu_usage_percent: cpu_usage,
-        memory_used_bytes: memory_used,
-        memory_total_bytes: memory_total,
-        gpu_vram_used_bytes: gpu.as_ref().map(|(used, _, _)| *used),
-        gpu_vram_total_bytes: gpu.as_ref().map(|(_, total, _)| *total),
-        gpu_name: gpu.map(|(_, _, name)| name),
-        gpu_vram_usage_available: usage_available,
-        cpu_core_usages,
+        Ok(crate::models::system::PerformanceStats {
+            cpu_usage_percent: cpu_usage,
+            memory_used_bytes: memory_used,
+            memory_total_bytes: memory_total,
+            gpu_vram_used_bytes: gpu.as_ref().map(|(used, _, _)| *used),
+            gpu_vram_total_bytes: gpu.as_ref().map(|(_, total, _)| *total),
+            gpu_name: gpu.map(|(_, _, name)| name),
+            gpu_vram_usage_available: usage_available,
+            cpu_core_usages,
+        })
     })
+    .await
+    .map_err(|e| format!("Spawn blocking error: {e}"))?
 }
 
 #[tauri::command]
