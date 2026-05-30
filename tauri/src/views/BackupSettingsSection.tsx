@@ -7,6 +7,7 @@ import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { Archive, Download, RefreshCw, Upload } from "lucide-react";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import SuccessDialog from "../components/SuccessDialog";
 
 function sanitizeFilenamePart(value: string) {
   return value
@@ -19,8 +20,18 @@ function sanitizeFilenamePart(value: string) {
 }
 
 function buildBackupFilename(workspaceName: string) {
-  const date = new Date().toISOString().slice(0, 10);
-  return `${sanitizeFilenamePart(workspaceName)}-${date}.aetherium-backup.json`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const getPart = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  const datetime = `${getPart("year")}-${getPart("month")}-${getPart("day")}-${getPart("hour")}-${getPart("minute")}-${getPart("second")}`;
+  return `${sanitizeFilenamePart(workspaceName)}-${datetime}.aetherium-backup.json`;
 }
 
 export default function BackupSettingsSection() {
@@ -35,6 +46,7 @@ export default function BackupSettingsSection() {
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
 
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null,
@@ -56,9 +68,9 @@ export default function BackupSettingsSection() {
     try {
       const backupJson = await api.backup.create(activeWorkspaceId);
       await writeTextFile(destination, backupJson);
-      await message(`Saved a backup for "${activeWorkspace.name}".`, {
+      setSuccessDialog({
         title: "Backup created",
-        kind: "info",
+        description: `Saved a backup for "${activeWorkspace.name}".`,
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Backup failed";
@@ -99,9 +111,9 @@ export default function BackupSettingsSection() {
       setActiveWorkspaceId(restoredWorkspaceId);
       setActiveFolderId(null);
 
-      await message("The backup file was restored into your workspace list.", {
+      setSuccessDialog({
         title: "Restore complete",
-        kind: "info",
+        description: "The backup file was restored into your workspace list.",
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Restore failed";
@@ -113,74 +125,90 @@ export default function BackupSettingsSection() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="border-b border-[var(--border-color)] px-5 py-3">
-        <h1 className="text-sm font-semibold text-[var(--text-primary)]">Backup</h1>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-            {error}
+    <div className="w-full">
+      {(creating || restoring) && (
+        <div className="mb-4 flex items-center gap-3 rounded-xl border border-[var(--accent-color)]/20 bg-[var(--accent-color)]/5 px-4 py-3 text-sm text-[var(--text-secondary)] shadow-sm">
+          <RefreshCw size={16} className="animate-spin text-[var(--accent-color)]" />
+          <div className="flex-1">
+            <span className="font-medium text-[var(--text-primary)]">
+              {creating ? "Creating backup..." : "Restoring backup..."}
+            </span>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Please do not close Aetherium while this process completes.
+            </p>
           </div>
-        )}
-
-        <div className="grid gap-4 lg:grid-cols-2 max-w-4xl">
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Archive size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Create Backup File</h2>
-                </div>
-                <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Save the current workspace as a portable JSON backup you can archive or move to another device.
-                </p>
-                <p className="mt-3 text-xs text-[var(--text-muted)]">
-                  {activeWorkspace
-                    ? `Current workspace: ${activeWorkspace.name}`
-                    : "Select a workspace to create a backup."}
-                </p>
-              </div>
-
-              <button
-                onClick={() => void createBackup()}
-                disabled={creating || !activeWorkspace}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-2 text-xs text-white hover:opacity-90 disabled:opacity-40"
-              >
-                {creating ? <RefreshCw size={12} className="animate-spin" /> : <Download size={12} />}
-                {creating ? "Creating..." : "Save Backup"}
-              </button>
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Upload size={16} className="text-[var(--accent-color)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Restore Backup File</h2>
-                </div>
-                <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  Open an Aetherium backup JSON file and restore that workspace back into the app.
-                </p>
-                <p className="mt-3 text-xs text-[var(--text-muted)]">
-                  Restore replaces any existing workspace that uses the same backup workspace id.
-                </p>
-              </div>
-
-              <button
-                onClick={() => void restoreBackup()}
-                disabled={restoring}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-              >
-                {restoring ? <RefreshCw size={12} className="animate-spin" /> : <Upload size={12} />}
-                {restoring ? "Restoring..." : "Open Backup"}
-              </button>
-            </div>
-          </section>
         </div>
+      )}
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2 max-w-4xl">
+        <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Archive size={16} className="text-[var(--accent-color)]" />
+                <h2 className="text-sm font-medium text-[var(--text-primary)]">Create Backup File</h2>
+              </div>
+              <p className="mt-2 text-xs text-[var(--text-muted)]">
+                Save the current workspace as a portable JSON backup you can archive or move to another device.
+              </p>
+              <p className="mt-3 text-xs text-[var(--text-muted)]">
+                {activeWorkspace
+                  ? `Current workspace: ${activeWorkspace.name}`
+                  : "Select a workspace to create a backup."}
+              </p>
+            </div>
+
+            <button
+              onClick={() => void createBackup()}
+              disabled={creating || !activeWorkspace}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-2 text-xs text-white hover:opacity-90 disabled:opacity-40"
+            >
+              {creating ? <RefreshCw size={12} className="animate-spin" /> : <Download size={12} />}
+              {creating ? "Exporting..." : "Export"}
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Upload size={16} className="text-[var(--accent-color)]" />
+                <h2 className="text-sm font-medium text-[var(--text-primary)]">Restore Backup File</h2>
+              </div>
+              <p className="mt-2 text-xs text-[var(--text-muted)]">
+                Open an Aetherium backup JSON file and restore that workspace back into the app.
+              </p>
+              <p className="mt-3 text-xs text-[var(--text-muted)]">
+                Restore replaces any existing workspace that uses the same backup workspace id.
+              </p>
+            </div>
+
+            <button
+              onClick={() => void restoreBackup()}
+              disabled={restoring}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-2 text-xs text-white hover:opacity-90 disabled:opacity-40"
+            >
+              {restoring ? <RefreshCw size={12} className="animate-spin" /> : <Upload size={12} />}
+              {restoring ? "Restoring..." : "Restore"}
+            </button>
+          </div>
+        </section>
       </div>
+
+      {successDialog && (
+        <SuccessDialog
+          title={successDialog.title}
+          description={successDialog.description}
+          onConfirm={() => setSuccessDialog(null)}
+        />
+      )}
     </div>
   );
 }
