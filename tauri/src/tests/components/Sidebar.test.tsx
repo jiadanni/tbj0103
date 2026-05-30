@@ -14,7 +14,7 @@ describe("Sidebar", () => {
 
     const button = screen.getByRole("button", { name: "Dashboard" });
     expect(button).toHaveAttribute("aria-current", "page");
-    expect(button.className).toContain("bg-[var(--bg-elevated)]");
+    expect(button.className).toContain("bg-[rgba(var(--accent-color-rgb),0.12)]");
   });
 
   it("shows a tooltip for collapsed navigation items on hover", () => {
