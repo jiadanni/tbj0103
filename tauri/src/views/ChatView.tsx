@@ -19,6 +19,7 @@ import ChatMessageBubble from "../components/ChatMessageBubble";
 import ChatMinimap from "../components/ChatMinimap";
 import { Tooltip } from "../components/Tooltip";
 import ConvertChatModal, { type ConvertKind } from "../components/ConvertChatModal";
+import SuccessDialog from "../components/SuccessDialog";
 import { useScopedChat, useScopedFolders, useScopedWorkspace, useWorkspacePane, useBubbleUpFlag } from "../lib/workspacePane";
 import {
   buildChatSuggestionRow,
@@ -2478,6 +2479,7 @@ export default function ChatView() {
   const [creatingFolderPending, setCreatingFolderPending] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+  const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const creatingFolderRequestRef = useRef(false);
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
@@ -4363,6 +4365,10 @@ export default function ChatView() {
       });
       if (!destPath) { return; }
       await api.chatFile.exportAsJson(session.id, destPath);
+      setSuccessDialog({
+        title: "Export complete",
+        description: `Successfully exported chat "${session.title || "chat"}" as JSON.`,
+      });
     } catch (err) {
       const description = err instanceof Error
         ? err.message
@@ -5814,6 +5820,13 @@ export default function ChatView() {
             </div>
           </div>
         </div>
+      )}
+      {successDialog && (
+        <SuccessDialog
+          title={successDialog.title}
+          description={successDialog.description}
+          onConfirm={() => setSuccessDialog(null)}
+        />
       )}
     </div>
   );
