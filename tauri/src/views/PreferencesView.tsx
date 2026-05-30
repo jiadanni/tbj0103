@@ -3122,9 +3122,11 @@ export default function PreferencesView() {
 
                           <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5 space-y-3">
                             <div>
-                              <p className="text-[11px] font-semibold text-[var(--text-primary)]">Reserved VRAM</p>
+                              <p className="text-[11px] font-semibold text-[var(--text-primary)]">Memory headroom</p>
                               <p className="mt-0.5 text-[10px] text-[var(--text-secondary)]">
-                                Tell Aetherium how much VRAM the desktop and other apps already hold so model-fit suggestions reflect what is actually usable. The larger of GB and % is applied.
+                                {systemSpecs.os_name.toLowerCase().includes("mac") && ["aarch64", "arm64"].includes(systemSpecs.cpu_arch.toLowerCase())
+                                  ? "Tell Aetherium how much of the unified memory pool the desktop and other apps already hold so model-fit suggestions reflect what is actually usable."
+                                  : "Tell Aetherium how much VRAM and RAM the desktop and other apps already hold so model-fit suggestions reflect what is actually usable. The larger of GB and % is applied per pool."}
                               </p>
                               <p className="mt-1 text-[10px] text-[var(--text-secondary)]">
                                 Check current usage: macOS — Activity Monitor (Memory / GPU History) · Linux NVIDIA — <code>nvidia-smi</code> or <code>nvtop</code> · Linux AMD — <code>radeontop</code>, <code>rocm-smi</code>, or Mission Center · Linux Intel — <code>intel_gpu_top</code> · Windows — Task Manager → Performance → GPU.
@@ -3174,7 +3176,11 @@ export default function PreferencesView() {
                             )}
 
                             <div className="space-y-1">
-                              <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">RAM headroom</p>
+                              <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">
+                                {systemSpecs.os_name.toLowerCase().includes("mac") && ["aarch64", "arm64"].includes(systemSpecs.cpu_arch.toLowerCase())
+                                  ? "Memory headroom (unified)"
+                                  : "RAM headroom"}
+                              </p>
                               <div className="flex flex-wrap items-center gap-2">
                                 <label className="flex items-center gap-1 text-[11px] text-[var(--text-secondary)]">
                                   <input
