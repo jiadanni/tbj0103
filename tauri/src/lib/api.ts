@@ -169,6 +169,57 @@ export interface FlashcardTopic {
   parent_topic_id?: string | null;
 }
 
+export type QuizKind = "pop" | "exam";
+
+export interface Quiz {
+  id: string;
+  workspace_id: string;
+  kind: string;
+  title: string;
+  topic_ids: string[];
+  topic_labels: string[];
+  status: string;
+  score?: number | null;
+  question_count: number;
+  chat_session_id?: string | null;
+  created_at: string;
+  completed_at?: string | null;
+}
+
+export interface QuizQuestion {
+  id: string;
+  quiz_id: string;
+  position: number;
+  prompt: string;
+  expected_answer: string;
+  rubric: string;
+  topic: string;
+  created_at: string;
+}
+
+export interface QuizAnswer {
+  id: string;
+  quiz_id: string;
+  question_id: string;
+  user_answer: string;
+  score?: number | null;
+  feedback: string;
+  graded_at?: string | null;
+  created_at: string;
+}
+
+export interface QuizDetail {
+  quiz: Quiz;
+  questions: QuizQuestion[];
+  answers: QuizAnswer[];
+}
+
+export interface QuizSummary {
+  quiz: Quiz;
+  answered_count: number;
+  average_score?: number | null;
+}
+
 export interface SuggestedTopic {
   topic: FlashcardTopic;
   reason: string;
@@ -1077,6 +1128,48 @@ export const api = {
       invoke<SuggestedConcept | null>("suggest_next_concept", { workspaceId, includeDescendants }),
   },
 
+  quiz: {
+    create: (req: {
+      workspaceId: string;
+      kind: QuizKind;
+      topicIds: string[];
+      questionCount?: number;
+      chatSessionId?: string;
+      title?: string;
+      model?: string;
+    }) =>
+      invoke<QuizDetail>("create_quiz", {
+        req: {
+          workspace_id: req.workspaceId,
+          kind: req.kind,
+          topic_ids: req.topicIds,
+          question_count: req.questionCount,
+          chat_session_id: req.chatSessionId,
+          title: req.title,
+          model: req.model,
+        },
+      }),
+    get: (quizId: string) => invoke<QuizDetail>("get_quiz", { quizId }),
+    list: (workspaceId: string, limit?: number) =>
+      invoke<QuizSummary[]>("list_quizzes", { workspaceId, limit }),
+    submitAnswer: (req: {
+      quizId: string;
+      questionId: string;
+      userAnswer: string;
+      model?: string;
+    }) =>
+      invoke<QuizAnswer>("submit_quiz_answer", {
+        req: {
+          quiz_id: req.quizId,
+          question_id: req.questionId,
+          user_answer: req.userAnswer,
+          model: req.model,
+        },
+      }),
+    finalize: (quizId: string) => invoke<Quiz>("finalize_quiz", { quizId }),
+    delete: (quizId: string) => invoke<void>("delete_quiz", { quizId }),
+  },
+
   note: {
     create: (workspaceId: string, title: string, content?: string) =>
       invoke<ProjectNote>("create_note", { req: { workspace_id: workspaceId, title, content } }),
@@ -1398,6 +1491,24 @@ export const api = {
     markdown: (workspaceId: string) => invoke<string>("export_markdown", { req: { workspace_id: workspaceId } }),
     json: (workspaceId: string) => invoke<string>("export_json", { req: { workspace_id: workspaceId } }),
     obsidian: (workspaceId: string) => invoke<Array<{ path: string; content: string }>>("export_obsidian_vault", { req: { workspace_id: workspaceId } }),
+    roadmap: {
+      markdown: (workspaceId: string) =>
+        invoke<string>("export_roadmap_markdown", { req: { workspace_id: workspaceId } }),
+      json: (workspaceId: string) =>
+        invoke<string>("export_roadmap_json", { req: { workspace_id: workspaceId } }),
+      mermaid: (workspaceId: string) =>
+        invoke<string>("export_roadmap_mermaid", { req: { workspace_id: workspaceId } }),
+      csv: (workspaceId: string) =>
+        invoke<string>("export_roadmap_csv", { req: { workspace_id: workspaceId } }),
+      png: (workspaceId: string, svg: string, width: number, height: number) =>
+        invoke<number[]>("export_roadmap_png", {
+          req: { workspace_id: workspaceId, svg, width, height },
+        }),
+      pdf: (workspaceId: string, svg: string, width: number, height: number) =>
+        invoke<number[]>("export_roadmap_pdf", {
+          req: { workspace_id: workspaceId, svg, width, height },
+        }),
+    },
   },
 
   backup: {

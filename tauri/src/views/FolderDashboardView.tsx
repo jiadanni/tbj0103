@@ -22,6 +22,7 @@ import {
   type DashboardActivity,
   type DashboardRoute,
   type DashboardSummary,
+  type FlashcardTopic,
 } from "../lib/api";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -134,6 +135,9 @@ export default function FolderDashboardView() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  // Map of lowercased topic label -> flashcard_topics row id, so dashboard
+  // topic chips can deep-link into the Quizzes tab with a real topic_id.
+  const [topicIdByLabel, setTopicIdByLabel] = useState<Map<string, string>>(new Map());
 
   function handleSearchSubmit() {
     navigate("/chat", {
@@ -187,6 +191,25 @@ export default function FolderDashboardView() {
     };
   }, [activeWorkspaceId, includeDescendants]);
 
+  // Fetch flashcard topics so chip clicks can resolve a label → topic_id.
+  useEffect(() => {
+    if (!activeWorkspaceId) {
+      setTopicIdByLabel(new Map());
+      return;
+    }
+    let cancelled = false;
+    api.flashcard
+      .listTopics(activeWorkspaceId, true)
+      .then((rows: FlashcardTopic[]) => {
+        if (cancelled) { return; }
+        const m = new Map<string, string>();
+        for (const r of rows) { m.set(r.topic.toLowerCase(), r.id); }
+        setTopicIdByLabel(m);
+      })
+      .catch(() => { /* non-fatal — chips simply won't deep-link */ });
+    return () => { cancelled = true; };
+  }, [activeWorkspaceId]);
+
   const goalsLimit = useResponsiveLimit(3, 5, 8);
   const activityLimit = useResponsiveLimit(5, 10, 15);
   const suggestionsLimit = useResponsiveLimit(3, 6, 10);
@@ -195,6 +218,15 @@ export default function FolderDashboardView() {
   function openRoute(route: DashboardRoute) {
     const normalized = normalizeKnowledgeRoute(route);
     navigate(normalized.path, normalized.state ? { state: routeState(normalized) } : undefined);
+  }
+
+  function openQuizForTag(tag: string) {
+    const id = topicIdByLabel.get(tag.toLowerCase());
+    if (id) {
+      navigate(`/learning?tab=quizzes&topic=${encodeURIComponent(id)}&kind=pop`);
+    } else {
+      navigate(`/learning?tab=quizzes`);
+    }
   }
 
   function refreshSummary() {
@@ -513,15 +545,21 @@ export default function FolderDashboardView() {
               </div>
               {knowledgeHealth.active_topic_tags.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {knowledgeHealth.active_topic_tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="inline-flex items-center gap-1 rounded-full bg-[rgba(var(--accent-color-rgb),0.12)] px-2 py-0.5 text-[11px] text-[var(--accent-color)]"
-                    >
-                      <Sparkles size={10} />
-                      {tag}
-                    </span>
-                  ))}
+                  {knowledgeHealth.active_topic_tags.map((tag) => {
+                    const hasTopic = topicIdByLabel.has(tag.toLowerCase());
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => openQuizForTag(tag)}
+                        title={hasTopic ? `Start a pop quiz on ${tag}` : "Open Quizzes"}
+                        className="inline-flex items-center gap-1 rounded-full bg-[rgba(var(--accent-color-rgb),0.12)] px-2 py-0.5 text-[11px] text-[var(--accent-color)] hover:bg-[rgba(var(--accent-color-rgb),0.2)] transition-colors"
+                      >
+                        <Sparkles size={10} />
+                        {tag}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </Section>

@@ -12,7 +12,7 @@
  */
 import { useEffect, useState, useMemo, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
-import { GraduationCap, Map, Target } from "lucide-react";
+import { ClipboardCheck, GraduationCap, Map, Target } from "lucide-react";
 import LearningHubSidebar from "../components/LearningHubSidebar";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
@@ -28,17 +28,21 @@ const RoadmapPane = lazy(() =>
 const GoalsPane = lazy(() =>
   import("./LearningPathView").then((m) => ({ default: m.GoalsPane })),
 );
+const QuizzesPane = lazy(() =>
+  import("./QuizzesPane").then((m) => ({ default: m.QuizzesPane })),
+);
 
-type HubTab = "roadmap" | "review" | "goals";
+type HubTab = "roadmap" | "review" | "goals" | "quizzes";
 
 const TABS: { id: HubTab; label: string; Icon: typeof Map }[] = [
   { id: "roadmap", label: "Roadmap", Icon: Map },
   { id: "review", label: "Review", Icon: GraduationCap },
+  { id: "quizzes", label: "Quizzes", Icon: ClipboardCheck },
   { id: "goals", label: "Goals", Icon: Target },
 ];
 
 function parseTab(value: string | null): HubTab {
-  if (value === "roadmap" || value === "review" || value === "goals") {
+  if (value === "roadmap" || value === "review" || value === "goals" || value === "quizzes") {
     return value;
   }
   return "roadmap";
@@ -50,6 +54,14 @@ export default function LearningHubView() {
   const [activeTab, setActiveTab] = useState<HubTab>(initialTab);
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
   const { activeWorkspaceId } = useWorkspaceStore();
+
+  // Deep-link payload for the Quizzes tab. Read once at mount; we clear them
+  // from the URL after consuming so a re-render doesn't relaunch the quiz.
+  const initialQuizTopic = useMemo(() => searchParams.get("topic") ?? undefined, [searchParams]);
+  const initialQuizKindRaw = useMemo(() => searchParams.get("kind"), [searchParams]);
+  const initialQuizKind = initialQuizKindRaw === "pop" || initialQuizKindRaw === "exam"
+    ? initialQuizKindRaw
+    : undefined;
 
   // Keep the URL in sync so tab state is bookmarkable and shareable.
   useEffect(() => {
@@ -99,6 +111,13 @@ export default function LearningHubView() {
               <GoalsPane
                 conceptId={selectedConceptId}
                 onClearConceptFilter={() => setSelectedConceptId(null)}
+              />
+            )}
+            {activeTab === "quizzes" && (
+              <QuizzesPane
+                hideSidebar
+                initialTopicId={initialQuizTopic}
+                initialKind={initialQuizKind}
               />
             )}
           </Suspense>

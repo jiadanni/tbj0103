@@ -7,12 +7,16 @@ import FolderDashboardView from "@/views/FolderDashboardView";
 
 const mocks = vi.hoisted(() => ({
   getSummary: vi.fn(),
+  listTopics: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
   api: {
     dashboard: {
       getSummary: mocks.getSummary,
+    },
+    flashcard: {
+      listTopics: mocks.listTopics,
     },
   },
 }));
@@ -64,6 +68,7 @@ describe("FolderDashboardView", () => {
       activeWorkspaceId: "ws-1",
     });
 
+    mocks.listTopics.mockResolvedValue([]);
     mocks.getSummary.mockResolvedValue({
       workspace_id: "ws-1",
       workspace_name: "Linux",
