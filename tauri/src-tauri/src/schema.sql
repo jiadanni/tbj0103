@@ -1070,6 +1070,16 @@ CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs(level, timestamp DESC)
 -- Message variants support (v39)
 CREATE INDEX IF NOT EXISTS idx_messages_variant_group ON messages(variant_group_id);
 
+-- Dashboard recent_activity UNION ALL: each branch filters by workspace_id and
+-- orders by updated_at DESC. These composite indices let the per-branch
+-- ORDER BY ... LIMIT 6 run as index scans instead of full-table sorts.
+CREATE INDEX IF NOT EXISTS idx_project_notes_workspace_updated
+    ON project_notes(workspace_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_concept_nodes_workspace_updated
+    ON concept_nodes(workspace_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sources_workspace_updated
+    ON sources(workspace_id, updated_at DESC);
+
 -- Workspace last_message_at trigger (v42 + v46 fix)
 -- Only advances last_message_at; never walks it backwards for out-of-order inserts.
 DROP TRIGGER IF EXISTS update_workspace_last_message_at;
