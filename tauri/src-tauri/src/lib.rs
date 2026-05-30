@@ -687,6 +687,8 @@ pub fn run() {
             commands::memory::get_memory_summary,
             commands::memory::upsert_memory_summary,
             commands::memory::regenerate_memory_summary,
+            commands::memory::list_memory_summary_snapshots,
+            commands::memory::restore_memory_summary_snapshot,
             // MCP commands
             commands::mcp::list_mcp_servers,
             commands::mcp::add_mcp_server,

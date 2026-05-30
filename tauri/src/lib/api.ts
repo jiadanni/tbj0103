@@ -512,6 +512,16 @@ export interface MemorySummary {
   edited_at?: string | null;
 }
 
+export interface MemorySummarySnapshot {
+  id: string;
+  summary_id: string;
+  scope: "global" | "workspace";
+  workspace_id?: string | null;
+  content: string;
+  is_auto_generated: boolean;
+  snapshotted_at: string;
+}
+
 export interface AnalysisResult {
   concepts_created: number;
   links_created: number;
@@ -1531,6 +1541,10 @@ export const api = {
       invoke<MemorySummary>("upsert_memory_summary", { scope, content, workspaceId: workspaceId ?? null }),
     regenerateSummary: (scope: MemorySummary["scope"], workspaceId?: string) =>
       invoke<MemorySummary>("regenerate_memory_summary", { scope, workspaceId: workspaceId ?? null }),
+    listSummarySnapshots: (scope: MemorySummary["scope"], workspaceId?: string) =>
+      invoke<MemorySummarySnapshot[]>("list_memory_summary_snapshots", { scope, workspaceId: workspaceId ?? null }),
+    restoreSummarySnapshot: (snapshotId: string) =>
+      invoke<MemorySummary>("restore_memory_summary_snapshot", { snapshotId }),
   },
 
   webAI: {

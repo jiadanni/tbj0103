@@ -57,3 +57,14 @@ pub struct MemorySummary {
     pub generated_at: String,
     pub edited_at: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemorySummarySnapshot {
+    pub id: String,
+    pub summary_id: String,
+    pub scope: String,
+    pub workspace_id: Option<String>,
+    pub content: String,
+    pub is_auto_generated: bool,
+    pub snapshotted_at: String,
+}

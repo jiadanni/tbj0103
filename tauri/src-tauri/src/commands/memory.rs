@@ -1,6 +1,7 @@
 use crate::db::DbState;
 use crate::models::memory::{
-    CreateMemoryRequest, ExtractMemoriesRequest, Memory, MemorySummary, UpdateMemoryRequest,
+    CreateMemoryRequest, ExtractMemoriesRequest, Memory, MemorySummary, MemorySummarySnapshot,
+    UpdateMemoryRequest,
 };
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::model_settings::{get_configured_chat_model, get_embedding_model, get_ollama_base_url};
@@ -404,6 +405,44 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
     Ok(created)
 }
 
+/// Snapshot the current summary row (if any) into memory_summary_snapshots before it gets overwritten.
+/// No-op when the row doesn't exist or its content is empty.
+fn snapshot_current_summary(
+    conn: &rusqlite::Connection,
+    scope: &str,
+    workspace_id: Option<&str>,
+) -> Result<(), String> {
+    let current: Result<(String, String, i32), rusqlite::Error> = if scope == "global" {
+        conn.query_row(
+            "SELECT id, content, is_auto_generated FROM memory_summaries WHERE scope = 'global'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+    } else {
+        conn.query_row(
+            "SELECT id, content, is_auto_generated FROM memory_summaries WHERE scope = 'workspace' AND workspace_id = ?1",
+            rusqlite::params![workspace_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+    };
+
+    match current {
+        Ok((summary_id, content, is_auto)) if !content.trim().is_empty() => {
+            let snap_id = uuid::Uuid::new_v4().to_string();
+            let now = chrono::Utc::now().to_rfc3339();
+            let ws_id = if scope == "global" { None } else { workspace_id };
+            conn.execute(
+                "INSERT INTO memory_summary_snapshots (id, summary_id, scope, workspace_id, content, is_auto_generated, snapshotted_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![snap_id, summary_id, scope, ws_id, content, is_auto, now],
+            ).map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        Ok(_) | Err(rusqlite::Error::QueryReturnedNoRows) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 fn row_to_summary(row: &rusqlite::Row) -> rusqlite::Result<MemorySummary> {
     Ok(MemorySummary {
         id: row.get(0)?,
@@ -454,6 +493,8 @@ pub fn upsert_memory_summary(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let ws_id = if scope == "global" { None } else { workspace_id };
+
+    snapshot_current_summary(&conn, &scope, ws_id.as_deref())?;
 
     conn.execute(
         "INSERT INTO memory_summaries (id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at)
@@ -516,6 +557,7 @@ pub async fn regenerate_memory_summary(
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
         let ws_id = if scope == "global" { None } else { workspace_id.clone() };
+        snapshot_current_summary(&conn, &scope, ws_id.as_deref())?;
         conn.execute(
             "INSERT INTO memory_summaries (id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at)
              VALUES (?1, ?2, ?3, '', 1, ?4, NULL)
@@ -582,6 +624,7 @@ pub async fn regenerate_memory_summary(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let ws_id = if scope == "global" { None } else { workspace_id.clone() };
+    snapshot_current_summary(&conn, &scope, ws_id.as_deref())?;
     conn.execute(
         "INSERT INTO memory_summaries (id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at)
          VALUES (?1, ?2, ?3, ?4, 1, ?5, NULL)
@@ -591,4 +634,93 @@ pub async fn regenerate_memory_summary(
 
     get_memory_summary(state, scope, workspace_id)?
         .ok_or_else(|| "Failed to read generated summary".to_string())
+}
+
+fn row_to_snapshot(row: &rusqlite::Row) -> rusqlite::Result<MemorySummarySnapshot> {
+    Ok(MemorySummarySnapshot {
+        id: row.get(0)?,
+        summary_id: row.get(1)?,
+        scope: row.get(2)?,
+        workspace_id: row.get(3)?,
+        content: row.get(4)?,
+        is_auto_generated: row.get::<_, i32>(5)? != 0,
+        snapshotted_at: row.get(6)?,
+    })
+}
+
+#[tauri::command]
+pub fn list_memory_summary_snapshots(
+    state: State<DbState>,
+    scope: String,
+    workspace_id: Option<String>,
+) -> Result<Vec<MemorySummarySnapshot>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let cols = "id, summary_id, scope, workspace_id, content, is_auto_generated, snapshotted_at";
+    let items: Vec<MemorySummarySnapshot> = if scope == "global" {
+        let sql = format!(
+            "SELECT {} FROM memory_summary_snapshots WHERE scope = 'global' ORDER BY snapshotted_at DESC",
+            cols
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], row_to_snapshot).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+    } else {
+        let sql = format!(
+            "SELECT {} FROM memory_summary_snapshots WHERE scope = 'workspace' AND workspace_id = ?1 ORDER BY snapshotted_at DESC",
+            cols
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![workspace_id], row_to_snapshot)
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+    };
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn restore_memory_summary_snapshot(
+    state: State<DbState>,
+    snapshot_id: String,
+) -> Result<MemorySummary, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+
+    let snap: MemorySummarySnapshot = conn
+        .query_row(
+            "SELECT id, summary_id, scope, workspace_id, content, is_auto_generated, snapshotted_at
+             FROM memory_summary_snapshots WHERE id = ?1",
+            rusqlite::params![snapshot_id],
+            row_to_snapshot,
+        )
+        .map_err(|e| e.to_string())?;
+
+    // Snapshot the currently-live summary before overwriting it with the restored content
+    snapshot_current_summary(&conn, &snap.scope, snap.workspace_id.as_deref())?;
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let auto = if snap.is_auto_generated { 1 } else { 0 };
+    conn.execute(
+        "INSERT INTO memory_summaries (id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+         ON CONFLICT(scope, workspace_id) DO UPDATE SET content = excluded.content, is_auto_generated = excluded.is_auto_generated, edited_at = excluded.edited_at",
+        rusqlite::params![id, snap.scope, snap.workspace_id, snap.content, auto, now],
+    ).map_err(|e| e.to_string())?;
+
+    let cols = "id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at";
+    let summary = if snap.scope == "global" {
+        conn.query_row(
+            &format!("SELECT {} FROM memory_summaries WHERE scope = 'global'", cols),
+            [],
+            row_to_summary,
+        )
+    } else {
+        conn.query_row(
+            &format!("SELECT {} FROM memory_summaries WHERE scope = 'workspace' AND workspace_id = ?1", cols),
+            rusqlite::params![snap.workspace_id],
+            row_to_summary,
+        )
+    }.map_err(|e| e.to_string())?;
+
+    Ok(summary)
 }
