@@ -3,11 +3,11 @@
  * navigation, appearance, chat, AI, security, backup, and workspace controls.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -38,6 +38,7 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "navigation", label: "Navigation", Icon: LayoutGrid },
   { id: "appearance", label: "Appearance", Icon: Palette },
   { id: "chat", label: "Chat", Icon: MessageSquare },
+  { id: "learning", label: "Learning", Icon: GraduationCap },
   { id: "ai", label: "AI", Icon: Bot },
   { id: "webai", label: "Browser Automation", Icon: Globe },
   { id: "security", label: "Security", Icon: ShieldCheck },
@@ -439,6 +440,7 @@ export default function PreferencesView() {
   const setSettingsNavLayout = useSettingsStore((state) => state.setSettingsNavLayout);
   const autoGenerateFlashcards = useSettingsStore((state) => state.autoGenerateFlashcards);
   const setAutoGenerateFlashcards = useSettingsStore((state) => state.setAutoGenerateFlashcards);
+  const flashcardModel = useSettingsStore((state) => state.flashcardModel);
   const showGenInfo = useSettingsStore((state) => state.showGenInfo);
   const setShowGenInfo = useSettingsStore((state) => state.setShowGenInfo);
   const showGenInfoTokenCount = useSettingsStore((state) => state.showGenInfoTokenCount);
@@ -472,6 +474,7 @@ export default function PreferencesView() {
   const _removeCustomModelFamily = useSettingsStore((state) => state.removeCustomModelFamily);
   const modelLabels = useSettingsStore((state) => state.modelLabels);
   const location = useLocation();
+  const navigate = useNavigate();
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const workspaceSortOrder = useWorkspaceStore((state) => state.workspaceSortOrder);
@@ -1786,7 +1789,7 @@ export default function PreferencesView() {
         )}
 
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-          {(activeTab === "app" || activeTab === "navigation" || activeTab === "appearance" || activeTab === "chat" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
+          {(activeTab === "app" || activeTab === "navigation" || activeTab === "appearance" || activeTab === "chat" || activeTab === "learning" || activeTab === "ai" || activeTab === "security" || activeTab === "webai" || activeTab === "sync") && (
             <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
               <div className={`${contentWidthClassName} space-y-4`}>
 
@@ -2992,35 +2995,6 @@ export default function PreferencesView() {
                     </div>
 
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Conversation defaults</h3>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Set the instructions and learning behaviors that apply across chats and notes.
-                          </p>
-                        </div>
-                        <label className="flex items-center gap-2 text-xs cursor-pointer whitespace-nowrap">
-                          <Toggle
-                            on={autoGenerateFlashcards}
-                            onToggle={() => setAutoGenerateFlashcards(!autoGenerateFlashcards)}
-                          />
-                          <span className="text-[var(--text-secondary)]">Auto-generate Flashcards</span>
-                        </label>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-[var(--text-secondary)] mb-1 block">Global Prompt Instructions</label>
-                        <textarea
-                          value={dbSettings.prompt_instructions}
-                          onChange={(e) => set("prompt_instructions", e.target.value)}
-                          placeholder="e.g. Always respond in concise bullet points…"
-                          rows={3}
-                          className="w-full text-sm bg-[var(--bg-input)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] resize-y"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-2">
                       <div>
                         <h3 className="text-sm font-semibold text-[var(--text-primary)]">Composer Suggestions</h3>
                         <p className="text-xs text-[var(--text-muted)] mt-1">
@@ -3251,6 +3225,71 @@ export default function PreferencesView() {
                         <p className="text-xs text-[var(--text-muted)] mt-0.5">Remove the maximum width constraint on the chat area</p>
                       </div>
                       <Toggle on={expandChatToWindowWidth} onToggle={() => setExpandChatToWindowWidth(!expandChatToWindowWidth)} />
+                    </div>
+                  </>
+                )}
+
+                {/* ── Learning ── */}
+                {activeTab === "learning" && (
+                  <>
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                            <Sparkles size={14} /> Flashcards
+                          </h3>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Aetherium can extract flashcards from your chats so you can review them later.
+                          </p>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer whitespace-nowrap">
+                          <Toggle
+                            on={autoGenerateFlashcards}
+                            onToggle={() => setAutoGenerateFlashcards(!autoGenerateFlashcards)}
+                          />
+                          <span className="text-[var(--text-secondary)]">Auto-generate from chats</span>
+                        </label>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-[var(--border-color)]">
+                        <div>
+                          <p className="text-sm text-[var(--text-secondary)]">Generation model</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            {flashcardModel
+                              ? `Using ${flashcardModel}`
+                              : "Uses the background-job default model."}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("ai")}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap"
+                        >
+                          Configure in AI →
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                          <Brain size={14} /> Knowledge
+                        </h3>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                          A roadmap of concepts Aetherium has extracted from your workspace. Use it to navigate what you&apos;ve learned and spot gaps.
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-[var(--border-color)]">
+                        <p className="text-xs text-[var(--text-muted)]">
+                          The roadmap rebuilds itself as you chat, take notes, and capture sources in the active workspace.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => navigate("/graph")}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap"
+                        >
+                          Open Knowledge Graph →
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
