@@ -126,15 +126,22 @@ class ExportEngine: ObservableObject {
 
         exportProgress = 0.2
 
-        // Export concepts
+        // Export concepts (with YAML frontmatter, matching Tauri export)
         for (index, concept) in project.concepts.enumerated() {
-            var content = "# \(concept.name)\n\n"
+            let tagsYaml = concept.tags.map { "  - \($0)" }.joined(separator: "\n")
+            var content = "---\ntitle: \(concept.name)\ntype: \(concept.type.rawValue)\n"
+            if !concept.tags.isEmpty {
+                content += "tags:\n\(tagsYaml)\n"
+            }
+            if !concept.aliases.isEmpty {
+                let aliasesYaml = concept.aliases.map { "  - \($0)" }.joined(separator: "\n")
+                content += "aliases:\n\(aliasesYaml)\n"
+            }
+            content += "---\n\n# \(concept.name)\n\n"
 
-            if let desc = concept.conceptDescription {
+            if let desc = concept.conceptDescription, !desc.isEmpty {
                 content += "\(desc)\n\n"
             }
-
-            content += "**Type:** \(concept.type.rawValue)\n\n"
 
             if !concept.linkedConcepts.isEmpty {
                 content += "## Related Concepts\n\n"
@@ -157,32 +164,65 @@ class ExportEngine: ObservableObject {
             )
 
             if !project.concepts.isEmpty {
-                exportProgress = 0.2 + (Double(index) / Double(project.concepts.count)) * 0.3
+                exportProgress = 0.2 + (Double(index) / Double(project.concepts.count)) * 0.25
             }
         }
 
-        exportProgress = 0.5
+        exportProgress = 0.45
 
-        // Export notes
-        for (index, source) in project.sources.enumerated() where source.type == .note {
+        // Export notes (with YAML frontmatter)
+        let noteSources = project.sources.filter { $0.type == .note }
+        for (index, source) in noteSources.enumerated() {
             if let note = source.note {
+                let tagsYaml = note.tags.map { "  - \($0)" }.joined(separator: "\n")
+                var noteContent = "---\ntitle: \(note.title)\ntype: note\n"
+                if !note.tags.isEmpty {
+                    noteContent += "tags:\n\(tagsYaml)\n"
+                }
+                noteContent += "created: \(note.createdAt.formatted(.iso8601))\n---\n\n"
+                noteContent += note.content
                 let filename = sanitizeFilename(note.title) + ".md"
-                try note.content.write(
+                try noteContent.write(
                     to: notesFolder.appendingPathComponent(filename),
                     atomically: true,
                     encoding: .utf8
                 )
             }
-
-            if !project.sources.isEmpty {
-                exportProgress = 0.5 + (Double(index) / Double(project.sources.count)) * 0.3
-            }
+            exportProgress = 0.45 + (Double(index + 1) / Double(max(noteSources.count, 1))) * 0.2
         }
 
-        exportProgress = 0.8
+        exportProgress = 0.65
+
+        // Export chat sessions to Chats/ subfolder
+        let sortedChats = project.chatSessions.sorted { $0.createdAt < $1.createdAt }
+        for (index, chat) in sortedChats.enumerated() {
+            let chatTitle = chat.title.isEmpty ? "Untitled Chat" : chat.title
+            var chatContent = "---\ntitle: \(chatTitle)\ntype: chat\n"
+            chatContent += "model: \(chat.modelName)\n"
+            chatContent += "created: \(chat.createdAt.formatted(.iso8601))\n---\n\n"
+            chatContent += "# \(chatTitle)\n\n"
+            for message in chat.messages.sorted(by: { $0.timestamp < $1.timestamp }) {
+                let label = message.role == .user ? "**You**" : "**AI**"
+                chatContent += "\(label)\n\n\(message.content)\n\n---\n\n"
+            }
+            let filename = sanitizeFilename(chatTitle) + ".md"
+            try chatContent.write(
+                to: chatsFolder.appendingPathComponent(filename),
+                atomically: true,
+                encoding: .utf8
+            )
+            exportProgress = 0.65 + (Double(index + 1) / Double(max(sortedChats.count, 1))) * 0.2
+        }
+
+        exportProgress = 0.85
 
         // Create index file
         let indexContent = """
+        ---
+        title: \(project.title)
+        type: index
+        ---
+
         # \(project.title)
 
         \(project.workspaceDescription)
