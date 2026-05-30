@@ -104,7 +104,7 @@ export default function WorkspaceSettingsView() {
   // Stats & Details State
   const [selectedId, setSelectedId] = useState<string | null>(activeWorkspaceId);
   const [stats, setStats] = useState<DashboardSummary | null>(null);
-  const [memoryCount, setMemoryCount] = useState<number>(0);
+  const [memoryCounts, setMemoryCounts] = useState<{ facts: number; preferences: number }>({ facts: 0, preferences: 0 });
   const [loadingStats, setLoadingStats] = useState(false);
   const [editPrompt, setEditPrompt] = useState("");
   const [isSavingDescription, setIsSavingDescription] = useState(false);
@@ -175,7 +175,7 @@ export default function WorkspaceSettingsView() {
     setMoveToParentId("");
     if (!selectedId) {
       setStats(null);
-      setMemoryCount(0);
+      setMemoryCounts({ facts: 0, preferences: 0 });
       setEditDescription("");
       setEditPrompt("");
       return;
@@ -842,7 +842,8 @@ export default function WorkspaceSettingsView() {
                   { icon: <Globe size={12} />, label: "Sources", value: stats?.overview.sources ?? 0, onClick: () => navigate("/sources") },
                   { icon: <Brain size={12} />, label: "Nodes", value: stats?.overview.concepts ?? 0, onClick: () => navigate("/graph") },
                   { icon: <CreditCard size={12} />, label: "Flashcards", value: stats?.overview.flashcards ?? 0, onClick: () => navigate("/flashcards") },
-                  { icon: <Database size={12} />, label: "Memories", value: memoryCount },
+                  { icon: <Database size={12} />, label: "Facts", value: memoryCounts.facts },
+                  { icon: <Database size={12} />, label: "Preferences", value: memoryCounts.preferences },
                 ].map(({ icon, label, value, onClick }) => (
                   <button
                     key={label}
@@ -870,7 +871,7 @@ export default function WorkspaceSettingsView() {
                 </button>
                 {!collapsedSections["memory"] && (
                   /* eslint-disable-next-line @typescript-eslint/no-non-null-assertion */
-                  <WorkspaceMemoryPanel workspaceId={selectedId!} onMemoryCountChange={setMemoryCount} />
+                  <WorkspaceMemoryPanel workspaceId={selectedId!} onCountsChange={setMemoryCounts} />
                 )}
               </div>
 

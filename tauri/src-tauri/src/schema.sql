@@ -404,6 +404,19 @@ CREATE TABLE IF NOT EXISTS memory_summaries (
     UNIQUE(scope, workspace_id)
 );
 
+-- Version history for memory summaries — captures outgoing content before overwrite
+CREATE TABLE IF NOT EXISTS memory_summary_snapshots (
+    id TEXT PRIMARY KEY NOT NULL,
+    summary_id TEXT NOT NULL REFERENCES memory_summaries(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL CHECK(scope IN ('global', 'workspace')),
+    workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    is_auto_generated INTEGER NOT NULL DEFAULT 1,
+    snapshotted_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_memory_summary_snapshots_summary
+    ON memory_summary_snapshots(summary_id, snapshotted_at DESC);
+
 -- AI model priority list with token tracking
 CREATE TABLE IF NOT EXISTS ai_models (
     id TEXT PRIMARY KEY NOT NULL,

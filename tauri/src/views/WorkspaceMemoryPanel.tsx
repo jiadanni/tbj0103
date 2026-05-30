@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Pin, PinOff, Plus, RefreshCw, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
-import { api, type Memory, type MemorySummary } from "../lib/api";
+import { History, Pin, PinOff, Plus, RefreshCw, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { api, type Memory, type MemorySummary, type MemorySummarySnapshot } from "../lib/api";
 import { CompactMenuSelect } from "../components/CompactMenuSelect";
 import { Tooltip } from "../components/Tooltip";
 
@@ -20,9 +20,10 @@ function formatTimestamp(value: string) {
 interface WorkspaceMemoryPanelProps {
   workspaceId: string;
   onMemoryCountChange?: (count: number) => void;
+  onCountsChange?: (counts: { facts: number; preferences: number }) => void;
 }
 
-export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange }: WorkspaceMemoryPanelProps) {
+export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange, onCountsChange }: WorkspaceMemoryPanelProps) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [summary, setSummary] = useState<MemorySummary | null>(null);
   const [summaryDraft, setSummaryDraft] = useState("");
@@ -32,6 +33,10 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange 
   const [newContent, setNewContent] = useState("");
   const [newType, setNewType] = useState<Memory["memory_type"]>("fact");
   const [submitting, setSubmitting] = useState(false);
+  const [snapshots, setSnapshots] = useState<MemorySummarySnapshot[]>([]);
+  // 0 = current live summary; 1..N = older snapshots (snapshots[index-1])
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const [restoring, setRestoring] = useState(false);
 
   const loadMemories = useCallback(async () => {
     if (!workspaceId) { return; }
@@ -46,17 +51,31 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange 
     if (s) { setSummaryDraft(s.content); }
   }, [workspaceId]);
 
+  const loadSnapshots = useCallback(async () => {
+    if (!workspaceId) { return; }
+    const items = await api.memory.listSummarySnapshots("workspace", workspaceId).catch(() => []);
+    setSnapshots(items);
+    setHistoryIndex(0);
+  }, [workspaceId]);
+
   useEffect(() => {
     loadMemories();
     loadSummary();
-  }, [loadMemories, loadSummary]);
+    loadSnapshots();
+  }, [loadMemories, loadSummary, loadSnapshots]);
 
   const facts = useMemo(() => memories.filter((m) => m.memory_type === "fact"), [memories]);
   const preferences = useMemo(() => memories.filter((m) => m.memory_type === "preference"), [memories]);
 
   useEffect(() => {
     onMemoryCountChange?.(memories.length);
-  }, [memories.length, onMemoryCountChange]);
+    onCountsChange?.({ facts: facts.length, preferences: preferences.length });
+  }, [memories.length, facts.length, preferences.length, onMemoryCountChange, onCountsChange]);
+
+  const viewingSnapshot = historyIndex > 0 ? snapshots[historyIndex - 1] : null;
+  const displayedSummaryContent = viewingSnapshot ? viewingSnapshot.content : (summary?.content || "");
+  const displayedTimestamp = viewingSnapshot ? viewingSnapshot.snapshotted_at : summary?.generated_at;
+  const displayedIsAuto = viewingSnapshot ? viewingSnapshot.is_auto_generated : summary?.is_auto_generated;
 
   async function saveSummary() {
     setSummarySubmitting(true);
@@ -64,6 +83,7 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange 
       const updated = await api.memory.upsertSummary("workspace", summaryDraft.trim(), workspaceId);
       setSummary(updated);
       setSummaryEditing(false);
+      await loadSnapshots();
     } finally {
       setSummarySubmitting(false);
     }
@@ -76,8 +96,23 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange 
       setSummary(updated);
       setSummaryDraft(updated.content);
       setSummaryEditing(false);
+      await loadSnapshots();
     } finally {
       setRegenerating(false);
+    }
+  }
+
+  async function restoreCurrentSnapshot() {
+    if (!viewingSnapshot) { return; }
+    setRestoring(true);
+    try {
+      const updated = await api.memory.restoreSummarySnapshot(viewingSnapshot.id);
+      setSummary(updated);
+      setSummaryDraft(updated.content);
+      setSummaryEditing(false);
+      await loadSnapshots();
+    } finally {
+      setRestoring(false);
     }
   }
 
@@ -112,15 +147,15 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange 
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold text-[var(--text-secondary)]">Summary</span>
               <div className="flex items-center gap-1.5">
-                {summary && (
+                {displayedIsAuto !== undefined && (
                   <span className="text-[10px] text-[var(--text-muted)]">
-                    {summary.is_auto_generated ? "Auto" : "Edited"}
+                    {viewingSnapshot ? "History" : (displayedIsAuto ? "Auto" : "Edited")}
                   </span>
                 )}
                 <Tooltip content="Regenerate from facts" position="top">
                   <button
                     onClick={regenerateSummary}
-                    disabled={regenerating || memories.length === 0}
+                    disabled={regenerating || memories.length === 0 || viewingSnapshot !== null}
                     className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-40"
                   >
                     <RefreshCw size={12} className={regenerating ? "animate-spin" : ""} />
@@ -128,7 +163,46 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange 
                 </Tooltip>
               </div>
             </div>
-            {summaryEditing ? (
+
+            {snapshots.length > 0 && (
+              <div className="mb-3 flex items-center gap-2">
+                <History size={11} className="shrink-0 text-[var(--text-muted)]" />
+                <input
+                  type="range"
+                  min={0}
+                  max={snapshots.length}
+                  value={historyIndex}
+                  onChange={(e) => setHistoryIndex(Number(e.target.value))}
+                  aria-label="Summary history"
+                  className="flex-1 accent-[var(--accent-color)]"
+                />
+                <span className="shrink-0 text-[10px] text-[var(--text-muted)] tabular-nums">
+                  {historyIndex === 0
+                    ? "Now"
+                    : `${historyIndex} / ${snapshots.length}`}
+                </span>
+              </div>
+            )}
+
+            {viewingSnapshot ? (
+              <div className="space-y-2">
+                <p className="text-xs leading-relaxed text-[var(--text-secondary)]">
+                  {viewingSnapshot.content || "(empty)"}
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-[var(--text-muted)]">
+                    Snapshot from {displayedTimestamp ? formatTimestamp(displayedTimestamp) : ""}
+                  </span>
+                  <button
+                    onClick={restoreCurrentSnapshot}
+                    disabled={restoring}
+                    className="rounded-md bg-[var(--accent-color)] px-2.5 py-1 text-[10px] font-medium text-white hover:opacity-90 disabled:opacity-40"
+                  >
+                    {restoring ? "Restoring..." : "Restore this version"}
+                  </button>
+                </div>
+              </div>
+            ) : summaryEditing ? (
               <div className="space-y-2">
                 <textarea
                   value={summaryDraft}
@@ -157,7 +231,7 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange 
                 onClick={() => setSummaryEditing(true)}
                 className="cursor-pointer text-xs leading-relaxed text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
               >
-                {summary?.content || "No summary yet. Click to write one, or regenerate from facts."}
+                {displayedSummaryContent || "No summary yet. Click to write one, or regenerate from facts."}
               </p>
             )}
           </div>
