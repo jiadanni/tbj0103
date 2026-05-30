@@ -1249,18 +1249,6 @@ fn extract_claude_message_content(msg: &ClaudeChatMessage) -> String {
 
 /// Content extractor for v2 message shape — identical logic, different struct.
 pub(super) fn extract_claude_message_content_v2(msg: &claude_v2::V2Message) -> String {
-    if msg.content.is_empty() {
-        let mut text = msg.text.clone();
-        for att in &msg.attachments {
-            if let (Some(name), Some(content)) = (&att.file_name, &att.extracted_content) {
-                if !content.is_empty() {
-                    text.push_str(&format!("\n\n---\n📎 {name}\n{content}"));
-                }
-            }
-        }
-        return text;
-    }
-
     let mut parts: Vec<String> = Vec::new();
     for block in &msg.content {
         match block.block_type.as_str() {
@@ -1287,6 +1275,9 @@ pub(super) fn extract_claude_message_content_v2(msg: &claude_v2::V2Message) -> S
             _ => {}
         }
     }
+    if parts.is_empty() && !msg.text.is_empty() {
+        parts.push(msg.text.clone());
+    }
     for att in &msg.attachments {
         if let (Some(name), Some(content)) = (&att.file_name, &att.extracted_content) {
             if !content.is_empty() {
@@ -1294,7 +1285,7 @@ pub(super) fn extract_claude_message_content_v2(msg: &claude_v2::V2Message) -> S
             }
         }
     }
-    if parts.is_empty() { msg.text.clone() } else { parts.join("\n\n") }
+    parts.join("\n\n")
 }
 
 /// Convert a single parsed Claude conversation into `(ChatFileData, project_uuid)`.
@@ -1583,4 +1574,42 @@ pub fn parse_claude_conversations_filtered(
 mod tests {
     use super::*;
     use rusqlite::Connection;
+
+    #[test]
+    fn v2_extractor_reads_content_blocks_when_text_is_empty() {
+        // Real Claude Desktop v2 exports put message body in `content[]` blocks
+        // and leave `text` empty. Regression for the 0-rows import bug.
+        let msg = claude_v2::V2Message {
+            uuid: "u1".into(),
+            text: String::new(),
+            sender: "human".into(),
+            content: vec![claude_v2::V2ContentBlock {
+                block_type: "text".into(),
+                text: Some("hello world".into()),
+                thinking: None,
+                name: None,
+                input: None,
+            }],
+            created_at: "2026-05-20T00:00:00Z".into(),
+            attachments: Vec::new(),
+            files: Vec::new(),
+        };
+        let out = extract_claude_message_content_v2(&msg);
+        assert_eq!(out, "hello world");
+    }
+
+    #[test]
+    fn v2_extractor_falls_back_to_text_when_no_blocks() {
+        let msg = claude_v2::V2Message {
+            uuid: "u2".into(),
+            text: "legacy body".into(),
+            sender: "human".into(),
+            content: Vec::new(),
+            created_at: "2026-05-20T00:00:00Z".into(),
+            attachments: Vec::new(),
+            files: Vec::new(),
+        };
+        let out = extract_claude_message_content_v2(&msg);
+        assert_eq!(out, "legacy body");
+    }
 }

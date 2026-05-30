@@ -49,15 +49,24 @@ interface ChatSuggestion {
   reason: "title" | "keywords" | "embedding" | "none";
 }
 
+type MergeChoice = "merge-this" | "merge-all" | "rename" | "cancel";
+
 /**
  * If a workspace with the given name already exists, prompt the user
  * to merge into it or provide a new name. Returns the resolved name
  * (original for merge, new for rename) or null if the user cancels.
+ *
+ * When `bulkContext` is provided, the user can pick "Merge All" to apply
+ * the merge decision to every subsequent conflict in the same import.
  */
 async function resolveWorkspaceNameConflict(
   name: string,
   workspaces: { name: string }[],
   promptForName: (defaultValue: string) => Promise<string | null>,
+  bulkContext?: {
+    mergeAllRef: { current: boolean };
+    askMergeChoice: (conflictName: string) => Promise<MergeChoice>;
+  },
 ): Promise<string | null> {
   const normalised = name.trim().toLowerCase();
   const exists = workspaces.some(
@@ -65,19 +74,33 @@ async function resolveWorkspaceNameConflict(
   );
   if (!exists) { return name; }
 
-  const merge = await ask(
-    `A workspace named "${name}" already exists.\n\nMerge conversations into the existing workspace?`,
-    { title: "Workspace already exists", kind: "warning", okLabel: "Merge", cancelLabel: "Rename" },
-  );
+  if (bulkContext?.mergeAllRef.current) {
+    return name; // merge — decision already made for this batch
+  }
 
-  if (merge) { return name; } // merge into existing
+  let choice: MergeChoice;
+  if (bulkContext) {
+    choice = await bulkContext.askMergeChoice(name);
+    if (choice === "merge-all") {
+      bulkContext.mergeAllRef.current = true;
+    }
+  } else {
+    const merge = await ask(
+      `A workspace named "${name}" already exists.\n\nMerge conversations into the existing workspace?`,
+      { title: "Workspace already exists", kind: "warning", okLabel: "Merge", cancelLabel: "Rename" },
+    );
+    choice = merge ? "merge-this" : "rename";
+  }
+
+  if (choice === "cancel") { return null; }
+  if (choice === "merge-this" || choice === "merge-all") { return name; }
 
   // Ask for a new name via styled prompt dialog
   const newName = await promptForName(`${name} (2)`);
   if (!newName) { return null; } // user cancelled
 
   // Recurse in case the new name also conflicts
-  return resolveWorkspaceNameConflict(newName.trim(), workspaces, promptForName);
+  return resolveWorkspaceNameConflict(newName.trim(), workspaces, promptForName, bulkContext);
 }
 
 export default function ImportSettingsSection() {
@@ -153,11 +176,20 @@ export default function ImportSettingsSection() {
   const [error, setError] = useState<string | null>(null);
   const [promptState, setPromptState] = useState<{ defaultValue: string } | null>(null);
   const promptResolveRef = useRef<((value: string | null) => void) | null>(null);
+  const [mergeChoiceState, setMergeChoiceState] = useState<{ conflictName: string } | null>(null);
+  const mergeChoiceResolveRef = useRef<((value: MergeChoice) => void) | null>(null);
 
   const promptForName = useCallback((defaultValue: string): Promise<string | null> => {
     return new Promise((resolve) => {
       promptResolveRef.current = resolve;
       setPromptState({ defaultValue });
+    });
+  }, []);
+
+  const askMergeChoice = useCallback((conflictName: string): Promise<MergeChoice> => {
+    return new Promise((resolve) => {
+      mergeChoiceResolveRef.current = resolve;
+      setMergeChoiceState({ conflictName });
     });
   }, []);
 
@@ -615,6 +647,8 @@ export default function ImportSettingsSection() {
     try {
       const folderMappings: Record<string, { workspace_id: string; folder_id: string }> = {};
       const projectMemoryTargets: Record<string, { workspace_id: string; folder_id: string }> = {};
+      const mergeAllRef = { current: false };
+      const bulkConflictContext = { mergeAllRef, askMergeChoice };
 
       // Any project that has chats assigned to it must also have a folder created,
       // even if the user didn't explicitly tick its checkbox.
@@ -633,7 +667,7 @@ export default function ImportSettingsSection() {
 
         let target: { workspace_id: string; folder_id: string };
         if (dest.type === "new-workspace") {
-          const resolvedName = await resolveWorkspaceNameConflict(dest.name.trim(), workspaces, promptForName);
+          const resolvedName = await resolveWorkspaceNameConflict(dest.name.trim(), workspaces, promptForName, bulkConflictContext);
           if (!resolvedName) {
             setImportingClaude(false);
             return;
@@ -1674,6 +1708,74 @@ export default function ImportSettingsSection() {
           }}
         />
       )}
+      {mergeChoiceState && (
+        <MergeChoiceDialog
+          conflictName={mergeChoiceState.conflictName}
+          onChoice={(choice) => {
+            setMergeChoiceState(null);
+            mergeChoiceResolveRef.current?.(choice);
+            mergeChoiceResolveRef.current = null;
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function MergeChoiceDialog({
+  conflictName,
+  onChoice,
+}: {
+  conflictName: string;
+  onChoice: (choice: MergeChoice) => void;
+}) {
+  useEffect(() => {
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onChoice("cancel");
+      }
+    }
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [onChoice]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={() => onChoice("cancel")}
+    >
+      <div
+        className="mx-4 flex w-full max-w-md flex-col gap-5 rounded-3xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex flex-col gap-1">
+          <h3 className="text-base font-semibold text-[var(--text-primary)]">Workspace already exists</h3>
+          <p className="text-sm leading-6 text-[var(--text-secondary)]">
+            A workspace named &ldquo;{conflictName}&rdquo; already exists. Merge conversations into the existing workspace, or rename this one?
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            onClick={() => onChoice("rename")}
+            className="rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+          >
+            Rename
+          </button>
+          <button
+            onClick={() => onChoice("merge-this")}
+            className="rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+          >
+            Merge
+          </button>
+          <button
+            onClick={() => onChoice("merge-all")}
+            className="rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm text-white hover:opacity-90"
+          >
+            Merge All
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
