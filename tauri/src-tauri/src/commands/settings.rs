@@ -484,6 +484,7 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.git_sync_interval_minutes),
         menubar_icon_style: get_setting(&conn, "menubar_icon_style")
+            .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or_else(|| def.menubar_icon_style.clone()),
         user_chat_label: get_setting(&conn, "user_chat_label")
             .and_then(|v| serde_json::from_str(&v).ok())
@@ -1169,6 +1170,7 @@ pub async fn get_core_settings(state: State<'_, DbState>) -> Result<CoreSettings
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(def.sidebar_width),
             menubar_icon_style: lookup("menubar_icon_style")
+                .and_then(|v| serde_json::from_str(&v).ok())
                 .unwrap_or_else(|| def.menubar_icon_style.clone()),
             hide_native_menu: lookup("hide_native_menu")
                 .map(|v| v == "true")

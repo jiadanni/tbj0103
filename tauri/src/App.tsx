@@ -254,16 +254,20 @@ export default function App() {
 
         setWorkspaces(finalWorkspaces);
 
-        if (ai.auto_start_ollama) {
-          setLoadingMessage("Starting local Ollama…");
-          await api.ollama.ensureRunning(ai.ollama_base_url || undefined).catch(() => null);
-          if (cancelled) {return;}
-        }
-
         // Auto-authenticate if neither lock method is active
         if (!advanced.touch_id_enabled && !advanced.pin_lock_enabled) {
           await api.security.unlockApp();
           setIsAuthenticated(true);
+        }
+
+        // Kick off Ollama warmup in the background — must not block first paint.
+        // Cold boots spend several seconds on the /api/show capability sweep
+        // (one request per installed model) and on slow networks the connect
+        // alone can take 60s+, which used to leave the boot overlay visible
+        // long enough to feel like a hang. Features that need Ollama handle
+        // "not yet running" via their own loading states.
+        if (ai.auto_start_ollama) {
+          void api.ollama.ensureRunning(ai.ollama_base_url || undefined).catch(() => null);
         }
       } catch {
         // First run or Ollama not available — still OK

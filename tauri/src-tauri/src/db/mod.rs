@@ -105,9 +105,15 @@ pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>>
     // Now enforce foreign keys for normal operation
     conn.execute_batch("PRAGMA foreign_keys=ON;")?;
 
-    // Now create the pool
-    let manager = SqliteConnectionManager::file(path)
-        .with_init(|c| c.execute_batch("PRAGMA foreign_keys=ON;"));
+    // Now create the pool. Set a busy_timeout so concurrent writers wait for
+    // the SQLite lock instead of immediately returning SQLITE_BUSY — without
+    // it, two writers racing (e.g. update_settings + the log flusher) can
+    // produce silent write failures or surface as long unrelated stalls.
+    let manager = SqliteConnectionManager::file(path).with_init(|c| {
+        c.execute_batch("PRAGMA foreign_keys=ON;")?;
+        c.busy_timeout(std::time::Duration::from_secs(5))?;
+        Ok(())
+    });
 
     let pool = r2d2::Pool::builder()
         .max_size(10)
