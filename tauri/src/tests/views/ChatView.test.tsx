@@ -7,6 +7,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { api } from "@/lib/api";
 import ChatView from "@/views/ChatView";
+import { __resetWorkspacePromptsDedup } from "@/views/chatViewDedup";
 import { resolveModelDisplayName } from "@/lib/modelDisplayName";
 import type { ChatSession } from "@/stores/chatStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -221,6 +222,7 @@ async function openCreateWorkspaceInput() {
 describe("ChatView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    __resetWorkspacePromptsDedup();
     mockWorkspacePane = null;
     mockActiveChatId = null;
 
@@ -697,5 +699,40 @@ describe("ChatView", () => {
       expect(api.chat.createSession).toHaveBeenCalledTimes(1);
       expect(setActiveChatId).toHaveBeenCalledWith("session-from-route");
     });
+  });
+
+  it("does not re-fire generateWorkspacePrompts on remount for the same workspace", async () => {
+    const signature = {
+      auto_detected_tags: [{ tag: "rust", weight: 1, source: "auto" }],
+      custom_tags: [],
+      excluded_tags: [],
+      intent_patterns: [],
+      suggested_prompts: [],
+      generated_at: null,
+      message_count_at_gen: null,
+      ollama_enriched: false,
+    };
+    // The mount effect resets activeTopicSignature from the workspace's
+    // cached topic_signature, so set both to the same non-empty value.
+    useWorkspaceStore.setState((s) => ({
+      workspaces: s.workspaces.map((w) =>
+        w.id === "ws-1" ? { ...w, topic_signature: signature } : w
+      ),
+      activeTopicSignature: signature,
+    }));
+    (api.topicSignature.get as ReturnType<typeof vi.fn>).mockResolvedValue(signature);
+
+    const { unmount } = renderChatView();
+    await flushMicrotasks();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await waitFor(() => {
+      expect(api.workspace.generateWorkspacePrompts).toHaveBeenCalledTimes(1);
+    });
+    unmount();
+
+    renderChatView();
+    await flushMicrotasks();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(api.workspace.generateWorkspacePrompts).toHaveBeenCalledTimes(1);
   });
 });

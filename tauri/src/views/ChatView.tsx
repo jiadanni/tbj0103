@@ -40,6 +40,11 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 
 import type { ChatSubView } from "../components/navigationItems";
+import {
+  hasPendingWorkspacePrompts,
+  markWorkspacePromptsInFlight,
+  clearWorkspacePromptsInFlight,
+} from "./chatViewDedup";
 
 const MIN_SESSION_SIDEBAR_WIDTH = 220;
 const MAX_SESSION_SIDEBAR_WIDTH = 420;
@@ -3268,49 +3273,59 @@ export default function ChatView() {
   }, [effectiveWorkspaceId, setWorkspaceTopicSignature]);
 
   // Generate AI workspace prompts if needed
+  const suggestedPromptsCount = activeTopicSignature?.suggested_prompts?.length ?? 0;
+  const autoDetectedTagsCount = activeTopicSignature?.auto_detected_tags?.length ?? 0;
+  const customTagsCount = activeTopicSignature?.custom_tags?.length ?? 0;
+  const topicSignatureLoaded = activeTopicSignature !== undefined;
   useEffect(() => {
     if (!effectiveWorkspaceId) { return; }
     if (activeChatMessages.length > 0) { return; } // Only when no messages (new chat)
-    
-    // We only want to generate prompts once per workspace
-    if (activeTopicSignature?.suggested_prompts && activeTopicSignature.suggested_prompts.length > 0) {
-      return; 
-    }
+    if (suggestedPromptsCount > 0) { return; }
+    // Only run once the topic signature has loaded from the backend.
+    if (!topicSignatureLoaded) { return; }
+    // Skip generation for workspaces with no real content — generating prompts
+    // from a bare workspace name produces generic, unhelpful suggestions.
+    if (autoDetectedTagsCount === 0 && customTagsCount === 0) { return; }
 
-    // Only run if we actually have the topic signature loaded from the backend (not just null from initial render)
-    if (activeTopicSignature === undefined) { return; }
-
-    // Skip generation for workspaces with no real content — auto_detected_tags and custom_tags are
-    // only populated once the workspace has indexed notes, documents, or chat history.
-    // Generating prompts from a bare workspace name produces generic, unhelpful suggestions.
-    const hasContent =
-      (activeTopicSignature?.auto_detected_tags?.length ?? 0) > 0 ||
-      (activeTopicSignature?.custom_tags?.length ?? 0) > 0;
-    if (!hasContent) { return; }
+    // Dedup across remounts: if a prior mount already kicked off this call for
+    // this workspace, do not fire it again.
+    if (hasPendingWorkspacePrompts(effectiveWorkspaceId)) { return; }
 
     const currentWorkspace = useWorkspaceStore.getState().workspaces.find(w => w.id === effectiveWorkspaceId);
     if (!currentWorkspace) { return; }
 
     let cancelled = false;
-    api.workspace.generateWorkspacePrompts(effectiveWorkspaceId, currentWorkspace.name, currentWorkspace.survey_data)
-      .then((prompts) => {
-        if (!cancelled && prompts.length > 0) {
-          // Refresh the topic signature from the backend
-          api.topicSignature.get(effectiveWorkspaceId)
-            .then(sig => {
-              if (!cancelled) { setWorkspaceTopicSignature(effectiveWorkspaceId, sig); }
-            })
-            .catch(() => {});
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to generate workspace prompts:", err);
-      });
+    const workspaceId = effectiveWorkspaceId;
+    markWorkspacePromptsInFlight(workspaceId);
+
+    // Defer the LLM call past commit so the chat surface paints first.
+    const timer = window.setTimeout(() => {
+      if (cancelled) {
+        clearWorkspacePromptsInFlight(workspaceId);
+        return;
+      }
+      api.workspace.generateWorkspacePrompts(workspaceId, currentWorkspace.name, currentWorkspace.survey_data)
+        .then((prompts) => {
+          if (!cancelled && prompts.length > 0) {
+            api.topicSignature.get(workspaceId)
+              .then(sig => {
+                if (!cancelled) { setWorkspaceTopicSignature(workspaceId, sig); }
+              })
+              .catch(() => {});
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to generate workspace prompts:", err);
+          // Clear the in-flight marker on failure so a later retry can run.
+          clearWorkspacePromptsInFlight(workspaceId);
+        });
+    }, 0);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [effectiveWorkspaceId, activeChatMessages.length, activeTopicSignature?.suggested_prompts?.length, setWorkspaceTopicSignature, activeTopicSignature]);
+  }, [effectiveWorkspaceId, activeChatMessages.length, suggestedPromptsCount, autoDetectedTagsCount, customTagsCount, topicSignatureLoaded, setWorkspaceTopicSignature]);
 
   // Activate session from URL
   useEffect(() => {
@@ -3383,7 +3398,9 @@ export default function ChatView() {
 
     Promise.allSettled([
       api.aiModel.list(),
-      api.ollama.listModelsFresh(ollamaUrl),
+      // Use the cached list — `modelRefreshCounter` is the explicit invalidation
+      // signal. User-triggered refresh paths still call `listModelsFresh` directly.
+      api.ollama.listModels(ollamaUrl),
     ]).then(([aiModelsResult, ollamaModelsResult]) => {
       const aiModels = aiModelsResult.status === "fulfilled" ? aiModelsResult.value : [];
       const installedOllamaModels = ollamaModelsResult.status === "fulfilled"
