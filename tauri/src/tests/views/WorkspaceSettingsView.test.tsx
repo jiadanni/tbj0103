@@ -319,7 +319,7 @@ describe("WorkspaceSettingsView", () => {
     fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
 
     await waitFor(() => {
-      expect(apiMocks.createChildWorkspace).toHaveBeenCalledWith("child-1", "New Child", undefined);
+      expect(apiMocks.createChildWorkspace).toHaveBeenCalledWith("root-1", "New Child", undefined);
     });
   });
 });
