@@ -157,7 +157,7 @@ export default function LearningHubSidebar({ workspaceId, selectedConceptId, onS
   return (
     <aside className="w-64 shrink-0 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] flex flex-col overflow-hidden">
       <div className="px-3 py-2 border-b border-[var(--border-color)]">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)] mb-2">Concepts</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)] mb-2">Topics</h2>
         <div className="relative">
           <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
@@ -178,14 +178,14 @@ export default function LearningHubSidebar({ workspaceId, selectedConceptId, onS
               : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
           }`}
         >
-          All concepts
+          All topics
         </button>
         {loading && roots.length === 0 && (
           <div className="text-xs text-[var(--text-muted)] px-2 py-4">Loading…</div>
         )}
         {!loading && roots.length === 0 && (
           <div className="text-xs text-[var(--text-muted)] px-2 py-4">
-            No concepts yet. They appear as you chat and topics are detected.
+            No topics yet. They appear as you chat and topics are detected.
           </div>
         )}
         {roots.map((node) => (

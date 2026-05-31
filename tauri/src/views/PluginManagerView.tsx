@@ -23,7 +23,7 @@ const BUILT_IN_PLUGINS: PluginMeta[] = [
   {
     id: "com.aetherium.markdown-exporter",
     name: "Markdown Exporter",
-    description: "Export workspaces as Markdown files with full concept and note content.",
+    description: "Export workspaces as Markdown files with full topic and note content.",
     version: "1.0.0",
     author: "Aetherium",
     type: "exporter",
@@ -59,7 +59,7 @@ const BUILT_IN_PLUGINS: PluginMeta[] = [
   {
     id: "com.aetherium.daily-summary",
     name: "Daily Summary",
-    description: "Automatically generate a daily summary of notes and concepts using AI.",
+    description: "Automatically generate a daily summary of notes and topics using AI.",
     version: "1.0.0",
     author: "Aetherium",
     type: "automation",
