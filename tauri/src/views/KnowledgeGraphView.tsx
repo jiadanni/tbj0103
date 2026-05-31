@@ -232,7 +232,8 @@ export default function KnowledgeGraphView({
   const navigate = useNavigate();
   const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
-  const { preferredModel, ollamaUrl } = useSettingsStore();
+  const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
 
   const [nodes, setNodes] = useState<ConceptNode[]>([]);

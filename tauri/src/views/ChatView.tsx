@@ -626,10 +626,11 @@ const SessionSidebar = memo(function SessionSidebar({
   }
 
   const shouldShowWorkspaceSearch = workspaces.length > 12;
-  const normalizedWorkspaceMoveQuery = workspaceMoveQuery.trim().toLowerCase();
-  const filteredWorkspaces = normalizedWorkspaceMoveQuery
-    ? workspaces.filter((workspace) => workspace.name.toLowerCase().includes(normalizedWorkspaceMoveQuery))
-    : workspaces;
+  const filteredWorkspaces = useMemo(() => {
+    const query = workspaceMoveQuery.trim().toLowerCase();
+    if (!query) return workspaces;
+    return workspaces.filter((workspace) => workspace.name.toLowerCase().includes(query));
+  }, [workspaces, workspaceMoveQuery]);
 
   function openWorkspaceFolderFlyout(
     mode: WorkspaceFolderFlyoutState["mode"],
@@ -955,7 +956,7 @@ const SessionSidebar = memo(function SessionSidebar({
             );
           })}
           {filteredWorkspaces.length === 0 && (
-            normalizedWorkspaceMoveQuery ? (
+            workspaceMoveQuery.trim() ? (
               <button
                 onClick={() => {
                   const name = workspaceMoveQuery.trim();
@@ -1139,7 +1140,7 @@ const SessionSidebar = memo(function SessionSidebar({
             );
           })}
           {filteredWorkspaces.length === 0 && (
-            normalizedWorkspaceMoveQuery ? (
+            workspaceMoveQuery.trim() ? (
               <button
                 onClick={() => {
                   const name = workspaceMoveQuery.trim();
@@ -1389,7 +1390,7 @@ const SessionSidebar = memo(function SessionSidebar({
                         );
                       })}
                       {filteredWorkspaces.length === 0 && (
-                        normalizedWorkspaceMoveQuery ? (
+                        workspaceMoveQuery.trim() ? (
                           <button
                             onClick={() => {
                               const name = workspaceMoveQuery.trim();
@@ -4617,21 +4618,27 @@ export default function ChatView() {
   const activeWorkspace = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId) ?? null;
 
   // Bucket enabled models into Fast / Balanced / Powerful tiers
-  const enabledModels = aiModelList.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
-  const tierSize = Math.ceil(enabledModels.length / 3);
-  const modelTiers = [
-    enabledModels.slice(0, tierSize),
-    enabledModels.slice(tierSize, tierSize * 2),
-    enabledModels.slice(tierSize * 2),
-  ].filter((tier) => tier.length > 0);
-  const _activeTierIdx = modelTiers.findIndex((tier) =>
-    tier.some((m) => m.model_id === selectedModel)
-  );
+  const modelTiers = useMemo(() => {
+    const enabledModels = aiModelList.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
+    const tierSize = Math.ceil(enabledModels.length / 3);
+    return [
+      enabledModels.slice(0, tierSize),
+      enabledModels.slice(tierSize, tierSize * 2),
+      enabledModels.slice(tierSize * 2),
+    ].filter((tier) => tier.length > 0);
+  }, [aiModelList]);
+
+  const _activeTierIdx = useMemo(() => {
+    return modelTiers.findIndex((tier) =>
+      tier.some((m) => m.model_id === selectedModel)
+    );
+  }, [modelTiers, selectedModel]);
 
   // Family mode: group enabled models by ID prefix
   const modelFamilies = useMemo(() => {
     const map = new Map<string, AiModel[]>();
-    enabledModels.forEach((m) => {
+    const enabledModelsLocal = aiModelList.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);
+    enabledModelsLocal.forEach((m) => {
       const prefix = m.model_id.includes(":") ? m.model_id.split(":")[0] : m.model_id;
       const existing = map.get(prefix);
       if (existing) { existing.push(m); } else { map.set(prefix, [m]); }
@@ -4641,7 +4648,7 @@ export default function ChatView() {
       label: modelFamilyLabels[prefix] ?? prefix,
       models: [...models].sort((a, b) => a.priority - b.priority),
     }));
-  }, [enabledModels, modelFamilyLabels]);
+  }, [aiModelList, modelFamilyLabels]);
 
   const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
   const [_showFamilyVariant, _setShowFamilyVariant] = useState(false);
@@ -5704,7 +5711,12 @@ export default function ChatView() {
                 {thoughts.length === 0 ? (
                   <p className="text-[11px] text-[var(--text-muted)] text-center pt-6">No thoughts yet.</p>
                 ) : (
-                  [...thoughts.filter((t) => t.status === "processing"), ...thoughts.filter((t) => t.status === "scheduled"), ...thoughts.filter((t) => t.status === "pending"), ...thoughts.filter((t) => t.status === "done")].map((t) => (
+                  (() => {
+                    const processing = thoughts.filter((t) => t.status === "processing");
+                    const scheduled = thoughts.filter((t) => t.status === "scheduled");
+                    const pending = thoughts.filter((t) => t.status === "pending");
+                    const done = thoughts.filter((t) => t.status === "done");
+                    return [...processing, ...scheduled, ...pending, ...done].map((t) => (
                     <div
                       key={t.id}
                       className={`rounded-lg border text-[11px] ${t.status === "processing" ? "border-yellow-500/30 bg-yellow-500/5" :
@@ -5747,7 +5759,8 @@ export default function ChatView() {
                         </div>
                       )}
                     </div>
-                  ))
+                  ));
+                  })()
                 )}
               </div>
             </div>
