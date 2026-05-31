@@ -340,7 +340,7 @@ export default function FolderDashboardView() {
               </button>
               <button
                 id="dashboard-review-button"
-                onClick={() => openRoute(effectiveSummary.review.route)}
+                onClick={() => openRoute({ path: "/review-topics", state: null })}
                 className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
               >
                 <Clock3 size={15} />
@@ -350,20 +350,11 @@ export default function FolderDashboardView() {
           </div>
         </header>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <MetricCard label="Due Review" value={effectiveSummary.review.due_today} accent="bg-[var(--accent-color)]" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <MetricCard label="Due Review" value={effectiveSummary.review.topics_due_for_review} accent="bg-[var(--accent-color)]" />
           <MetricCard label="Active Goals" value={effectiveSummary.overview.active_goals} accent="bg-[var(--accent-color)]" />
-          <MetricCard label="Concepts Tracked" value={effectiveSummary.overview.concepts} accent="bg-[var(--accent-color)]" />
+          <MetricCard label="Topics Tracked" value={effectiveSummary.overview.concepts} accent="bg-[var(--accent-color)]" />
           <MetricCard label="Sources Captured" value={effectiveSummary.overview.sources} accent="bg-[var(--accent-color)]" />
-          <MetricCard
-            label="Cards Learned"
-            value={
-              effectiveSummary.review.total_cards > 0
-                ? `${effectiveSummary.review.learned}/${effectiveSummary.review.total_cards}`
-                : effectiveSummary.review.learned
-            }
-            accent="bg-emerald-400"
-          />
           <MetricCard label="Completed Goals" value={effectiveSummary.overview.completed_goals} accent="bg-emerald-400" />
         </div>
 
@@ -497,7 +488,7 @@ export default function FolderDashboardView() {
           )}
 
           {visibleWeakConcepts.length > 0 && (
-            <Section title="Weak Concepts" eyebrow="Needs review">
+            <Section title="Weak Topics" eyebrow="Needs review">
               <div className="space-y-2">
                 {visibleWeakConcepts.map((concept) => (
                   <button
@@ -540,7 +531,7 @@ export default function FolderDashboardView() {
                 </div>
                 <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
                   <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.isolated_concepts}</div>
-                  <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Isolated concepts</div>
+                  <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Isolated topics</div>
                 </div>
               </div>
               {knowledgeHealth.active_topic_tags.length > 0 && (
