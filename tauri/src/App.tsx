@@ -203,6 +203,17 @@ export default function App() {
     };
   }, [setFontSize]);
 
+  // Remove the pre-React boot overlay from main.tsx as soon as React commits.
+  // If this never runs, the overlay stays up — which is exactly the signal we
+  // want: it proves React did not reach a commit.
+  useEffect(() => {
+    const overlay = document.getElementById("aetherium-boot-overlay");
+    if (!overlay) { return; }
+    overlay.style.opacity = "0";
+    const timer = window.setTimeout(() => overlay.remove(), 140);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   // Boot: load settings + workspaces
   useEffect(() => {
     let cancelled = false;
