@@ -152,7 +152,7 @@ export default function FolderDashboardView() {
     () => workspaces.find((item) => item.id === activeWorkspaceId) ?? null,
     [workspaces, activeWorkspaceId],
   );
-  const continueLearning = summary?.continue_learning ?? null;
+  const continueLearningList = summary?.continue_learning ?? [];
 
   useEffect(() => {
     let cancelled = false;
@@ -360,31 +360,33 @@ export default function FolderDashboardView() {
 
         <div className="grid gap-4 xl:grid-cols-3">
             <Section title="Continue Learning">
-              {continueLearning ? (
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
-                      <MessageSquare size={15} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-[var(--text-primary)]">
-                        {continueLearning.title}
-                      </div>
-                      <div className="text-xs text-[var(--text-secondary)]">
-                        {continueLearning.folder_name || "Workspace thread"} · {timeAgo(continueLearning.updated_at)}
-                      </div>
-                    </div>
+              {continueLearningList.length > 0 ? (
+                <div className="flex-1 flex flex-col gap-2">
+                  {continueLearningList.map((item) => (
                     <button
-                      onClick={() => openRoute(continueLearning.route)}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                      key={item.session_id}
+                      onClick={() => openRoute(item.route)}
+                      className="block w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
                     >
-                      Open
-                      <ArrowRight size={12} />
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[rgba(var(--accent-color-rgb),0.08)] text-[var(--accent-color)]">
+                          <MessageSquare size={15} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-[var(--text-primary)]">
+                            {item.title}
+                          </div>
+                          <div className="text-xs text-[var(--text-secondary)]">
+                            {item.folder_name || "Workspace thread"} · {timeAgo(item.updated_at)}
+                          </div>
+                        </div>
+                        <ArrowRight size={13} className="shrink-0 text-[var(--text-muted)]" />
+                      </div>
                     </button>
-                  </div>
+                  ))}
                 </div>
               ) : (
-                <div className="rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-3">
+                <div className="flex-1 flex flex-col justify-center rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-medium text-[var(--text-primary)]">Nothing to resume yet</div>

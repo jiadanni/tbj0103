@@ -109,7 +109,7 @@ pub struct DashboardSummary {
     pub workspace_id: String,
     pub workspace_name: String,
     pub overview: DashboardOverview,
-    pub continue_learning: Option<DashboardContinueLearning>,
+    pub continue_learning: Vec<DashboardContinueLearning>,
     pub review: DashboardReviewSummary,
     pub goals: Vec<DashboardGoalSummary>,
     pub progression: Vec<DashboardSuggestion>,

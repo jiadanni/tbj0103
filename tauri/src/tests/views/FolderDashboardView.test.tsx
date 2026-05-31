@@ -81,14 +81,16 @@ describe("FolderDashboardView", () => {
         active_goals: 2,
         completed_goals: 1,
       },
-      continue_learning: {
-        session_id: "session-1",
-        title: "cgroups vs namespaces",
-        folder_id: "proj-1",
-        folder_name: "Containers",
-        updated_at: "2026-04-06T09:00:00Z",
-        route: { path: "/chat/session-1", state: null },
-      },
+      continue_learning: [
+        {
+          session_id: "session-1",
+          title: "cgroups vs namespaces",
+          folder_id: "proj-1",
+          folder_name: "Containers",
+          updated_at: "2026-04-06T09:00:00Z",
+          route: { path: "/chat/session-1", state: null },
+        },
+      ],
       review: {
         due_today: 5,
         total_cards: 9,

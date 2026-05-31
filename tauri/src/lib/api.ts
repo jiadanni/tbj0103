@@ -890,7 +890,7 @@ export interface DashboardSummary {
   workspace_id: string;
   workspace_name: string;
   overview: DashboardOverview;
-  continue_learning?: DashboardContinueLearning | null;
+  continue_learning: DashboardContinueLearning[];
   review: DashboardReviewSummary;
   goals: DashboardGoalSummary[];
   progression: DashboardSuggestion[];

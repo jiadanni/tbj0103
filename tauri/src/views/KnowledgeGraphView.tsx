@@ -635,7 +635,7 @@ export default function KnowledgeGraphView({
   const weakConcepts = review?.weak_concepts ?? [];
   const progression = summary?.progression.slice(0, 3) ?? [];
   const recentActivity = summary?.recent_activity.slice(0, 5) ?? [];
-  const continueLearning = summary?.continue_learning ?? null;
+  const continueLearning = summary?.continue_learning?.[0] ?? null;
   const hasModels = availableModels.length > 0;
   const isDemoWithoutModels = isDemoMode && !hasModels;
   const canRunAiActions = hasModels || isDemoWithoutModels;
