@@ -9,6 +9,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
@@ -57,6 +58,11 @@ static FETCH_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 fn fetch_lock() -> &'static tokio::sync::Mutex<()> {
     FETCH_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
+
+// Guards against spawning multiple background capability-enrichment tasks
+// concurrently. Set to true while a background enrichment is in flight and
+// cleared when it finishes.
+static ENRICHMENT_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 // Shared HTTP client — reqwest::Client is internally Arc'd and manages a
 // connection pool, so reusing one instance across all OllamaClient instances
@@ -1272,9 +1278,30 @@ impl OllamaClient {
             message
         })?;
 
-        let models = self.enrich_models_with_capabilities(tags.models, ctx).await;
+        // Fill capabilities from the per-model cache synchronously (cheap mutex lookup).
+        // Anything still missing will be fetched by a background task so the chat UI
+        // does not block on a sequential /api/show loop on cold start.
+        let mut models = tags.models;
+        let mut needs_enrichment = false;
+        {
+            if let Ok(guard) = capability_cache().lock() {
+                for model in &mut models {
+                    if let Some((caps, fetched_at)) =
+                        guard.entries.get(&(self.base_url.clone(), model.name.clone()))
+                    {
+                        if fetched_at.elapsed() < CAPABILITY_CACHE_TTL {
+                            model.capabilities = caps.clone();
+                            continue;
+                        }
+                    }
+                    needs_enrichment = true;
+                }
+            } else {
+                needs_enrichment = true;
+            }
+        }
 
-        // Store in cache (without awaiting capability fetches — they're fetched in the background).
+        // Store in cache immediately so concurrent callers see the model list right away.
         {
             let mut guard = model_cache()
                 .lock()
@@ -1294,6 +1321,32 @@ impl OllamaClient {
             ctx,
             &[("cache", "miss".to_string())],
         );
+
+        // Kick off background capability enrichment if any model is missing fresh caps.
+        // Guarded by ENRICHMENT_IN_FLIGHT so a second list_models call inside the 30s
+        // model-cache window doesn't spawn a duplicate task.
+        if needs_enrichment
+            && ENRICHMENT_IN_FLIGHT
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        {
+            let client = self.clone();
+            let ctx_clone = ctx.clone();
+            let models_for_bg = models.clone();
+            tokio::spawn(async move {
+                let enriched = client
+                    .enrich_models_with_capabilities(models_for_bg, &ctx_clone)
+                    .await;
+                if let Ok(mut guard) = model_cache().lock() {
+                    if let Some(cached) = guard.as_mut() {
+                        if cached.url == client.base_url {
+                            cached.models = enriched;
+                        }
+                    }
+                }
+                ENRICHMENT_IN_FLIGHT.store(false, Ordering::Release);
+            });
+        }
 
         Ok(models)
     }
@@ -1315,8 +1368,11 @@ impl OllamaClient {
         let started_at = Instant::now();
 
         let mut enriched = Vec::new();
+        let mut fail_count: usize = 0;
         for model in models {
-            // Check capability cache to distinguish cache hits from network fetches.
+            // Snapshot whether capabilities are already in the long-lived cache
+            // *before* the fetch, so we can distinguish cache hits from network
+            // fetches in the summary log.
             let was_cached = {
                 if let Ok(guard) = capability_cache().lock() {
                     guard.entries.get(&(self.base_url.clone(), model.name.clone()))
@@ -1329,20 +1385,28 @@ impl OllamaClient {
 
             let mut enriched_model = model;
             let caps = self.fetch_model_capabilities_observed(&enriched_model.name, ctx).await;
+            // fetch_model_capabilities_observed only writes the cache on HTTP success
+            // (even when the parsed capabilities list is empty/None), so cache
+            // presence after the call is the most reliable success signal.
+            let fetch_ok = {
+                if let Ok(guard) = capability_cache().lock() {
+                    guard.entries.contains_key(&(self.base_url.clone(), enriched_model.name.clone()))
+                } else {
+                    caps.is_some()
+                }
+            };
             enriched_model.capabilities = caps;
 
             if was_cached {
                 cache_count += 1;
-            } else {
-                // fetch_model_capabilities_observed stores in cache on success
-                // so if it's in cache now, it succeeded
+            } else if fetch_ok {
                 success_count += 1;
+            } else {
+                fail_count += 1;
             }
 
             enriched.push(enriched_model);
         }
-
-        let fail_count = total.saturating_sub(success_count + cache_count);
 
         // Emit a single summary instead of per-model logs.
         let elapsed = started_at.elapsed();
