@@ -1820,6 +1820,8 @@ function AppRoutes() {
       <Route path="/preferences" element={<PreferencesView />} />
       
       {/* Legacy redirects */}
+      <Route path="/graph" element={<Navigate to="/learning?tab=roadmap" replace />} />
+      <Route path="/flashcards" element={<Navigate to="/learning?tab=review" replace />} />
       <Route path="/documents" element={<Navigate to="/sources" replace />} />
       <Route path="/webcapture" element={<Navigate to="/sources" replace />} />
       <Route path="/grounded" element={<Navigate to="/chat" replace />} />

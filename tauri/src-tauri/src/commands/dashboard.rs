@@ -235,7 +235,7 @@ fn get_dashboard_summary_inner(
                 name,
                 review_count,
                 reason,
-                route: route("/review-topics", None),
+                route: route("/learning", Some(serde_json::json!({ "focusConceptId": concept_id }))),
             })
         })
         .map_err(|e| e.to_string())?
@@ -392,18 +392,6 @@ fn get_dashboard_summary_inner(
 
     let mut progression = Vec::new();
 
-    if let Some(continue_item) = continue_learning.first() {
-        progression.push(DashboardSuggestion {
-            id: "continue-thread".to_string(),
-            kind: "continue".to_string(),
-            title: "Continue your latest thread".to_string(),
-            description: format!(
-                "Jump back into \"{}\" and keep building on your current context.",
-                continue_item.title
-            ),
-            route: continue_item.route.clone(),
-        });
-    }
 
     if topics_due_for_review > 0 {
         let n = topics_due_for_review;

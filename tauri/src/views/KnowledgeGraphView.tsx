@@ -39,7 +39,6 @@ import {
   type DashboardSummary,
   type DescendantAnalysisProgress,
   type LearningCard,
-  type LearningPathItem,
   type WorkspaceAnalysisProgress,
 } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -70,8 +69,11 @@ function colorFor(type: string) {
   return TYPE_COLORS[type.toLowerCase()] ?? TYPE_COLORS.other;
 }
 
-function timeAgo(iso: string) {
-  const diffMs = Date.now() - new Date(iso).getTime();
+function timeAgo(iso: string | undefined | null) {
+  if (!iso) { return "recently"; }
+  const parsed = new Date(iso).getTime();
+  if (isNaN(parsed)) { return "recently"; }
+  const diffMs = Date.now() - parsed;
   const minutes = Math.floor(diffMs / 60000);
   if (minutes < 1) { return "just now"; }
   if (minutes < 60) { return `${minutes}m ago`; }
@@ -130,8 +132,8 @@ function Section({
   onToggle?: () => void;
 }) {
   return (
-    <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5">
-      <div className={`flex items-start justify-between ${collapsed ? "" : "mb-4"}`}>
+    <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-5 py-4">
+      <div className={`flex items-start justify-between ${collapsed ? "" : "mb-3"}`}>
         <div>
           {eyebrow && (
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
@@ -290,7 +292,6 @@ export default function KnowledgeGraphView({
   const [isGeneratingCards, setIsGeneratingCards] = useState(false);
   const [genCardError, setGenCardError] = useState("");
 
-  const [learningPath, setLearningPath] = useState<LearningPathItem[]>([]);
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
@@ -348,18 +349,15 @@ export default function KnowledgeGraphView({
     if (!activeWorkspaceId) {
       setNodes([]);
       setLinks([]);
-      setLearningPath([]);
       return;
     }
 
-    const [nextNodes, nextLinks, nextPath] = await Promise.all([
+    const [nextNodes, nextLinks] = await Promise.all([
       api.graph.listConcepts(activeWorkspaceId, undefined, undefined, { includeDescendants }),
       api.graph.listLinks(activeWorkspaceId, undefined, undefined, { includeDescendants }),
-      api.graph.getLearningPath(activeWorkspaceId).catch(() => [] as LearningPathItem[]),
     ]);
     setNodes(nextNodes);
     setLinks(nextLinks);
-    setLearningPath(nextPath);
   }, [activeWorkspaceId, includeDescendants]);
 
   const loadSummary = useCallback(async () => {
@@ -921,15 +919,15 @@ export default function KnowledgeGraphView({
       )}
 
       <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 py-5 sm:px-6">
-          <header className="rounded-[28px] border border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(255,255,255,0)_55%),var(--bg-elevated)] p-5">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6">
+          <header className="rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(255,255,255,0)_55%),var(--bg-elevated)] px-5 py-3">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="max-w-2xl">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                   Knowledge
                 </div>
-                <h1 className="mt-2 text-2xl font-semibold text-[var(--text-primary)] sm:text-3xl">
-                  See what this workspace knows and what needs attention next.
+                <h1 className="text-xl font-semibold text-[var(--text-primary)] sm:text-2xl">
+                  Your knowledge at a glance.
                 </h1>
                 <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
                   Explore your concept map, spot weak areas, and decide what to review or build on next.
@@ -941,23 +939,35 @@ export default function KnowledgeGraphView({
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-2 xl:justify-end">
-                <button
-                  onClick={handleAnalyze}
-                  disabled={isAnalyzing || !canRunAiActions}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                >
-                  {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  {analyzeButtonLabel}
-                </button>
-                <button
-                  onClick={refreshKnowledge}
-                  disabled={summaryLoading}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                >
-                  <RefreshCw size={14} className={summaryLoading ? "animate-spin" : ""} />
-                  Refresh Overview
-                </button>
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex flex-wrap gap-2 xl:justify-end">
+                  <button
+                    onClick={handleAnalyze}
+                    disabled={isAnalyzing || !canRunAiActions || insufficientData}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                    title={insufficientData ? analyzeHelpText : undefined}
+                  >
+                    {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    {analyzeButtonLabel}
+                  </button>
+                  <button
+                    onClick={refreshKnowledge}
+                    disabled={summaryLoading}
+                    className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                  >
+                    <RefreshCw size={14} className={summaryLoading ? "animate-spin" : ""} />
+                    Refresh Overview
+                  </button>
+                </div>
+                {analyzeError && (
+                  <p className="max-w-xs text-right text-xs text-red-400">{analyzeError}</p>
+                )}
+                {!analyzeError && analyzeResult && (
+                  <p className="max-w-xs text-right text-xs text-[var(--text-muted)]">{analyzeResultSummary}</p>
+                )}
+                {insufficientData && (
+                  <p className="max-w-xs text-right text-xs text-[var(--text-muted)]">{analyzeHelpText}</p>
+                )}
               </div>
             </div>
           </header>
@@ -983,7 +993,7 @@ export default function KnowledgeGraphView({
             ))}
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]">
             <Section
               title="Knowledge Map"
               eyebrow="Roadmap"
@@ -1056,7 +1066,7 @@ export default function KnowledgeGraphView({
                 </div>
 
                 <div
-                  className="relative h-[400px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)] 2xl:h-[480px]"
+                  className="relative h-[320px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)] 2xl:h-[380px]"
                   data-testid="knowledge-map"
                 >
                   {nodes.length === 0 ? (
@@ -1093,7 +1103,7 @@ export default function KnowledgeGraphView({
               </div>
             </Section>
 
-            <div className="grid gap-6">
+            <div className="grid gap-4">
               <Section
                 title="Suggested Next Steps"
                 eyebrow="Actions"
@@ -1180,21 +1190,21 @@ export default function KnowledgeGraphView({
                 onToggle={() => toggleSection("health")}
               >
                 <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
-                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
                     <div className="text-xs text-[var(--text-muted)]">Stalled goals</div>
-                    <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                    <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">
                       {summary?.knowledge_health.stalled_goals ?? 0}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
                     <div className="text-xs text-[var(--text-muted)]">Weak topics</div>
-                    <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                    <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">
                       {weakConcepts.length}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
+                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
                     <div className="text-xs text-[var(--text-muted)]">Topics in review</div>
-                    <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                    <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">
                       {review?.topics_due_for_review ?? 0}
                     </div>
                   </div>
@@ -1240,54 +1250,7 @@ export default function KnowledgeGraphView({
             </div>
           </div>
 
-          {learningPath.length > 0 && (
-            <Section
-              title="Learning Path"
-              eyebrow="Next Steps"
-              collapsed={collapsedSections["learningPath"]}
-              onToggle={() => toggleSection("learningPath")}
-            >
-              <div className="space-y-3">
-                {learningPath.slice(0, 3).map((item) => (
-                  <div key={item.concept_id} className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-[var(--text-primary)]">{item.concept_name}</div>
-                        {item.hierarchy_path && (
-                          <div className="mt-0.5 text-xs text-[var(--text-muted)]">{item.hierarchy_path}</div>
-                        )}
-                        {item.concept_description && (
-                          <div className="mt-1 text-xs text-[var(--text-secondary)] line-clamp-2">{item.concept_description}</div>
-                        )}
-                        <div className="mt-2 flex items-center gap-2">
-                          <div className="flex-1 overflow-hidden rounded-full bg-[var(--border-color)] h-1.5">
-                            <div
-                              className="h-1.5 rounded-full bg-emerald-400 transition-all"
-                              style={{ width: item.met_prereqs + item.unmet_prereqs > 0 ? `${Math.round((item.met_prereqs / (item.met_prereqs + item.unmet_prereqs)) * 100)}%` : '100%' }}
-                            />
-                          </div>
-                          <span className="text-[10px] text-[var(--text-muted)]">
-                            {item.met_prereqs}/{item.met_prereqs + item.unmet_prereqs} prereqs
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const node = nodes.find((n) => n.id === item.concept_id);
-                          if (node) { setSelectedConcept(node); }
-                        }}
-                        className="flex-shrink-0 rounded-lg border border-[var(--border-color)] px-2 py-1 text-xs text-[var(--accent-color)] transition-colors hover:bg-[var(--accent-color)]/10"
-                      >
-                        Focus
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Section>
-          )}
-
-          <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+          <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
             <Section
               title="Topic Focus"
               eyebrow="Signals"
@@ -1295,7 +1258,7 @@ export default function KnowledgeGraphView({
               onToggle={() => toggleSection("conceptFocus")}
             >
               {selectedConcept ? (
-                <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4">
+                <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-sm font-medium text-[var(--text-primary)]">{selectedConcept.name}</div>
@@ -1309,11 +1272,11 @@ export default function KnowledgeGraphView({
                     </button>
                   </div>
                   {selectedConcept.concept_description && (
-                    <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                    <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
                       {selectedConcept.concept_description}
                     </p>
                   )}
-                  <div className="mt-4 text-xs text-[var(--text-muted)]">
+                  <div className="mt-3 text-xs text-[var(--text-muted)]">
                     {conceptCards.length > 0
                       ? `${conceptCards.length} related card${conceptCards.length === 1 ? "" : "s"} available in the sidebar.`
                       : "Select generate cards in the sidebar if you want reinforcement for this topic."}
@@ -1325,7 +1288,7 @@ export default function KnowledgeGraphView({
                     <button
                       key={concept.concept_id}
                       onClick={() => openRoute(concept.route)}
-                      className="flex w-full items-start gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
+                      className="flex w-full items-start gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 px-3 py-2 text-left transition-colors hover:border-[var(--accent-color)]"
                     >
                       <Brain size={16} className="mt-0.5 shrink-0 text-[var(--accent-color)]" />
                       <div className="min-w-0">
@@ -1349,12 +1312,12 @@ export default function KnowledgeGraphView({
               onToggle={() => toggleSection("recentActivity")}
             >
               {recentActivity.length > 0 ? (
-                <div className="space-y-3">
-                  {recentActivity.map((item) => (
+                <div className="space-y-2">
+                  {recentActivity.slice(0, 4).map((item) => (
                     <button
                       key={item.id}
                       onClick={() => openRoute(item.route)}
-                      className="flex w-full items-start gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
+                      className="flex w-full items-start gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 px-3 py-2 text-left transition-colors hover:border-[var(--accent-color)]"
                     >
                       <div className="mt-0.5 shrink-0">{activityIcon(item.kind)}</div>
                       <div className="min-w-0 flex-1">

@@ -57,8 +57,11 @@ function activityIcon(kind: string) {
   }
 }
 
-function timeAgo(iso: string) {
-  const diffMs = Date.now() - new Date(iso).getTime();
+function timeAgo(iso: string | undefined | null) {
+  if (!iso) { return "recently"; }
+  const parsed = new Date(iso).getTime();
+  if (isNaN(parsed)) { return "recently"; }
+  const diffMs = Date.now() - parsed;
   const minutes = Math.floor(diffMs / 60000);
   if (minutes < 1) { return "just now"; }
   if (minutes < 60) { return `${minutes}m ago`; }
@@ -99,7 +102,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+    <section className="flex flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
       <div className="mb-3">
         {eyebrow && (
           <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
@@ -118,7 +121,7 @@ function routeState(route: DashboardRoute) {
 }
 
 function normalizeKnowledgeRoute(route: DashboardRoute): DashboardRoute {
-  if (route.path === "/graph" || route.path === "/flashcards" || route.path === "/learning" || route.path === "/backlinks" || route.path === "/dedup") {
+  if (route.path === "/graph" || route.path === "/flashcards" || route.path === "/backlinks" || route.path === "/dedup") {
     return { path: "/graph", state: null };
   }
 
@@ -369,7 +372,7 @@ export default function FolderDashboardView() {
                       className="block w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[rgba(var(--accent-color-rgb),0.08)] text-[var(--accent-color)]">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
                           <MessageSquare size={15} />
                         </div>
                         <div className="min-w-0 flex-1">
