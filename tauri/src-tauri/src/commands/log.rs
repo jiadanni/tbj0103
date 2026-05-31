@@ -152,23 +152,29 @@ pub fn set_log_level(level: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_log_level() -> Result<String, String> {
+pub async fn get_log_level() -> Result<String, String> {
     Ok(crate::logging::get_min_log_level())
 }
 
 #[tauri::command]
-pub fn log_frontend_event(
-    state: State<DbState>,
+pub async fn log_frontend_event(
+    state: State<'_, DbState>,
     req: LogFrontendEventRequest,
 ) -> Result<(), String> {
-    let level = match req.level.as_str() {
-        "debug" | "info" | "warn" | "error" => req.level.as_str(),
-        _ => "info",
-    };
-    let metadata = req.metadata.as_deref().unwrap_or("{}");
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    crate::logging::log_with_conn(&conn, level, &req.source, &req.message, metadata);
-    Ok(())
+    // Clone the pool handle so the closure owns it on the blocking thread.
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let level = match req.level.as_str() {
+            "debug" | "info" | "warn" | "error" => req.level.as_str(),
+            _ => "info",
+        };
+        let metadata = req.metadata.as_deref().unwrap_or("{}");
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        crate::logging::log_with_conn(&conn, level, &req.source, &req.message, metadata);
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[derive(Debug, Deserialize)]
@@ -177,24 +183,27 @@ pub struct LogFrontendEventBatchRequest {
 }
 
 #[tauri::command]
-pub fn log_frontend_events_batch(
+pub async fn log_frontend_events_batch(
     req: LogFrontendEventBatchRequest,
 ) -> Result<(), String> {
-    let entries: Vec<(String, String, String, String, String)> = req
-        .events
-        .iter()
-        .map(|e| {
-            let level = match e.level.as_str() {
-                "debug" | "info" | "warn" | "error" => e.level.clone(),
-                _ => "info".to_string(),
-            };
-            let metadata = e.metadata.clone().unwrap_or_else(|| "{}".to_string());
-            let ts = chrono::Local::now()
-                .format("%Y-%m-%dT%H:%M:%S")
-                .to_string();
-            (ts, level, e.source.clone(), e.message.clone(), metadata)
-        })
-        .collect();
-    crate::logging::persist_batch(&entries);
-    Ok(())
+    tokio::task::spawn_blocking(move || {
+        let entries: Vec<(String, String, String, String, String)> = req
+            .events
+            .iter()
+            .map(|e| {
+                let level = match e.level.as_str() {
+                    "debug" | "info" | "warn" | "error" => e.level.clone(),
+                    _ => "info".to_string(),
+                };
+                let metadata = e.metadata.clone().unwrap_or_else(|| "{}".to_string());
+                let ts = chrono::Local::now()
+                    .format("%Y-%m-%dT%H:%M:%S")
+                    .to_string();
+                (ts, level, e.source.clone(), e.message.clone(), metadata)
+            })
+            .collect();
+        crate::logging::persist_batch(&entries);
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))
 }

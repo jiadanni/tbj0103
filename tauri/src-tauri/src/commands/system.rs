@@ -1,6 +1,41 @@
 use crate::models::system::SystemSpecs;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use sysinfo::System;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
+// Cache for query_gpu_vram() — the underlying call may shell out to
+// nvidia-smi / system_profiler / wmic, each of which can take hundreds of
+// milliseconds (and on cold GPUs/multi-GPU hosts, seconds). The StatusBar
+// polls performance stats every 2.5 s, so without caching every poll pays
+// the full subprocess cost. We cache positive hits briefly (so live VRAM
+// numbers still update) and remember misses for much longer (no point
+// re-probing a machine that has no Nvidia GPU on every call).
+struct GpuVramCache {
+    fetched_at: Instant,
+    result: Option<(u64, u64, String)>,
+}
+
+static GPU_VRAM_CACHE: OnceLock<Mutex<Option<GpuVramCache>>> = OnceLock::new();
+const GPU_VRAM_HIT_TTL: Duration = Duration::from_millis(1_500);
+const GPU_VRAM_MISS_TTL: Duration = Duration::from_secs(60);
+
+fn cached_query_gpu_vram() -> Option<(u64, u64, String)> {
+    let cache = GPU_VRAM_CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(guard) = cache.lock() {
+        if let Some(entry) = guard.as_ref() {
+            let ttl = if entry.result.is_some() { GPU_VRAM_HIT_TTL } else { GPU_VRAM_MISS_TTL };
+            if entry.fetched_at.elapsed() < ttl {
+                return entry.result.clone();
+            }
+        }
+    }
+    let fresh = query_gpu_vram();
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some(GpuVramCache { fetched_at: Instant::now(), result: fresh.clone() });
+    }
+    fresh
+}
 
 #[derive(Debug)]
 struct GpuInfo {
@@ -243,7 +278,7 @@ pub async fn get_performance_stats() -> Result<crate::models::system::Performanc
         let cpu_usage = sys.global_cpu_info().cpu_usage();
         let memory_used = sys.used_memory();
         let memory_total = sys.total_memory();
-        let gpu = query_gpu_vram();
+        let gpu = cached_query_gpu_vram();
         let usage_available = gpu.is_some() && gpu_vram_usage_is_live();
 
         let cpu_core_usages: Vec<f32> = sys.cpus().iter().map(|c| c.cpu_usage()).collect();
