@@ -51,8 +51,8 @@ pub struct ChatSession {
     pub is_unread: bool,
     pub created_at: String,
     pub updated_at: String,
-    /// Total number of messages in the session, computed at query time.
-    /// Zero for brand-new sessions; non-zero means the session has been used.
+    /// Total number of messages in the session, denormalized on chat_sessions.
+    /// Maintained by DB triggers on message insert/delete/move.
     pub message_count: i64,
 }
 

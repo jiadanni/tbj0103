@@ -2875,12 +2875,33 @@ export default function ChatView() {
   }, []);
 
   const activeMessages = activeChatMessages;
+  const aiModelById = useMemo(
+    () => new Map(aiModelList.map((model) => [model.model_id, model] as const)),
+    [aiModelList],
+  );
+  const sessionById = useMemo(
+    () => new Map(sessions.map((session) => [session.id, session] as const)),
+    [sessions],
+  );
+  const workspaceById = useMemo(
+    () => new Map(workspaces.map((workspace) => [workspace.id, workspace] as const)),
+    [workspaces],
+  );
+  const effectiveWorkspaceFolders = useMemo(
+    () => foldersByWorkspace[effectiveWorkspaceId ?? ""] ?? folders,
+    [foldersByWorkspace, effectiveWorkspaceId, folders],
+  );
+  const folderById = useMemo(
+    () => new Map(effectiveWorkspaceFolders.map((folder) => [folder.id, folder] as const)),
+    [effectiveWorkspaceFolders],
+  );
+
   const modelPickerOptions = useMemo(
     () => availableModels.filter((modelId) => {
-      const meta = aiModelList.find((m) => m.model_id === modelId);
+      const meta = aiModelById.get(modelId);
       return !meta?.provider.startsWith("web_");
     }),
-    [availableModels, aiModelList]
+    [availableModels, aiModelById]
   );
   const enabledWebModels = useMemo(
     () => aiModelList.filter((m) => m.provider.startsWith("web_") && m.enabled && !m.is_hidden),
@@ -2929,17 +2950,17 @@ export default function ChatView() {
 
   const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), [VirtuosoFooter]);
 
-  const activeSession = activeChatId ? sessions.find((s) => s.id === activeChatId) ?? null : null;
+  const activeSession = activeChatId ? (sessionById.get(activeChatId) ?? null) : null;
   const activeSessionWorkspaceId = activeSession?.workspace_id ?? effectiveWorkspaceId;
-  const activeWorkspaceName = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId)?.name ?? "No workspace";
+  const activeWorkspaceName = workspaceById.get(effectiveWorkspaceId ?? "")?.name ?? "No workspace";
   const effectiveFolderName = (
     effectiveFolderId
-      ? (foldersByWorkspace[effectiveWorkspaceId ?? ""] ?? folders).find(( folder) => folder.id === effectiveFolderId)?.name ?? null
+      ? folderById.get(effectiveFolderId)?.name ?? null
       : null
   );
 
   // Web AI provider detection
-  const selectedModelMeta = aiModelList.find((m) => m.model_id === selectedModel);
+  const selectedModelMeta = aiModelById.get(selectedModel);
   const effectiveContextSize = selectedModelMeta?.context_size ?? 8192;
   const isWebProvider = selectedModelMeta?.provider.startsWith("web_") ?? false;
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -3979,7 +4000,7 @@ export default function ChatView() {
     const userContent = (contentOverride ?? input).trim();
     if (!userContent || isStreaming || !modelId || !effectiveWorkspaceId) { return; }
 
-    const modelMeta = aiModelList.find((m) => m.model_id === modelId);
+    const modelMeta = aiModelById.get(modelId);
     const isOneOffWebProvider = modelMeta?.provider.startsWith("web_") ?? false;
     const isLlamacppProvider = modelMeta?.provider === "llamacpp";
     const isMlxProvider = modelMeta?.provider === "mlx";
@@ -4036,8 +4057,8 @@ export default function ChatView() {
 
     // Inject workspace domain context as a system message so the model
     // understands the topic area without requiring explicit user clarification.
-    const activeWs = workspaces.find((w) => w.id === effectiveWorkspaceId) ?? null;
-    const activeFolderObj = folders.find((f) => f.id === effectiveFolderId) ?? null;
+    const activeWs = workspaceById.get(effectiveWorkspaceId ?? "") ?? null;
+    const activeFolderObj = folderById.get(effectiveFolderId ?? "") ?? null;
     const domainContext = buildWorkspaceDomainContext(activeWs, activeFolderObj, activeTopicSignature);
     if (domainContext && (history.length === 0 || history[0].role !== "system")) {
       history.unshift({ role: "system", content: domainContext });
@@ -4694,8 +4715,8 @@ export default function ChatView() {
     }
   }
 
-  const activeFolder = folders.find((p) => p.id === effectiveFolderId) ?? null;
-  const activeWorkspace = workspaces.find((workspace) => workspace.id === effectiveWorkspaceId) ?? null;
+  const activeFolder = folderById.get(effectiveFolderId ?? "") ?? null;
+  const activeWorkspace = workspaceById.get(effectiveWorkspaceId ?? "") ?? null;
 
   // Bucket enabled models into Fast / Balanced / Powerful tiers
   const enabledModels = aiModelList.filter((m) => m.enabled).sort((a, b) => a.priority - b.priority);

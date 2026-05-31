@@ -94,9 +94,9 @@ pub fn create_session(
         "INSERT INTO chat_sessions (
             id, workspace_id, folder_id, title, model_name, system_prompt,
             is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-            last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
+            last_accessed_at, last_processed_message_count, message_count, is_imported, parent_session_id, branch_message_id,
             is_unread, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         rusqlite::params![
             session.id,
             session.workspace_id,
@@ -111,6 +111,7 @@ pub fn create_session(
             session.deleted_at,
             session.last_accessed_at,
             session.last_processed_message_count,
+            session.message_count,
             session.is_imported as i32,
             session.parent_session_id,
             session.branch_message_id,
@@ -141,9 +142,8 @@ pub fn list_sessions(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 is_unread, created_at, updated_at,
-                COALESCE(msg_counts.msg_count, 0) AS message_count
+                message_count
           FROM chat_sessions
-          LEFT JOIN (SELECT session_id, COUNT(*) as msg_count FROM messages GROUP BY session_id) msg_counts ON chat_sessions.id = msg_counts.session_id
           WHERE workspace_id {ws_cond} AND is_deleted = 0
           ORDER BY is_pinned DESC, updated_at DESC
           LIMIT ?2 OFFSET ?3"
@@ -154,9 +154,8 @@ pub fn list_sessions(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 is_unread, created_at, updated_at,
-                COALESCE(msg_counts.msg_count, 0) AS message_count
+                message_count
           FROM chat_sessions
-          LEFT JOIN (SELECT session_id, COUNT(*) as msg_count FROM messages GROUP BY session_id) msg_counts ON chat_sessions.id = msg_counts.session_id
           WHERE workspace_id {ws_cond} AND folder_id = ?2 AND is_deleted = 0
           ORDER BY is_pinned DESC, updated_at DESC
           LIMIT ?3 OFFSET ?4"
@@ -193,9 +192,8 @@ pub fn search_sessions(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 is_unread, created_at, updated_at,
-                COALESCE(msg_counts.msg_count, 0) AS message_count
+                message_count
           FROM chat_sessions
-          LEFT JOIN (SELECT session_id, COUNT(*) as msg_count FROM messages GROUP BY session_id) msg_counts ON chat_sessions.id = msg_counts.session_id
           WHERE workspace_id {ws_cond} AND is_deleted = 0
             AND (title LIKE ?2 OR model_name LIKE ?2)
           ORDER BY is_pinned DESC, updated_at DESC"
@@ -206,9 +204,8 @@ pub fn search_sessions(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 is_unread, created_at, updated_at,
-                COALESCE(msg_counts.msg_count, 0) AS message_count
+                message_count
           FROM chat_sessions
-          LEFT JOIN (SELECT session_id, COUNT(*) as msg_count FROM messages GROUP BY session_id) msg_counts ON chat_sessions.id = msg_counts.session_id
           WHERE workspace_id {ws_cond} AND folder_id = ?2 AND is_deleted = 0
             AND (title LIKE ?3 OR model_name LIKE ?3)
           ORDER BY is_pinned DESC, updated_at DESC"
@@ -236,9 +233,8 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<ChatSession>, S
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 is_unread, created_at, updated_at,
-                COALESCE(msg_counts.msg_count, 0) AS message_count
-         FROM chat_sessions
-         LEFT JOIN (SELECT session_id, COUNT(*) as msg_count FROM messages GROUP BY session_id) msg_counts ON chat_sessions.id = msg_counts.session_id WHERE id = ?1",
+                message_count
+         FROM chat_sessions WHERE id = ?1",
         rusqlite::params![id],
         row_to_session,
     );
@@ -282,9 +278,8 @@ pub fn list_deleted(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 is_unread, created_at, updated_at,
-                COALESCE(msg_counts.msg_count, 0) AS message_count
-         FROM chat_sessions
-         LEFT JOIN (SELECT session_id, COUNT(*) as msg_count FROM messages GROUP BY session_id) msg_counts ON chat_sessions.id = msg_counts.session_id
+                 message_count
+            FROM chat_sessions
          WHERE workspace_id {ws_cond} AND is_deleted = 1
          ORDER BY deleted_at DESC, updated_at DESC"
     );
@@ -704,9 +699,8 @@ pub fn get_recent(
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 is_unread, created_at, updated_at,
-                COALESCE(msg_counts.msg_count, 0) AS message_count
-         FROM chat_sessions
-         LEFT JOIN (SELECT session_id, COUNT(*) as msg_count FROM messages GROUP BY session_id) msg_counts ON chat_sessions.id = msg_counts.session_id
+                 message_count
+            FROM chat_sessions
          WHERE workspace_id {ws_cond} AND is_deleted = 0
          ORDER BY last_accessed_at DESC
          LIMIT ?2"
