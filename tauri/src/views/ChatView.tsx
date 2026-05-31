@@ -4764,30 +4764,36 @@ export default function ChatView() {
   );
   const activeFamilyDefaultModelId = activeFamilyModels[0]?.model_id ?? null;
 
-  const composerSuggestionRows = useMemo(() => {
-    const suggestionContext = {
-      workspaceName: activeWorkspace?.name ?? null,
-      folderName: activeFolder?.name ?? null,
-      topicSignature: activeTopicSignature,
-      processedDocCount: attachedSources.length,
-      activeMessages,
-      followUps,
-    };
-
-    return [
-      showComposerWorkspaceSuggestions ? buildWorkspaceSuggestionRow(suggestionContext) : null,
-      showComposerChatFollowUps ? buildChatSuggestionRow(suggestionContext) : null,
-    ].filter((row): row is NonNullable<typeof row> => row !== null);
-  }, [
+  const suggestionContext = useMemo(() => ({
+    workspaceName: activeWorkspace?.name ?? null,
+    folderName: activeFolder?.name ?? null,
+    topicSignature: activeTopicSignature,
+    processedDocCount: attachedSources.length,
+    activeMessages,
+    followUps,
+  }), [
     activeWorkspace,
     activeFolder,
     activeTopicSignature,
     attachedSources.length,
     activeMessages,
     followUps,
-    showComposerWorkspaceSuggestions,
-    showComposerChatFollowUps,
   ]);
+
+  const composerWorkspaceRow = useMemo(() => {
+    if (!showComposerWorkspaceSuggestions) {return null;}
+    return buildWorkspaceSuggestionRow(suggestionContext);
+  }, [showComposerWorkspaceSuggestions, suggestionContext]);
+
+  const chatFollowUpRow = useMemo(() => {
+    if (!showComposerChatFollowUps) {return null;}
+    return buildChatSuggestionRow(suggestionContext);
+  }, [showComposerChatFollowUps, suggestionContext]);
+
+  const composerSuggestionRows = useMemo(
+    () => (composerWorkspaceRow ? [composerWorkspaceRow] : []),
+    [composerWorkspaceRow],
+  );
   const [isComposerHeaderCollapsed, setIsComposerHeaderCollapsed] = useState(false);
   const hasComposerHeader = composerSuggestionRows.length > 0;
   const showComposerHeader = hasComposerHeader && !isComposerHeaderCollapsed;
@@ -5102,6 +5108,22 @@ export default function ChatView() {
                         components={virtuosoComponents}
                       />
                     </div>
+                    {chatFollowUpRow
+                      && !isCurrentlyStreaming
+                      && activeMessages.length > 0
+                      && activeMessages[activeMessages.length - 1].role === "assistant" && (
+                      <div
+                        data-testid="chat-follow-ups"
+                        className={`flex-shrink-0 ${chatMessageStyle === "minimal" ? "px-8" : "pl-4 pr-[52px]"} pb-2`}
+                      >
+                        <ComposerSuggestionRows
+                          rows={[chatFollowUpRow]}
+                          disabled={isStreaming}
+                          disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
+                          onSuggestionClick={handleComposerSuggestion}
+                        />
+                      </div>
+                    )}
                     <ChatMinimap
                       messages={activeMessages}
                       virtuosoRef={virtuosoRef}
