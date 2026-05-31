@@ -17,6 +17,7 @@ use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::model_settings::{get_model_for_job, get_string_setting};
 use rusqlite::Connection;
 use serde::Serialize;
+use std::collections::HashSet;
 
 /// Max concepts considered per tick across all workspaces. Keeps total LLM
 /// cost bounded even when many workspaces have backlog after first install.
@@ -40,12 +41,29 @@ struct Candidate {
     id: String,
     workspace_id: String,
     name: String,
+    hierarchy_level: String,
 }
 
 #[derive(Debug, Clone)]
 struct Peer {
     id: String,
     name: String,
+    hierarchy_level: String,
+}
+
+fn expected_parent_level(child_level: &str) -> Option<&'static str> {
+    match child_level {
+        "concept" => Some("section"),
+        "section" => Some("chapter"),
+        "chapter" => None,
+        _ => None,
+    }
+}
+
+fn is_valid_parent_pair(child_level: &str, parent_level: &str) -> bool {
+    expected_parent_level(child_level)
+        .map(|expected| expected == parent_level)
+        .unwrap_or(false)
 }
 
 /// Resolve the model to use for this job. Falls back to the topic-signature
@@ -69,7 +87,7 @@ fn resolve_model(conn: &Connection) -> Option<String> {
 /// added after the child can still get linked.
 fn collect_candidates(conn: &Connection) -> rusqlite::Result<Vec<Candidate>> {
     let mut stmt = conn.prepare(
-        "SELECT cn.id, cn.workspace_id, cn.name
+        "SELECT cn.id, cn.workspace_id, cn.name, cn.hierarchy_level
          FROM concept_nodes cn
          WHERE NOT EXISTS (
              SELECT 1 FROM concept_links cl
@@ -91,6 +109,7 @@ fn collect_candidates(conn: &Connection) -> rusqlite::Result<Vec<Candidate>> {
                 id: r.get(0)?,
                 workspace_id: r.get(1)?,
                 name: r.get(2)?,
+                hierarchy_level: r.get(3)?,
             })
         })?
         .filter_map(Result::ok)
@@ -102,7 +121,7 @@ fn collect_candidates(conn: &Connection) -> rusqlite::Result<Vec<Candidate>> {
 /// Capped at `MAX_PROMPT_PEERS` (by recency) to bound prompt size.
 fn load_peers(conn: &Connection, workspace_id: &str, exclude_id: &str) -> rusqlite::Result<Vec<Peer>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name FROM concept_nodes
+        "SELECT id, name, hierarchy_level FROM concept_nodes
          WHERE workspace_id = ?1 AND id != ?2
          ORDER BY created_at DESC
          LIMIT ?3",
@@ -114,6 +133,7 @@ fn load_peers(conn: &Connection, workspace_id: &str, exclude_id: &str) -> rusqli
                 Ok(Peer {
                     id: r.get(0)?,
                     name: r.get(1)?,
+                    hierarchy_level: r.get(2)?,
                 })
             },
         )?
@@ -183,14 +203,21 @@ fn match_peer_by_name(reply: &str, peers: &[Peer]) -> Option<Peer> {
 /// Build the user prompt for one candidate. Asks the model to pick a parent
 /// strictly from `peers` or reply `NONE`. The constraint is enforced
 /// post-hoc by `match_peer_by_name` — the prompt is just the soft cue.
-fn build_prompt(child: &str, peers: &[Peer]) -> String {
-    let names: Vec<&str> = peers.iter().map(|p| p.name.as_str()).collect();
-    let joined = names.join("\n - ");
+fn build_prompt(child: &str, child_level: &str, peers: &[Peer]) -> String {
+    let joined = peers
+        .iter()
+        .map(|p| format!("{} (level: {})", p.name, p.hierarchy_level))
+        .collect::<Vec<String>>()
+        .join("\n - ");
     format!(
-        "You are organising a knowledge map. Given the concept named \"{child}\", which of the following concepts (if any) is the most natural BROADER PARENT category for it?\n\n\
+        "You are organising a knowledge map. Given the node named \"{child}\" at hierarchy level \"{child_level}\", which of the following concepts (if any) is the most natural BROADER PARENT category for it?\n\n\
          Candidate parents:\n - {joined}\n\n\
          Rules:\n\
-         - Reply with EXACTLY one of the candidate names above, copied verbatim.\n\
+         - A concept's parent must be a section.\n\
+         - A section's parent must be a chapter.\n\
+         - A chapter's parent must be NONE.\n\
+         - If no peer satisfies the level rule, reply NONE.\n\
+         - Reply with EXACTLY one candidate NAME (without the level annotation).\n\
          - If none of them is a clearly broader category, reply with the single word NONE.\n\
          - Do not invent new names. Do not add explanation. Do not include quotes."
     )
@@ -201,6 +228,21 @@ fn build_prompt(child: &str, peers: &[Peer]) -> String {
 /// tick. The link insert uses `INSERT OR IGNORE` to be safe under the
 /// unique index added in migration v63.
 fn persist_link(conn: &Connection, child_id: &str, parent_id: &str) -> rusqlite::Result<bool> {
+    let child_level: String = conn.query_row(
+        "SELECT hierarchy_level FROM concept_nodes WHERE id = ?1",
+        rusqlite::params![child_id],
+        |r| r.get(0),
+    )?;
+    let parent_level: String = conn.query_row(
+        "SELECT hierarchy_level FROM concept_nodes WHERE id = ?1",
+        rusqlite::params![parent_id],
+        |r| r.get(0),
+    )?;
+
+    if !is_valid_parent_pair(&child_level, &parent_level) {
+        return Ok(false);
+    }
+
     let new_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let inserted = conn.execute(
@@ -220,6 +262,99 @@ fn stamp_checked(conn: &Connection, child_id: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
+fn ensure_node(
+    conn: &Connection,
+    workspace_id: &str,
+    name: &str,
+    hierarchy_level: &str,
+    concept_type: &str,
+    description: &str,
+) -> rusqlite::Result<String> {
+    if let Ok(id) = conn.query_row(
+        "SELECT id FROM concept_nodes
+         WHERE workspace_id = ?1 AND name = ?2 AND hierarchy_level = ?3
+         LIMIT 1",
+        rusqlite::params![workspace_id, name, hierarchy_level],
+        |r| r.get::<_, String>(0),
+    ) {
+        return Ok(id);
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO concept_nodes
+            (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level)
+         VALUES (?1, ?2, ?3, ?4, ?5, '[]', '[]', '[]', 0.0, 0.0, 0, ?6, ?6, ?7)",
+        rusqlite::params![
+            id,
+            workspace_id,
+            name,
+            description,
+            concept_type,
+            now,
+            hierarchy_level
+        ],
+    )?;
+    Ok(id)
+}
+
+fn ensure_part_of_link(conn: &Connection, child_id: &str, parent_id: &str, context: &str) -> rusqlite::Result<bool> {
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let inserted = conn.execute(
+        "INSERT OR IGNORE INTO concept_links
+            (id, source_id, target_id, link_type, strength, context, created_at)
+         VALUES (?1, ?2, ?3, 'part_of', 1.0, ?4, ?5)",
+        rusqlite::params![new_id, child_id, parent_id, context, now],
+    )?;
+    Ok(inserted > 0)
+}
+
+fn sweep_orphan_concepts(conn: &Connection, workspace_id: &str) -> rusqlite::Result<usize> {
+    let chapter_id = ensure_node(
+        conn,
+        workspace_id,
+        "Uncategorized",
+        "chapter",
+        "topic",
+        "Concepts that have not yet been organized into a chapter.",
+    )?;
+    let section_id = ensure_node(
+        conn,
+        workspace_id,
+        "Topics",
+        "section",
+        "topic",
+        "Auto-grouped uncategorized concepts.",
+    )?;
+
+    let _ = ensure_part_of_link(conn, &section_id, &chapter_id, "auto: hierarchy orphan sweep")?;
+
+    let mut stmt = conn.prepare(
+        "SELECT n.id
+         FROM concept_nodes n
+         WHERE n.workspace_id = ?1
+           AND n.hierarchy_level = 'concept'
+           AND NOT EXISTS (
+               SELECT 1 FROM concept_links l
+               WHERE l.source_id = n.id AND l.link_type = 'part_of'
+           )",
+    )?;
+    let orphan_ids: Vec<String> = stmt
+        .query_map(rusqlite::params![workspace_id], |r| r.get::<_, String>(0))?
+        .filter_map(Result::ok)
+        .collect();
+
+    let mut linked = 0usize;
+    for orphan_id in orphan_ids {
+        if ensure_part_of_link(conn, &orphan_id, &section_id, "auto: hierarchy orphan sweep")? {
+            linked += 1;
+        }
+    }
+    Ok(linked)
+}
+
 /// Background scheduler tick. Picks up to `MAX_CANDIDATES_PER_TICK`
 /// unparented concepts (across all workspaces) and asks the configured
 /// model for a parent for each. Resilient to LLM failures — a failed call
@@ -228,6 +363,7 @@ fn stamp_checked(conn: &Connection, child_id: &str) -> rusqlite::Result<()> {
 /// will retry it next time.
 pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<TickReport, String> {
     let mut report = TickReport::default();
+    let mut touched_workspaces: HashSet<String> = HashSet::new();
 
     let (candidates, model) = {
         let pool = state.0.clone();
@@ -254,6 +390,7 @@ pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<TickRep
 
     for cand in candidates {
         report.considered += 1;
+        touched_workspaces.insert(cand.workspace_id.clone());
 
         // Load peers (per workspace) on the blocking pool.
         let peers = {
@@ -280,7 +417,7 @@ pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<TickRep
             continue;
         }
 
-        let prompt = build_prompt(&cand.name, &peers);
+        let prompt = build_prompt(&cand.name, &cand.hierarchy_level, &peers);
         let msgs = vec![OllamaMessage {
             role: "user".to_string(),
             content: prompt,
@@ -335,6 +472,19 @@ pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<TickRep
             Ok(false) => report.skipped += 1,
             Err(_) => report.skipped += 1,
         }
+    }
+
+    if !touched_workspaces.is_empty() {
+        let pool = state.0.clone();
+        let workspaces: Vec<String> = touched_workspaces.into_iter().collect();
+        let _ = tokio::task::spawn_blocking(move || -> Result<(), String> {
+            let conn = pool.get().map_err(|e| e.to_string())?;
+            for ws in &workspaces {
+                let _ = sweep_orphan_concepts(&conn, ws);
+            }
+            Ok(())
+        })
+        .await;
     }
 
     Ok(report)

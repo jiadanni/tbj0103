@@ -997,13 +997,30 @@ fn auto_categorize_orphans(
         }
         for (ctype, ids) in by_type {
             let section_name = type_label(&ctype);
-            let sec_id_opt = upsert_node(
-                section_name,
-                &format!("Auto-grouped {section_name}."),
-                "topic",
-                "section",
-                name_to_id,
-            );
+            let sec_id_opt = conn
+                .query_row(
+                    "SELECT n.id
+                     FROM concept_nodes n
+                     JOIN concept_links l ON l.source_id = n.id
+                     WHERE n.workspace_id = ?1
+                       AND n.hierarchy_level = 'section'
+                       AND n.name = ?2
+                       AND l.link_type = 'part_of'
+                       AND l.target_id = ?3
+                     LIMIT 1",
+                    rusqlite::params![workspace_id, section_name, ch_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .ok()
+                .or_else(|| {
+                    upsert_node(
+                        section_name,
+                        &format!("Auto-grouped {section_name}."),
+                        "topic",
+                        "section",
+                        name_to_id,
+                    )
+                });
             if let Some(sec_id) = sec_id_opt {
                 if upsert_link(&sec_id, &ch_id, "part_of", 1.0, "auto_categorize") {
                     links_created += 1;
@@ -1221,9 +1238,11 @@ async fn analyze_workspace_chunked_impl(
         }
     }
 
-    // 9. Auto-categorize orphans
-    let orphan_links = auto_categorize_orphans(pool, &req.workspace_id, &mut name_to_id).unwrap_or(0);
-    agg.links_created += orphan_links;
+    // 9. Auto-categorize remaining concept orphans after the full LLM pass.
+    if !cancelled {
+        let orphan_links = auto_categorize_orphans(pool, &req.workspace_id, &mut name_to_id).unwrap_or(0);
+        agg.links_created += orphan_links;
+    }
 
     // 10. Finalize job
     {

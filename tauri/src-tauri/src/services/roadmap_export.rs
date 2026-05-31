@@ -9,6 +9,13 @@ use crate::models::knowledge_graph::{ConceptLink, ConceptNode};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
+fn is_valid_parent_pair(child_level: &str, parent_level: &str) -> bool {
+    matches!(
+        (child_level, parent_level),
+        ("concept", "section") | ("section", "chapter")
+    )
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RoadmapTreeNode {
     pub id: String,
@@ -31,12 +38,23 @@ pub struct RoadmapTree {
 ///
 /// Convention: a `part_of` link has `source_id = child`, `target_id = parent`.
 pub fn build_tree(nodes: Vec<ConceptNode>, links: Vec<ConceptLink>) -> RoadmapTree {
+    let levels: HashMap<String, String> = nodes
+        .iter()
+        .map(|n| (n.id.clone(), n.hierarchy_level.to_string()))
+        .collect();
+
     // child_id -> parent_id
     let mut parent_of: HashMap<String, String> = HashMap::new();
     let mut cross_links: Vec<ConceptLink> = Vec::new();
     for link in &links {
         if link.link_type.to_string() == "part_of" {
-            parent_of.insert(link.source_id.clone(), link.target_id.clone());
+            let child_level = levels.get(&link.source_id).map(|s| s.as_str());
+            let parent_level = levels.get(&link.target_id).map(|s| s.as_str());
+            if let (Some(child_level), Some(parent_level)) = (child_level, parent_level) {
+                if is_valid_parent_pair(child_level, parent_level) {
+                    parent_of.insert(link.source_id.clone(), link.target_id.clone());
+                }
+            }
         } else {
             cross_links.push(link.clone());
         }
