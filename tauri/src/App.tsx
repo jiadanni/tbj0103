@@ -221,21 +221,23 @@ export default function App() {
     async function boot() {
       try {
         setLoadingMessage("Loading workspace…");
-        const [workspaces, settings] = await Promise.all([
+        const [workspaces, core, ai, advanced] = await Promise.all([
           api.workspace.list(),
-          api.settings.get(),
+          api.settings.getCore(),
+          api.settings.getAi(),
+          api.settings.getAdvanced(),
         ]);
         if (cancelled) {return;}
 
         const bootStore = useSettingsStore.getState();
-        bootStore.setWebSessionPreserve(settings.web_session_preserve);
-        bootStore.setChatTitleAutoRefresh(settings.chat_title_auto_refresh);
-        bootStore.setChatTitleRefreshInterval(settings.chat_title_refresh_interval);
-        bootStore.setAboutYou(settings.about_you);
+        bootStore.setWebSessionPreserve(core.web_session_preserve);
+        bootStore.setChatTitleAutoRefresh(core.chat_title_auto_refresh);
+        bootStore.setChatTitleRefreshInterval(core.chat_title_refresh_interval);
+        bootStore.setAboutYou(core.about_you ?? "");
 
         // Auto-activate demo on first start (no workspaces + not previously dismissed)
         let finalWorkspaces = workspaces;
-        if (workspaces.length === 0 && !settings.demo_dismissed) {
+        if (workspaces.length === 0 && !core.demo_dismissed) {
           setLoadingMessage("Preparing demo workspace…");
           const demoWorkspaceId = await api.demo.activate();
           useWorkspaceStore.getState().setDemo(true, demoWorkspaceId);
@@ -252,14 +254,14 @@ export default function App() {
 
         setWorkspaces(finalWorkspaces);
 
-        if (settings.auto_start_ollama) {
+        if (ai.auto_start_ollama) {
           setLoadingMessage("Starting local Ollama…");
-          await api.ollama.ensureRunning(settings.ollama_base_url || undefined).catch(() => null);
+          await api.ollama.ensureRunning(ai.ollama_base_url || undefined).catch(() => null);
           if (cancelled) {return;}
         }
 
         // Auto-authenticate if neither lock method is active
-        if (!settings.touch_id_enabled && !settings.pin_lock_enabled) {
+        if (!advanced.touch_id_enabled && !advanced.pin_lock_enabled) {
           await api.security.unlockApp();
           setIsAuthenticated(true);
         }
@@ -298,38 +300,42 @@ export default function App() {
   useEffect(() => {
     const unlisten = listen("settings-changed", async () => {
       try {
-        const settings = await api.settings.get();
+        const [core, ai, advanced] = await Promise.all([
+          api.settings.getCore(),
+          api.settings.getAi(),
+          api.settings.getAdvanced(),
+        ]);
         const store = useSettingsStore.getState();
-        store.setTheme(normalizeTheme(settings.theme));
-        store.setAccentColor(settings.accent_color);
-        store.setFontSize(settings.font_size);
-        store.setPreferredModel(settings.preferred_model);
-        store.setBackgroundModel(settings.background_model);
-        store.setQuickSearchWorkspaceScope(settings.quick_search_workspace_scope);
-        store.setQuickSearchTypeFilters(settings.quick_search_type_filters);
-        store.setOllamaUrl(settings.ollama_base_url);
-        store.setMlxUrl(settings.mlx_base_url);
-        store.setLlamacppModelPaths(settings.llamacpp_model_paths);
-        store.setDualModelEnabled(settings.dual_model_enabled);
-        store.setDraftModel(settings.draft_model);
-        store.setDualModelExecutionMode(settings.dual_model_execution_mode as "serial" | "parallel");
-        store.setCompareModelA(settings.compare_model_a);
-        store.setCompareModelB(settings.compare_model_b);
-        store.setImmediateDelete(settings.immediate_delete);
-        store.setConfirmMoveToTrash(settings.confirm_move_to_trash);
-        store.setPromptInstructions(settings.prompt_instructions);
-        store.setSwitchWorkspaceSection(settings.switch_workspace_section);
-        store.setHideNativeMenu(settings.hide_native_menu);
-        store.setShowGenInfo(settings.show_gen_info);
-        store.setShowGenInfoTokenCount(settings.show_gen_info_token_count);
-        store.setShowGenInfoDuration(settings.show_gen_info_duration);
-        store.setShowGenInfoSpeed(settings.show_gen_info_speed);
-        store.setShowGenInfoModel(settings.show_gen_info_model);
-        store.setQuickSearchShortcut(settings.quick_search_shortcut);
-        store.setWebSessionPreserve(settings.web_session_preserve);
-        store.setChatTitleAutoRefresh(settings.chat_title_auto_refresh);
-        store.setChatTitleRefreshInterval(settings.chat_title_refresh_interval);
-        store.setAboutYou(settings.about_you);
+        store.setTheme(normalizeTheme(core.theme));
+        store.setAccentColor(core.accent_color);
+        store.setFontSize(core.font_size);
+        store.setPreferredModel(ai.preferred_model);
+        store.setBackgroundModel(ai.background_model);
+        store.setQuickSearchWorkspaceScope(advanced.quick_search_workspace_scope);
+        store.setQuickSearchTypeFilters(advanced.quick_search_type_filters);
+        store.setOllamaUrl(ai.ollama_base_url);
+        store.setMlxUrl(ai.mlx_base_url);
+        store.setLlamacppModelPaths(ai.llamacpp_model_paths);
+        store.setDualModelEnabled(ai.dual_model_enabled);
+        store.setDraftModel(ai.draft_model);
+        store.setDualModelExecutionMode(ai.dual_model_execution_mode as "serial" | "parallel");
+        store.setCompareModelA(ai.compare_model_a);
+        store.setCompareModelB(ai.compare_model_b);
+        store.setImmediateDelete(advanced.immediate_delete);
+        store.setConfirmMoveToTrash(advanced.confirm_move_to_trash);
+        store.setPromptInstructions(core.prompt_instructions);
+        store.setSwitchWorkspaceSection(core.switch_workspace_section);
+        store.setHideNativeMenu(core.hide_native_menu);
+        store.setShowGenInfo(ai.show_gen_info);
+        store.setShowGenInfoTokenCount(ai.show_gen_info_token_count);
+        store.setShowGenInfoDuration(ai.show_gen_info_duration);
+        store.setShowGenInfoSpeed(ai.show_gen_info_speed);
+        store.setShowGenInfoModel(ai.show_gen_info_model);
+        store.setQuickSearchShortcut(advanced.quick_search_shortcut);
+        store.setWebSessionPreserve(core.web_session_preserve);
+        store.setChatTitleAutoRefresh(core.chat_title_auto_refresh);
+        store.setChatTitleRefreshInterval(core.chat_title_refresh_interval);
+        store.setAboutYou(core.about_you ?? "");
       } catch (err) {
         console.error("Failed to re-fetch settings after change:", err);
       }

@@ -4,8 +4,9 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import QuickSearchWindow from "@/quick-search/QuickSearchWindow";
 
 const mocks = vi.hoisted(() => ({
-  getSettings: vi.fn(),
-  updateSettings: vi.fn(),
+  getCoreSettings: vi.fn(),
+  getAdvancedSettings: vi.fn(),
+  updateOneSetting: vi.fn(),
   listWorkspaces: vi.fn(),
   query: vi.fn(),
   hide: vi.fn(),
@@ -15,8 +16,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/api", () => ({
   api: {
     settings: {
-      get: mocks.getSettings,
-      update: mocks.updateSettings,
+      getCore: mocks.getCoreSettings,
+      getAdvanced: mocks.getAdvancedSettings,
+      updateOne: mocks.updateOneSetting,
     },
     workspace: {
       list: mocks.listWorkspaces,
@@ -34,16 +36,19 @@ describe("QuickSearchWindow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    const settings = {
+    const coreSettings = {
       theme: "system",
       accent_color: "#007AFF",
       font_size: 16,
+    };
+    const advancedSettings = {
       quick_search_workspace_scope: "__all__",
       quick_search_type_filters: ["conversation", "message", "artifact", "memory", "summary"],
     };
-    mocks.getSettings.mockImplementation(async () => settings);
-    mocks.updateSettings.mockImplementation(async (nextSettings) => {
-      Object.assign(settings, nextSettings);
+    mocks.getCoreSettings.mockImplementation(async () => coreSettings);
+    mocks.getAdvancedSettings.mockImplementation(async () => advancedSettings);
+    mocks.updateOneSetting.mockImplementation(async (key: string, value: unknown) => {
+      (advancedSettings as Record<string, unknown>)[key] = value;
     });
     mocks.listWorkspaces.mockResolvedValue([
       {
@@ -112,9 +117,10 @@ describe("QuickSearchWindow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Engineering" }));
 
     await waitFor(() => {
-      expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
-        quick_search_workspace_scope: "ws-2",
-      }));
+      expect(mocks.updateOneSetting).toHaveBeenCalledWith(
+        "quick_search_workspace_scope",
+        "ws-2",
+      );
       expect(mocks.query).toHaveBeenLastCalledWith("", {
         limit: 10,
         workspaceId: "ws-2",
@@ -125,9 +131,10 @@ describe("QuickSearchWindow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Summaries" }));
     await waitFor(() => {
-      expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
-        quick_search_type_filters: ["conversation", "message", "artifact", "memory"],
-      }));
+      expect(mocks.updateOneSetting).toHaveBeenCalledWith(
+        "quick_search_type_filters",
+        ["conversation", "message", "artifact", "memory"],
+      );
       expect(mocks.query).toHaveBeenLastCalledWith("", {
         limit: 10,
         workspaceId: "ws-2",

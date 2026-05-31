@@ -629,6 +629,9 @@ pub fn run() {
             commands::backup::restore_global_backup,
             // Settings commands
             commands::settings::get_settings,
+            commands::settings::get_core_settings,
+            commands::settings::get_ai_settings,
+            commands::settings::get_advanced_settings,
             commands::settings::update_settings,
             commands::settings::update_setting,
             commands::settings::reload_tray_icon,

@@ -1033,3 +1033,404 @@ pub fn reload_tray_icon(app: AppHandle) -> Result<(), String> {
     // Rebuild the tray icon with the new style
     crate::build_tray_icon(&app)
 }
+
+// ---------------------------------------------------------------------------
+// Split settings commands
+// ---------------------------------------------------------------------------
+//
+// `get_settings` returns the full 70-field `Settings` struct in a single IPC
+// response. Serializing that fat blob on the Tauri dispatcher thread is what
+// produced the multi-second wedge measured during boot — the SQLite reader
+// returned in ~140ms but the response did not surface to the frontend for
+// 24-32s.
+//
+// The three commands below return narrow slices of the same underlying
+// settings table so callers can fetch only the rows they need. Each response
+// is small enough to serialize on the dispatcher thread without stalling
+// other IPC traffic. `get_settings` and `update_settings` are intentionally
+// left in place — a follow-up commit will remove them once all callers have
+// migrated.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoreSettings {
+    pub theme: String,
+    pub accent_color: String,
+    pub font_size: i64,
+    pub sidebar_width: i64,
+    pub menubar_icon_style: String,
+    pub hide_native_menu: bool,
+    pub switch_workspace_section: String,
+    pub user_chat_label: String,
+    pub assistant_chat_label: String,
+    pub demo_dismissed: bool,
+    pub web_session_preserve: bool,
+    pub chat_title_auto_refresh: String,
+    pub chat_title_refresh_interval: i64,
+    pub about_you: String,
+    pub inject_about_you_into_chat: bool,
+    pub prompt_instructions: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiSettings {
+    pub preferred_model: String,
+    pub background_model: String,
+    pub summarization_model: String,
+    pub memory_extraction_model: String,
+    pub flashcard_model: String,
+    pub glossary_model: String,
+    pub topic_signature_model: String,
+    pub goal_suggestion_model: String,
+    pub embedding_model: String,
+    pub draft_model: String,
+    pub compare_model_a: String,
+    pub compare_model_b: String,
+    pub ollama_base_url: String,
+    pub auto_start_ollama: bool,
+    pub mlx_base_url: String,
+    pub llamacpp_model_paths: Vec<String>,
+    pub dual_model_enabled: bool,
+    pub dual_model_execution_mode: String,
+    pub chat_json_storage: bool,
+    pub chat_encryption_enabled: bool,
+    pub show_gen_info: bool,
+    pub show_gen_info_token_count: bool,
+    pub show_gen_info_duration: bool,
+    pub show_gen_info_speed: bool,
+    pub show_gen_info_model: bool,
+    pub background_inference_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdvancedSettings {
+    pub quick_search_models: Vec<String>,
+    pub quick_search_shortcut: String,
+    pub quick_search_workspace_scope: String,
+    pub quick_search_type_filters: Vec<String>,
+    pub backup_enabled: bool,
+    pub touch_id_enabled: bool,
+    pub pin_lock_enabled: bool,
+    pub auto_lock_minutes: i64,
+    pub start_at_login: bool,
+    pub open_in_background: bool,
+    pub keep_running_in_tray: bool,
+    pub immediate_delete: bool,
+    pub confirm_move_to_trash: bool,
+    pub memory_enabled: bool,
+    pub memory_extraction_threshold: u32,
+    pub memory_extraction_idle_minutes: u32,
+    pub topic_analysis_interval_minutes: u32,
+    pub summarization_min_messages: u32,
+    pub summarization_max_sessions: u32,
+    pub hover_definition_scan_enabled: bool,
+    pub hover_definition_scan_max_sessions: u32,
+    pub workspace_glossary_refresh_interval_minutes: u32,
+    pub git_sync_interval_minutes: u32,
+    pub vram_headroom_gb: f64,
+    pub vram_headroom_percent: u32,
+    pub ram_headroom_gb: f64,
+    pub ram_headroom_percent: u32,
+}
+
+#[tauri::command]
+pub async fn get_core_settings(state: State<'_, DbState>) -> Result<CoreSettings, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<CoreSettings, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let map = load_all_settings(&conn)?;
+        let def = Settings::default();
+        let lookup = |key: &str| map.get(key).cloned();
+
+        let stored_theme = lookup("theme")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or_else(|| def.theme.clone());
+        let normalized_theme = normalize_theme(&stored_theme).to_string();
+        if normalized_theme != stored_theme {
+            let serialized_theme =
+                serde_json::to_string(&normalized_theme).map_err(|e| e.to_string())?;
+            set_setting(&conn, "theme", &serialized_theme)?;
+        }
+
+        let switch_workspace_section = lookup("switch_workspace_section").unwrap_or_else(|| {
+            lookup("switch_workspace_to_chat")
+                .map(|v| if v == "true" { "/chat".to_string() } else { String::new() })
+                .unwrap_or(def.switch_workspace_section.clone())
+        });
+
+        Ok(CoreSettings {
+            theme: normalized_theme,
+            accent_color: lookup("accent_color")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.accent_color),
+            font_size: lookup("font_size")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.font_size),
+            sidebar_width: lookup("sidebar_width")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.sidebar_width),
+            menubar_icon_style: lookup("menubar_icon_style")
+                .unwrap_or_else(|| def.menubar_icon_style.clone()),
+            hide_native_menu: lookup("hide_native_menu")
+                .map(|v| v == "true")
+                .unwrap_or(def.hide_native_menu),
+            switch_workspace_section,
+            user_chat_label: lookup("user_chat_label")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.user_chat_label),
+            assistant_chat_label: lookup("assistant_chat_label")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.assistant_chat_label),
+            demo_dismissed: lookup("demo_dismissed")
+                .map(|v| v == "true")
+                .unwrap_or(def.demo_dismissed),
+            web_session_preserve: lookup("web_session_preserve")
+                .map(|v| v == "true")
+                .unwrap_or(def.web_session_preserve),
+            chat_title_auto_refresh: lookup("chat_title_auto_refresh")
+                .unwrap_or(def.chat_title_auto_refresh),
+            chat_title_refresh_interval: lookup("chat_title_refresh_interval")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.chat_title_refresh_interval),
+            about_you: lookup("about_you")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.about_you),
+            inject_about_you_into_chat: lookup("inject_about_you_into_chat")
+                .map(|v| v == "true")
+                .unwrap_or(def.inject_about_you_into_chat),
+            prompt_instructions: lookup("prompt_instructions")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.prompt_instructions),
+        })
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn get_ai_settings(state: State<'_, DbState>) -> Result<AiSettings, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<AiSettings, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let map = load_all_settings(&conn)?;
+        let def = Settings::default();
+        let lookup = |key: &str| map.get(key).cloned();
+
+        Ok(AiSettings {
+            preferred_model: lookup("preferred_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.preferred_model),
+            background_model: lookup("background_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.background_model),
+            summarization_model: lookup("summarization_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.summarization_model),
+            memory_extraction_model: lookup("memory_extraction_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.memory_extraction_model),
+            flashcard_model: lookup("flashcard_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.flashcard_model),
+            glossary_model: lookup("glossary_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.glossary_model),
+            topic_signature_model: lookup("topic_signature_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.topic_signature_model),
+            goal_suggestion_model: lookup("goal_suggestion_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.goal_suggestion_model),
+            embedding_model: lookup("embedding_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.embedding_model),
+            draft_model: lookup("draft_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.draft_model),
+            compare_model_a: lookup("compare_model_a")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.compare_model_a),
+            compare_model_b: lookup("compare_model_b")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.compare_model_b),
+            ollama_base_url: lookup("ollama_base_url")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.ollama_base_url),
+            auto_start_ollama: lookup("auto_start_ollama")
+                .map(|v| v == "true")
+                .unwrap_or(def.auto_start_ollama),
+            mlx_base_url: lookup("mlx_base_url")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.mlx_base_url),
+            llamacpp_model_paths: lookup("llamacpp_model_paths")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.llamacpp_model_paths),
+            dual_model_enabled: lookup("dual_model_enabled")
+                .map(|v| v == "true")
+                .unwrap_or(def.dual_model_enabled),
+            dual_model_execution_mode: lookup("dual_model_execution_mode")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.dual_model_execution_mode),
+            chat_json_storage: lookup("chat_json_storage")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.chat_json_storage),
+            chat_encryption_enabled: lookup("chat_encryption_enabled")
+                .map(|v| v == "true")
+                .unwrap_or(def.chat_encryption_enabled),
+            show_gen_info: lookup("show_gen_info")
+                .map(|v| v == "true")
+                .unwrap_or(def.show_gen_info),
+            show_gen_info_token_count: lookup("show_gen_info_token_count")
+                .map(|v| v == "true")
+                .unwrap_or(def.show_gen_info_token_count),
+            show_gen_info_duration: lookup("show_gen_info_duration")
+                .map(|v| v == "true")
+                .unwrap_or(def.show_gen_info_duration),
+            show_gen_info_speed: lookup("show_gen_info_speed")
+                .map(|v| v == "true")
+                .unwrap_or(def.show_gen_info_speed),
+            show_gen_info_model: lookup("show_gen_info_model")
+                .map(|v| v == "true")
+                .unwrap_or(def.show_gen_info_model),
+            background_inference_enabled: lookup("background_inference_enabled")
+                .map(|v| v == "true")
+                .unwrap_or(def.background_inference_enabled),
+        })
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn get_advanced_settings(
+    app: AppHandle,
+    state: State<'_, DbState>,
+) -> Result<AdvancedSettings, String> {
+    // Same pattern as `get_settings`: query autolaunch on the caller's thread
+    // because the autostart manager is not Send on every platform.
+    let stored_start_at_login_default = Settings::default().start_at_login;
+    let autostart_check = app.autolaunch().is_enabled();
+
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<AdvancedSettings, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let map = load_all_settings(&conn)?;
+        let def = Settings::default();
+        let lookup = |key: &str| map.get(key).cloned();
+
+        let stored_start_at_login = lookup("start_at_login")
+            .map(|v| v == "true")
+            .unwrap_or(stored_start_at_login_default);
+        let start_at_login = match autostart_check {
+            Ok(value) => value,
+            Err(err) => {
+                let error = err.to_string();
+                if is_windows_missing_autostart_target(&error) {
+                    crate::logging::log_warn(
+                        "settings",
+                        format!(
+                            "Falling back to stored start_at_login value after autostart query failed: {error}"
+                        ),
+                    );
+                    stored_start_at_login
+                } else {
+                    return Err(error);
+                }
+            }
+        };
+
+        let pin_configured = lookup("pin_passcode_hash")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
+        let pin_lock_enabled = lookup("pin_lock_enabled")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.pin_lock_enabled)
+            && pin_configured;
+        let biometric_available = biometric_available();
+
+        Ok(AdvancedSettings {
+            quick_search_models: lookup("quick_search_models")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.quick_search_models),
+            quick_search_shortcut: lookup("quick_search_shortcut")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.quick_search_shortcut),
+            quick_search_workspace_scope: lookup("quick_search_workspace_scope")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.quick_search_workspace_scope),
+            quick_search_type_filters: lookup("quick_search_type_filters")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.quick_search_type_filters),
+            backup_enabled: lookup("backup_enabled")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.backup_enabled),
+            touch_id_enabled: lookup("touch_id_enabled")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.touch_id_enabled)
+                && biometric_available
+                && pin_lock_enabled,
+            pin_lock_enabled,
+            auto_lock_minutes: lookup("auto_lock_minutes")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.auto_lock_minutes),
+            start_at_login,
+            open_in_background: lookup("open_in_background")
+                .map(|v| v == "true")
+                .unwrap_or(def.open_in_background),
+            keep_running_in_tray: lookup("keep_running_in_tray")
+                .map(|v| v == "true")
+                .unwrap_or(def.keep_running_in_tray),
+            immediate_delete: lookup("immediate_delete")
+                .map(|v| v == "true")
+                .unwrap_or(def.immediate_delete),
+            confirm_move_to_trash: lookup("confirm_move_to_trash")
+                .map(|v| v == "true")
+                .unwrap_or(def.confirm_move_to_trash),
+            memory_enabled: lookup("memory_enabled")
+                .map(|v| v == "true")
+                .unwrap_or(def.memory_enabled),
+            memory_extraction_threshold: lookup("memory_extraction_threshold")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.memory_extraction_threshold),
+            memory_extraction_idle_minutes: lookup("memory_extraction_idle_minutes")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.memory_extraction_idle_minutes),
+            topic_analysis_interval_minutes: lookup("topic_analysis_interval_minutes")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.topic_analysis_interval_minutes),
+            summarization_min_messages: lookup("summarization_min_messages")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.summarization_min_messages),
+            summarization_max_sessions: lookup("summarization_max_sessions")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.summarization_max_sessions),
+            hover_definition_scan_enabled: lookup("hover_definition_scan_enabled")
+                .map(|v| v == "true")
+                .unwrap_or(def.hover_definition_scan_enabled),
+            hover_definition_scan_max_sessions: lookup("hover_definition_scan_max_sessions")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.hover_definition_scan_max_sessions),
+            workspace_glossary_refresh_interval_minutes: lookup(
+                "workspace_glossary_refresh_interval_minutes",
+            )
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.workspace_glossary_refresh_interval_minutes),
+            git_sync_interval_minutes: lookup("git_sync_interval_minutes")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.git_sync_interval_minutes),
+            vram_headroom_gb: lookup("vram_headroom_gb")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.vram_headroom_gb),
+            vram_headroom_percent: lookup("vram_headroom_percent")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.vram_headroom_percent),
+            ram_headroom_gb: lookup("ram_headroom_gb")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.ram_headroom_gb),
+            ram_headroom_percent: lookup("ram_headroom_percent")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.ram_headroom_percent),
+        })
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}

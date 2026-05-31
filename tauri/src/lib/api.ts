@@ -538,6 +538,90 @@ export interface AppSettings {
   ram_headroom_percent: number;
 }
 
+// Narrow slices of AppSettings returned by the split `get_core_settings`,
+// `get_ai_settings`, and `get_advanced_settings` commands. Each mirrors the
+// corresponding Rust struct exactly. The fat `get_settings`/AppSettings pair
+// stays for now; callers should migrate to these slices to shrink the
+// per-fetch IPC payload.
+
+export interface CoreSettings {
+  theme: string;
+  accent_color: string;
+  font_size: number;
+  sidebar_width: number;
+  menubar_icon_style: "monochrome" | "white" | "black";
+  hide_native_menu: boolean;
+  switch_workspace_section: string;
+  user_chat_label: string;
+  assistant_chat_label: string;
+  demo_dismissed: boolean;
+  web_session_preserve: boolean;
+  chat_title_auto_refresh: "disabled" | "initial_only" | "periodic";
+  chat_title_refresh_interval: number;
+  about_you: string;
+  inject_about_you_into_chat: boolean;
+  prompt_instructions: string;
+}
+
+export interface AiSettings {
+  preferred_model: string;
+  background_model: string;
+  summarization_model: string;
+  memory_extraction_model: string;
+  flashcard_model: string;
+  glossary_model: string;
+  topic_signature_model: string;
+  goal_suggestion_model: string;
+  embedding_model: string;
+  draft_model: string;
+  compare_model_a: string;
+  compare_model_b: string;
+  ollama_base_url: string;
+  auto_start_ollama: boolean;
+  mlx_base_url: string;
+  llamacpp_model_paths: string[];
+  dual_model_enabled: boolean;
+  dual_model_execution_mode: "serial" | "parallel";
+  chat_json_storage: boolean;
+  chat_encryption_enabled: boolean;
+  show_gen_info: boolean;
+  show_gen_info_token_count: boolean;
+  show_gen_info_duration: boolean;
+  show_gen_info_speed: boolean;
+  show_gen_info_model: boolean;
+  background_inference_enabled: boolean;
+}
+
+export interface AdvancedSettings {
+  quick_search_models: string[];
+  quick_search_shortcut: string;
+  quick_search_workspace_scope: string;
+  quick_search_type_filters: string[];
+  backup_enabled: boolean;
+  touch_id_enabled: boolean;
+  pin_lock_enabled: boolean;
+  auto_lock_minutes: number;
+  start_at_login: boolean;
+  open_in_background: boolean;
+  keep_running_in_tray: boolean;
+  immediate_delete: boolean;
+  confirm_move_to_trash: boolean;
+  memory_enabled: boolean;
+  memory_extraction_threshold: number;
+  memory_extraction_idle_minutes: number;
+  topic_analysis_interval_minutes: number;
+  summarization_min_messages: number;
+  summarization_max_sessions: number;
+  hover_definition_scan_enabled: boolean;
+  hover_definition_scan_max_sessions: number;
+  workspace_glossary_refresh_interval_minutes: number;
+  git_sync_interval_minutes: number;
+  vram_headroom_gb: number;
+  vram_headroom_percent: number;
+  ram_headroom_gb: number;
+  ram_headroom_percent: number;
+}
+
 export interface GitSyncStatus {
   enabled: boolean;
   remote_url: string;
@@ -1567,6 +1651,9 @@ export const api = {
 
   settings: {
     get: () => invoke<AppSettings>("get_settings"),
+    getCore: () => invoke<CoreSettings>("get_core_settings"),
+    getAi: () => invoke<AiSettings>("get_ai_settings"),
+    getAdvanced: () => invoke<AdvancedSettings>("get_advanced_settings"),
     update: (settings: AppSettings) => invoke<void>("update_settings", { settings }),
     updateOne: (key: string, value: unknown) => invoke<void>("update_setting", { key, value }),
     reloadTrayIcon: () => invoke<void>("reload_tray_icon"),
