@@ -49,6 +49,57 @@ if (isLinux) {
   document.documentElement.dataset.platform = "linux";
 }
 
+// Pre-React boot overlay: injected synchronously so the user sees *something*
+// even if React or the webview bundle is slow to come up. Removed in an
+// effect inside App once the first React commit lands. Uses inline styles so
+// it does not depend on Tailwind, theme variables, or any other CSS being
+// applied yet — anything to avoid the bare-white screen.
+function mountBootOverlay() {
+  if (typeof document === "undefined") { return; }
+  if (document.getElementById("aetherium-boot-overlay")) { return; }
+  const overlay = document.createElement("div");
+  overlay.id = "aetherium-boot-overlay";
+  overlay.setAttribute("role", "status");
+  overlay.setAttribute("aria-live", "polite");
+  overlay.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "z-index:2147483647",
+    "display:flex",
+    "flex-direction:column",
+    "align-items:center",
+    "justify-content:center",
+    "gap:14px",
+    "background:#0e0e0e",
+    "color:#f4f4f5",
+    "font:14px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',sans-serif",
+    "transition:opacity 120ms ease-out",
+  ].join(";");
+  const spinner = document.createElement("div");
+  spinner.setAttribute("aria-hidden", "true");
+  spinner.style.cssText = [
+    "width:24px",
+    "height:24px",
+    "border:2px solid rgba(255,255,255,0.18)",
+    "border-top-color:rgba(255,255,255,0.85)",
+    "border-radius:50%",
+    "animation:aetherium-boot-spin 0.8s linear infinite",
+  ].join(";");
+  const label = document.createElement("div");
+  label.id = "aetherium-boot-overlay-label";
+  label.textContent = "Loading…";
+  label.style.cssText = "opacity:0.7;letter-spacing:0.01em";
+  const keyframes = document.createElement("style");
+  keyframes.textContent =
+    "@keyframes aetherium-boot-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}";
+  overlay.appendChild(keyframes);
+  overlay.appendChild(spinner);
+  overlay.appendChild(label);
+  document.body.appendChild(overlay);
+}
+
+mountBootOverlay();
+
 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
