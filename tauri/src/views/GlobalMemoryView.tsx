@@ -153,92 +153,6 @@ export default function GlobalMemoryView() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="app-container space-y-6 py-6">
-          {/* Summary Section */}
-          <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">Summary</h3>
-              <div className="flex items-center gap-2">
-                {summary && (
-                  <span className="text-[11px] text-[var(--text-muted)]">
-                    {summary.is_auto_generated ? "Auto-generated" : "Manually edited"} {formatTimestamp(summary.edited_at ?? summary.generated_at)}
-                  </span>
-                )}
-                <Tooltip content="Regenerate summary from facts" position="top">
-                  <button
-                    onClick={regenerateSummary}
-                    disabled={regenerating || memories.length === 0}
-                    className="rounded-lg p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-40"
-                  >
-                    <RefreshCw size={14} className={regenerating ? "animate-spin" : ""} />
-                  </button>
-                </Tooltip>
-              </div>
-            </div>
-            {summaryEditing ? (
-              <div className="space-y-2">
-                <textarea
-                  value={summaryDraft}
-                  onChange={(e) => setSummaryDraft(e.target.value)}
-                  rows={4}
-                  className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => { setSummaryEditing(false); setSummaryDraft(summary?.content ?? ""); }}
-                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={saveSummary}
-                    disabled={summarySubmitting}
-                    className="rounded-lg bg-[var(--accent-color)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-                  >
-                    {summarySubmitting ? "Saving..." : "Save"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <HoverDefinitionSurface
-                workspaceId={activeWorkspaceId}
-                as="p"
-                onClick={() => setSummaryEditing(true)}
-                className="cursor-pointer whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-              >
-                {summary?.content || "No summary yet. Add some facts and click regenerate, or click here to write one."}
-              </HoverDefinitionSurface>
-            )}
-          </div>
-
-          {/* Add Memory */}
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-            <textarea
-              value={newContent}
-              onChange={(e) => setNewContent(e.target.value)}
-              placeholder="Add something worth remembering across all workspaces..."
-              rows={3}
-              className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] lg:flex-1"
-            />
-            <CompactMenuSelect
-              label="Type"
-              value={newType}
-              options={MEMORY_TYPES.map((type) => ({
-                value: type,
-                label: type[0].toUpperCase() + type.slice(1),
-              }))}
-              onChange={(val) => setNewType(val as Memory["memory_type"])}
-              widthClassName="lg:w-[180px]"
-            />
-            <button
-              onClick={createMemory}
-              disabled={submitting || !newContent.trim()}
-              className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40 lg:w-[180px]"
-            >
-              <Plus size={14} />
-              {submitting ? "Saving..." : "Add memory"}
-            </button>
-          </div>
-
           {/* Bulk actions */}
           {memories.length > 0 && (
             <div className="flex gap-2">
@@ -260,27 +174,127 @@ export default function GlobalMemoryView() {
             </div>
           )}
 
-          {/* Facts Section */}
-          <MemorySection
-            title="Facts"
-            icon={<Brain size={14} />}
-            items={facts}
-            workspaceId={activeWorkspaceId}
-            emptyMessage="No facts yet. Facts are objective information about you."
-            onUpdate={updateMemory}
-            onDelete={deleteMemory}
-          />
+          {/* Grid Layout for Ultrawide */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            {/* Left Column: Add Memory & Facts */}
+            <div className="space-y-6">
+              {/* Add Memory Card */}
+              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5 space-y-4">
+                <h3 className="text-sm font-semibold text-[var(--text-primary)]">Add New Memory</h3>
+                <div className="flex flex-col gap-3">
+                  <textarea
+                    value={newContent}
+                    onChange={(e) => setNewContent(e.target.value)}
+                    placeholder="Add something worth remembering across all workspaces..."
+                    rows={3}
+                    className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                  />
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <CompactMenuSelect
+                      label="Type"
+                      value={newType}
+                      options={MEMORY_TYPES.map((type) => ({
+                        value: type,
+                        label: type[0].toUpperCase() + type.slice(1),
+                      }))}
+                      onChange={(val) => setNewType(val as Memory["memory_type"])}
+                      widthClassName="w-full sm:flex-1"
+                    />
+                    <button
+                      onClick={createMemory}
+                      disabled={submitting || !newContent.trim()}
+                      className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40 w-full sm:w-[150px] shrink-0"
+                    >
+                      <Plus size={14} />
+                      {submitting ? "Saving..." : "Add memory"}
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-          {/* Preferences Section */}
-          <MemorySection
-            title="Preferences"
-            icon={<Globe size={14} />}
-            items={preferences}
-            workspaceId={activeWorkspaceId}
-            emptyMessage="No preferences yet. Preferences describe how you want to be communicated with."
-            onUpdate={updateMemory}
-            onDelete={deleteMemory}
-          />
+              {/* Facts Section */}
+              <MemorySection
+                title="Facts"
+                icon={<Brain size={14} />}
+                items={facts}
+                workspaceId={activeWorkspaceId}
+                emptyMessage="No facts yet. Facts are objective information about you."
+                onUpdate={updateMemory}
+                onDelete={deleteMemory}
+              />
+            </div>
+
+            {/* Right Column: Summary & Preferences */}
+            <div className="space-y-6">
+              {/* Summary Section */}
+              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Summary</h3>
+                  <div className="flex items-center gap-2">
+                    {summary && (
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        {summary.is_auto_generated ? "Auto-generated" : "Manually edited"} {formatTimestamp(summary.edited_at ?? summary.generated_at)}
+                      </span>
+                    )}
+                    <Tooltip content="Regenerate summary from facts" position="top">
+                      <button
+                        onClick={regenerateSummary}
+                        disabled={regenerating || memories.length === 0}
+                        className="rounded-lg p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-40"
+                      >
+                        <RefreshCw size={14} className={regenerating ? "animate-spin" : ""} />
+                      </button>
+                    </Tooltip>
+                  </div>
+                </div>
+                {summaryEditing ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={summaryDraft}
+                      onChange={(e) => setSummaryDraft(e.target.value)}
+                      rows={4}
+                      className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => { setSummaryEditing(false); setSummaryDraft(summary?.content ?? ""); }}
+                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={saveSummary}
+                        disabled={summarySubmitting}
+                        className="rounded-lg bg-[var(--accent-color)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                      >
+                        {summarySubmitting ? "Saving..." : "Save"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <HoverDefinitionSurface
+                    workspaceId={activeWorkspaceId}
+                    as="p"
+                    onClick={() => setSummaryEditing(true)}
+                    className="cursor-pointer whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+                  >
+                    {summary?.content || "No summary yet. Add some facts and click regenerate, or click here to write one."}
+                  </HoverDefinitionSurface>
+                )}
+              </div>
+
+              {/* Preferences Section */}
+              <MemorySection
+                title="Preferences"
+                icon={<Globe size={14} />}
+                items={preferences}
+                workspaceId={activeWorkspaceId}
+                emptyMessage="No preferences yet. Preferences describe how you want to be communicated with."
+                onUpdate={updateMemory}
+                onDelete={deleteMemory}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
