@@ -190,7 +190,7 @@ pub fn log_frontend_events_batch(
             };
             let metadata = e.metadata.clone().unwrap_or_else(|| "{}".to_string());
             let ts = chrono::Local::now()
-                .format("%Y-%m-%dT%H:%M:%S%.3f%:z")
+                .format("%Y-%m-%dT%H:%M:%S")
                 .to_string();
             (ts, level, e.source.clone(), e.message.clone(), metadata)
         })

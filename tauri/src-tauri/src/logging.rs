@@ -8,7 +8,10 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 
 fn timestamp() -> String {
-    Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%:z").to_string()
+    // Local time, second precision, no timezone offset. Sub-second timestamps
+    // and the +HH:MM suffix were noise on every log line; for sub-second
+    // ordering, rely on log ordering within a single second instead.
+    Local::now().format("%Y-%m-%dT%H:%M:%S").to_string()
 }
 
 // ---------------------------------------------------------------------------
