@@ -172,6 +172,7 @@ const OPTIONAL_BACKUP_TABLES: [(&str, &str); 6] = [
     (
         "memories",
         "SELECT id, workspace_id, folder_id, content, memory_type, scope, source_session_id, is_pinned, is_active,
+                reinforcement_count, last_reinforced_at, superseded_by, superseded_at, superseded_reason,
                 created_at, updated_at
          FROM memories
          WHERE workspace_id = ?1

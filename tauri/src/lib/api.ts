@@ -681,6 +681,11 @@ export interface Memory {
   source_session_id?: string | null;
   is_pinned: boolean;
   is_active: boolean;
+  reinforcement_count: number;
+  last_reinforced_at?: string | null;
+  superseded_by?: string | null;
+  superseded_at?: string | null;
+  superseded_reason?: string | null;
   created_at: string;
   updated_at: string;
 }

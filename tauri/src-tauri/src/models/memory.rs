@@ -10,6 +10,11 @@ pub struct Memory {
     pub source_session_id: Option<String>,
     pub is_pinned: bool,
     pub is_active: bool,
+    pub reinforcement_count: i64,
+    pub last_reinforced_at: Option<String>,
+    pub superseded_by: Option<String>,
+    pub superseded_at: Option<String>,
+    pub superseded_reason: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }

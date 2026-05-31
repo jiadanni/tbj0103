@@ -9,6 +9,79 @@ use std::sync::{OnceLock, RwLock};
 const MEMORY_SIMILARITY_THRESHOLD: f32 = 0.3;
 const MEMORY_RETRIEVAL_TOP_K: usize = 5;
 
+/// Phase 5: a named blend of (cosine, recency, reinforcement) weights plus a
+/// recency half-life. Exposed as a single setting (`memory_ranking_profile`)
+/// rather than four independent floats so the surface stays tractable.
+#[derive(Debug, Clone, Copy)]
+struct RankingProfile {
+    cosine: f32,
+    recency: f32,
+    reinforcement: f32,
+    /// Half-life in days for the recency exponential decay.
+    half_life_days: f32,
+}
+
+impl RankingProfile {
+    const BALANCED: Self = Self {
+        cosine: 0.70,
+        recency: 0.20,
+        reinforcement: 0.10,
+        half_life_days: 30.0,
+    };
+    const RECENCY: Self = Self {
+        cosine: 0.40,
+        recency: 0.50,
+        reinforcement: 0.10,
+        half_life_days: 14.0,
+    };
+    const SIMILARITY: Self = Self {
+        cosine: 0.90,
+        recency: 0.05,
+        reinforcement: 0.05,
+        half_life_days: 60.0,
+    };
+}
+
+/// Read the active ranking profile from settings, falling back to BALANCED.
+/// `memory_ranking_half_life_days` may override the profile's default decay
+/// for users who want to tune just that one knob.
+fn read_ranking_profile(conn: &Connection) -> RankingProfile {
+    let key = crate::commands::settings::get_setting(conn, "memory_ranking_profile")
+        .unwrap_or_else(|| "balanced".to_string());
+    let mut profile = match key.as_str() {
+        "recency" => RankingProfile::RECENCY,
+        "similarity" => RankingProfile::SIMILARITY,
+        _ => RankingProfile::BALANCED,
+    };
+    if let Some(hl) = crate::commands::settings::get_setting(conn, "memory_ranking_half_life_days")
+        .and_then(|v| v.parse::<f32>().ok())
+        .filter(|v| *v > 0.0)
+    {
+        profile.half_life_days = hl;
+    }
+    profile
+}
+
+/// Exponential recency decay: 1.0 at age=0, 0.5 at age=half_life. Bounded to
+/// [0, 1]. Malformed or missing timestamps decay to 0 rather than panicking.
+fn recency_score(updated_at: &str, half_life_days: f32) -> f32 {
+    let parsed = match chrono::DateTime::parse_from_rfc3339(updated_at) {
+        Ok(dt) => dt.with_timezone(&chrono::Utc),
+        Err(_) => return 0.0,
+    };
+    let age_days = (chrono::Utc::now() - parsed).num_seconds().max(0) as f32 / 86_400.0;
+    (-std::f32::consts::LN_2 * age_days / half_life_days.max(0.001)).exp()
+}
+
+/// Reinforcement contribution normalized to roughly [0, 1] over the range
+/// users will plausibly hit. Matches the bounded-bonus shape from Phase 3 but
+/// scaled so it can carry the full weight of the profile term.
+fn reinforcement_score(count: i64) -> f32 {
+    let c = count.max(1) as f32;
+    // ln(1)=0, ln(11)≈2.4, ln(101)≈4.6 — divide by 5 to saturate near 1.
+    (c.ln() / 5.0).min(1.0)
+}
+
 /// Default context window size used when the model's actual limit is unknown.
 /// Ollama defaults to 2048; this value is 4× larger and safe for most models.
 pub const DEFAULT_CONTEXT_SIZE: usize = 8192;
@@ -316,13 +389,15 @@ pub fn assemble_context(
         }
     }
 
-    // Tier 2: Non-pinned memories WITH embeddings — ranked by similarity
+    // Tier 2: Non-pinned memories WITH embeddings — ranked by a blended
+    // score of cosine similarity, recency, and reinforcement (Phase 5).
     if memory_tokens < budget.memories {
         if let Some(qe) = query_embedding {
-            // Semantic retrieval: score each embedded non-pinned memory
-            let candidates: Vec<(String, String, String, Vec<u8>)> = conn
+            let profile = read_ranking_profile(conn);
+            let candidates: Vec<(String, String, String, Vec<u8>, i64, String)> = conn
                 .prepare(
-                    "SELECT m.id, m.content, m.scope, me.embedding FROM memories m \
+                    "SELECT m.id, m.content, m.scope, me.embedding, m.reinforcement_count, m.updated_at \
+                     FROM memories m \
                      JOIN memory_embeddings me ON m.id = me.memory_id \
                      WHERE m.is_active = 1 AND m.is_pinned = 0 \
                      AND ((m.workspace_id = ?1 AND m.scope = 'workspace') OR m.scope = 'global')",
@@ -334,6 +409,8 @@ pub fn assemble_context(
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
                         row.get::<_, Vec<u8>>(3)?,
+                        row.get::<_, i64>(4)?,
+                        row.get::<_, String>(5)?,
                     ))
                 })
                 .map_err(|e| e.to_string())?
@@ -342,14 +419,18 @@ pub fn assemble_context(
 
             let mut scored: Vec<(f32, String, String, String)> = candidates
                 .into_iter()
-                .filter_map(|(id, content, scope, emb_bytes)| {
+                .filter_map(|(id, content, scope, emb_bytes, reinforcement, updated_at)| {
                     let stored_emb = vector_index::bytes_to_f32_vec(&emb_bytes);
                     let similarity = vector_index::cosine_similarity(qe, &stored_emb);
-                    if similarity >= MEMORY_SIMILARITY_THRESHOLD {
-                        Some((similarity, id, content, scope))
-                    } else {
-                        None
+                    if similarity < MEMORY_SIMILARITY_THRESHOLD {
+                        return None;
                     }
+                    let recency = recency_score(&updated_at, profile.half_life_days);
+                    let reinforce = reinforcement_score(reinforcement);
+                    let blended = profile.cosine * similarity
+                        + profile.recency * recency
+                        + profile.reinforcement * reinforce;
+                    Some((blended, id, content, scope))
                 })
                 .collect();
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -544,4 +625,52 @@ pub fn assemble_context(
     final_messages.extend(combined);
 
     Ok((final_messages, sources))
+}
+
+#[cfg(test)]
+mod ranking_tests {
+    use super::*;
+
+    #[test]
+    fn recency_score_decays_by_half_at_half_life() {
+        let half_life = 30.0;
+        let now = chrono::Utc::now();
+        let recent = now.to_rfc3339();
+        let old = (now - chrono::Duration::days(30)).to_rfc3339();
+        let ancient = (now - chrono::Duration::days(300)).to_rfc3339();
+        let s_recent = recency_score(&recent, half_life);
+        let s_old = recency_score(&old, half_life);
+        let s_ancient = recency_score(&ancient, half_life);
+        assert!((s_recent - 1.0).abs() < 0.01, "recent ~= 1.0, got {}", s_recent);
+        assert!((s_old - 0.5).abs() < 0.01, "half-life ~= 0.5, got {}", s_old);
+        assert!(s_ancient < 0.01, "ancient -> 0, got {}", s_ancient);
+    }
+
+    #[test]
+    fn recency_score_handles_invalid_timestamp() {
+        assert_eq!(recency_score("not-a-date", 30.0), 0.0);
+    }
+
+    #[test]
+    fn reinforcement_score_saturates() {
+        assert!(reinforcement_score(1) < 0.01);
+        assert!(reinforcement_score(10) > 0.4 && reinforcement_score(10) < 0.5);
+        assert!(reinforcement_score(1_000_000) <= 1.0);
+    }
+
+    #[test]
+    fn ranking_profile_blends_weights_within_unit_interval() {
+        // Smoke test: even with maxed inputs the blended score stays bounded
+        // by the weight sum so it's always commensurable with raw cosine.
+        for profile in [
+            RankingProfile::BALANCED,
+            RankingProfile::RECENCY,
+            RankingProfile::SIMILARITY,
+        ] {
+            let score = profile.cosine * 1.0
+                + profile.recency * 1.0
+                + profile.reinforcement * 1.0;
+            assert!((score - 1.0).abs() < 0.001, "weights must sum to 1.0, got {}", score);
+        }
+    }
 }

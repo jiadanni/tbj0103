@@ -435,6 +435,11 @@ CREATE TABLE IF NOT EXISTS memories (
     source_session_id TEXT,
     is_pinned INTEGER NOT NULL DEFAULT 0,
     is_active INTEGER NOT NULL DEFAULT 1,
+    reinforcement_count INTEGER NOT NULL DEFAULT 1,
+    last_reinforced_at TEXT,
+    superseded_by TEXT REFERENCES memories(id) ON DELETE SET NULL,
+    superseded_at TEXT,
+    superseded_reason TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

@@ -286,6 +286,26 @@ function MemoryCard({
                 Inactive
               </span>
             )}
+            {memory.reinforcement_count > 1 && (
+              <Tooltip
+                content={`Restated ${memory.reinforcement_count} times${memory.last_reinforced_at ? ` (last ${formatTimestamp(memory.last_reinforced_at)})` : ""}`}
+                position="top"
+              >
+                <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
+                  Reinforced ×{memory.reinforcement_count}
+                </span>
+              </Tooltip>
+            )}
+            {memory.superseded_by && (
+              <Tooltip
+                content={`Replaced by a newer memory${memory.superseded_at ? ` on ${formatTimestamp(memory.superseded_at)}` : ""}${memory.superseded_reason ? ` (${memory.superseded_reason})` : ""}`}
+                position="top"
+              >
+                <span className="rounded-full bg-purple-500/10 px-2.5 py-1 text-[11px] font-medium text-purple-400">
+                  Superseded
+                </span>
+              </Tooltip>
+            )}
           </div>
           <HoverDefinitionSurface workspaceId={workspaceId} as="div" className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-primary)]">
             {memory.content}

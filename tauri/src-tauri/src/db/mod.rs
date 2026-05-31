@@ -72,6 +72,8 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v58_learning_goals_concept_id",
     "v59_chat_sessions_message_count",
     "v60_about_you",
+    "v61_memories_reinforcement",
+    "v62_memories_supersession",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1594,6 +1596,81 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('about_you', '\"\"');\n             INSERT OR IGNORE INTO settings (key, value) VALUES ('inject_about_you_into_chat', 'true');",
         );
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v60_about_you');")?;
+    }
+
+    // v61: add reinforcement_count + last_reinforced_at to memories so we can
+    // record how often a near-duplicate fact has been re-asserted.
+    let applied_v61: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v61_memories_reinforcement'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v61 == 0 {
+        let (has_reinforce, has_last_reinforced) = {
+            let mut stmt = conn.prepare("PRAGMA table_info(memories)")?;
+            let names = stmt
+                .query_map([], |r| r.get::<_, String>(1))?
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
+            (
+                names.iter().any(|n| n == "reinforcement_count"),
+                names.iter().any(|n| n == "last_reinforced_at"),
+            )
+        };
+        if !has_reinforce {
+            let _ = conn.execute_batch(
+                "ALTER TABLE memories ADD COLUMN reinforcement_count INTEGER NOT NULL DEFAULT 1;",
+            );
+        }
+        if !has_last_reinforced {
+            let _ = conn.execute_batch(
+                "ALTER TABLE memories ADD COLUMN last_reinforced_at TEXT;",
+            );
+        }
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v61_memories_reinforcement');",
+        )?;
+    }
+
+    // v62: add supersession columns to memories so the contradiction-detection
+    // judge can mark old memories as replaced by new ones without deleting them.
+    let applied_v62: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v62_memories_supersession'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v62 == 0 {
+        let (has_by, has_at, has_reason) = {
+            let mut stmt = conn.prepare("PRAGMA table_info(memories)")?;
+            let names = stmt
+                .query_map([], |r| r.get::<_, String>(1))?
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
+            (
+                names.iter().any(|n| n == "superseded_by"),
+                names.iter().any(|n| n == "superseded_at"),
+                names.iter().any(|n| n == "superseded_reason"),
+            )
+        };
+        // SQLite cannot add a column with a REFERENCES constraint via ALTER
+        // TABLE; the FK is enforced only on tables created via schema.sql. For
+        // existing databases we add a plain TEXT column — referential integrity
+        // is best-effort here and the application clears stale ids on delete.
+        if !has_by {
+            let _ = conn
+                .execute_batch("ALTER TABLE memories ADD COLUMN superseded_by TEXT;");
+        }
+        if !has_at {
+            let _ = conn
+                .execute_batch("ALTER TABLE memories ADD COLUMN superseded_at TEXT;");
+        }
+        if !has_reason {
+            let _ = conn
+                .execute_batch("ALTER TABLE memories ADD COLUMN superseded_reason TEXT;");
+        }
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v62_memories_supersession');",
+        )?;
     }
 
     Ok(())

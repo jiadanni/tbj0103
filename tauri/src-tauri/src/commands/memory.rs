@@ -17,12 +17,17 @@ fn row_to_memory(row: &rusqlite::Row) -> rusqlite::Result<Memory> {
         source_session_id: row.get(5)?,
         is_pinned: row.get::<_, i32>(6)? != 0,
         is_active: row.get::<_, i32>(7)? != 0,
-        created_at: row.get(8)?,
-        updated_at: row.get(9)?,
+        reinforcement_count: row.get(8)?,
+        last_reinforced_at: row.get(9)?,
+        superseded_by: row.get(10)?,
+        superseded_at: row.get(11)?,
+        superseded_reason: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
     })
 }
 
-const MEMORY_COLUMNS: &str = "id, workspace_id, content, memory_type, scope, source_session_id, is_pinned, is_active, created_at, updated_at";
+const MEMORY_COLUMNS: &str = "id, workspace_id, content, memory_type, scope, source_session_id, is_pinned, is_active, reinforcement_count, last_reinforced_at, superseded_by, superseded_at, superseded_reason, created_at, updated_at";
 
 /// Best-effort: generate and store an embedding for a memory.
 /// Does not fail if Ollama is unavailable.
@@ -97,6 +102,11 @@ pub async fn create_memory(
             source_session_id: req.source_session_id,
             is_pinned: false,
             is_active: true,
+            reinforcement_count: 1,
+            last_reinforced_at: None,
+            superseded_by: None,
+            superseded_at: None,
+            superseded_reason: None,
             created_at: now.clone(),
             updated_at: now,
         }
@@ -397,6 +407,11 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
             source_session_id: Some(req.session_id.clone()),
             is_pinned: false,
             is_active: true,
+            reinforcement_count: 1,
+            last_reinforced_at: None,
+            superseded_by: None,
+            superseded_at: None,
+            superseded_reason: None,
             created_at: now.clone(),
             updated_at: now.clone(),
         });
