@@ -724,6 +724,19 @@ export interface DashboardReviewSummary {
   under_reviewed_concepts: number;
   weak_concepts: DashboardConceptFocus[];
   route: DashboardRoute;
+  /** Distinct topic count where a quiz, goal, or staleness signal flags review. */
+  topics_due_for_review: number;
+  /** Highest-priority topic name (grade > goal > stale). */
+  top_due_topic: string | null;
+}
+
+export interface ReviewTopic {
+  concept_id: string;
+  name: string;
+  /** "grade" | "goal" | "stale". */
+  reason_kind: string;
+  detail: string;
+  priority: number;
 }
 
 export interface DashboardGoalSummary {
@@ -844,6 +857,8 @@ export const api = {
   dashboard: {
     getSummary: (workspaceId: string, options?: { includeDescendants?: boolean }) =>
       invoke<DashboardSummary>("get_dashboard_summary", { workspaceId, includeDescendants: options?.includeDescendants }),
+    getReviewTopics: (workspaceId: string, options?: { includeDescendants?: boolean }) =>
+      invoke<ReviewTopic[]>("get_review_topics", { workspaceId, includeDescendants: options?.includeDescendants }),
   },
 
   chat: {
