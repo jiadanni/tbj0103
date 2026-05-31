@@ -68,12 +68,27 @@ const CHAT_DIAG_ENABLED = (() => {
   }
   return false;
 })();
+// High-frequency events ("ChatView render") only go to the DevTools console;
+// they fire dozens of times per navigation and IPC-forwarding each one would
+// itself create the kind of load we're trying to diagnose. Anything tagged in
+// HIGH_FREQUENCY_STAGES is console-only. Everything else also mirrors to the
+// persistent backend log so post-mortem diagnosis doesn't require DevTools
+// being open at the moment of the bug.
+const HIGH_FREQUENCY_STAGES = new Set(["ChatView render"]);
 function chatViewDiag(stage: string, extra?: Record<string, unknown>) {
   if (!CHAT_DIAG_ENABLED) { return; }
   const t = typeof window !== "undefined" && window.performance ? window.performance.now() : 0;
   const since = (t - chatViewBootStart).toFixed(1);
+  const message = `+${since}ms ${stage}`;
   // eslint-disable-next-line no-console
-  console.log(`[chat-diag] +${since}ms ${stage}`, extra ?? {});
+  console.log(`[chat-diag] ${message}`, extra ?? {});
+  if (HIGH_FREQUENCY_STAGES.has(stage)) { return; }
+  try {
+    const metadata = extra && Object.keys(extra).length > 0 ? JSON.stringify(extra) : undefined;
+    api.logs.logFrontendEvent("info", "chat-diag", message, metadata).catch(() => {});
+  } catch {
+    // Never let logging fail the caller.
+  }
 }
 
 function clampSessionSidebarWidth(width: number, isSplitPane = false) {
