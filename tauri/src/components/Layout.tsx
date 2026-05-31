@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, Suspense } from "react";
-import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
+import { Routes, Route, useNavigate, useLocation, Navigate, type NavigateOptions } from "react-router-dom";
 import { message } from "@tauri-apps/plugin-dialog";
 import {
   
@@ -21,7 +21,7 @@ import PromptDialog from "./PromptDialog";
 import { api } from "../lib/api";
 import { isMac, isLinux, isWindows } from "../lib/platform";
 import SplitPaneLayout from "./SplitPaneLayout";
-import ChatView from "../views/ChatView";
+import RouteSkeleton from "./RouteSkeleton";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useChatStore } from "../stores/chatStore";
 import { CompactMenuSelect } from "./CompactMenuSelect";
@@ -31,6 +31,7 @@ import { useNavigationHistory } from "../hooks/useNavigationHistory";
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
 // `/graph`, `/flashcards`, `/learning` now all funnel into LearningHubView,
 // which in turn lazily imports the underlying panes via named exports.
+const ChatView = React.lazy(() => import("../views/ChatView"));
 const HistoryView = React.lazy(() => import("../views/HistoryView"));
 const FolderDashboardView = React.lazy(() => import("../views/FolderDashboardView"));
 const PreferencesView = React.lazy(() => import("../views/PreferencesView"));
@@ -1271,12 +1272,10 @@ function WorkspaceTabBar({
             </div>
           )}
         </div>
-        <Tooltip content="Drag window" position="bottom">
-          <div
-            data-window-drag-handle
-            className={`mx-2 hidden h-5 shrink-0 rounded-full border border-transparent bg-[var(--bg-hover)] sm:block ${showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceSidebar ? "flex-1 min-w-16" : "w-16"}`}
-          />
-        </Tooltip>
+        <div
+          data-window-drag-handle
+          className={`mx-2 hidden h-5 shrink-0 sm:block ${showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceSidebar ? "flex-1 min-w-16" : "w-16"}`}
+        />
         <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1" data-workspace-titlebar-actions>
           <BackForwardNavigation />
           <TitlebarSortMenu />
@@ -1485,6 +1484,10 @@ function WorkspaceTabBar({
 function TopTabsNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [, startNavTransition] = React.useTransition();
+  const goTo = (to: string, options?: NavigateOptions) => {
+    startNavTransition(() => { navigate(to, options); });
+  };
   const activeSegment = "/" + location.pathname.split("/")[1];
   const [contextMenu, setContextMenu] = useState<{ item: NavigationItem; x: number; y: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1538,7 +1541,7 @@ function TopTabsNavigation() {
     <button
       key={item.path}
       onClick={() => {
-        navigate(item.path);
+        goTo(item.path);
         setContextMenu(null);
       }}
       onContextMenu={(event) => {
@@ -1577,7 +1580,7 @@ function TopTabsNavigation() {
         >
           <button
             onClick={() => {
-              navigate(contextMenu.item.path);
+              goTo(contextMenu.item.path);
               setContextMenu(null);
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
@@ -1586,7 +1589,7 @@ function TopTabsNavigation() {
           </button>
           <button
             onClick={() => {
-              navigate("/preferences", { state: { settingsTab: "appearance" } });
+              goTo("/preferences", { state: { settingsTab: "appearance" } });
               setContextMenu(null);
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
@@ -1602,6 +1605,7 @@ function TopTabsNavigation() {
 function CompactSectionNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [, startNavTransition] = React.useTransition();
   const activeSegment = "/" + location.pathname.split("/")[1];
   const sectionOptions = PRIMARY_NAV_ITEMS.map((item) => ({
     label: item.label,
@@ -1622,7 +1626,7 @@ function CompactSectionNavigation() {
         label="Section"
         value={selectedPath}
         options={sectionOptions}
-        onChange={(value) => navigate(value)}
+        onChange={(value) => startNavTransition(() => { navigate(value); })}
         widthClassName="min-w-0 w-full max-w-[260px] sm:w-[240px]"
       />
     </div>
@@ -1661,6 +1665,7 @@ function paneViewToPath(view: import("../stores/workspaceStore").PaneView, chatS
 export default function Layout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const navigate = useNavigate();
+  const [, startNavTransition] = React.useTransition();
   const location = useLocation();
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
   const activeChatId = useChatStore((state) => state.activeChatId);
@@ -1750,7 +1755,7 @@ export default function Layout() {
         <CommandPalette
           workspaceId={activeWorkspaceId ?? ""}
           onClose={() => setCommandPaletteOpen(false)}
-          onNavigate={(path: string) => { navigate(path); setCommandPaletteOpen(false); }}
+          onNavigate={(path: string) => { startNavTransition(() => { navigate(path); }); setCommandPaletteOpen(false); }}
         />
       )}
 
@@ -1799,13 +1804,9 @@ export default function Layout() {
   );
 }
 
-const LazyFallback = () => (
-  <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">Loading…</div>
-);
-
 function AppRoutes() {
   return (
-    <Suspense fallback={<LazyFallback />}>
+    <Suspense fallback={<RouteSkeleton />}>
     <Routes>
       <Route path="/" element={<Navigate to="/folder" replace />} />
       <Route path="/folder" element={<FolderDashboardView />} />
