@@ -3,6 +3,7 @@ use tauri::State;
 use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
 use crate::commands::quick_search::QuickSearchRuntimeState;
 use crate::db::DbState;
+use crate::logging;
 use crate::models::chat::{AddMessageRequest, ChatSession, CreateChatSessionRequest, Message};
 use crate::services::chat_service;
 use crate::services::quick_search_service::{self, QuickSearchResult};
@@ -47,8 +48,14 @@ pub fn list_chat_sessions(
     offset: Option<i64>,
     include_descendants: Option<bool>,
 ) -> Result<Vec<ChatSession>, String> {
+    let started = std::time::Instant::now();
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::list_sessions(&conn, &workspace_id, &folder_id, limit, offset, include_descendants.unwrap_or(false))
+    let result = chat_service::list_sessions(&conn, &workspace_id, &folder_id, limit, offset, include_descendants.unwrap_or(false));
+    let ms = started.elapsed().as_millis();
+    if ms >= 16 {
+        logging::log_debug("perf", format!("list_chat_sessions {}ms count={}", ms, result.as_ref().map(|v| v.len()).unwrap_or(0)));
+    }
+    result
 }
 
 #[tauri::command]
@@ -241,8 +248,14 @@ pub fn get_messages(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<Message>, String> {
+    let started = std::time::Instant::now();
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::get_messages(&conn, &session_id, limit, offset)
+    let result = chat_service::get_messages(&conn, &session_id, limit, offset);
+    let ms = started.elapsed().as_millis();
+    if ms >= 16 {
+        logging::log_debug("perf", format!("get_messages {}ms count={}", ms, result.as_ref().map(|v| v.len()).unwrap_or(0)));
+    }
+    result
 }
 
 #[tauri::command]

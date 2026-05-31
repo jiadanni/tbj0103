@@ -1,4 +1,5 @@
 use crate::db::DbState;
+use crate::logging;
 use crate::models::dashboard::{
     DashboardActivity, DashboardConceptFocus, DashboardContinueLearning, DashboardGoalSummary,
     DashboardKnowledgeHealth, DashboardOverview, DashboardReviewSummary, DashboardRoute,
@@ -19,6 +20,21 @@ fn route(path: impl Into<String>, state: Option<serde_json::Value>) -> Dashboard
 #[tauri::command]
 #[allow(clippy::type_complexity)]
 pub fn get_dashboard_summary(
+    state: State<DbState>,
+    workspace_id: String,
+    include_descendants: Option<bool>,
+) -> Result<DashboardSummary, String> {
+    let started = std::time::Instant::now();
+    let result = get_dashboard_summary_inner(state, workspace_id, include_descendants);
+    let ms = started.elapsed().as_millis();
+    if ms >= 16 {
+        logging::log_debug("perf", format!("get_dashboard_summary {}ms", ms));
+    }
+    result
+}
+
+#[allow(clippy::type_complexity)]
+fn get_dashboard_summary_inner(
     state: State<DbState>,
     workspace_id: String,
     include_descendants: Option<bool>,
