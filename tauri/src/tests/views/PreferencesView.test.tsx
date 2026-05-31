@@ -7,6 +7,9 @@ import PreferencesView from "@/views/PreferencesView";
 
 const apiMocks = vi.hoisted(() => ({
   settingsGet: vi.fn(),
+  settingsGetCore: vi.fn(),
+  settingsGetAi: vi.fn(),
+  settingsGetAdvanced: vi.fn(),
   settingsUpdate: vi.fn(() => Promise.resolve(undefined)),
   aiModelList: vi.fn(),
   aiModelListSpeedStats: vi.fn(() => Promise.resolve([])),
@@ -155,6 +158,9 @@ vi.mock("@/lib/api", () => ({
   api: {
     settings: {
       get: apiMocks.settingsGet,
+      getCore: apiMocks.settingsGetCore,
+      getAi: apiMocks.settingsGetAi,
+      getAdvanced: apiMocks.settingsGetAdvanced,
       update: apiMocks.settingsUpdate,
     },
     aiModel: {
@@ -224,7 +230,7 @@ describe("PreferencesView", () => {
     vi.clearAllMocks();
     window.localStorage.setItem("preferencesActiveTab", "ai");
 
-    apiMocks.settingsGet.mockResolvedValue({
+    const fullSettings = {
       theme: "system",
       accent_color: "#007AFF",
       font_size: 16,
@@ -275,7 +281,85 @@ describe("PreferencesView", () => {
       summarization_min_messages: 10,
       summarization_max_sessions: 5,
       git_sync_interval_minutes: 5,
+    } as Record<string, unknown>;
+
+    apiMocks.settingsGet.mockResolvedValue(fullSettings);
+    apiMocks.settingsGetCore.mockResolvedValue({
+      theme: fullSettings.theme,
+      accent_color: fullSettings.accent_color,
+      font_size: fullSettings.font_size,
+      sidebar_width: fullSettings.sidebar_width,
+      menubar_icon_style: "monochrome",
+      hide_native_menu: fullSettings.hide_native_menu,
+      switch_workspace_section: fullSettings.switch_workspace_section,
+      user_chat_label: fullSettings.user_chat_label,
+      assistant_chat_label: fullSettings.assistant_chat_label,
+      demo_dismissed: fullSettings.demo_dismissed,
+      web_session_preserve: fullSettings.web_session_preserve,
+      chat_title_auto_refresh: fullSettings.chat_title_auto_refresh,
+      chat_title_refresh_interval: fullSettings.chat_title_refresh_interval,
+      about_you: "",
+      inject_about_you_into_chat: true,
+      prompt_instructions: fullSettings.prompt_instructions,
     });
+    apiMocks.settingsGetAi.mockResolvedValue({
+      preferred_model: fullSettings.preferred_model,
+      background_model: fullSettings.background_model,
+      summarization_model: "",
+      memory_extraction_model: "",
+      flashcard_model: "",
+      glossary_model: "",
+      topic_signature_model: "",
+      goal_suggestion_model: "",
+      embedding_model: fullSettings.embedding_model,
+      draft_model: fullSettings.draft_model,
+      compare_model_a: fullSettings.compare_model_a,
+      compare_model_b: fullSettings.compare_model_b,
+      ollama_base_url: fullSettings.ollama_base_url,
+      auto_start_ollama: fullSettings.auto_start_ollama,
+      mlx_base_url: fullSettings.mlx_base_url,
+      llamacpp_model_paths: fullSettings.llamacpp_model_paths,
+      dual_model_enabled: fullSettings.dual_model_enabled,
+      dual_model_execution_mode: fullSettings.dual_model_execution_mode,
+      chat_json_storage: fullSettings.chat_json_storage,
+      chat_encryption_enabled: fullSettings.chat_encryption_enabled,
+      show_gen_info: fullSettings.show_gen_info,
+      show_gen_info_token_count: fullSettings.show_gen_info_token_count,
+      show_gen_info_duration: fullSettings.show_gen_info_duration,
+      show_gen_info_speed: fullSettings.show_gen_info_speed,
+      show_gen_info_model: fullSettings.show_gen_info_model,
+      background_inference_enabled: true,
+    });
+    apiMocks.settingsGetAdvanced.mockResolvedValue({
+      quick_search_models: fullSettings.quick_search_models,
+      quick_search_shortcut: fullSettings.quick_search_shortcut,
+      quick_search_workspace_scope: "__all__",
+      quick_search_type_filters: ["conversation", "message", "artifact", "memory", "summary"],
+      backup_enabled: fullSettings.backup_enabled,
+      touch_id_enabled: fullSettings.touch_id_enabled,
+      pin_lock_enabled: fullSettings.pin_lock_enabled,
+      auto_lock_minutes: fullSettings.auto_lock_minutes,
+      start_at_login: fullSettings.start_at_login,
+      open_in_background: fullSettings.open_in_background,
+      keep_running_in_tray: fullSettings.keep_running_in_tray,
+      immediate_delete: fullSettings.immediate_delete,
+      confirm_move_to_trash: fullSettings.confirm_move_to_trash,
+      memory_enabled: fullSettings.memory_enabled,
+      memory_extraction_threshold: fullSettings.memory_extraction_threshold,
+      memory_extraction_idle_minutes: fullSettings.memory_extraction_idle_minutes,
+      topic_analysis_interval_minutes: fullSettings.topic_analysis_interval_minutes,
+      summarization_min_messages: fullSettings.summarization_min_messages,
+      summarization_max_sessions: fullSettings.summarization_max_sessions,
+      hover_definition_scan_enabled: true,
+      hover_definition_scan_max_sessions: 3,
+      workspace_glossary_refresh_interval_minutes: 60,
+      git_sync_interval_minutes: fullSettings.git_sync_interval_minutes,
+      vram_headroom_gb: 0,
+      vram_headroom_percent: 10,
+      ram_headroom_gb: 0,
+      ram_headroom_percent: 10,
+    });
+
 
     apiMocks.aiModelList.mockResolvedValue([
       {

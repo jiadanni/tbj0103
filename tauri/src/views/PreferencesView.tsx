@@ -8,7 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown, UserCircle } from "lucide-react";
-import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
+import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
@@ -88,6 +88,99 @@ function normalizeAppSettingsTheme(settings: AppSettings): AppSettings {
     ...settings,
     theme: normalizeTheme(settings.theme),
   };
+}
+
+// Reassemble the three split settings slices into the AppSettings shape the
+// Preferences form already operates on. Preferences edits every field, so it
+// still needs to fetch all three — but it now does so in parallel with three
+// small IPC payloads instead of serializing a single 70-field blob.
+function mergeSplitSettings(
+  core: CoreSettings,
+  ai: AiSettings,
+  advanced: AdvancedSettings,
+): AppSettings {
+  return {
+    // core
+    theme: core.theme,
+    accent_color: core.accent_color,
+    font_size: core.font_size,
+    sidebar_width: core.sidebar_width,
+    menubar_icon_style: core.menubar_icon_style,
+    hide_native_menu: core.hide_native_menu,
+    switch_workspace_section: core.switch_workspace_section,
+    user_chat_label: core.user_chat_label,
+    assistant_chat_label: core.assistant_chat_label,
+    demo_dismissed: core.demo_dismissed,
+    web_session_preserve: core.web_session_preserve,
+    chat_title_auto_refresh: core.chat_title_auto_refresh,
+    chat_title_refresh_interval: core.chat_title_refresh_interval,
+    about_you: core.about_you,
+    inject_about_you_into_chat: core.inject_about_you_into_chat,
+    prompt_instructions: core.prompt_instructions,
+    // ai
+    preferred_model: ai.preferred_model,
+    background_model: ai.background_model,
+    summarization_model: ai.summarization_model,
+    memory_extraction_model: ai.memory_extraction_model,
+    flashcard_model: ai.flashcard_model,
+    glossary_model: ai.glossary_model,
+    topic_signature_model: ai.topic_signature_model,
+    goal_suggestion_model: ai.goal_suggestion_model,
+    embedding_model: ai.embedding_model,
+    draft_model: ai.draft_model,
+    compare_model_a: ai.compare_model_a,
+    compare_model_b: ai.compare_model_b,
+    ollama_base_url: ai.ollama_base_url,
+    auto_start_ollama: ai.auto_start_ollama,
+    mlx_base_url: ai.mlx_base_url,
+    llamacpp_model_paths: ai.llamacpp_model_paths,
+    dual_model_enabled: ai.dual_model_enabled,
+    dual_model_execution_mode: ai.dual_model_execution_mode,
+    chat_json_storage: ai.chat_json_storage,
+    chat_encryption_enabled: ai.chat_encryption_enabled,
+    show_gen_info: ai.show_gen_info,
+    show_gen_info_token_count: ai.show_gen_info_token_count,
+    show_gen_info_duration: ai.show_gen_info_duration,
+    show_gen_info_speed: ai.show_gen_info_speed,
+    show_gen_info_model: ai.show_gen_info_model,
+    background_inference_enabled: ai.background_inference_enabled,
+    // advanced
+    quick_search_shortcut: advanced.quick_search_shortcut,
+    quick_search_workspace_scope: advanced.quick_search_workspace_scope,
+    quick_search_type_filters: advanced.quick_search_type_filters,
+    backup_enabled: advanced.backup_enabled,
+    touch_id_enabled: advanced.touch_id_enabled,
+    pin_lock_enabled: advanced.pin_lock_enabled,
+    auto_lock_minutes: advanced.auto_lock_minutes,
+    start_at_login: advanced.start_at_login,
+    open_in_background: advanced.open_in_background,
+    keep_running_in_tray: advanced.keep_running_in_tray,
+    immediate_delete: advanced.immediate_delete,
+    confirm_move_to_trash: advanced.confirm_move_to_trash,
+    memory_enabled: advanced.memory_enabled,
+    memory_extraction_threshold: advanced.memory_extraction_threshold,
+    memory_extraction_idle_minutes: advanced.memory_extraction_idle_minutes,
+    topic_analysis_interval_minutes: advanced.topic_analysis_interval_minutes,
+    summarization_min_messages: advanced.summarization_min_messages,
+    summarization_max_sessions: advanced.summarization_max_sessions,
+    hover_definition_scan_enabled: advanced.hover_definition_scan_enabled,
+    hover_definition_scan_max_sessions: advanced.hover_definition_scan_max_sessions,
+    workspace_glossary_refresh_interval_minutes: advanced.workspace_glossary_refresh_interval_minutes,
+    git_sync_interval_minutes: advanced.git_sync_interval_minutes,
+    vram_headroom_gb: advanced.vram_headroom_gb,
+    vram_headroom_percent: advanced.vram_headroom_percent,
+    ram_headroom_gb: advanced.ram_headroom_gb,
+    ram_headroom_percent: advanced.ram_headroom_percent,
+  };
+}
+
+async function fetchSplitSettings(): Promise<AppSettings> {
+  const [core, ai, advanced] = await Promise.all([
+    api.settings.getCore(),
+    api.settings.getAi(),
+    api.settings.getAdvanced(),
+  ]);
+  return mergeSplitSettings(core, ai, advanced);
 }
 
 function formatSystemName(specs: SystemSpecs): string {
@@ -1811,7 +1904,7 @@ export default function PreferencesView() {
   }
 
   useEffect(() => {
-    api.settings.get().then((s) => {
+    fetchSplitSettings().then((s) => {
       const normalizedSettings = normalizeAppSettingsTheme(s);
       setDbSettings(normalizedSettings);
       dbSettingsRef.current = normalizedSettings;
@@ -1832,7 +1925,7 @@ export default function PreferencesView() {
 
     const unlistenSettings = listen("settings-changed", async () => {
       try {
-        const s = await api.settings.get();
+        const s = await fetchSplitSettings();
         const normalizedSettings = normalizeAppSettingsTheme(s);
         setDbSettings(normalizedSettings);
         dbSettingsRef.current = normalizedSettings;

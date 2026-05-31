@@ -1,7 +1,7 @@
 import { Command } from "cmdk";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Brain, Check, Clock, FileText, MessageSquare, ScrollText, Search, Settings2 } from "lucide-react";
-import { api, type AppSettings, type QuickSearchResult } from "../lib/api";
+import { api, type CoreSettings, type QuickSearchResult } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
 import { normalizeTheme } from "../lib/theme";
@@ -36,12 +36,11 @@ const KIND_FILTER_LABELS: Record<KindFilter, string> = {
 export default function QuickSearchWindow() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const filterMenuRef = useRef<HTMLDivElement | null>(null);
-  const [displaySettings, setDisplaySettings] = useState<Pick<AppSettings, "theme" | "accent_color" | "font_size">>({
+  const [displaySettings, setDisplaySettings] = useState<Pick<CoreSettings, "theme" | "accent_color" | "font_size">>({
     theme: "system",
     accent_color: "#007AFF",
     font_size: 16,
   });
-  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<QuickSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -55,30 +54,30 @@ export default function QuickSearchWindow() {
 
     async function syncWindowState() {
       try {
-        const [latestSettings, availableWorkspaces, context] = await Promise.all([
-          api.settings.get(),
+        const [core, advanced, availableWorkspaces, context] = await Promise.all([
+          api.settings.getCore(),
+          api.settings.getAdvanced(),
           api.workspace.list().catch(() => [] as Workspace[]),
           api.quickSearch.getContext().catch(() => ({ preferred_workspace_id: null })),
         ]);
         if (cancelled) {return;}
 
         setDisplaySettings({
-          theme: normalizeTheme(latestSettings.theme),
-          accent_color: latestSettings.accent_color,
-          font_size: latestSettings.font_size,
+          theme: normalizeTheme(core.theme),
+          accent_color: core.accent_color,
+          font_size: core.font_size,
         });
-        setSettings(latestSettings);
         setWorkspaces(availableWorkspaces);
 
         // If no explicit workspace scope was persisted, auto-scope to the active workspace
-        const persistedScope = latestSettings.quick_search_workspace_scope;
+        const persistedScope = advanced.quick_search_workspace_scope;
         const preferredScope = context.preferred_workspace_id
           && availableWorkspaces.some((ws) => ws.id === context.preferred_workspace_id)
           ? context.preferred_workspace_id
           : null;
         const effectiveScope = persistedScope || preferredScope || ALL_WORKSPACES_SCOPE;
         setWorkspaceScope(resolveWorkspaceScope(effectiveScope, availableWorkspaces));
-        setSelectedKinds(normalizeSelectedKinds(latestSettings.quick_search_type_filters));
+        setSelectedKinds(normalizeSelectedKinds(advanced.quick_search_type_filters));
       } catch {
         // Keep local defaults if settings are not available yet.
       }
@@ -202,21 +201,22 @@ export default function QuickSearchWindow() {
   const hasActiveFilters = workspaceScope !== ALL_WORKSPACES_SCOPE || effectiveKindFilters(selectedKinds) !== null;
 
   async function persistQuickSearchSettings(nextWorkspaceScope: string, nextSelectedKinds: string[]) {
-    if (!settings) {return;}
-
     const normalizedKinds = normalizeSelectedKinds(nextSelectedKinds);
-    const nextSettings: AppSettings = {
-      ...settings,
-      quick_search_workspace_scope: nextWorkspaceScope,
-      quick_search_type_filters: normalizedKinds,
-    };
 
-    setSettings(nextSettings);
     useSettingsStore.getState().setQuickSearchWorkspaceScope(nextWorkspaceScope);
     useSettingsStore.getState().setQuickSearchTypeFilters(normalizedKinds);
-    void api.settings.update(nextSettings).catch(() => {
-      // Keep local state if persistence fails. The user can retry by toggling again.
-    });
+    // Per-key writes so we don't have to round-trip the full Settings blob
+    // through `update_settings`. Each call is a single SQLite upsert.
+    void api.settings
+      .updateOne("quick_search_workspace_scope", nextWorkspaceScope)
+      .catch(() => {
+        // Keep local state if persistence fails. The user can retry by toggling again.
+      });
+    void api.settings
+      .updateOne("quick_search_type_filters", normalizedKinds)
+      .catch(() => {
+        // Keep local state if persistence fails. The user can retry by toggling again.
+      });
   }
 
   function updateWorkspaceScope(nextWorkspaceScope: string) {
