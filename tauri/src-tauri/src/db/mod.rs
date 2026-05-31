@@ -74,6 +74,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v60_about_you",
     "v61_memories_reinforcement",
     "v62_memories_supersession",
+    "v63_concept_hierarchy_job",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1670,6 +1671,50 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         }
         conn.execute_batch(
             "INSERT INTO _migrations(name) VALUES('v62_memories_supersession');",
+        )?;
+    }
+
+    // v63: add `parent_checked_at` to `concept_nodes` so the LLM-driven
+    // hierarchy job can avoid re-evaluating concepts that have already been
+    // checked recently, and enforce uniqueness on `concept_links`
+    // (source_id, target_id, link_type) so the auto job cannot insert
+    // duplicate `part_of` edges on retries / races.
+    let applied_v63: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v63_concept_hierarchy_job'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v63 == 0 {
+        let has_parent_checked_at = {
+            let mut stmt = conn.prepare("PRAGMA table_info(concept_nodes)")?;
+            let names = stmt
+                .query_map([], |r| r.get::<_, String>(1))?
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
+            names.iter().any(|n| n == "parent_checked_at")
+        };
+        if !has_parent_checked_at {
+            let _ = conn.execute_batch(
+                "ALTER TABLE concept_nodes ADD COLUMN parent_checked_at TEXT;",
+            );
+        }
+        // Dedupe any existing duplicate concept_links rows before adding the
+        // unique index — keep the earliest row per (source_id, target_id,
+        // link_type) tuple. Best-effort: ignored if the rowids cannot be
+        // resolved on an older database shape.
+        let _ = conn.execute_batch(
+            "DELETE FROM concept_links
+             WHERE rowid NOT IN (
+                 SELECT MIN(rowid) FROM concept_links
+                 GROUP BY source_id, target_id, link_type
+             );",
+        );
+        let _ = conn.execute_batch(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_concept_links_source_target_type
+                 ON concept_links(source_id, target_id, link_type);",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v63_concept_hierarchy_job');",
         )?;
     }
 

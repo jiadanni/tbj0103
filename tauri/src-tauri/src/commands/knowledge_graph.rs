@@ -150,6 +150,75 @@ pub fn delete_concept(state: State<DbState>, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Manually set or clear the `part_of` parent of a concept. Used by the
+/// Learning hub sidebar's "Set parent…" action and as a manual override for
+/// the LLM hierarchy job. Passing `parent_id = None` removes any existing
+/// `part_of` link on `child_id`.
+///
+/// Rejects self-links and cycles. Marks `parent_checked_at` so the auto job
+/// does not overwrite a deliberate choice on its next pass.
+#[tauri::command]
+pub fn set_concept_parent(
+    state: State<DbState>,
+    child_id: String,
+    parent_id: Option<String>,
+) -> Result<(), String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+
+    // Always remove any existing part_of links first, so a fresh parent (or
+    // explicit clear) starts from a clean state and we don't violate the
+    // unique index on (source_id, target_id, link_type).
+    conn.execute(
+        "DELETE FROM concept_links WHERE source_id = ?1 AND link_type = 'part_of'",
+        rusqlite::params![child_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    if let Some(parent) = parent_id {
+        if parent == child_id {
+            return Err("a concept cannot be its own parent".to_string());
+        }
+        // Walk upward from parent — if child_id is reachable, the link would
+        // create a cycle. This re-uses the same iteration cap (64) as the
+        // background service for consistency.
+        let mut current = parent.clone();
+        for _ in 0..64 {
+            if current == child_id {
+                return Err("setting this parent would create a cycle".to_string());
+            }
+            let next: Option<String> = conn
+                .query_row(
+                    "SELECT target_id FROM concept_links
+                     WHERE source_id = ?1 AND link_type = 'part_of' LIMIT 1",
+                    rusqlite::params![current],
+                    |r| r.get(0),
+                )
+                .ok();
+            match next {
+                Some(p) => current = p,
+                None => break,
+            }
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR IGNORE INTO concept_links
+                (id, source_id, target_id, link_type, strength, context, created_at)
+             VALUES (?1, ?2, ?3, 'part_of', 1.0, 'manual', ?4)",
+            rusqlite::params![id, child_id, parent, now],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    // Stamp parent_checked_at either way so the auto job skips this row.
+    conn.execute(
+        "UPDATE concept_nodes SET parent_checked_at = datetime('now') WHERE id = ?1",
+        rusqlite::params![child_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Idempotent: returns the existing concept id when a case-insensitive match exists
 /// on `concept_nodes.name` or any entry in the `aliases` JSON array. Otherwise inserts
 /// a new concept with `hierarchy_level = 'concept'` and `concept_type = 'topic'`.

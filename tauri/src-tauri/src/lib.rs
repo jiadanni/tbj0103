@@ -416,18 +416,18 @@ pub fn run() {
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                 loop {
                     let interval_minutes = {
-                        let state = app_handle.state::<db::DbState>();
-                        match state.0.get() {
-                            Ok(conn) => {
-                                let val: String = conn.query_row(
-                                    "SELECT value FROM settings WHERE key = 'topic_analysis_interval_minutes'",
-                                    [],
-                                    |row| row.get(0)
-                                ).unwrap_or_else(|_| "30".to_string());
-                                val.parse::<u64>().unwrap_or(30)
-                            }
-                            Err(_) => 30,
-                        }
+                        let pool = app_handle.state::<db::DbState>().0.clone();
+                        tokio::task::spawn_blocking(move || -> u64 {
+                            let Ok(conn) = pool.get() else { return 30; };
+                            let val: String = conn.query_row(
+                                "SELECT value FROM settings WHERE key = 'topic_analysis_interval_minutes'",
+                                [],
+                                |row| row.get(0)
+                            ).unwrap_or_else(|_| "30".to_string());
+                            val.parse::<u64>().unwrap_or(30)
+                        })
+                        .await
+                        .unwrap_or(30)
                     };
 
                     {
@@ -437,16 +437,24 @@ pub fn run() {
                             .0
                             .subscribe();
                         let workspace_ids: Vec<String> = {
-                            let Ok(conn) = db.0.get() else {
-                                tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
-                                continue;
-                            };
-                            conn.prepare("SELECT id FROM workspaces")
-                                .and_then(|mut stmt| {
-                                    stmt.query_map([], |row| row.get::<_, String>(0))?
-                                        .collect::<Result<Vec<_>, _>>()
-                                })
-                                .unwrap_or_default()
+                            let pool = db.0.clone();
+                            match tokio::task::spawn_blocking(move || -> Option<Vec<String>> {
+                                let conn = pool.get().ok()?;
+                                conn.prepare("SELECT id FROM workspaces")
+                                    .and_then(|mut stmt| {
+                                        stmt.query_map([], |row| row.get::<_, String>(0))?
+                                            .collect::<Result<Vec<_>, _>>()
+                                    })
+                                    .ok()
+                            })
+                            .await
+                            {
+                                Ok(Some(ids)) => ids,
+                                _ => {
+                                    tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
+                                    continue;
+                                }
+                            }
                         };
 
                         for id in workspace_ids {
@@ -492,7 +500,6 @@ pub fn run() {
             commands::folder::delete_folder,
             commands::folder::move_folder_to_workspace,
             commands::dashboard::get_dashboard_summary,
-            commands::dashboard::get_review_topics,
             // Artifact commands
             commands::artifact::create_artifact,
             commands::artifact::get_artifact,
@@ -530,6 +537,7 @@ pub fn run() {
             commands::knowledge_graph::get_concept,
             commands::knowledge_graph::update_concept,
             commands::knowledge_graph::delete_concept,
+            commands::knowledge_graph::set_concept_parent,
             commands::knowledge_graph::upsert_concept_from_tag,
             commands::knowledge_graph::create_concept_link,
             commands::knowledge_graph::list_concept_links,

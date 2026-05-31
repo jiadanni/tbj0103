@@ -2,11 +2,16 @@ use crate::db::DbState;
 use crate::services::model_settings::get_model_for_job;
 use crate::services::{git_sync, memory_pipeline, summarization_service, workspace_glossary};
 use serde::Serialize;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 static SCHEDULER_RUNNING: AtomicBool = AtomicBool::new(false);
+/// Counts scheduler ticks consumed by the concept-hierarchy job so we can
+/// gate it to roughly every 5 minutes (5 ticks at the current 60s cadence).
+/// Cheap LLM amortisation guard — the job itself is bounded internally too.
+static HIERARCHY_TICK: AtomicU32 = AtomicU32::new(0);
+const HIERARCHY_TICK_INTERVAL: u32 = 5;
 
 /// Mirror of the TypeScript `BackgroundTaskEvent` interface in api.ts.
 #[derive(Debug, Clone, Serialize)]
@@ -31,10 +36,17 @@ fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str, mode
 }
 
 /// Look up the model the scheduler would use for a given job key.
-fn lookup_job_model(app: &AppHandle, job_key: &str) -> Option<String> {
+async fn lookup_job_model(app: &AppHandle, job_key: &str) -> Option<String> {
     let db = app.state::<DbState>();
-    let conn = db.0.get().ok()?;
-    get_model_for_job(&conn, job_key)
+    let pool = db.0.clone();
+    let job_key = job_key.to_string();
+    tokio::task::spawn_blocking(move || -> Option<String> {
+        let conn = pool.get().ok()?;
+        get_model_for_job(&conn, &job_key)
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 pub fn start_scheduler(app: AppHandle) {
@@ -76,7 +88,9 @@ pub fn start_scheduler(app: AppHandle) {
             };
 
             let is_active_chatting = {
-                if let Ok(conn) = db.0.get() {
+                let pool = db.0.clone();
+                tokio::task::spawn_blocking(move || -> bool {
+                    let Ok(conn) = pool.get() else { return false; };
                     let idle_minutes: u32 = crate::commands::settings::get_setting(&conn, "memory_extraction_idle_minutes")
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(5);
@@ -86,40 +100,45 @@ pub fn start_scheduler(app: AppHandle) {
                     );
                     let count: i64 = conn.query_row(&sql, [], |row| row.get(0)).unwrap_or(0);
                     count > 0
-                } else {
-                    false
-                }
+                })
+                .await
+                .unwrap_or(false)
             };
 
             // Read Ollama URL from settings
             let ollama_url = {
-                match db.0.get() {
-                    Ok(conn) => conn
-                        .query_row(
-                            "SELECT value FROM settings WHERE key = 'ollama_base_url'",
-                            [],
-                            |row| row.get::<_, String>(0),
-                        )
-                        .map(|v| v.trim_matches('"').to_string())
-                        .ok(),
-                    Err(_) => None,
-                }
+                let pool = db.0.clone();
+                tokio::task::spawn_blocking(move || -> Option<String> {
+                    let conn = pool.get().ok()?;
+                    conn.query_row(
+                        "SELECT value FROM settings WHERE key = 'ollama_base_url'",
+                        [],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .map(|v| v.trim_matches('"').to_string())
+                    .ok()
+                })
+                .await
+                .ok()
+                .flatten()
             };
 
             let background_inference_enabled = {
-                if let Ok(conn) = db.0.get() {
+                let pool = db.0.clone();
+                tokio::task::spawn_blocking(move || -> bool {
+                    let Ok(conn) = pool.get() else { return true; };
                     crate::commands::settings::get_setting(&conn, "background_inference_enabled")
                         .map(|v| v == "true")
                         .unwrap_or(true)
-                } else {
-                    true
-                }
+                })
+                .await
+                .unwrap_or(true)
             };
 
             // If user is NOT chatting and background inference is enabled, run AI tasks
             if !is_streaming && !is_active_chatting && background_inference_enabled {
                 // 1. Process memory extraction
-                let mem_model = lookup_job_model(&app, "memory_extraction_model");
+                let mem_model = lookup_job_model(&app, "memory_extraction_model").await;
                 emit_task(&app, "memory_extraction", "started", "Extracting memories…", mem_model.clone());
                 let mem_result =
                     memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone()).await;
@@ -131,7 +150,7 @@ pub fn start_scheduler(app: AppHandle) {
                     mem_model,
                 );
 
-                let glossary_model = lookup_job_model(&app, "glossary_model");
+                let glossary_model = lookup_job_model(&app, "glossary_model").await;
                 emit_task(&app, "workspace_glossary", "started", "Refreshing workspace glossary…", glossary_model.clone());
                 let glossary_result = workspace_glossary::refresh_due_workspaces(&db).await;
                 emit_task(
@@ -168,48 +187,51 @@ pub fn start_scheduler(app: AppHandle) {
 
                 // 2. Process summarization — only sessions with recent activity
                 let (summ_recency_minutes, summ_max_sessions) = {
-                    match db.0.get() {
-                        Ok(conn) => {
-                            let idle = crate::commands::settings::get_setting(&conn, "memory_extraction_idle_minutes")
-                                .and_then(|v| v.parse::<u32>().ok())
-                                .unwrap_or(5);
-                            let max = crate::commands::settings::get_setting(&conn, "summarization_max_sessions")
-                                .and_then(|v| v.parse::<u32>().ok())
-                                .unwrap_or(5);
-                            (idle, max)
-                        }
-                        _ => (5, 5),
-                    }
+                    let pool = db.0.clone();
+                    tokio::task::spawn_blocking(move || -> (u32, u32) {
+                        let Ok(conn) = pool.get() else { return (5, 5); };
+                        let idle = crate::commands::settings::get_setting(&conn, "memory_extraction_idle_minutes")
+                            .and_then(|v| v.parse::<u32>().ok())
+                            .unwrap_or(5);
+                        let max = crate::commands::settings::get_setting(&conn, "summarization_max_sessions")
+                            .and_then(|v| v.parse::<u32>().ok())
+                            .unwrap_or(5);
+                        (idle, max)
+                    })
+                    .await
+                    .unwrap_or((5, 5))
                 };
-                let sessions = {
-                    match db.0.get() {
-                        Ok(conn) => {
-                            let sql = format!(
-                                "SELECT cs.id, cs.workspace_id FROM chat_sessions cs
-                                 WHERE datetime(cs.updated_at) > datetime('now', '-{} minutes')
-                                   AND cs.is_incognito = 0
-                                   AND cs.exclude_from_analytics = 0
-                                   AND cs.is_imported = 0
-                                 ORDER BY cs.updated_at DESC
-                                 LIMIT {}",
-                                summ_recency_minutes, summ_max_sessions
-                            );
-                            match conn.prepare(&sql) {
-                                Ok(mut stmt) => stmt
-                                    .query_map([], |row| {
-                                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                                    })
-                                    .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
-                                    .unwrap_or_default(),
-                                Err(_) => Vec::new(),
-                            }
-                        }
-                        Err(_) => Vec::new(),
-                    }
+                let sessions: Vec<(String, String)> = {
+                    let pool = db.0.clone();
+                    tokio::task::spawn_blocking(move || -> Vec<(String, String)> {
+                        let Ok(conn) = pool.get() else { return Vec::new(); };
+                        let sql = format!(
+                            "SELECT cs.id, cs.workspace_id FROM chat_sessions cs
+                             WHERE datetime(cs.updated_at) > datetime('now', '-{} minutes')
+                               AND cs.is_incognito = 0
+                               AND cs.exclude_from_analytics = 0
+                               AND cs.is_imported = 0
+                             ORDER BY cs.updated_at DESC
+                             LIMIT {}",
+                            summ_recency_minutes, summ_max_sessions
+                        );
+                        let result = match conn.prepare(&sql) {
+                            Ok(mut stmt) => stmt
+                                .query_map([], |row| {
+                                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                                })
+                                .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
+                                .unwrap_or_default(),
+                            Err(_) => Vec::new(),
+                        };
+                        result
+                    })
+                    .await
+                    .unwrap_or_default()
                 };
 
                 if !sessions.is_empty() {
-                    let summ_model = lookup_job_model(&app, "summarization_model");
+                    let summ_model = lookup_job_model(&app, "summarization_model").await;
                     emit_task(&app, "summarization", "started", "Summarizing chats…", summ_model.clone());
                     let mut any_failed = false;
                     for (session_id, workspace_id) in sessions {
@@ -234,7 +256,7 @@ pub fn start_scheduler(app: AppHandle) {
                 }
 
                 // 4. Flashcard topic sync + automatic card generation
-                let fc_model = lookup_job_model(&app, "flashcard_model");
+                let fc_model = lookup_job_model(&app, "flashcard_model").await;
                 emit_task(&app, "flashcard_generation", "started", "Generating flashcards…", fc_model.clone());
                 let fc_result = crate::services::flashcard_topic_service::tick(&db, ollama_url.clone()).await;
                 emit_task(
@@ -244,43 +266,74 @@ pub fn start_scheduler(app: AppHandle) {
                     if fc_result.is_ok() { "Flashcard generation done" } else { "Flashcard generation failed" },
                     fc_model,
                 );
+
+                // 5. Concept hierarchy — LLM-assisted parent detection.
+                //    Gated to every Nth tick so we don't spend ~20 LLM calls
+                //    every minute. The job itself caps work per call.
+                let hierarchy_tick = HIERARCHY_TICK.fetch_add(1, Ordering::Relaxed) + 1;
+                if hierarchy_tick.is_multiple_of(HIERARCHY_TICK_INTERVAL) {
+                    let ch_model = lookup_job_model(&app, "concept_hierarchy_model").await;
+                    emit_task(
+                        &app,
+                        "concept_hierarchy",
+                        "started",
+                        "Linking related topics…",
+                        ch_model.clone(),
+                    );
+                    let ch_result =
+                        crate::services::concept_hierarchy_service::tick(&db, ollama_url.clone())
+                            .await;
+                    let (status, message) = match &ch_result {
+                        Ok(report) => (
+                            "completed",
+                            format!(
+                                "Topic linking done ({} considered, {} linked)",
+                                report.considered, report.linked
+                            ),
+                        ),
+                        Err(_) => ("failed", "Topic linking failed".to_string()),
+                    };
+                    emit_task(&app, "concept_hierarchy", status, &message, ch_model);
+                }
             }
 
             // 3. Git sync — configurable interval (default 5 minutes = 10 ticks at 30s)
             let git_sync_ticks = {
-                match db.0.get() {
-                    Ok(conn) => {
-                        let mins: u32 = crate::commands::settings::get_setting(&conn, "git_sync_interval_minutes")
-                            .and_then(|v| v.parse().ok())
-                            .unwrap_or(5);
-                        (mins * 2).max(1) // 2 ticks per minute (30s interval)
-                    }
-                    _ => 10,
-                }
+                let pool = db.0.clone();
+                tokio::task::spawn_blocking(move || -> u32 {
+                    let Ok(conn) = pool.get() else { return 10; };
+                    let mins: u32 = crate::commands::settings::get_setting(&conn, "git_sync_interval_minutes")
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(5);
+                    (mins * 2).max(1) // 2 ticks per minute (30s interval)
+                })
+                .await
+                .unwrap_or(10)
             };
             if git_sync_tick.is_multiple_of(git_sync_ticks) {
                 let (sync_enabled, remote_url) = {
-                    match db.0.get() {
-                        Ok(conn) => {
-                            let enabled = conn
-                                .query_row(
-                                    "SELECT value FROM settings WHERE key = 'git_sync_enabled'",
-                                    [],
-                                    |r| r.get::<_, String>(0),
-                                )
-                                .unwrap_or_default()
-                                == "true";
-                            let url = conn
-                                .query_row(
-                                    "SELECT value FROM settings WHERE key = 'git_sync_remote_url'",
-                                    [],
-                                    |r| r.get::<_, String>(0),
-                                )
-                                .unwrap_or_default();
-                            (enabled, url)
-                        }
-                        Err(_) => (false, String::new()),
-                    }
+                    let pool = db.0.clone();
+                    tokio::task::spawn_blocking(move || -> (bool, String) {
+                        let Ok(conn) = pool.get() else { return (false, String::new()); };
+                        let enabled = conn
+                            .query_row(
+                                "SELECT value FROM settings WHERE key = 'git_sync_enabled'",
+                                [],
+                                |r| r.get::<_, String>(0),
+                            )
+                            .unwrap_or_default()
+                            == "true";
+                        let url = conn
+                            .query_row(
+                                "SELECT value FROM settings WHERE key = 'git_sync_remote_url'",
+                                [],
+                                |r| r.get::<_, String>(0),
+                            )
+                            .unwrap_or_default();
+                        (enabled, url)
+                    })
+                    .await
+                    .unwrap_or((false, String::new()))
                 };
 
                 if sync_enabled && !remote_url.is_empty() {
@@ -302,20 +355,25 @@ pub fn start_scheduler(app: AppHandle) {
                         if let Ok(Some(result)) = sync_result {
                             let now = chrono::Utc::now().to_rfc3339();
                             sync_ok = result.error.is_none() && !result.conflict;
-                            if let Ok(conn) = db.0.get() {
+                            let pool = db.0.clone();
+                            let result_error = result.error.clone();
+                            let result_conflict = result.conflict;
+                            let _ = tokio::task::spawn_blocking(move || {
+                                let Ok(conn) = pool.get() else { return; };
                                 let set = |key: &str, val: &str| {
                                     let _ = conn.execute(
                                         "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
                                         rusqlite::params![key, val],
                                     );
                                 };
-                                if result.error.is_none() && !result.conflict {
+                                if result_error.is_none() && !result_conflict {
                                     set("git_sync_last_synced_at", &now);
                                     set("git_sync_last_error", "");
-                                } else if let Some(err) = result.error {
+                                } else if let Some(err) = result_error {
                                     set("git_sync_last_error", &err);
                                 }
-                            }
+                            })
+                            .await;
                         } else {
                             sync_ok = false;
                         }

@@ -5,7 +5,7 @@
  * Roadmap focuses on it, the Review tab filters cards to it, and the Goals
  * tab can later use it for goal scoping.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { api, type ConceptNode, type ConceptLink } from "../lib/api";
 import { buildForest, type RoadmapNode } from "../lib/conceptTree";
@@ -18,7 +18,6 @@ interface Props {
    * may have introduced new concepts. Triggers a refetch. */
   refreshKey?: number;
 }
-
 function levelIndent(level: string): string {
   if (level === "chapter") {return "pl-2";}
   if (level === "section") {return "pl-5";}
@@ -39,6 +38,7 @@ interface RowProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   filter: string;
+  onContextMenu: (e: ReactMouseEvent, node: RoadmapNode) => void;
 }
 
 function matchesFilter(node: RoadmapNode, filter: string): boolean {
@@ -48,7 +48,7 @@ function matchesFilter(node: RoadmapNode, filter: string): boolean {
   return (node.children ?? []).some((c) => matchesFilter(c, needle));
 }
 
-function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, filter }: RowProps) {
+function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, filter, onContextMenu }: RowProps) {
   const hasChildren = (node.children?.length ?? 0) > 0;
   const isOpen = expanded.has(node.id) || filter.length > 0;
   const isActive = selectedId === node.id;
@@ -64,6 +64,7 @@ function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, filter }
             : `hover:bg-[var(--bg-hover)] ${levelStyle(node.hierarchy_level)}`
         }`}
         style={{ marginLeft: `${depth * 4}px` }}
+        onContextMenu={(e) => onContextMenu(e, node)}
       >
         {hasChildren ? (
           <button
@@ -94,6 +95,7 @@ function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, filter }
           selectedId={selectedId}
           onSelect={onSelect}
           filter={filter}
+          onContextMenu={onContextMenu}
         />
       ))}
     </>
@@ -106,6 +108,10 @@ export default function LearningHubSidebar({ workspaceId, selectedConceptId, onS
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [menu, setMenu] = useState<{ x: number; y: number; node: RoadmapNode } | null>(null);
+  const [parentPicker, setParentPicker] = useState<RoadmapNode | null>(null);
+  const [parentFilter, setParentFilter] = useState("");
+  const [localRefresh, setLocalRefresh] = useState(0);
 
   useEffect(() => {
     if (!workspaceId) {return;}
@@ -135,8 +141,7 @@ export default function LearningHubSidebar({ workspaceId, selectedConceptId, onS
         if (!cancelled) {setLoading(false);}
       });
     return () => { cancelled = true; };
-  }, [workspaceId, refreshKey]);
-
+  }, [workspaceId, refreshKey, localRefresh]);
   // When there is no active workspace, render an empty forest without touching
   // the fetched-data state; the next fetch will replace it cleanly.
   const forest = useMemo(
@@ -152,7 +157,73 @@ export default function LearningHubSidebar({ workspaceId, selectedConceptId, onS
     });
   }
 
+  function openContextMenu(e: ReactMouseEvent, node: RoadmapNode) {
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, node });
+  }
+
+  function closeMenu() {
+    setMenu(null);
+  }
+
+  async function applyParent(parentId: string | null) {
+    if (!parentPicker) {return;}
+    try {
+      await api.graph.setConceptParent(parentPicker.id, parentId);
+      setParentPicker(null);
+      setParentFilter("");
+      setLocalRefresh((n) => n + 1);
+    } catch {
+      // Swallow — the next refresh will reflect the actual state. Surfacing
+      // this would need a toast system; the sidebar deliberately stays
+      // chrome-free.
+    }
+  }
+
+  useEffect(() => {
+    if (!menu) {return;}
+    const handler = () => closeMenu();
+    window.addEventListener("click", handler);
+    window.addEventListener("scroll", handler, true);
+    return () => {
+      window.removeEventListener("click", handler);
+      window.removeEventListener("scroll", handler, true);
+    };
+  }, [menu]);
+
   const roots = forest.children ?? [];
+
+  // Flat list of all concepts for the parent picker — excludes the target
+  // concept itself and any of its descendants (preventing trivial cycles).
+  function descendantsOf(id: string): Set<string> {
+    const childOf = new Map<string, string[]>();
+    links.forEach((link) => {
+      if (link.link_type === "part_of") {
+        const arr = childOf.get(link.target_id) ?? [];
+        arr.push(link.source_id);
+        childOf.set(link.target_id, arr);
+      }
+    });
+    const visited = new Set<string>();
+    const stack = [id];
+    while (stack.length) {
+      const next = stack.pop();
+      if (!next || visited.has(next)) {continue;}
+      visited.add(next);
+      for (const c of childOf.get(next) ?? []) {stack.push(c);}
+    }
+    return visited;
+  }
+  const parentOptions = parentPicker
+    ? (() => {
+        const blocked = descendantsOf(parentPicker.id);
+        const needle = parentFilter.trim().toLowerCase();
+        return nodes
+          .filter((n) => !blocked.has(n.id))
+          .filter((n) => !needle || n.name.toLowerCase().includes(needle))
+          .slice(0, 100);
+      })()
+    : [];
 
   return (
     <aside className="w-64 shrink-0 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] flex flex-col overflow-hidden">
@@ -198,9 +269,101 @@ export default function LearningHubSidebar({ workspaceId, selectedConceptId, onS
             selectedId={selectedConceptId}
             onSelect={onSelect}
             filter={filter}
+            onContextMenu={openContextMenu}
           />
         ))}
       </div>
+
+      {menu && (
+        <div
+          role="menu"
+          className="fixed z-50 min-w-[160px] rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 text-sm shadow-lg"
+          style={{ left: menu.x, top: menu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="block w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] text-[var(--text-primary)]"
+            onClick={() => {
+              setParentPicker(menu.node);
+              setParentFilter("");
+              closeMenu();
+            }}
+          >
+            Set parent…
+          </button>
+          <button
+            className="block w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"
+            onClick={() => {
+              const target = menu.node;
+              closeMenu();
+              void api.graph
+                .setConceptParent(target.id, null)
+                .then(() => setLocalRefresh((n) => n + 1))
+                .catch(() => undefined);
+            }}
+          >
+            Clear parent
+          </button>
+        </div>
+      )}
+
+      {parentPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
+          onClick={() => setParentPicker(null)}
+        >
+          <div
+            className="w-[360px] max-h-[60vh] flex flex-col rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-3 py-2 border-b border-[var(--border-color)]">
+              <div className="text-xs text-[var(--text-muted)]">
+                Set parent for
+              </div>
+              <div className="text-sm font-medium text-[var(--text-primary)] truncate">
+                {parentPicker.name}
+              </div>
+              <input
+                autoFocus
+                value={parentFilter}
+                onChange={(e) => setParentFilter(e.target.value)}
+                placeholder="Search concepts…"
+                className="mt-2 w-full px-2 py-1 text-xs rounded bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-color)]"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto py-1">
+              {parentOptions.length === 0 && (
+                <div className="px-3 py-2 text-xs text-[var(--text-muted)]">
+                  No eligible concepts.
+                </div>
+              )}
+              {parentOptions.map((opt) => (
+                <button
+                  key={opt.id}
+                  className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--bg-hover)] text-[var(--text-primary)]"
+                  onClick={() => { void applyParent(opt.id); }}
+                >
+                  {opt.name}
+                </button>
+              ))}
+            </div>
+            <div className="px-3 py-2 border-t border-[var(--border-color)] flex justify-between">
+              <button
+                onClick={() => { void applyParent(null); }}
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Clear parent
+              </button>
+              <button
+                onClick={() => setParentPicker(null)}
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

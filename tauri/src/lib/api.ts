@@ -489,6 +489,7 @@ export interface AppSettings {
   glossary_model: string;
   topic_signature_model: string;
   goal_suggestion_model: string;
+  concept_hierarchy_model: string;
   quick_search_shortcut: string;
   quick_search_workspace_scope: string;
   quick_search_type_filters: string[];
@@ -573,6 +574,7 @@ export interface AiSettings {
   glossary_model: string;
   topic_signature_model: string;
   goal_suggestion_model: string;
+  concept_hierarchy_model: string;
   embedding_model: string;
   draft_model: string;
   compare_model_a: string;
@@ -1215,6 +1217,8 @@ export const api = {
     getConcept: (id: string) => invoke<ConceptNode | null>("get_concept", { id }),
     updateConcept: (id: string, fields: Partial<ConceptNode>) => invoke<void>("update_concept", { id, ...fields }),
     deleteConcept: (id: string) => invoke<void>("delete_concept", { id }),
+    setConceptParent: (childId: string, parentId: string | null) =>
+      invoke<void>("set_concept_parent", { childId, parentId }),
     createLink: (sourceId: string, targetId: string, linkType?: string, strength?: number) =>
       invoke<ConceptLink>("create_concept_link", { req: { source_id: sourceId, target_id: targetId, link_type: linkType, strength } }),
     listLinks: (workspaceId: string, limit?: number, offset?: number, opts?: { includeDescendants?: boolean }) => invoke<ConceptLink[]>("list_concept_links", { workspaceId, limit, offset, includeDescendants: opts?.includeDescendants }),

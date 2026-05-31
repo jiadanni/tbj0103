@@ -126,6 +126,7 @@ function mergeSplitSettings(
     glossary_model: ai.glossary_model,
     topic_signature_model: ai.topic_signature_model,
     goal_suggestion_model: ai.goal_suggestion_model,
+    concept_hierarchy_model: ai.concept_hierarchy_model,
     embedding_model: ai.embedding_model,
     draft_model: ai.draft_model,
     compare_model_a: ai.compare_model_a,
@@ -1655,6 +1656,7 @@ export default function PreferencesView() {
     settingsStore.setGlossaryModel(settings.glossary_model);
     settingsStore.setTopicSignatureModel(settings.topic_signature_model);
     settingsStore.setGoalSuggestionModel(settings.goal_suggestion_model);
+    settingsStore.setConceptHierarchyModel(settings.concept_hierarchy_model);
     settingsStore.setQuickSearchWorkspaceScope(settings.quick_search_workspace_scope);
     settingsStore.setQuickSearchTypeFilters(settings.quick_search_type_filters);
     settingsStore.setOllamaUrl(settings.ollama_base_url);
@@ -2498,6 +2500,7 @@ export default function PreferencesView() {
           { key: "glossary_model", label: "Workspace Glossary", tokens: "~800–2,000 tokens input", note: "≥4k context recommended" },
           { key: "topic_signature_model", label: "Topic Signatures", tokens: "~1,000–3,000 tokens input", note: "≥4k context recommended" },
           { key: "goal_suggestion_model", label: "Goal Suggestion", tokens: "~300–1,500 tokens input", note: "2k context OK" },
+          { key: "concept_hierarchy_model", label: "Topic Hierarchy", tokens: "~200–800 tokens input", note: "2k context OK" },
         ];
         const options = [
           { value: "", label: "Default (background model)" },

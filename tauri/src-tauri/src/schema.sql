@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS concept_nodes (
     y_position REAL NOT NULL DEFAULT 0.0,
     review_count INTEGER NOT NULL DEFAULT 0,
     hierarchy_level TEXT DEFAULT 'concept',
+    parent_checked_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -151,6 +152,9 @@ CREATE TABLE IF NOT EXISTS concept_links (
     context TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_concept_links_source_target_type
+    ON concept_links(source_id, target_id, link_type);
 
 CREATE TABLE IF NOT EXISTS concept_mentions (
     id TEXT PRIMARY KEY NOT NULL,
