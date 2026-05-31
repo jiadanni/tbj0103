@@ -35,6 +35,16 @@ fn workspace_has_enriched_context(
         return Ok(true);
     }
 
+    // About You injection counts as enriched context whenever it's enabled and resolves to non-empty.
+    if crate::services::about_you::inject_into_chat_enabled(conn)
+        && crate::services::about_you::resolve_about_you_text(conn, workspace_id)
+            .ok()
+            .flatten()
+            .is_some()
+    {
+        return Ok(true);
+    }
+
     if query_exists(
         conn,
         "SELECT EXISTS(

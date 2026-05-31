@@ -139,8 +139,15 @@ pub fn assemble_context(
 
     let mut final_messages: Vec<OllamaMessage> = vec![];
 
-    // 1. System Prompt (order: global → workspace → project → session)
+    // 1. System Prompt (order: about-you → global → workspace → project → session)
     let mut system_parts = vec![];
+
+    // 1a. About You (learner profile) — gated by inject_about_you_into_chat
+    if crate::services::about_you::inject_into_chat_enabled(conn) {
+        if let Ok(Some(profile_text)) = crate::services::about_you::resolve_about_you_text(conn, workspace_id) {
+            system_parts.push(profile_text);
+        }
+    }
 
     // Consolidated system instructions query (Global, Workspace, Folder, Session)
     let mut stmt = conn

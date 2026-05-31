@@ -1,4 +1,5 @@
 pub mod ai_content_generator;
+pub mod about_you;
 pub mod artifact_service;
 pub mod background_scheduler;
 pub mod backup_service;
@@ -22,6 +23,8 @@ pub mod quick_search_index;
 pub mod quiz_service;
 pub mod quick_search_service;
 pub mod retrieval_engine;
+pub mod roadmap_export;
+pub mod roadmap_render;
 pub mod semantic_search;
 pub mod settings;
 pub mod spaced_repetition;

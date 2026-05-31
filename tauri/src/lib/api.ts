@@ -2,14 +2,15 @@
  * Typed IPC wrappers for all Tauri backend commands.
  * Mirrors the Rust #[tauri::command] functions in src-tauri/src/commands/.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as _rawTauriInvoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import type { Workspace, Folder } from "../stores/workspaceStore";
 import type { ChatSession, Message } from "../stores/chatStore";
 
-const OBSERVABILITY_ENABLED =
-  typeof window !== "undefined" &&
-  (window.location.protocol === "http:" || window.location.protocol === "https:");
+// IPC observability is always on so we can see queue stalls and slow commands
+// in the dev terminal. Output is `console.log`/`console.error`, which Tauri
+// pipes to stderr in dev mode, alongside Rust log lines.
+const OBSERVABILITY_ENABLED = typeof window !== "undefined";
 
 type ObservabilityMeta = Record<string, unknown>;
 const browserCrypto = globalThis.crypto;
@@ -27,6 +28,30 @@ function logIpcEvent(level: "debug" | "error", message: string, payload: Observa
   // eslint-disable-next-line no-console
   const logger = level === "error" ? console.error : console.log;
   logger(`[ipc] ${message}`, payload);
+}
+
+// Wrap every IPC so command duration is logged. `invoke` is the local name used
+// throughout this file; the underlying Tauri call goes through `_rawTauriInvoke`.
+// Slow commands (>= 50ms) and all errors are logged so queue stalls show up in
+// the dev terminal alongside scheduler / ollama lines.
+async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const startedAt = browserPerformance.now();
+  try {
+    const result = await _rawTauriInvoke<T>(command, args);
+    const durationMs = Number((browserPerformance.now() - startedAt).toFixed(1));
+    if (durationMs >= 50) {
+      logIpcEvent("debug", `<- ${command}`, { command, durationMs });
+    }
+    return result;
+  } catch (error) {
+    const durationMs = Number((browserPerformance.now() - startedAt).toFixed(1));
+    logIpcEvent("error", `xx ${command}`, {
+      command,
+      durationMs,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 function ipcSlowThresholdMs(command: string): number {
@@ -74,7 +99,8 @@ async function invokeObserved<T>(
   const startedAt = browserPerformance.now();
 
   try {
-    const result = await invoke<T>(command, args);
+    // Bypass the timed `invoke` wrapper so we don't double-log the same call.
+    const result = await _rawTauriInvoke<T>(command, args);
     const durationMs = Number((browserPerformance.now() - startedAt).toFixed(3));
     const status = durationMs >= ipcSlowThresholdMs(command) ? "slow" : "ok";
     logIpcEvent("debug", `<- ${command}`, {
@@ -461,6 +487,7 @@ export interface AppSettings {
   flashcard_model: string;
   glossary_model: string;
   topic_signature_model: string;
+  goal_suggestion_model: string;
   quick_search_shortcut: string;
   quick_search_workspace_scope: string;
   quick_search_type_filters: string[];
@@ -481,6 +508,8 @@ export interface AppSettings {
   immediate_delete: boolean;
   confirm_move_to_trash: boolean;
   prompt_instructions: string;
+  about_you?: string;
+  inject_about_you_into_chat?: boolean;
   switch_workspace_section: string;
   hide_native_menu: boolean;
   show_gen_info: boolean;
@@ -807,7 +836,7 @@ export const api = {
     listChildren: (parentId: string) => invoke<Workspace[]>("list_child_workspaces", { parentId }),
     listHidden: () => invoke<Workspace[]>("list_hidden_workspaces"),
     get: (id: string) => invoke<Workspace | null>("get_workspace", { id }),
-    update: (id: string, name: string, description?: string, promptInstructions?: string, surveyData?: string, excludeFromAiAnalysis?: boolean) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions, survey_data: surveyData, exclude_from_ai_analysis: excludeFromAiAnalysis } }),
+    update: (id: string, name: string, description?: string, promptInstructions?: string, surveyData?: string, excludeFromAiAnalysis?: boolean, aboutYou?: string) => invoke<void>("update_workspace", { req: { id, name, description, prompt_instructions: promptInstructions, survey_data: surveyData, exclude_from_ai_analysis: excludeFromAiAnalysis, about_you: aboutYou } }),
     setParent: (id: string, parentId: string | null) => invoke<void>("set_workspace_parent", { id, parentId }),
     delete: (id: string) => invoke<void>("delete_workspace", { id }),
     updateIcon: (id: string, icon: string) => invoke<void>("update_workspace_icon", { id, icon }),
@@ -1618,11 +1647,11 @@ export const api = {
       }),
     checkWorkspaceAnalyzable: (workspaceId: string) =>
       invoke<{ ready: boolean; item_count: number; char_count: number }>("check_workspace_analyzable", {
-        workspace_id: workspaceId,
+        workspaceId,
       }),
-    suggestGoals: (workspaceId: string, model: string, ollamaUrl?: string, surveyContext?: string) =>
+    suggestGoals: (workspaceId: string, model?: string, ollamaUrl?: string, surveyContext?: string) =>
       invoke<SuggestedGoal[]>("suggest_learning_goals", {
-        req: { workspace_id: workspaceId, model, ollama_url: ollamaUrl, survey_context: surveyContext },
+        req: { workspace_id: workspaceId, model: model || undefined, ollama_url: ollamaUrl, survey_context: surveyContext },
       }),
     analyzeDescendants: (workspaceId: string, model: string, opts?: { ollamaUrl?: string; focusTopic?: string }) =>
       invoke<DescendantAnalysisProgress[]>("analyze_descendants", {

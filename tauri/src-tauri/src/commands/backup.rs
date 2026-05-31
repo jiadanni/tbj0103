@@ -235,7 +235,7 @@ pub fn create_backup(auth: State<AuthState>, state: State<DbState>, workspace_id
 
     let workspace = query_optional_json_row(
         &conn,
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at
+        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, about_you, survey_data
          FROM workspaces
          WHERE id = ?1",
         &workspace_id,
@@ -572,7 +572,7 @@ pub fn create_global_backup(auth: State<AuthState>, state: State<DbState>) -> Re
     for workspace_id in workspace_ids {
         let workspace = query_optional_json_row(
             &conn,
-            "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at
+            "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, about_you, survey_data
              FROM workspaces
              WHERE id = ?1",
             &workspace_id,

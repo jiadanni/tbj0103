@@ -25,13 +25,14 @@ fn row_to_workspace(row: &rusqlite::Row<'_>) -> rusqlite::Result<Workspace> {
         order_index: row.get(11)?,
         last_message_at: row.get(12)?,
         survey_data: row.get(13)?,
+        about_you: row.get(14)?,
     })
 }
 
 fn insert_workspace(conn: &Connection, workspace: &Workspace) -> Result<(), String> {
     let sig_json = serde_json::to_string(&workspace.topic_signature).map_err(|e| e.to_string())?;
     conn.execute(
-        "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data, about_you) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         rusqlite::params![
             workspace.id,
             workspace.name,
@@ -46,7 +47,8 @@ fn insert_workspace(conn: &Connection, workspace: &Workspace) -> Result<(), Stri
             workspace.icon,
             workspace.order_index,
             workspace.last_message_at,
-            workspace.survey_data
+            workspace.survey_data,
+            workspace.about_you
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -72,7 +74,7 @@ pub fn create_child(
 pub fn list_all(conn: &Connection) -> Result<Vec<Workspace>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data
+            "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data, about_you
              FROM workspaces
              WHERE is_hidden = 0
              ORDER BY order_index ASC, name COLLATE NOCASE ASC, created_at ASC, id ASC",
@@ -86,7 +88,7 @@ pub fn list_all(conn: &Connection) -> Result<Vec<Workspace>, String> {
 pub fn list_root(conn: &Connection) -> Result<Vec<Workspace>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data
+            "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data, about_you
              FROM workspaces
              WHERE is_hidden = 0 AND parent_workspace_id IS NULL
              ORDER BY order_index ASC, name COLLATE NOCASE ASC, created_at ASC, id ASC",
@@ -100,7 +102,7 @@ pub fn list_root(conn: &Connection) -> Result<Vec<Workspace>, String> {
 pub fn list_children(conn: &Connection, parent_id: &str) -> Result<Vec<Workspace>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data
+            "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data, about_you
              FROM workspaces
              WHERE is_hidden = 0 AND parent_workspace_id = ?1
              ORDER BY order_index ASC, name COLLATE NOCASE ASC, created_at ASC, id ASC",
@@ -116,7 +118,7 @@ pub fn list_children(conn: &Connection, parent_id: &str) -> Result<Vec<Workspace
 pub fn list_hidden(conn: &Connection) -> Result<Vec<Workspace>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data
+            "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data, about_you
              FROM workspaces
              WHERE is_hidden = 1
              ORDER BY order_index ASC, name COLLATE NOCASE ASC, created_at ASC, id ASC",
@@ -129,7 +131,7 @@ pub fn list_hidden(conn: &Connection) -> Result<Vec<Workspace>, String> {
 
 pub fn get(conn: &Connection, id: &str) -> Result<Option<Workspace>, String> {
     let result = conn.query_row(
-        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data FROM workspaces WHERE id = ?1",
+        "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, parent_workspace_id, icon, order_index, last_message_at, survey_data, about_you FROM workspaces WHERE id = ?1",
         rusqlite::params![id],
         row_to_workspace,
     );
@@ -208,6 +210,14 @@ pub fn update(
         conn.execute(
             "UPDATE workspaces SET survey_data = ?1 WHERE id = ?2",
             rusqlite::params![survey, req.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(about_you) = &req.about_you {
+        conn.execute(
+            "UPDATE workspaces SET about_you = ?1 WHERE id = ?2",
+            rusqlite::params![about_you, req.id],
         )
         .map_err(|e| e.to_string())?;
     }

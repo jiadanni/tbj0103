@@ -3,7 +3,7 @@
  * Mirrors LearningPathView.swift.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Check, Trash2, Target, Sparkles, Loader2, X } from "lucide-react";
+import { Plus, Check, Trash2, Target, Sparkles, Loader2, X, Zap } from "lucide-react";
 import { api, type LearningGoal, type ConceptNode } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useBubbleUpFlag } from "../lib/workspacePane";
@@ -12,6 +12,7 @@ import WorkspaceSurveyModal, {
   type WorkspaceSurvey,
   formatSurveyForPrompt,
 } from "../components/WorkspaceSurveyModal";
+import { resolveAboutYou, formatAboutYouForPrompt } from "../lib/aboutYou";
 
 type GenerateStep = "analyze" | "suggest" | "save" | null;
 
@@ -73,7 +74,18 @@ export default function LearningPathView({ conceptId = null, onClearConceptFilte
     setLastGeneratedCount(null);
 
     const surveyJson = JSON.stringify(survey);
-    const surveyText = formatSurveyForPrompt(survey);
+    let surveyText = formatSurveyForPrompt(survey);
+    // Prepend About You profile so generated goals are tailored to the user.
+    try {
+      const settings = await api.settings.get();
+      const profile = resolveAboutYou(activeWorkspace.about_you ?? "", settings.about_you);
+      const aboutBlock = formatAboutYouForPrompt(profile);
+      if (aboutBlock) {
+        surveyText = `${aboutBlock}\n\n${surveyText}`;
+      }
+    } catch {
+      // Non-fatal: fall back to survey-only context.
+    }
     const model = preferredModel;
 
     // Merge survey context into prompt_instructions, replacing any prior survey block.
@@ -110,11 +122,12 @@ export default function LearningPathView({ conceptId = null, onClearConceptFilte
         }
       }
 
-      // 3. Suggest learning goals
+      // 3. Suggest learning goals (model resolved server-side via
+      //    Background Tasks > Goal Suggestion → background → preferred).
       setGenerateStep("suggest");
       const suggested = await api.knowledge.suggestGoals(
         activeWorkspaceId,
-        model,
+        undefined,
         ollamaUrl || undefined,
         surveyText,
       );
@@ -198,6 +211,17 @@ export default function LearningPathView({ conceptId = null, onClearConceptFilte
       <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-color)]">
         <h1 className="text-sm font-semibold text-[var(--text-primary)]">Learning Goals</h1>
         <div className="flex items-center gap-2">
+          {activeWorkspaceId && existingSurvey && (
+            <button
+              onClick={() => { handleSurveySubmit(existingSurvey); }}
+              disabled={isGenerating}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-[var(--accent-color)]/15 border border-[var(--accent-color)]/40 text-[var(--accent-color)] hover:bg-[var(--accent-color)]/25 disabled:opacity-40"
+              title="Generate goals from saved roadmap setup"
+            >
+              <Zap size={12} />
+              Generate Now
+            </button>
+          )}
           {activeWorkspaceId && (
             <button
               onClick={() => { setShowSurvey(true); }}
@@ -255,7 +279,7 @@ export default function LearningPathView({ conceptId = null, onClearConceptFilte
       {conceptId && (
         <div className="flex items-center justify-between px-5 py-2 bg-[var(--accent-color)]/10 border-b border-[var(--border-color)]">
           <span className="text-xs text-[var(--accent-color)]">
-            Showing goals for: <strong>{selectedConceptName ?? "(unknown concept)"}</strong>
+            Showing goals for: <strong>{selectedConceptName ?? "(unknown topic)"}</strong>
           </span>
           {onClearConceptFilter && (
             <button
@@ -319,11 +343,23 @@ export default function LearningPathView({ conceptId = null, onClearConceptFilte
             <Target size={32} className="text-[var(--text-muted)]" />
             <p className="text-sm text-[var(--text-muted)]">No learning goals yet.</p>
             <div className="flex gap-2">
+              {existingSurvey && (
+                <button
+                  onClick={() => handleSurveySubmit(existingSurvey)}
+                  className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90 flex items-center gap-1.5"
+                >
+                  <Zap size={13} /> Generate Now
+                </button>
+              )}
               <button
                 onClick={() => setShowSurvey(true)}
-                className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90 flex items-center gap-1.5"
+                className={`px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 ${
+                  existingSurvey
+                    ? "border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                    : "bg-[var(--accent-color)] text-white hover:opacity-90"
+                }`}
               >
-                <Sparkles size={13} /> Generate with AI
+                <Sparkles size={13} /> {existingSurvey ? "Edit Setup" : "Generate with AI"}
               </button>
               <button
                 onClick={() => setShowCreate(true)}
