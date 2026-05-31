@@ -236,19 +236,27 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
     let pool = state.0.clone();
 
     tokio::task::spawn_blocking(move || -> Result<Settings, String> {
+        let __t0 = std::time::Instant::now();
         let conn = pool.get().map_err(|e| e.to_string())?;
+        let __t_pool = __t0.elapsed();
+
+        let __t1 = std::time::Instant::now();
+        let settings_map = load_all_settings(&conn)?;
+        let __t_load = __t1.elapsed();
+        let __row_count = settings_map.len();
+
         let def = Settings::default();
 
-        // Read every settings row in a single query. Below, we shadow the
-        // module-level `get_setting` with a closure of the same signature so
-        // the ~70 existing call sites don't need to be rewritten — they all
-        // now do HashMap lookups instead of issuing one SELECT each.
-        let settings_map = load_all_settings(&conn)?;
+        // Below, we shadow the module-level `get_setting` with a closure of
+        // the same signature so the ~70 existing call sites don't need to be
+        // rewritten — they all now do HashMap lookups instead of issuing one
+        // SELECT each.
         #[allow(clippy::redundant_closure)]
         let get_setting = |_conn: &rusqlite::Connection, key: &str| {
             settings_map.get(key).cloned()
         };
 
+        let __t2 = std::time::Instant::now();
         let stored_start_at_login = get_setting(&conn, "start_at_login")
             .map(|v| v == "true")
             .unwrap_or(stored_start_at_login_default);
@@ -288,7 +296,7 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
             set_setting(&conn, "theme", &serialized_theme)?;
         }
 
-        Ok(Settings {
+        let __settings = Settings {
         preferred_model: get_setting(&conn, "preferred_model")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.preferred_model),
@@ -488,7 +496,23 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
         ram_headroom_percent: get_setting(&conn, "ram_headroom_percent")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.ram_headroom_percent),
-        })
+        };
+        let __t_body = __t2.elapsed();
+        let __total = __t0.elapsed();
+        crate::logging::log_buffered(
+            "info",
+            "settings",
+            &format!(
+                "[GET_SETTINGS_PROFILE] total={:.3}s pool_acquire={:.3}s bulk_load={:.3}s body={:.3}s rows={}",
+                __total.as_secs_f64(),
+                __t_pool.as_secs_f64(),
+                __t_load.as_secs_f64(),
+                __t_body.as_secs_f64(),
+                __row_count,
+            ),
+            "{}",
+        );
+        Ok(__settings)
     })
     .await
     .map_err(|e| format!("spawn_blocking join error: {e}"))?
