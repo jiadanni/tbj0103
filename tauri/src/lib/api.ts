@@ -1568,6 +1568,7 @@ export const api = {
   settings: {
     get: () => invoke<AppSettings>("get_settings"),
     update: (settings: AppSettings) => invoke<void>("update_settings", { settings }),
+    updateOne: (key: string, value: unknown) => invoke<void>("update_setting", { key, value }),
     reloadTrayIcon: () => invoke<void>("reload_tray_icon"),
   },
 

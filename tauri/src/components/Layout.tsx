@@ -1692,8 +1692,7 @@ export default function Layout() {
   const handleExitDemo = async () => {
     try {
       // Mark demo as dismissed to prevent re-auto-activation
-      const settings = await api.settings.get();
-      await api.settings.update({ ...settings, demo_dismissed: true });
+      await api.settings.updateOne("demo_dismissed", true);
       // Deactivate demo workspace
       await api.demo.deactivate();
       // Clear demo mode from store

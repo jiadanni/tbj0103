@@ -2430,10 +2430,7 @@ export default function ChatView() {
     if (!model) { return; }
     setPreferredModel(model);
     try {
-      const current = await api.settings.get();
-      if (current.preferred_model !== model) {
-        await api.settings.update({ ...current, preferred_model: model });
-      }
+      await api.settings.updateOne("preferred_model", model);
     } catch (err) {
       console.error("Failed to persist model choice:", err);
     }
@@ -2443,10 +2440,7 @@ export default function ChatView() {
 
   const persistSetting = useCallback(async (key: keyof AppSettings, value: unknown) => {
     try {
-      const current = await api.settings.get();
-      if (current[key] !== value) {
-        await api.settings.update({ ...current, [key]: value });
-      }
+      await api.settings.updateOne(key as string, value);
     } catch (err) {
       console.error(`Failed to persist ${key}:`, err);
     }

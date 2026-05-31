@@ -141,9 +141,7 @@ export default function Sidebar({
     const next = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize + delta));
     if (next === fontSize) {return;}
     useSettingsStore.getState().setFontSize(next);
-    api.settings.get().then((s) => {
-      api.settings.update({ ...s, font_size: next }).catch(() => {});
-    }).catch(() => {});
+    api.settings.updateOne("font_size", next).catch(() => {});
   }
 
   const visibleTooltip = tooltip && tooltip.path === location.pathname ? tooltip : null;
