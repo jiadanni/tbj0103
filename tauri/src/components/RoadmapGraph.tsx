@@ -3,7 +3,7 @@
  * Renders chapters → sections → concepts as a top-down tree of labeled boxes
  * connected by dashed/curved paths. Supports zoom/pan and node selection.
  */
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import * as d3 from "d3";
 import type { ConceptNode, ConceptLink } from "../lib/api";
 import { buildForest, type RoadmapNode } from "../lib/conceptTree";
@@ -51,13 +51,26 @@ interface RoadmapGraphProps {
   searchFilter?: string;
 }
 
-function RoadmapGraphInner({
-  nodes,
-  links,
-  selectedConceptId,
-  onSelectConcept,
-  searchFilter,
-}: RoadmapGraphProps) {
+export interface RoadmapGraphHandle {
+  /**
+   * Snapshot the current SVG for export. Clones the live `<svg>`, applies the
+   * laid-out bbox as `width`/`height`/`viewBox` so the markup renders
+   * standalone, and serializes to a string. Returns `null` when no layout has
+   * been computed yet (e.g., empty roadmap).
+   */
+  getExportableSvg: () => { svg: string; width: number; height: number } | null;
+}
+
+function RoadmapGraphInner(
+  {
+    nodes,
+    links,
+    selectedConceptId,
+    onSelectConcept,
+    searchFilter,
+  }: RoadmapGraphProps,
+  ref: Ref<RoadmapGraphHandle>,
+) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [transform, setTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
@@ -171,6 +184,56 @@ function RoadmapGraphInner({
       svg.on(".zoom", null);
     };
   }, []);
+
+  // Expose an exportable, standalone SVG snapshot to parent (Export menu).
+  // Clones the live `<svg>`, resizes it to the layout bbox, inlines computed
+  // CSS variable colors so the markup renders correctly outside the app, and
+  // serializes via `XMLSerializer`.
+  useImperativeHandle(
+    ref,
+    () => ({
+      getExportableSvg: () => {
+        const live = svgRef.current;
+        if (!live || !layout) { return null; }
+        const width = Math.max(1, Math.round(layout.bbox.maxX - layout.bbox.minX));
+        const height = Math.max(1, Math.round(layout.bbox.maxY - layout.bbox.minY));
+        const clone = live.cloneNode(true) as SVGSVGElement;
+        clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+        clone.setAttribute("width", String(width));
+        clone.setAttribute("height", String(height));
+        clone.setAttribute(
+          "viewBox",
+          `${layout.bbox.minX} ${layout.bbox.minY} ${width} ${height}`,
+        );
+        // Remove the live pan/zoom transform so the bbox-aligned viewBox controls framing.
+        const inner = clone.querySelector("g");
+        if (inner) { inner.removeAttribute("transform"); }
+
+        // Inline CSS-variable colors so the SVG is portable.
+        const computed = window.getComputedStyle(live);
+        const replacements: Array<[string, string]> = [
+          ["var(--bg-primary)", computed.getPropertyValue("--bg-primary").trim() || "#0b0f17"],
+          ["var(--bg-elevated)", computed.getPropertyValue("--bg-elevated").trim() || "#131a26"],
+          ["var(--border-color)", computed.getPropertyValue("--border-color").trim() || "#1f2a3a"],
+          ["var(--text-primary)", computed.getPropertyValue("--text-primary").trim() || "#e2e8f0"],
+          ["var(--accent-color)", computed.getPropertyValue("--accent-color").trim() || "#6366f1"],
+        ];
+        clone.querySelectorAll<SVGElement>("*").forEach((el) => {
+          for (const attr of ["fill", "stroke"] as const) {
+            const value = el.getAttribute(attr);
+            if (!value) { continue; }
+            const match = replacements.find(([token]) => value.includes(token));
+            if (match) { el.setAttribute(attr, value.replace(match[0], match[1])); }
+          }
+        });
+
+        const svg = new XMLSerializer().serializeToString(clone);
+        return { svg, width, height };
+      },
+    }),
+    [layout],
+  );
 
   if (!layout) {
     return <div ref={containerRef} className="h-full w-full" />;
@@ -319,5 +382,5 @@ function RoadmapGraphInner({
   );
 }
 
-const RoadmapGraph = memo(RoadmapGraphInner);
+const RoadmapGraph = memo(forwardRef<RoadmapGraphHandle, RoadmapGraphProps>(RoadmapGraphInner));
 export default RoadmapGraph;
