@@ -51,6 +51,31 @@ const MAX_SESSION_SIDEBAR_WIDTH = 420;
 const MIN_SPLIT_SESSION_SIDEBAR_WIDTH = 180;
 const MAX_SPLIT_SESSION_SIDEBAR_WIDTH = 248;
 
+// Diagnostic logger for chat-mount/load timing investigation. Off by default;
+// enable from DevTools with `localStorage.setItem("aetherium:chat-diag","1")`
+// (or `?chatdiag=1` in the URL) and reload. Disabled checks are cheap so this
+// is safe to leave in production code.
+const chatViewBootStart = (typeof window !== "undefined" && window.performance ? window.performance.now() : 0);
+// Resolve once at module load. Toggling the flag requires a reload, which is
+// fine for a diagnostic. Keeps the per-render branch a single boolean read.
+const CHAT_DIAG_ENABLED = (() => {
+  try {
+    if (typeof window === "undefined") { return false; }
+    if (window.localStorage?.getItem("aetherium:chat-diag") === "1") { return true; }
+    if (window.location?.search?.includes("chatdiag=1")) { return true; }
+  } catch {
+    // localStorage / location access can throw in sandboxed contexts
+  }
+  return false;
+})();
+function chatViewDiag(stage: string, extra?: Record<string, unknown>) {
+  if (!CHAT_DIAG_ENABLED) { return; }
+  const t = typeof window !== "undefined" && window.performance ? window.performance.now() : 0;
+  const since = (t - chatViewBootStart).toFixed(1);
+  // eslint-disable-next-line no-console
+  console.log(`[chat-diag] +${since}ms ${stage}`, extra ?? {});
+}
+
 function clampSessionSidebarWidth(width: number, isSplitPane = false) {
   const minWidth = isSplitPane ? MIN_SPLIT_SESSION_SIDEBAR_WIDTH : MIN_SESSION_SIDEBAR_WIDTH;
   const maxWidth = isSplitPane ? MAX_SPLIT_SESSION_SIDEBAR_WIDTH : MAX_SESSION_SIDEBAR_WIDTH;
@@ -2191,6 +2216,7 @@ function StreamingBubble({
 }
 
 export default function ChatView() {
+  chatViewDiag("ChatView render");
   const navigate = useNavigate();
   const location = useLocation();
   const { sessionId: routeSessionId } = useParams();
@@ -3224,8 +3250,14 @@ export default function ChatView() {
     setActiveChatId,
   ]);
 
+  useEffect(() => {
+    chatViewDiag("ChatView mounted (post-commit)");
+    return () => { chatViewDiag("ChatView unmounted"); };
+  }, []);
+
   // Load active topic signature when workspace changes
   useEffect(() => {
+    chatViewDiag("topic-signature loader run", { effectiveWorkspaceId });
     if (effectiveWorkspaceId) {
       const cachedWorkspace = useWorkspaceStore.getState().workspaces.find(
         (workspace) => workspace.id === effectiveWorkspaceId
@@ -3236,8 +3268,16 @@ export default function ChatView() {
         setActiveTopicSignature(null);
       }
 
+      const fetchStarted = window.performance.now();
+      chatViewDiag("topicSignature.get start", { effectiveWorkspaceId });
       api.topicSignature.get(effectiveWorkspaceId)
-        .then(sig => setWorkspaceTopicSignature(effectiveWorkspaceId, sig))
+        .then(sig => {
+          chatViewDiag("topicSignature.get resolved", {
+            effectiveWorkspaceId,
+            durationMs: Number((window.performance.now() - fetchStarted).toFixed(1)),
+          });
+          setWorkspaceTopicSignature(effectiveWorkspaceId, sig);
+        })
         .catch(() => { });
     } else {
       setActiveTopicSignature(null);
@@ -3278,6 +3318,14 @@ export default function ChatView() {
   const customTagsCount = activeTopicSignature?.custom_tags?.length ?? 0;
   const topicSignatureLoaded = activeTopicSignature !== undefined;
   useEffect(() => {
+    chatViewDiag("prompt-gen effect run", {
+      effectiveWorkspaceId,
+      activeChatMessagesLength: activeChatMessages.length,
+      suggestedPromptsCount,
+      topicSignatureLoaded,
+      autoDetectedTagsCount,
+      customTagsCount,
+    });
     if (!effectiveWorkspaceId) { return; }
     if (activeChatMessages.length > 0) { return; } // Only when no messages (new chat)
     if (suggestedPromptsCount > 0) { return; }
@@ -3289,7 +3337,11 @@ export default function ChatView() {
 
     // Dedup across remounts: if a prior mount already kicked off this call for
     // this workspace, do not fire it again.
-    if (hasPendingWorkspacePrompts(effectiveWorkspaceId)) { return; }
+    if (hasPendingWorkspacePrompts(effectiveWorkspaceId)) {
+      chatViewDiag("prompt-gen skipped (dedup)", { effectiveWorkspaceId });
+      return;
+    }
+    chatViewDiag("prompt-gen scheduling LLM call", { effectiveWorkspaceId });
 
     const currentWorkspace = useWorkspaceStore.getState().workspaces.find(w => w.id === effectiveWorkspaceId);
     if (!currentWorkspace) { return; }
@@ -3371,12 +3423,26 @@ export default function ChatView() {
 
   // Load messages when session changes
   useEffect(() => {
+    chatViewDiag("message-load effect run", {
+      activeChatId,
+      hasLoadedActiveMessages,
+      activeSessionWorkspaceId,
+    });
     if (!activeChatId || hasLoadedActiveMessages || !activeSessionWorkspaceId) { return; }
     setMessageVariations(new Map());
     setVariationIndex(new Map());
     setRedoPickerOpenForId(null);
+    const fetchStarted = window.performance.now();
+    chatViewDiag("getMessages start", { sessionId: activeChatId });
     api.chat.getMessages(activeSessionWorkspaceId, activeChatId)
-      .then((msgs) => setMessages(activeChatId, msgs))
+      .then((msgs) => {
+        chatViewDiag("getMessages resolved", {
+          sessionId: activeChatId,
+          durationMs: Number((window.performance.now() - fetchStarted).toFixed(1)),
+          count: msgs.length,
+        });
+        setMessages(activeChatId, msgs);
+      })
       .catch((error) => {
         console.error("Failed to load chat messages", {
           sessionId: activeChatId,
