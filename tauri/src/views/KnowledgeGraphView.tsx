@@ -17,7 +17,9 @@ import {
   Download,
   FileText,
   Loader2,
+  Maximize2,
   MessageSquare,
+  Minimize2,
   Network,
   Plus,
   RefreshCw,
@@ -281,6 +283,24 @@ export default function KnowledgeGraphView({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newConceptName, setNewConceptName] = useState("");
   const [newConceptType, setNewConceptType] = useState("topic");
+
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Exit fullscreen on Escape key press
+  useEffect(() => {
+    if (!isFullscreen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isFullscreen]);
 
   const roadmapRef = useRef<RoadmapGraphHandle | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -997,16 +1017,14 @@ export default function KnowledgeGraphView({
             <Section
               title="Knowledge Map"
               eyebrow="Roadmap"
-              collapsed={collapsedSections["roadmap"]}
-              onToggle={() => toggleSection("roadmap")}
             >
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                   <p className="max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
                     A top-down roadmap of your concepts. Chapters anchor the spine; sections and concepts branch beneath them. Scroll to zoom, drag to pan.
                   </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="relative min-w-0 flex-1 basis-[240px] 2xl:max-w-[320px]">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="relative w-48 sm:w-64">
                       <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                       <input
                         value={graphSearch}
@@ -1066,7 +1084,11 @@ export default function KnowledgeGraphView({
                 </div>
 
                 <div
-                  className="relative h-[320px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)] 2xl:h-[380px]"
+                  className={
+                    isFullscreen
+                      ? "fixed inset-0 z-50 flex flex-col bg-[var(--bg-primary)] p-6 overflow-hidden"
+                      : "relative h-[320px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)] 2xl:h-[380px]"
+                  }
                   data-testid="knowledge-map"
                 >
                   {nodes.length === 0 ? (
@@ -1090,14 +1112,103 @@ export default function KnowledgeGraphView({
                       </button>
                     </div>
                   ) : (
-                    <RoadmapGraph
-                      ref={roadmapRef}
-                      nodes={nodes}
-                      links={links}
-                      selectedConceptId={selectedConcept?.id ?? null}
-                      onSelectConcept={setSelectedConcept}
-                      searchFilter={graphSearch}
-                    />
+                    <>
+                      {isFullscreen && (
+                        <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-[var(--border-color)] pb-4">
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                              Roadmap
+                            </div>
+                            <h2 className="text-xl font-semibold text-[var(--text-primary)]">Knowledge Map</h2>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="relative min-w-0 w-64">
+                              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                              <input
+                                value={graphSearch}
+                                onChange={(event) => setGraphSearch(event.target.value)}
+                                placeholder="Filter roadmap..."
+                                className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1.5 pl-8 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+                              />
+                            </div>
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => setExportMenuOpen((open) => !open)}
+                                disabled={nodes.length === 0 || exportingFormat !== null}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] disabled:opacity-50"
+                              >
+                                {exportingFormat ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                  <Download size={13} />
+                                )}
+                                Export
+                                <ChevronDown size={13} />
+                              </button>
+                              {exportMenuOpen && (
+                                <div
+                                  role="menu"
+                                  className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg"
+                                >
+                                  {[
+                                    { id: "markdown", label: "Markdown outline (.md)", desc: "AI-friendly hierarchy" },
+                                    { id: "json", label: "Hierarchical JSON (.json)", desc: "Nested tree + links" },
+                                    { id: "mermaid", label: "Mermaid (.mermaid)", desc: "graph TD source" },
+                                    { id: "csv", label: "CSV (.csv)", desc: "Flat with parent_id + depth" },
+                                    { id: "png", label: "PNG image (.png)", desc: "Visual snapshot" },
+                                    { id: "pdf", label: "PDF document (.pdf)", desc: "Print / archive" },
+                                  ].map((item) => {
+                                    const isImage = item.id === "png" || item.id === "pdf";
+                                    const disabled = isImage && !roadmapRef.current;
+                                    return (
+                                      <button
+                                        key={item.id}
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => exportRoadmap(item.id as "markdown" | "json" | "mermaid" | "csv" | "png" | "pdf")}
+                                        disabled={disabled || exportingFormat !== null}
+                                        className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        <span className="font-medium">{item.label}</span>
+                                        <span className="text-xs text-[var(--text-muted)]">{item.desc}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsFullscreen(false)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                              title="Exit Full Screen"
+                            >
+                              <Minimize2 size={13} />
+                              Exit Full Screen
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <div className={isFullscreen ? "flex-1 min-h-0 w-full relative" : "h-full w-full relative"}>
+                        <RoadmapGraph
+                          ref={roadmapRef}
+                          nodes={nodes}
+                          links={links}
+                          selectedConceptId={selectedConcept?.id ?? null}
+                          onSelectConcept={setSelectedConcept}
+                          searchFilter={graphSearch}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setIsFullscreen(!isFullscreen)}
+                          className="absolute top-3 right-3 z-10 flex items-center justify-center p-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] shadow-md transition-all"
+                          title={isFullscreen ? "Exit Full Screen" : "Full Screen"}
+                        >
+                          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

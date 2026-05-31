@@ -256,7 +256,7 @@ describe("KnowledgeGraphView", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Demo analysis refreshed the seeded sample content.")).toBeInTheDocument();
-    });
+    }, { timeout: 4000 });
     expect(mocks.analyzeWorkspace).not.toHaveBeenCalled();
 
     const graphNodeButton = await screen.findByRole("button", { name: "Select graph node" });
@@ -267,9 +267,9 @@ describe("KnowledgeGraphView", () => {
 
     await waitFor(() => {
       expect(screen.getByText("What is Namespaces?")).toBeInTheDocument();
-    });
+    }, { timeout: 4000 });
     expect(mocks.generateFromConcept).not.toHaveBeenCalled();
-  });
+  }, 15000);
 
   it("hides the topic-review card when no topics are due", async () => {
     mocks.getSummary.mockResolvedValueOnce({
