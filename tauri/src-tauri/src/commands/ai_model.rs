@@ -26,31 +26,36 @@ const SELECT_COLUMNS: &str =
     "id, name, model_id, provider, role_tags, priority, is_paid, enabled, is_hidden, tokens_used_total, created_at, context_size";
 
 #[tauri::command]
-pub fn list_ai_models(state: State<DbState>) -> Result<Vec<AiModel>, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    let sql = format!("SELECT {SELECT_COLUMNS} FROM ai_models ORDER BY priority ASC");
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let items = stmt
-        .query_map([], row_to_model)
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+pub async fn list_ai_models(state: State<'_, DbState>) -> Result<Vec<AiModel>, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<Vec<AiModel>, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let sql = format!("SELECT {SELECT_COLUMNS} FROM ai_models ORDER BY priority ASC");
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let items = stmt
+            .query_map([], row_to_model)
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
 
-    // Refresh the global num_ctx override map so OllamaClient picks up changes
-    // without needing a DB handle. Clamped to a sensible range to guard against
-    // user error or accidental zero values.
-    let mut overrides: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    for m in &items {
-        if let Some(value) = m.context_size {
-            if value > 0 {
-                let clamped = (value as usize).clamp(512, 1_048_576);
-                overrides.insert(m.model_id.clone(), clamped);
+        // Refresh the global num_ctx override map so OllamaClient picks up changes
+        // without needing a DB handle. Clamped to a sensible range to guard against
+        // user error or accidental zero values.
+        let mut overrides: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for m in &items {
+            if let Some(value) = m.context_size {
+                if value > 0 {
+                    let clamped = (value as usize).clamp(512, 1_048_576);
+                    overrides.insert(m.model_id.clone(), clamped);
+                }
             }
         }
-    }
-    crate::services::context_assembler::replace_model_context_overrides(overrides);
+        crate::services::context_assembler::replace_model_context_overrides(overrides);
 
-    Ok(items)
+        Ok(items)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[tauri::command]
@@ -238,10 +243,14 @@ pub fn record_model_token_usage(
 }
 
 #[tauri::command]
-pub fn list_model_speed_stats(state: State<DbState>) -> Result<Vec<ModelSpeedStat>, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    let mut stmt = conn
-        .prepare(
+pub async fn list_model_speed_stats(
+    state: State<'_, DbState>,
+) -> Result<Vec<ModelSpeedStat>, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<Vec<ModelSpeedStat>, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
             "SELECT model_name,
                     AVG(chat_tokens_per_second) AS avg_chat_tokens_per_second,
                     CAST(SUM(chat_tokens) AS REAL) / (SUM(chat_duration_ms) / 1000.0) AS weighted_tokens_per_second,
@@ -268,18 +277,21 @@ pub fn list_model_speed_stats(state: State<DbState>) -> Result<Vec<ModelSpeedSta
         )
         .map_err(|e| e.to_string())?;
 
-    let items = stmt
-        .query_map([], |row| {
-            Ok(ModelSpeedStat {
-                model_name: row.get(0)?,
-                avg_chat_tokens_per_second: row.get(1)?,
-                weighted_tokens_per_second: row.get(2)?,
-                chat_count: row.get(3)?,
+        let items = stmt
+            .query_map([], |row| {
+                Ok(ModelSpeedStat {
+                    model_name: row.get(0)?,
+                    avg_chat_tokens_per_second: row.get(1)?,
+                    weighted_tokens_per_second: row.get(2)?,
+                    chat_count: row.get(3)?,
+                })
             })
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
 
-    Ok(items)
+        Ok(items)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }

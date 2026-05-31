@@ -11,7 +11,7 @@
  *   - Goals pane currently ignores it (no concept_id column yet)
  */
 import { useEffect, useState, useMemo, lazy, Suspense } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useLocation } from "react-router-dom";
 import { ClipboardCheck, GraduationCap, Map, Target } from "lucide-react";
 import LearningHubSidebar from "../components/LearningHubSidebar";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -49,10 +49,18 @@ function parseTab(value: string | null): HubTab {
 }
 
 export default function LearningHubView() {
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = useMemo(() => parseTab(searchParams.get("tab")), [searchParams]);
   const [activeTab, setActiveTab] = useState<HubTab>(initialTab);
-  const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
+  
+  // Initialize selectedConceptId from navigation state (e.g., when navigating from weak concepts or review topics)
+  const initialConceptIdFromState = useMemo(
+    () => (location.state as { focusConceptId?: string } | null)?.focusConceptId ?? null,
+    [location.state],
+  );
+  const [selectedConceptId, setSelectedConceptId] = useState<string | null>(initialConceptIdFromState);
+  
   const { activeWorkspaceId } = useWorkspaceStore();
 
   // Deep-link payload for the Quizzes tab. Read once at mount; we clear them
@@ -72,6 +80,15 @@ export default function LearningHubView() {
       setSearchParams(next, { replace: true });
     }
   }, [activeTab, searchParams, setSearchParams]);
+
+  // Update selectedConceptId when navigation state changes (e.g., when clicking different weak concepts)
+  useEffect(() => {
+    const stateConceptId = (location.state as { focusConceptId?: string } | null)?.focusConceptId ?? null;
+    if (stateConceptId !== null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedConceptId(stateConceptId);
+    }
+  }, [location.state]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

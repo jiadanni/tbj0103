@@ -43,6 +43,7 @@ The Tauri port is the primary development target and receives all new features.
 - **Workspace Domain Context**: Active workspace topics automatically injected as system context on each send
 - **Model Context Protocol (MCP)**: Dynamic tool and resource integration for AI models via external servers
 - **AI Models Registry**: Manage local models and web providers (ChatGPT, Claude, DeepSeek, Gemini); set a per-model context-window override (`num_ctx`) directly in Preferences
+- **Personalization Profile ("About You")**: Configure a custom learner profile (display name, profession, education level, preferred language, default learning approach, and interests) to be prepended to the chat system prompt, adapting the AI's responses to your background.
 - **Oversized-model guardrail**: Pre-send dialog warns when a model's estimated VRAM/RAM footprint exceeds available memory, with a per-model "don't ask again" option
 - **Model unloading**: Manually free VRAM/RAM by unloading idle Ollama models; automatic unload on stream error or abort
 - **Chat-to-Note / Chat-to-Document conversion**: One-click export of a session to a summarized note or document, with LLM-based concept extraction that auto-populates the knowledge graph
@@ -60,13 +61,14 @@ The Tauri port is the primary development target and receives all new features.
 - **Embedding-based Retrieval**: Fast semantic lookup of relevant memories during chat
 
 ### Knowledge Graph
-- **Bidirectional linking**: Obsidian-style `[[concept]]` syntax across all notes and chats
+- **Bidirectional linking**: Obsidian-style `[[topic]]` syntax across all notes and chats
 - Interactive graph visualization with force-directed layout
 - **Textbook hierarchy**: Graduated taxonomy (Part → Chapter → Section → Concept) for structured knowledge organization
-- Multiple concept and link types (Topic, Person, Technology, Related, Prerequisite, etc.)
-- Backlinks panel showing where concepts are referenced
-- Concepts auto-populated from chat-to-note and document upload conversions
+- Multiple topic and link types (Topic, Person, Technology, Related, Prerequisite, etc.)
+- Backlinks panel showing where topics are referenced
+- Topics auto-populated from chat-to-note and document upload conversions
 - **Workspace Glossary**: Auto-extracted domain terms with inline hover definitions surfaced across notes and chat
+- **Roadmap Export**: Export knowledge roadmaps in multiple formats (Markdown, JSON, Mermaid diagram code, CSV, PNG image, and PDF document).
 
 ### Data Synchronization & Resilience
 - **Git-based Sync**: Automatic background synchronization to private Git repositories via SSH
@@ -188,6 +190,10 @@ tauri/
 
 **Frontend:** React 18, TypeScript, Tailwind CSS, Zustand, Vite  
 **Backend:** Rust, Tauri v2, rusqlite, serde, reqwest
+
+### Key Architecture Patterns & Optimizations
+- **Single-Key Settings Updates (`updateOne`)**: Common interactive settings updates (e.g., preferred models, font size zoom, and theme settings) execute as direct single-key database writes. This bypasses the overhead of serializing/deserializing the complete 70+ field application settings structure across the Tauri IPC bridge.
+- **Cross-Window Store Synchronization**: Application settings are managed reactively via a Zustand `settingsStore` that hydrates at startup and automatically synchronizes updates across all open windows in real-time.
 
 ### SQLite Schema Overview
 

@@ -213,7 +213,7 @@ async function flushMicrotasks(times = 4) {
 
 async function openCreateWorkspaceInput() {
   fireEvent.contextMenu(await screen.findByText("Test Session"));
-  fireEvent.click(await screen.findByText("Move to"));
+  fireEvent.click(await screen.findByText("Move to workspace"));
   fireEvent.click(await screen.findByText(/Create workspace\.\.\./i));
 
   return screen.findByPlaceholderText("Workspace name");
@@ -303,7 +303,7 @@ describe("ChatView", () => {
     });
   });
 
-  it.skip("does not create a workspace when the inline name is empty", async () => {
+  it("does not create a workspace when the inline name is empty", async () => {
     renderChatView();
 
     const input = await openCreateWorkspaceInput();
@@ -315,7 +315,7 @@ describe("ChatView", () => {
     expect(api.workspace.create).not.toHaveBeenCalled();
   });
 
-  it.skip("trims the inline workspace name before creating it", async () => {
+  it("trims the inline workspace name before creating it", async () => {
     (api.workspace.create as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "ws-new",
       name: "New Workspace",
@@ -334,7 +334,7 @@ describe("ChatView", () => {
     });
   });
 
-  it.skip("keeps the new workspace input open when creation fails", async () => {
+  it("surfaces an error dialog when inline workspace creation fails", async () => {
     (api.workspace.create as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("boom"));
 
     renderChatView();
@@ -349,7 +349,8 @@ describe("ChatView", () => {
       expect(api.workspace.create).toHaveBeenCalledWith("New Workspace");
     });
 
-    expect(await screen.findByPlaceholderText("Workspace name")).toBeInTheDocument();
+    expect(await screen.findByText("Create workspace failed")).toBeInTheDocument();
+    expect(screen.getByText("boom")).toBeInTheDocument();
   });
 
   it("keeps a fixed trailing slot on session rows so hover actions do not collapse the title", async () => {

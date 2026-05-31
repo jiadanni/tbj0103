@@ -7,20 +7,24 @@ function createDebouncedLocalStorage(delayMs: number): StateStorage {
   let timer: ReturnType<typeof setTimeout> | null = null;
   const flush = () => {
     timer = null;
-    for (const [key, value] of pending) {
-      window.localStorage.setItem(key, value);
+    if (typeof window !== "undefined") {
+      for (const [key, value] of pending) {
+        window.localStorage.setItem(key, value);
+      }
     }
     pending.clear();
   };
   return {
-    getItem: (name) => window.localStorage.getItem(name),
+    getItem: (name) => typeof window !== "undefined" ? window.localStorage.getItem(name) : null,
     setItem: (name, value) => {
       pending.set(name, value);
       if (timer === null) { timer = setTimeout(flush, delayMs); }
     },
     removeItem: (name) => {
       pending.delete(name);
-      window.localStorage.removeItem(name);
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(name);
+      }
     },
   };
 }

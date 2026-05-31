@@ -3,9 +3,7 @@
 
 use crate::commands::security::{require_auth, AuthState};
 use crate::db::DbState;
-use crate::models::knowledge_graph::{
-    ConceptLink, ConceptNode, ConceptType, LinkType,
-};
+use crate::models::knowledge_graph::{ConceptLink, ConceptNode, ConceptType, LinkType};
 use crate::services::{roadmap_export, roadmap_render};
 use serde::{Deserialize, Serialize};
 use tauri::State;

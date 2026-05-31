@@ -18,6 +18,23 @@ AI agents often assume a change is correct if the tool call succeeds. You must s
 *   **Rust/Backend:** Run `cargo check --manifest-path src-tauri/Cargo.toml` after backend changes. For lint correctness, also run `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings`; clippy warnings are treated as errors.
 *   **Logic/UI:** Run only the relevant test file (e.g., `npx vitest run src/tests/views/ChatView.test.tsx`) to ensure no existing functionality was broken.
 
+**Cadence — when to run which check.** Match the check to the edit. Don't run `./lint.sh` after every change — it's multi-minute and will tank throughput — but don't defer all checks to commit time either, which is the worst spot to discover problems.
+
+*Run the targeted check immediately for these "major" edits:*
+
+*   Interface / signature changes (Rust struct fields, `fn` signatures, new `#[tauri::command]`, exported TS interface or type, React component prop shape).
+*   New files or new exported symbols (new `.rs` / `.tsx` / `.ts` file, or adding a new exported symbol to an existing one).
+*   Schema / migration / IPC plumbing (any edit to `schema.sql`, any new migration, any change to `tauri::generate_handler![…]`, any new `invoke()` wrapper in `src/lib/api.ts`).
+*   Any task that touches 3+ files in one go — cross-file blast radius makes drift likely.
+
+The targeted check is the cheap one matched to the edit: `cargo check --manifest-path src-tauri/Cargo.toml` for Rust, `npx tsc --noEmit` for TS, the single affected `npx vitest run path/to/file.test.tsx` for a component or hook with an existing test. Not `./lint.sh`.
+
+*Run a checkpoint before pausing to talk to the user.* Whenever you are about to stop and ask the user a question, report progress, or hand back control, first run the targeted checks for whatever languages you've touched since the last checkpoint. The goal: every message you send the user carries a known-good (or known-bad) state. The user should never learn about a lint error or failing test as fresh news when they ask you to commit — by then, you've either already fixed it, or you've already told them about it.
+
+*Trivial edits* (comments, log strings, internal renames with no exported surface) don't need an immediate check. They ride to the next checkpoint.
+
+*At commit time only:* `./lint.sh` (full `tsc`, full `vitest`, `cargo clippy -D warnings`, SwiftLint, ESLint). If `./lint.sh` catches something at this point, the cadence rule above wasn't followed — fix the cadence next time.
+
 ### 2. Surgical Editing vs. Rewrite
 *   **Prefer surgical editing** for files over 200 lines. Avoid rewriting the entire file unless necessary.
 *   **Anti-Regression Check:** After a modification, run `git diff --stat`. If you see a massive deletion (e.g., -500 lines) that wasn't explicitly requested, you must REVERT immediately and use a more surgical approach.

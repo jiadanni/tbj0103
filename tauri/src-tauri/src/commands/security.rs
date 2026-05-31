@@ -183,29 +183,34 @@ fn verify_pin_hash(pin: &str, stored_hash: &str) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn get_security_status(state: State<DbState>) -> Result<SecurityStatus, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    let pin_enabled = get_setting(&conn, PIN_HASH_KEY)
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
-    let pin_lock_enabled = get_setting(&conn, "pin_lock_enabled")
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(false)
-        && pin_enabled;
-    let biometric_available = biometric_available();
-    let touch_id_enabled = get_setting(&conn, "touch_id_enabled")
-        .map(|value| value == "true")
-        .unwrap_or(false)
-        && biometric_available
-        && pin_lock_enabled;
+pub async fn get_security_status(state: State<'_, DbState>) -> Result<SecurityStatus, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<SecurityStatus, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let pin_enabled = get_setting(&conn, PIN_HASH_KEY)
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false);
+        let pin_lock_enabled = get_setting(&conn, "pin_lock_enabled")
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(false)
+            && pin_enabled;
+        let biometric_available = biometric_available();
+        let touch_id_enabled = get_setting(&conn, "touch_id_enabled")
+            .map(|value| value == "true")
+            .unwrap_or(false)
+            && biometric_available
+            && pin_lock_enabled;
 
-    Ok(SecurityStatus {
-        pin_enabled,
-        pin_lock_enabled,
-        touch_id_enabled,
-        biometric_available,
-        biometric_label: biometric_label(),
+        Ok(SecurityStatus {
+            pin_enabled,
+            pin_lock_enabled,
+            touch_id_enabled,
+            biometric_available,
+            biometric_label: biometric_label(),
+        })
     })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[tauri::command]

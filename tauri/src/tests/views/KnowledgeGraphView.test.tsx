@@ -255,7 +255,7 @@ describe("KnowledgeGraphView", () => {
     fireEvent.click(analyzeButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Demo analysis refreshed the seeded sample content.")).toBeInTheDocument();
+      expect(screen.getAllByText("Demo analysis refreshed the seeded sample content.")).toHaveLength(2);
     }, { timeout: 4000 });
     expect(mocks.analyzeWorkspace).not.toHaveBeenCalled();
 
