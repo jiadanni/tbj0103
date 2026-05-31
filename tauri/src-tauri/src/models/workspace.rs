@@ -36,6 +36,8 @@ pub struct Workspace {
     pub order_index: i32,
     pub last_message_at: Option<String>,
     pub survey_data: Option<String>,
+    #[serde(default)]
+    pub about_you: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +60,7 @@ pub struct UpdateWorkspaceRequest {
     pub description: Option<String>,
     pub prompt_instructions: Option<String>,
     pub survey_data: Option<String>,
+    pub about_you: Option<String>,
 }
 
 impl Workspace {
@@ -78,6 +81,7 @@ impl Workspace {
             order_index: 0,
             last_message_at: None,
             survey_data: None,
+            about_you: String::new(),
         }
     }
 }

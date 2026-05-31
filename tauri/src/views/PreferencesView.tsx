@@ -7,7 +7,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown, UserCircle } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -30,6 +30,7 @@ import { MOD_KEY, isLinux, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
 import { useAiModelSync } from "../hooks/useAiModelSync";
 import { usePrefsWindowMode } from "../lib/prefsWindowMode";
+import { parseAboutYou, serializeAboutYou, EMPTY_ABOUT_YOU, type AboutYouProfile } from "../lib/aboutYou";
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
@@ -41,6 +42,7 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "appearance", label: "Appearance", Icon: Palette },
   { id: "chat", label: "Chat", Icon: MessageSquare },
   { id: "learning", label: "Learning", Icon: GraduationCap },
+  { id: "about-you", label: "About You", Icon: UserCircle },
   { id: "ai", label: "AI", Icon: Bot },
   { id: "webai", label: "Browser Automation", Icon: Globe },
   { id: "security", label: "Security", Icon: ShieldCheck },
@@ -2400,11 +2402,11 @@ export default function PreferencesView() {
         )}
 
         <div className={`flex-1 min-h-0 overflow-hidden flex ${
-          ["app", "navigation", "appearance", "ai", "chat", "learning", "webai", "security", "sync"].includes(activeTab)
+          ["app", "navigation", "appearance", "ai", "chat", "learning", "about-you", "webai", "security", "sync"].includes(activeTab)
             ? "flex-row"
             : "flex-col"
         }`}>
-          {["app", "navigation", "appearance", "ai", "chat", "learning", "webai", "security", "sync"].includes(activeTab) && (
+          {["app", "navigation", "appearance", "ai", "chat", "learning", "about-you", "webai", "security", "sync"].includes(activeTab) && (
             <>
               <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
                 <div className="max-w-5xl space-y-5">
@@ -3995,6 +3997,110 @@ export default function PreferencesView() {
                     </div>
                   </div>
                 )}
+
+                {/* ── About You ── */}
+                {activeTab === "about-you" && (() => {
+                  const profile = parseAboutYou(dbSettings.about_you) ?? { ...EMPTY_ABOUT_YOU };
+                  const updateProfile = (patch: Partial<AboutYouProfile>) => {
+                    set("about_you", serializeAboutYou({ ...profile, ...patch }));
+                  };
+                  const inputCls = "w-full px-3 py-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-input)] text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-color)]";
+                  return (
+                    <div className="space-y-4">
+                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                            <UserCircle size={14} /> About You
+                          </h3>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            Tell Aetherium about yourself. This context is shared with the AI when generating learning goals, workspace prompts, and chat responses (toggle below) so it can tailor answers to your background.
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <label className="block space-y-1">
+                            <span className="text-xs font-medium text-[var(--text-secondary)]">Display name</span>
+                            <input type="text" value={profile.display_name} onChange={(e) => updateProfile({ display_name: e.target.value })} placeholder="e.g. Alex" className={inputCls} />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-xs font-medium text-[var(--text-secondary)]">Profession / role</span>
+                            <input type="text" value={profile.profession} onChange={(e) => updateProfile({ profession: e.target.value })} placeholder="e.g. Backend engineer" className={inputCls} />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-xs font-medium text-[var(--text-secondary)]">Education level</span>
+                            <CompactMenuSelect
+                              label="Education level"
+                              value={profile.education_level}
+                              onChange={(v) => updateProfile({ education_level: v })}
+                              options={[
+                                { value: "", label: "—" },
+                                { value: "high-school", label: "High school" },
+                                { value: "undergraduate", label: "Undergraduate" },
+                                { value: "graduate", label: "Graduate" },
+                                { value: "postgraduate", label: "Postgraduate" },
+                                { value: "self-taught", label: "Self-taught" },
+                                { value: "other", label: "Other" },
+                              ]}
+                            />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-xs font-medium text-[var(--text-secondary)]">Field of study / expertise</span>
+                            <input type="text" value={profile.field_of_study} onChange={(e) => updateProfile({ field_of_study: e.target.value })} placeholder="e.g. Distributed systems" className={inputCls} />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-xs font-medium text-[var(--text-secondary)]">Preferred language</span>
+                            <input type="text" value={profile.preferred_language} onChange={(e) => updateProfile({ preferred_language: e.target.value })} placeholder="e.g. English" className={inputCls} />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-xs font-medium text-[var(--text-secondary)]">Default learning approach</span>
+                            <CompactMenuSelect
+                              label="Default learning approach"
+                              value={profile.default_approach}
+                              onChange={(v) => updateProfile({ default_approach: v })}
+                              options={[
+                                { value: "", label: "—" },
+                                { value: "theory-first", label: "Theory first" },
+                                { value: "hands-on", label: "Hands-on / examples" },
+                                { value: "balanced", label: "Balanced" },
+                              ]}
+                            />
+                          </label>
+                        </div>
+                        <label className="block space-y-1">
+                          <span className="text-xs font-medium text-[var(--text-secondary)]">Interests</span>
+                          <textarea
+                            value={profile.interests}
+                            onChange={(e) => updateProfile({ interests: e.target.value })}
+                            placeholder="Topics you like to learn about"
+                            rows={2}
+                            className={inputCls}
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-xs font-medium text-[var(--text-secondary)]">Bio</span>
+                          <textarea
+                            value={profile.bio}
+                            onChange={(e) => updateProfile({ bio: e.target.value })}
+                            placeholder="Anything else the AI should know about you"
+                            rows={4}
+                            className={inputCls}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Inject About You into chat system prompt</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              When on, your profile is prepended to the chat system prompt so the assistant can adapt its answers. Goal and workspace prompt generation always use it.
+                            </p>
+                          </div>
+                          <Toggle on={dbSettings.inject_about_you_into_chat ?? true} onToggle={() => set("inject_about_you_into_chat", !(dbSettings.inject_about_you_into_chat ?? true))} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* ── Browser Automation ── */}
                 {activeTab === "webai" && (

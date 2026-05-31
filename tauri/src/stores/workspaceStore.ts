@@ -17,6 +17,7 @@ export interface Workspace {
   order_index: number;
   last_message_at: string | null;
   survey_data: string | null;
+  about_you?: string;
 }
 
 export interface Folder {

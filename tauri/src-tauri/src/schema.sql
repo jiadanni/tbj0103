@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS workspaces (
     parent_workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
     order_index INTEGER NOT NULL DEFAULT 0,
     last_message_at TEXT,
-    survey_data TEXT
+    survey_data TEXT,
+    about_you TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS folders (
@@ -577,6 +578,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('git_sync_interval_minutes', '5'),
     ('user_chat_label', '"You"'),
     ('assistant_chat_label', '"Assistant"'),
+    ('about_you', '""'),
+    ('inject_about_you_into_chat', 'true'),
     ('vram_headroom_gb', '0'),
     ('vram_headroom_percent', '10'),
     ('ram_headroom_gb', '0'),

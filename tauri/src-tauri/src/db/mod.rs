@@ -71,6 +71,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v57_topics_to_concepts",
     "v58_learning_goals_concept_id",
     "v59_chat_sessions_message_count",
+    "v60_about_you",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1561,6 +1562,32 @@ fn run_migrations(conn: &Connection) -> Result<()> {
 
              INSERT INTO _migrations(name) VALUES('v59_chat_sessions_message_count');",
         )?;
+    }
+
+    // v60: add about_you to workspaces and seed global about_you / inject_about_you_into_chat settings.
+    let applied_v60: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v60_about_you'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v60 == 0 {
+        let has_col: bool = {
+            let mut stmt = conn.prepare("PRAGMA table_info(workspaces)")?;
+            let names = stmt
+                .query_map([], |r| r.get::<_, String>(1))?
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
+            names.iter().any(|n| n == "about_you")
+        };
+        if !has_col {
+            let _ = conn.execute_batch(
+                "ALTER TABLE workspaces ADD COLUMN about_you TEXT NOT NULL DEFAULT '';",
+            );
+        }
+        let _ = conn.execute_batch(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES ('about_you', '\"\"');\n             INSERT OR IGNORE INTO settings (key, value) VALUES ('inject_about_you_into_chat', 'true');",
+        );
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v60_about_you');")?;
     }
 
     Ok(())

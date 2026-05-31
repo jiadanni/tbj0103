@@ -48,6 +48,8 @@ pub struct Settings {
     pub immediate_delete: bool,
     pub confirm_move_to_trash: bool,
     pub prompt_instructions: String,
+    pub about_you: String,
+    pub inject_about_you_into_chat: bool,
     pub switch_workspace_section: String,
     pub hide_native_menu: bool,
     pub show_gen_info: bool,
@@ -126,6 +128,8 @@ impl Default for Settings {
             immediate_delete: false,
             confirm_move_to_trash: true,
             prompt_instructions: String::new(),
+            about_you: String::new(),
+            inject_about_you_into_chat: true,
             switch_workspace_section: String::new(),
             hide_native_menu: false,
             show_gen_info: true,
@@ -415,6 +419,12 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
         prompt_instructions: get_setting(&conn, "prompt_instructions")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.prompt_instructions),
+        about_you: get_setting(&conn, "about_you")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.about_you),
+        inject_about_you_into_chat: get_setting(&conn, "inject_about_you_into_chat")
+            .map(|v| v == "true")
+            .unwrap_or(def.inject_about_you_into_chat),
         switch_workspace_section: get_setting(&conn, "switch_workspace_section")
             .unwrap_or_else(|| {
                 // Migrate legacy boolean: true → "/chat", false → ""
@@ -735,6 +745,16 @@ pub fn update_settings(
         &conn,
         "prompt_instructions",
         &serde_json::to_string(&settings.prompt_instructions).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "about_you",
+        &serde_json::to_string(&settings.about_you).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "inject_about_you_into_chat",
+        &settings.inject_about_you_into_chat.to_string(),
     )?;
     set_setting(
         &conn,
