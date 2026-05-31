@@ -39,6 +39,17 @@ Files like `src/views/ChatView.tsx` are critical and highly complex.
 *   Never assume Ollama is running or a specific model is pulled during a test.
 *   Always check `apiMocks` in tests to ensure they return valid, expected data shapes for the component being tested.
 
+### 6. Tauri Command Registration
+A new `#[tauri::command]` is not callable until it is listed in `tauri::generate_handler![…]` in `src-tauri/src/lib.rs`. `cargo check` will pass without it — the failure only surfaces at runtime as `"Command <name> not found"` returned to the JS caller.
+
+When adding or renaming a command:
+1. Add the `pub (async) fn` in `src-tauri/src/commands/<domain>.rs`.
+2. Add the matching `invoke<T>("<name>", …)` wrapper in `src/lib/api.ts`.
+3. Add the command to `tauri::generate_handler![…]` in `src-tauri/src/lib.rs`.
+4. Verify all three names match exactly: Rust fn name == handler entry == string in `invoke()`.
+
+If a feature ships steps 1 + 2 but skips step 3, the UI will appear to hang on its loading state because the IPC rejects immediately and the view never leaves its `if (!data) return <Loading/>` branch. Before considering an IPC feature done, open DevTools and confirm at least one successful `[ipc] <- <command>` log line for the new command — not just that the code compiles.
+
 ---
 
 ## Project Overview
