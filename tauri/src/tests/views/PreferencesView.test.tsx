@@ -127,6 +127,15 @@ const settingsStoreState = {
   setAssistantChatLabel: vi.fn(),
   setSwitchWorkspaceSection: vi.fn(),
   setHideNativeMenu: vi.fn(),
+  setSummarizationModel: vi.fn(),
+  setMemoryExtractionModel: vi.fn(),
+  setFlashcardModel: vi.fn(),
+  setGlossaryModel: vi.fn(),
+  setTopicSignatureModel: vi.fn(),
+  setGoalSuggestionModel: vi.fn(),
+  setQuickSearchWorkspaceScope: vi.fn(),
+  setQuickSearchTypeFilters: vi.fn(),
+  setQuickSearchShortcut: vi.fn(),
   setModelLabel: vi.fn(),
 };
 
@@ -362,5 +371,33 @@ describe("PreferencesView", () => {
 
     expect(screen.queryByText("Roles")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "chat" })).not.toBeInTheDocument();
+  });
+
+  it("renders and updates About You tab fields successfully", async () => {
+    render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <PreferencesView />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Gemma 4");
+
+    // Switch to About You tab
+    fireEvent.click(screen.getByText("About You"));
+
+    // Verify displays and inputs are present
+    const nameInput = screen.getByPlaceholderText("e.g. Alex");
+    expect(nameInput).toBeInTheDocument();
+    expect(nameInput).toHaveValue("");
+
+    // Simulate typing and blur to check commit behavior
+    fireEvent.change(nameInput, { target: { value: "Alex" } });
+    expect(nameInput).toHaveValue("Alex");
+    expect(apiMocks.settingsUpdate).not.toHaveBeenCalled();
+
+    fireEvent.blur(nameInput);
+    await waitFor(() => {
+      expect(apiMocks.settingsUpdate).toHaveBeenCalled();
+    });
   });
 });
