@@ -83,6 +83,21 @@ pub fn compute_pagerank(
     let mut ranks: HashMap<&str, f64> = nodes.iter().map(|n| (n.id.as_str(), init)).collect();
 
     for _ in 0..iterations {
+        let mut sink_rank_sum = 0.0;
+        for potential_sink in nodes {
+            let out_count = out_links
+                .get(potential_sink.id.as_str())
+                .map(|v| v.len())
+                .unwrap_or(0);
+            if out_count == 0 {
+                sink_rank_sum += ranks
+                    .get(potential_sink.id.as_str())
+                    .copied()
+                    .unwrap_or(init)
+                    / n as f64;
+            }
+        }
+
         let mut new_ranks: HashMap<&str, f64> = HashMap::new();
         for node in nodes {
             let id = node.id.as_str();
@@ -96,7 +111,8 @@ pub fn compute_pagerank(
                     src_rank / out_count.max(1.0)
                 })
                 .sum();
-            let rank = (1.0 - damping_factor) / n as f64 + damping_factor * incoming_sum;
+            let rank = (1.0 - damping_factor) / n as f64
+                + damping_factor * (incoming_sum + sink_rank_sum);
             new_ranks.insert(id, rank);
         }
         ranks = new_ranks;
