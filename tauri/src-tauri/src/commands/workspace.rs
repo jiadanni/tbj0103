@@ -31,33 +31,64 @@ pub fn create_child_workspace<R: Runtime>(
 }
 
 #[tauri::command]
-pub fn list_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::list_all(&conn)
+pub async fn list_workspaces(state: State<'_, DbState>) -> Result<Vec<Workspace>, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<Vec<Workspace>, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        workspace_service::list_all(&conn)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[tauri::command]
-pub fn list_root_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::list_root(&conn)
+pub async fn list_root_workspaces(state: State<'_, DbState>) -> Result<Vec<Workspace>, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<Vec<Workspace>, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        workspace_service::list_root(&conn)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[tauri::command]
-pub fn list_child_workspaces(state: State<DbState>, parent_id: String) -> Result<Vec<Workspace>, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::list_children(&conn, &parent_id)
+pub async fn list_child_workspaces(
+    state: State<'_, DbState>,
+    parent_id: String,
+) -> Result<Vec<Workspace>, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<Vec<Workspace>, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        workspace_service::list_children(&conn, &parent_id)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[tauri::command]
-pub fn list_hidden_workspaces(state: State<DbState>) -> Result<Vec<Workspace>, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::list_hidden(&conn)
+pub async fn list_hidden_workspaces(state: State<'_, DbState>) -> Result<Vec<Workspace>, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<Vec<Workspace>, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        workspace_service::list_hidden(&conn)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[tauri::command]
-pub fn get_workspace(state: State<DbState>, id: String) -> Result<Option<Workspace>, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_service::get(&conn, &id)
+pub async fn get_workspace(
+    state: State<'_, DbState>,
+    id: String,
+) -> Result<Option<Workspace>, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<Option<Workspace>, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        workspace_service::get(&conn, &id)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[tauri::command]
@@ -343,8 +374,8 @@ mod tests {
     use tauri::test::mock_builder;
     use tauri::Manager;
 
-    #[test]
-    fn test_create_and_list_workspace() {
+    #[tokio::test]
+    async fn test_create_and_list_workspace() {
         let db = setup_test_db();
         let app = mock_builder().build(tauri::generate_context!()).unwrap();
         app.manage(DbState(db));
@@ -362,13 +393,13 @@ mod tests {
         assert_eq!(ws.description, "A test description");
 
         // Test list
-        let workspaces = list_workspaces(state.clone()).expect("Failed to list workspaces");
+        let workspaces = list_workspaces(state.clone()).await.expect("Failed to list workspaces");
         assert_eq!(workspaces.len(), 1);
         assert_eq!(workspaces[0].name, "Test Workspace");
     }
 
-    #[test]
-    fn test_hide_unhide_workspace() {
+    #[tokio::test]
+    async fn test_hide_unhide_workspace() {
         let db = setup_test_db();
         let app = mock_builder().build(tauri::generate_context!()).unwrap();
         app.manage(DbState(db));
@@ -382,17 +413,17 @@ mod tests {
         let ws = create_workspace(handle.clone(), state.clone(), req).unwrap();
 
         // Initial state is not hidden
-        assert_eq!(list_workspaces(state.clone()).unwrap().len(), 1);
-        assert_eq!(list_hidden_workspaces(state.clone()).unwrap().len(), 0);
+        assert_eq!(list_workspaces(state.clone()).await.unwrap().len(), 1);
+        assert_eq!(list_hidden_workspaces(state.clone()).await.unwrap().len(), 0);
 
         // Hide it
         hide_workspace(handle.clone(), state.clone(), ws.id.clone()).unwrap();
-        assert_eq!(list_workspaces(state.clone()).unwrap().len(), 0);
-        assert_eq!(list_hidden_workspaces(state.clone()).unwrap().len(), 1);
+        assert_eq!(list_workspaces(state.clone()).await.unwrap().len(), 0);
+        assert_eq!(list_hidden_workspaces(state.clone()).await.unwrap().len(), 1);
 
         // Unhide it
         unhide_workspace(handle.clone(), state.clone(), ws.id.clone()).unwrap();
-        assert_eq!(list_workspaces(state.clone()).unwrap().len(), 1);
-        assert_eq!(list_hidden_workspaces(state.clone()).unwrap().len(), 0);
+        assert_eq!(list_workspaces(state.clone()).await.unwrap().len(), 1);
+        assert_eq!(list_hidden_workspaces(state.clone()).await.unwrap().len(), 0);
     }
 }

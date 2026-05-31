@@ -1436,3 +1436,125 @@ pub async fn get_advanced_settings(
     .await
     .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_utils::tests::setup_test_db;
+
+    // Settings whose writer JSON-encodes the value (`serde_json::to_string`).
+    // Each entry's reader must also JSON-decode on the way out, or the value
+    // will double in size on every save round-trip — see the menubar_icon_style
+    // incident (commit e99e554). This list mirrors the encoded writes in
+    // update_settings. If you add a new JSON-encoded string setting, add it
+    // here too so the round-trip test covers it.
+    const JSON_ENCODED_STRING_KEYS: &[(&str, &str)] = &[
+        ("preferred_model", "llama3"),
+        ("background_model", "llama3"),
+        ("summarization_model", "llama3"),
+        ("memory_extraction_model", "llama3"),
+        ("flashcard_model", "llama3"),
+        ("glossary_model", "llama3"),
+        ("topic_signature_model", "llama3"),
+        ("goal_suggestion_model", "llama3"),
+        ("draft_model", "llama3"),
+        ("compare_model_a", "llama3"),
+        ("compare_model_b", "llama3"),
+        ("embedding_model", "nomic-embed-text"),
+        ("quick_search_shortcut", "CmdOrCtrl+Shift+K"),
+        ("quick_search_workspace_scope", "current"),
+        ("theme", "noir"),
+        ("accent_color", "#007AFF"),
+        ("ollama_base_url", "http://localhost:11434"),
+        ("mlx_base_url", "http://localhost:8000"),
+        ("dual_model_execution_mode", "serial"),
+        ("prompt_instructions", "Be concise."),
+        ("about_you", "Software engineer in Berlin."),
+        ("menubar_icon_style", "monochrome"),
+        ("user_chat_label", "You"),
+        ("assistant_chat_label", "Assistant"),
+    ];
+
+    /// Round-trip a JSON-encoded string setting through the same write path
+    /// used by update_settings and the same decode shape used by the readers.
+    /// If a future setting is added with the writer encoding but the reader
+    /// reading raw, the stored byte length will double each cycle and the
+    /// assertion at the end will fail.
+    #[test]
+    fn json_encoded_string_settings_are_size_stable_across_round_trips() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+
+        for (key, sample) in JSON_ENCODED_STRING_KEYS {
+            // Cycle 1: encode + write, then read + decode.
+            let encoded_1 = serde_json::to_string(sample).unwrap();
+            set_setting(&conn, key, &encoded_1).unwrap();
+            let len_after_1 = get_setting(&conn, key).map(|v| v.len()).unwrap_or(0);
+
+            let decoded_1: String = get_setting(&conn, key)
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or_else(|| panic!(
+                    "key `{key}` did not round-trip through JSON decode \
+                    — its reader is probably missing `serde_json::from_str` \
+                    (this is the menubar_icon_style bug shape)"
+                ));
+            assert_eq!(
+                &decoded_1, sample,
+                "key `{key}` decoded to a different value than was written"
+            );
+
+            // Cycle 2 + 3: encode the decoded value and write again. If the
+            // reader were reading raw, `decoded_1` would still contain JSON
+            // quote characters and re-encoding would wrap them again — the
+            // stored length would double on each cycle.
+            let encoded_2 = serde_json::to_string(&decoded_1).unwrap();
+            set_setting(&conn, key, &encoded_2).unwrap();
+            let decoded_2: String = get_setting(&conn, key)
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap();
+
+            let encoded_3 = serde_json::to_string(&decoded_2).unwrap();
+            set_setting(&conn, key, &encoded_3).unwrap();
+            let len_after_3 = get_setting(&conn, key).map(|v| v.len()).unwrap_or(0);
+
+            assert_eq!(
+                len_after_1, len_after_3,
+                "key `{key}` stored byte length grew across three save \
+                round-trips (was {len_after_1}, now {len_after_3}). The \
+                writer JSON-encodes but the reader likely reads the raw \
+                value without decoding — match the reader to the writer."
+            );
+        }
+    }
+
+    /// Direct regression test for the exact bug observed in production:
+    /// the reader pulled the raw JSON-encoded value and the writer wrapped
+    /// it again, growing menubar_icon_style to 268MB over ~28 saves. This
+    /// simulates a buggy reader to prove the assertion catches it.
+    #[test]
+    fn buggy_raw_reader_causes_unbounded_growth() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+
+        let key = "menubar_icon_style";
+        set_setting(&conn, key, &serde_json::to_string("monochrome").unwrap()).unwrap();
+        let len_after_1 = get_setting(&conn, key).map(|v| v.len()).unwrap_or(0);
+
+        // Buggy read: no JSON decode. Now the writer's re-encode wraps the
+        // already-encoded value, and the stored length grows each cycle.
+        for _ in 0..3 {
+            let raw_value: String = get_setting(&conn, key).unwrap();
+            let re_encoded = serde_json::to_string(&raw_value).unwrap();
+            set_setting(&conn, key, &re_encoded).unwrap();
+        }
+        let len_after_4 = get_setting(&conn, key).map(|v| v.len()).unwrap_or(0);
+
+        assert!(
+            len_after_4 > len_after_1,
+            "expected the buggy raw-reader pattern to grow the stored value; \
+            saw {len_after_1} → {len_after_4}. If this assertion no longer \
+            fires, the writer may have stopped JSON-encoding — re-verify the \
+            round-trip shape in update_settings."
+        );
+    }
+}
