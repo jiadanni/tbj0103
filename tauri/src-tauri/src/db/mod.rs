@@ -70,6 +70,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v56_quizzes",
     "v57_topics_to_concepts",
     "v58_learning_goals_concept_id",
+    "v59_chat_sessions_message_count",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1494,6 +1495,71 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_learning_goals_concept ON learning_goals(concept_id);
              INSERT INTO _migrations(name) VALUES('v58_learning_goals_concept_id');",
+        )?;
+    }
+
+    // v59: denormalize chat message counts onto chat_sessions for fast session listing.
+    let applied_v59: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v59_chat_sessions_message_count'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v59 == 0 {
+        let has_col: bool = {
+            let mut stmt = conn.prepare("PRAGMA table_info(chat_sessions)")?;
+            let names = stmt
+                .query_map([], |r| r.get::<_, String>(1))?
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
+            names.iter().any(|n| n == "message_count")
+        };
+        if !has_col {
+            let _ = conn.execute_batch(
+                "ALTER TABLE chat_sessions ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0;",
+            );
+        }
+
+        conn.execute_batch(
+            "UPDATE chat_sessions
+             SET message_count = COALESCE((
+                 SELECT COUNT(*)
+                 FROM messages
+                 WHERE messages.session_id = chat_sessions.id
+             ), 0);
+
+             DROP TRIGGER IF EXISTS chat_sessions_message_count_ai;
+             CREATE TRIGGER chat_sessions_message_count_ai
+             AFTER INSERT ON messages
+             BEGIN
+                 UPDATE chat_sessions
+                 SET message_count = message_count + 1
+                 WHERE id = NEW.session_id;
+             END;
+
+             DROP TRIGGER IF EXISTS chat_sessions_message_count_ad;
+             CREATE TRIGGER chat_sessions_message_count_ad
+             AFTER DELETE ON messages
+             BEGIN
+                 UPDATE chat_sessions
+                 SET message_count = CASE WHEN message_count > 0 THEN message_count - 1 ELSE 0 END
+                 WHERE id = OLD.session_id;
+             END;
+
+             DROP TRIGGER IF EXISTS chat_sessions_message_count_au;
+             CREATE TRIGGER chat_sessions_message_count_au
+             AFTER UPDATE OF session_id ON messages
+             WHEN OLD.session_id != NEW.session_id
+             BEGIN
+                 UPDATE chat_sessions
+                 SET message_count = CASE WHEN message_count > 0 THEN message_count - 1 ELSE 0 END
+                 WHERE id = OLD.session_id;
+
+                 UPDATE chat_sessions
+                 SET message_count = message_count + 1
+                 WHERE id = NEW.session_id;
+             END;
+
+             INSERT INTO _migrations(name) VALUES('v59_chat_sessions_message_count');",
         )?;
     }
 

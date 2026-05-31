@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     deleted_at TEXT,
     last_accessed_at TEXT,
     last_processed_message_count INTEGER NOT NULL DEFAULT 0,
+    message_count INTEGER NOT NULL DEFAULT 0,
     is_imported INTEGER NOT NULL DEFAULT 0,
     parent_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
     branch_message_id TEXT,
@@ -63,6 +64,38 @@ CREATE TABLE IF NOT EXISTS messages (
     variant_group_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+DROP TRIGGER IF EXISTS chat_sessions_message_count_ai;
+CREATE TRIGGER chat_sessions_message_count_ai
+AFTER INSERT ON messages
+BEGIN
+    UPDATE chat_sessions
+    SET message_count = message_count + 1
+    WHERE id = NEW.session_id;
+END;
+
+DROP TRIGGER IF EXISTS chat_sessions_message_count_ad;
+CREATE TRIGGER chat_sessions_message_count_ad
+AFTER DELETE ON messages
+BEGIN
+    UPDATE chat_sessions
+    SET message_count = CASE WHEN message_count > 0 THEN message_count - 1 ELSE 0 END
+    WHERE id = OLD.session_id;
+END;
+
+DROP TRIGGER IF EXISTS chat_sessions_message_count_au;
+CREATE TRIGGER chat_sessions_message_count_au
+AFTER UPDATE OF session_id ON messages
+WHEN OLD.session_id != NEW.session_id
+BEGIN
+    UPDATE chat_sessions
+    SET message_count = CASE WHEN message_count > 0 THEN message_count - 1 ELSE 0 END
+    WHERE id = OLD.session_id;
+
+    UPDATE chat_sessions
+    SET message_count = message_count + 1
+    WHERE id = NEW.session_id;
+END;
 
 CREATE TABLE IF NOT EXISTS citations (
     id TEXT PRIMARY KEY NOT NULL,
