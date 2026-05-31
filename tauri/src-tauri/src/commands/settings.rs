@@ -187,6 +187,27 @@ pub(crate) fn get_setting(conn: &rusqlite::Connection, key: &str) -> Option<Stri
     .ok()
 }
 
+/// Read every (key, value) pair from the `settings` table in a single query.
+/// Used by `get_settings` to avoid issuing ~70 sequential SELECTs during a
+/// single command — which compounds with concurrent get_settings calls into
+/// multi-second stalls on the SQLite reader.
+pub(crate) fn load_all_settings(
+    conn: &rusqlite::Connection,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let mut stmt = conn
+        .prepare("SELECT key, value FROM settings")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .map_err(|e| e.to_string())?;
+    let mut map = std::collections::HashMap::new();
+    for row in rows {
+        let (k, v) = row.map_err(|e| e.to_string())?;
+        map.insert(k, v);
+    }
+    Ok(map)
+}
+
 fn set_setting(conn: &rusqlite::Connection, key: &str, value: &str) -> Result<(), String> {
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
@@ -217,6 +238,17 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
     tokio::task::spawn_blocking(move || -> Result<Settings, String> {
         let conn = pool.get().map_err(|e| e.to_string())?;
         let def = Settings::default();
+
+        // Read every settings row in a single query. Below, we shadow the
+        // module-level `get_setting` with a closure of the same signature so
+        // the ~70 existing call sites don't need to be rewritten — they all
+        // now do HashMap lookups instead of issuing one SELECT each.
+        let settings_map = load_all_settings(&conn)?;
+        #[allow(clippy::redundant_closure)]
+        let get_setting = |_conn: &rusqlite::Connection, key: &str| {
+            settings_map.get(key).cloned()
+        };
+
         let stored_start_at_login = get_setting(&conn, "start_at_login")
             .map(|v| v == "true")
             .unwrap_or(stored_start_at_login_default);
