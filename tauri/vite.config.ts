@@ -26,6 +26,7 @@ export default defineConfig(async () => ({
       output: {
         manualChunks: {
           vendor: ["react", "react-dom", "react-router-dom"],
+          markdown: ["react-markdown", "remark-gfm", "remark-math", "rehype-katex", "katex"],
           codemirror: ["@codemirror/view", "@codemirror/state", "@codemirror/lang-markdown"],
           d3: ["d3"],
         },

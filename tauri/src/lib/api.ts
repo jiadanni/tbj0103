@@ -6,6 +6,7 @@ import { invoke as _rawTauriInvoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import type { Workspace, Folder } from "../stores/workspaceStore";
 import type { ChatSession, Message } from "../stores/chatStore";
+import { timed } from "./perf";
 
 // IPC observability is always on so we can see queue stalls and slow commands
 // in the dev terminal. Output is `console.log`/`console.error`, which Tauri
@@ -969,7 +970,9 @@ export const api = {
 
   dashboard: {
     getSummary: (workspaceId: string, options?: { includeDescendants?: boolean }) =>
-      invoke<DashboardSummary>("get_dashboard_summary", { workspaceId, includeDescendants: options?.includeDescendants }),
+      timed("dashboard.getSummary", () =>
+        invoke<DashboardSummary>("get_dashboard_summary", { workspaceId, includeDescendants: options?.includeDescendants }),
+      ),
     getReviewTopics: (workspaceId: string, options?: { includeDescendants?: boolean }) =>
       invoke<ReviewTopic[]>("get_review_topics", { workspaceId, includeDescendants: options?.includeDescendants }),
   },
@@ -978,11 +981,15 @@ export const api = {
     createSession: (workspaceId: string, folderId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string; is_incognito?: boolean; exclude_from_analytics?: boolean }) =>
       invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, folder_id: folderId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt, is_incognito: opts?.is_incognito, exclude_from_analytics: opts?.exclude_from_analytics } }),
     listSessions: (workspaceId: string, folderId?: string | null, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
-      invoke<ChatSession[]>("list_chat_sessions", { workspaceId, folderId: folderId ?? '', limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),
+      timed("chat.listSessions", () =>
+        invoke<ChatSession[]>("list_chat_sessions", { workspaceId, folderId: folderId ?? '', limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),
+      ),
     getRelatedChats: (workspaceId: string, tags: string[], sessionId?: string, limit?: number) =>
       invoke<QuickSearchResult[]>("get_related_chats", { req: { workspace_id: workspaceId, tags, session_id: sessionId, limit } }),
     searchSessions: (workspaceId: string, query: string, folderId?: string | null, opts?: { includeDescendants?: boolean }) =>
-      invoke<ChatSession[]>("search_chat_sessions", { req: { workspace_id: workspaceId, query, folder_id: folderId ?? null, include_descendants: opts?.includeDescendants } }),
+      timed("chat.searchSessions", () =>
+        invoke<ChatSession[]>("search_chat_sessions", { req: { workspace_id: workspaceId, query, folder_id: folderId ?? null, include_descendants: opts?.includeDescendants } }),
+      ),
     getSession: (workspaceId: string, id: string) => invoke<ChatSession | null>("get_chat_session", { workspaceId, id }),
     deleteSession: (workspaceId: string, id: string) => invoke<void>("delete_chat_session", { workspaceId, id }),
     updateSession: (workspaceId: string, id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string; model_name?: string; exclude_from_analytics?: boolean; is_unread?: boolean }) =>
@@ -1000,7 +1007,8 @@ export const api = {
     emptyRecycleBin: (workspaceId: string) => invoke<void>("empty_recycle_bin", { workspaceId }),
     addMessage: (workspaceId: string, sessionId: string, role: "user" | "assistant", content: string, modelName?: string, tokensUsed?: number, durationMs?: number) =>
       invoke<Message>("add_message", { req: { workspace_id: workspaceId, session_id: sessionId, role, content, model_name: modelName, tokens_used: tokensUsed, duration_ms: durationMs } }),
-    getMessages: (workspaceId: string, sessionId: string, limit?: number, offset?: number) => invoke<Message[]>("get_messages", { sessionId, limit, offset }),
+    getMessages: (workspaceId: string, sessionId: string, limit?: number, offset?: number) =>
+      timed("chat.getMessages", () => invoke<Message[]>("get_messages", { sessionId, limit, offset })),
     refreshMessage: (sessionId: string, messageId: string, modelId: string) =>
       invoke<Message>("refresh_message", { sessionId, messageId, modelId }),
     getMessageVariants: (messageId: string) =>
@@ -1366,15 +1374,17 @@ export const api = {
         includeDescendants?: boolean;
       },
     ) =>
-      invoke<QuickSearchResult[]>("query_quick_search", {
-        req: {
-          query,
-          limit: options?.limit,
-          workspace_id: options?.workspaceId ?? null,
-          kind_filters: options?.kindFilters ?? null,
-          include_descendants: options?.includeDescendants ?? false,
-        },
-      }),
+      timed("quickSearch.query", () =>
+        invoke<QuickSearchResult[]>("query_quick_search", {
+          req: {
+            query,
+            limit: options?.limit,
+            workspace_id: options?.workspaceId ?? null,
+            kind_filters: options?.kindFilters ?? null,
+            include_descendants: options?.includeDescendants ?? false,
+          },
+        }),
+      ),
     getContext: () => invoke<QuickSearchContext>("get_quick_search_context"),
     openResult: (result: QuickSearchResult) =>
       invoke<void>("open_quick_search_result", { result }),
@@ -1650,7 +1660,7 @@ export const api = {
   },
 
   settings: {
-    get: () => invoke<AppSettings>("get_settings"),
+    get: () => timed("settings.get", () => invoke<AppSettings>("get_settings")),
     getCore: () => invoke<CoreSettings>("get_core_settings"),
     getAi: () => invoke<AiSettings>("get_ai_settings"),
     getAdvanced: () => invoke<AdvancedSettings>("get_advanced_settings"),
